@@ -109,7 +109,7 @@ class ThermodynamicsImpl : public torch::nn::Cloneable<ThermodynamicsImpl> {
    * \param yfrac mass fraction, (nmass, ...)
    * \return molar concentration, (..., 1 + nmass)
    */
-  torch::Tensor get_mole_concentration(torch::Tensor yfrac) const;
+  torch::Tensor get_mole_concentration(torch::Tensor rho, torch::Tensor yfrac) const;
 
   //! \brief Perform saturation adjustment
   /*!

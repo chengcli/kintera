@@ -185,7 +185,7 @@ torch::Tensor ThermodynamicsImpl::forward(torch::Tensor rho,
 
   auto pres = peos->get_pres(rho, intEng);
   auto temp = peos->get_temp(rho, pres);
-  auto conc = get_mole_concentration(yfrac);
+  auto conc = get_mole_concentration(rho, yfrac);
 
   // std::cout << "pres = " << pres << std::endl;
   // std::cout << "temp = " << temp << std::endl;
@@ -197,7 +197,8 @@ torch::Tensor ThermodynamicsImpl::forward(torch::Tensor rho,
   for (; iter < options.max_iter(); ++iter) {
     /*std::cout << "iter = " << iter << std::endl;
     std::cout << "conc = " << conc << std::endl;*/
-    auto intEng_RT = get_internal_energy_RT(temp);
+    //auto intEng_RT = get_internal_energy_RT(temp);
+    auto intEng_RT = peos->get_intEng(rho, pres) / (constants::Rgas * temp);
     /*std::cout << "total intEng = "
               << (conc * intEng_RT).sum(-1) * constants::Rgas * temp
               << std::endl;*/
@@ -226,9 +227,9 @@ torch::Tensor ThermodynamicsImpl::forward(torch::Tensor rho,
   yfrac = (conc * mu).narrow(-1, 1, nvapor + ncloud).permute({3, 0, 1, 2});
 
   // total energy
-  feps = f_eps(u / rho);
-  fsig = f_sig(u / rho);
-  intEng = pres * fsig / feps / (options.gammad() - 1.) + ke;
+  //feps = f_eps(u / rho);
+  //fsig = f_sig(u / rho);
+  //intEng = pres * fsig / feps / (options.gammad() - 1.) + ke;
 
   return yfrac - yfrac0;
 }
@@ -237,10 +238,11 @@ torch::Tensor ThermodynamicsImpl::equilibrate_tp(torch::Tensor temp,
                                                  torch::Tensor pres,
                                                  torch::Tensor yfrac) const {
   auto xfrac = get_mole_fraction(yfrac);
+  int nvapor = options.vapor_ids().size();
 
   int iter = 0;
   for (; iter < options.max_iter(); ++iter) {
-    auto rates = pcond->equilibrate_tp(temp, pres, xfrac, 1 + options.nvapor());
+    auto rates = pcond->equilibrate_tp(temp, pres, xfrac, 1 + nvapor);
     xfrac += rates;
 
     if ((rates / (xfrac + 1.e-10)).max().item<double>() < options.rtol()) break;
@@ -251,25 +253,31 @@ torch::Tensor ThermodynamicsImpl::equilibrate_tp(torch::Tensor temp,
 }
 
 torch::Tensor ThermodynamicsImpl::get_mole_concentration(
-    torch::Tensor yfrac) const {
+    torch::Tensor rho, torch::Tensor yfrac) const {
   auto nvapor = options.vapor_ids().size();
   auto ncloud = options.cloud_ids().size();
 
-  auto vec = u.sizes().vec();
+  auto vec = yfrac.sizes().vec();
   vec.erase(vec.begin());
   vec.push_back(1 + nvapor + ncloud);
 
-  auto result = torch::empty(vec, u.options());
+  auto result = torch::empty(vec, yfrac.options());
   auto mu = get_mu();
 
-  result.select(3, 0) = u[index::IDN] / mu[0];
-  result.narrow(3, 1, nvapor + ncloud) =
-      u.narrow(0, index::ICY, nvapor + ncloud).permute({1, 2, 3, 0}) /
-      mu.narrow(0, 1, nvapor + ncloud);
+  // (nmass, ...) -> (..., nmass)
+  int ndim = yfrac.dim();
+  for (int i = 0; i < ndim - 1; ++i) {
+    vec[i] = i + 1;
+  }
+  vec[ndim - 1] = 0;
+
+  result.select(-1, 0) = rho / mu[0];
+  result.narrow(-1, 1, nvapor + ncloud) =
+      yfrac.permute(vec) / mu.narrow(0, 1, nvapor + ncloud);
   return result;
 }
 
-torch::Tensor ThermodynamicsImpl::_get_internal_energy_RT(
+/*torch::Tensor ThermodynamicsImpl::_get_internal_energy_RT(
     torch::Tensor temp) const {
   auto nvapor = options.vapor_ids().size();
   auto ncloud = options.cloud_ids().size();
@@ -282,6 +290,6 @@ torch::Tensor ThermodynamicsImpl::_get_internal_energy_RT(
   auto result = h0 * mu + cp * (temp - options.Tref()).unsqueeze(3);
   result.narrow(3, 0, 1 + nvapor) -= constants::Rgas * temp;
   return result / (constants::Rgas * temp.unsqueeze(3));
-}
+}*/
 
 }  // namespace kintera

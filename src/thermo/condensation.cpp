@@ -115,7 +115,7 @@ torch::Tensor CondensationImpl::forward(torch::Tensor temp, torch::Tensor pres,
   // std::cout << "srv = " << srv << std::endl;
 
   auto A = jac.matmul(stoich_local);
-  auto rates = -torch::linalg::solve(A, b, true);
+  auto rates = -torch::linalg_solve(A, b, true);
 
   if (!krate.has_value()) {
     return stoich_local.matmul(rates.unsqueeze(-1)).squeeze(-1);
@@ -184,7 +184,7 @@ torch::Tensor CondensationImpl::equilibrate_tp(torch::Tensor temp,
   }
 
   auto A = jac.matmul(stoich_local);
-  auto rates = -torch::linalg::solve(A, b, true);
+  auto rates = -torch::linalg_solve(A, b, true);
 
   return stoich_local.matmul(rates.unsqueeze(-1)).squeeze(-1);
 }
