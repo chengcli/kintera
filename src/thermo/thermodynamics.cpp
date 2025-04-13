@@ -1,5 +1,8 @@
-// base
-#include <configure.h>  // Index
+// yaml
+#include <yaml-cpp/yaml.h>
+
+// elements
+#include <elements/compound.hpp>
 
 // kintera
 #include <kintera/constants.h>
@@ -8,6 +11,130 @@
 #include "thermodynamics.hpp"
 
 namespace kintera {
+
+std::vector<std::string> species_names;
+std::vector<double> species_weights;
+
+ThermodynamicsOptions ThermodynamicsOptions::from_yaml(std::string const& filename) {
+  ThermodynamicsOptions thermo;
+  auto config = YAML::LoadFile(filename);
+
+  // check if species are defined
+  TORCH_CHECK(config["species"],
+              "'species' is not defined in the thermodynamics configuration file");
+
+  species_names.clear();
+  species_weights.clear();
+
+  std::vector<double> cp_R, cv_R, h0_RT;
+
+  for (const auto& sp : config["species"]) {
+    species_names.push_back(sp["name"].as<std::string>());
+    std::map<std::string, double> comp;
+
+    for (const auto& it : sp["composition"]) {
+      std::string key = it.first.as<std::string>();
+      double value = it.second.as<double>();
+      comp[key] = value;
+    }
+    species_weights.push_back(elements::get_compound_weight(comp));
+
+    if (sp["cp_R"]) {
+      cp_R.push_back(sp["cp_R"].as<double>());
+    } else {
+      cp_R.push_back(7. / 2.);
+    }
+
+    if (sp["cv_R"]) {
+      cv_R.push_back(sp["cv_R"].as<double>());
+    } else {
+      cv_R.push_back(5. / 2.);
+    }
+
+    if (sp["h0_RT"]) {
+      h0_RT.push_back(sp["h0_RT"].as<double>());
+    } else {
+      h0_RT.push_back(0.);
+    }
+  }
+
+  if (config["species"][0]["eos"]) {
+    TORCH_CHECK(config["species"][0]["eos"]["type"],
+                "type of eos is not defined");
+    thermo.eos().type(config["species"][0]["eos"]["type"].as<std::string>());
+    if (config["species"][0]["eos"]["file"]) {
+      thermo.eos().file(config["species"][0]["eos"]["file"].as<std::string>());
+    }
+  } else {
+    thermo.eos().type("ideal_gas");
+  }
+  thermo.eos().mu(species_weights[0]);
+  thermo.eos().gamma_ref(cp_R[0] / cv_R[0]);
+
+  thermo.mu_ratio_m1().clear();
+  thermo.cv_ratio_m1().clear();
+  thermo.cp_ratio_m1().clear();
+  thermo.h0().clear();
+
+  auto cp0 = config["species"][0]["cp_R"].as<double>();
+  auto cv0 = config["species"][0]["cv_R"].as<double>();
+
+  thermo.cond() = CondensationOptions::from_yaml(filename);
+  thermo.cond().species().clear();
+  thermo.cond().species().push_back(species_names[0]);
+
+  // register vapors
+  if (config["vapor"]) {
+    for (const auto& sp : config["vapor"]) {
+      auto it = std::find(species_names.begin(), species_names.end(),
+                          sp.as<std::string>());
+      TORCH_CHECK(it != species_names.end(),
+                  "vapor species not found in species list");
+      thermo.vapor_ids().push_back(it - species_names.begin());
+      thermo.cond().species().push_back(sp.as<std::string>());
+    }
+  }
+
+  for (int i = 0; i < thermo.vapor_ids().size(); ++i) {
+    thermo.mu_ratio_m1().push_back(species_weights[thermo.vapor_ids()[i]] /
+                                   species_weights[0] - 1.);
+    auto cp = config["species"][thermo.vapor_ids()[i]]["cp_R"].as<double>();
+    thermo.cp_ratio_m1().push_back(cp / cp0 - 1.);
+
+    auto cv = config["species"][thermo.vapor_ids()[i]]["cv_R"].as<double>();
+    thermo.cv_ratio_m1().push_back(cv / cv0 - 1.);
+
+    auto h0 = config["species"][thermo.vapor_ids()[i]]["h0_RT"].as<double>();
+    thermo.h0().push_back(h0);
+  }
+
+  // register clouds
+  if (config["cloud"]) {
+    for (const auto& sp : config["cloud"]) {
+      auto it = std::find(species_names.begin(), species_names.end(),
+                          sp.as<std::string>());
+      TORCH_CHECK(it != species_names.end(),
+                  "cloud species not found in species list");
+      thermo.cloud_ids().push_back(it - species_names.begin());
+      thermo.cond().species().push_back(sp.as<std::string>());
+    }
+  }
+
+  for (int i = 0; i < thermo.cloud_ids().size(); ++i) {
+    thermo.mu_ratio_m1().push_back(species_weights[thermo.cloud_ids()[i]] /
+                                   species_weights[0] - 1.);
+    auto cp = config["species"][thermo.cloud_ids()[i]]["cp_R"].as<double>();
+    thermo.cp_ratio_m1().push_back(cp / cp0 - 1.);
+
+    auto cv = config["species"][thermo.cloud_ids()[i]]["cv_R"].as<double>();
+    thermo.cv_ratio_m1().push_back(cv / cv0 - 1.);
+
+    auto h0 = config["species"][thermo.cloud_ids()[i]]["h0_RT"].as<double>();
+    thermo.h0().push_back(h0);
+  }
+
+  return thermo;
+}
 
 ThermodynamicsImpl::ThermodynamicsImpl(const ThermodynamicsOptions& options_)
     : options(options_) {

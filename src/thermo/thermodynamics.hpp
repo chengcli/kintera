@@ -16,6 +16,16 @@
 namespace kintera {
 
 struct ThermodynamicsOptions {
+  //! \brief Create a `ThermodynamicsOptions` object from a YAML file
+  /*!
+   * This function reads a YAML file and creates a `ThermodynamicsOptions`
+   * object from it. The YAML file must contain the following fields:
+   *  - "species", list of species names and their composition
+   *  - "vapor": list of vapor species
+   *  - "cloud": list of cloud species
+   */
+  static ThermodynamicsOptions from_yaml(std::string const& filename);
+
   ThermodynamicsOptions() = default;
 
   ADD_ARG(double, gammad) = 1.4;

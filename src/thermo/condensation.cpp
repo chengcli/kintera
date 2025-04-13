@@ -1,3 +1,6 @@
+// yaml
+#include <yaml-cpp/yaml.h>
+
 // torch
 #include <torch/torch.h>
 
@@ -8,6 +11,13 @@
 #include "thermo_formatter.hpp"
 
 namespace kintera {
+
+CondensationOptions CondensationOptions::from_yaml(std::string const& filename) {
+  CondensationOptions options;
+  YAML::Node config = YAML::LoadFile(filename);
+
+  return options;
+}
 
 // x -> y at constant volume (mole concentration)
 inline torch::Tensor satfunc1v(torch::Tensor& b, torch::Tensor& jac,
@@ -41,7 +51,6 @@ inline void satfunc1p(torch::Tensor& b, torch::Tensor& jac, torch::Tensor xfrac,
 
 CondensationImpl::CondensationImpl(const CondensationOptions& options_)
     : options(options_) {
-  options.species().insert(options.species().begin(), options.dry_name());
   reset();
 }
 
