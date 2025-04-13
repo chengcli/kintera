@@ -1,8 +1,8 @@
 // torch
 #include <torch/torch.h>
 
-// fvm
-#include <constants.h>
+// kintera
+#include <kintera/constants.h>
 
 #include "condensation.hpp"
 #include "thermo_formatter.hpp"

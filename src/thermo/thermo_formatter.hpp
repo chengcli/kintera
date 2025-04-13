@@ -1,30 +1,30 @@
 #pragma once
 
-// spdlog
-#include <spdlog/spdlog.h>
+// fmt
+#include <fmt/format.h>
 
-// fvm
-#include <fvm/kintera/kintera_formatter.hpp>
+// kintera
+#include <kintera/kintera_formatter.hpp>
 
 #include "thermodynamics.hpp"
 
 template <>
-struct fmt::formatter<canoe::Nucleation> {
+struct fmt::formatter<kintera::Nucleation> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const canoe::Nucleation& p, FormatContext& ctx) {
+  auto format(const kintera::Nucleation& p, FormatContext& ctx) {
     return fmt::format_to(ctx.out(), "({}; min_tem = {}; max_tem = {})",
                           p.reaction(), p.min_tem(), p.max_tem());
   }
 };
 
 template <>
-struct fmt::formatter<canoe::CondensationOptions> {
+struct fmt::formatter<kintera::CondensationOptions> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const canoe::CondensationOptions& p, FormatContext& ctx) {
+  auto format(const kintera::CondensationOptions& p, FormatContext& ctx) {
     std::ostringstream reactions;
     for (size_t i = 0; i < p.react().size(); ++i) {
       reactions << fmt::format("R{}: {}", i + 1, p.react()[i]);
@@ -47,23 +47,31 @@ struct fmt::formatter<canoe::CondensationOptions> {
 };
 
 template <>
-struct fmt::formatter<canoe::ThermodynamicsOptions> {
+struct fmt::formatter<kintera::ThermodynamicsOptions> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const canoe::ThermodynamicsOptions& p, FormatContext& ctx) {
-    std::ostringstream species;
-    for (size_t i = 0; i < p.species().size(); ++i) {
-      species << p.species()[i];
-      if (i != p.species().size() - 1) {
-        species << ", ";
+  auto format(const kintera::ThermodynamicsOptions& p, FormatContext& ctx) {
+    std::ostringstream vapors;
+    for (size_t i = 0; i < p.vapor_ids().size(); ++i) {
+      vapors << p.vapor_ids()[i];
+      if (i != p.vapor_ids().size() - 1) {
+        vapors << ", ";
+      }
+    }
+
+    std::ostringstream clouds;
+    for (size_t i = 0; i < p.cloud_ids().size(); ++i) {
+      clouds << p.cloud_ids()[i];
+      if (i != p.cloud_ids().size() - 1) {
+        clouds << ", ";
       }
     }
 
     return fmt::format_to(ctx.out(),
-                          "(Rd = {}; gammad_ref = {}; nvapor = {}; ncloud = "
-                          "{}; speices = ({}); cond = {})",
-                          p.Rd(), p.gammad_ref(), p.nvapor(), p.ncloud(),
-                          species.str(), p.cond());
+                          "(Rd = {}; gammad = {}; vapors = ({}); clouds = "
+                          "({}); cond = {})",
+                          p.Rd(), p.gammad(), vapors.str(), clouds.str(),
+                          p.cond());
   }
 };

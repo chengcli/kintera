@@ -5,13 +5,13 @@
 // base
 #include <configure.h>
 
-// fvm
-#include <fvm/index.h>
+// kintera
+#include <kintera/index.h>
 
 #define W(n) w[(n) * stride]
 #define Q(n) q[(n) * stride]
 
-namespace canoe {
+namespace kintera {
 
 template <typename T>
 inline DISPATCH_MACRO void mole_to_mass_fraction_impl(T *w, T const *q,
@@ -137,7 +137,7 @@ delta_[nc]); q[n] -= rate; q[nc] += rate;
   if (iter >= max_iter_) print_error_msg();
 }*/
 
-}  // namespace canoe
+}  // namespace kintera
 
 #undef W
 #undef Q

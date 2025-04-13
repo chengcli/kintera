@@ -4,7 +4,7 @@
 #include <torch/torch.h>
 
 // kintera
-#include <add_arg.h>
+#include <kintera/add_arg.h>
 
 #include <kintera/reaction.hpp>
 

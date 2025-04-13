@@ -6,7 +6,7 @@
 // torch
 #include <torch/torch.h>
 
-namespace canoe {
+namespace kintera {
 
 inline double svpnh3(double t, double p, double beta, double gamma) {
   return p * exp((1. - 1. / t) * beta - gamma * log(t));
@@ -77,4 +77,4 @@ inline double sat_vapor_p_NH3_Ideal(double T) {
                 : svpnh3(T / tr, pr, betas, gammas);
 }
 
-}  // namespace canoe
+}  // namespace kintera

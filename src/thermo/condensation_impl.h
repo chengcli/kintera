@@ -5,7 +5,7 @@
 // Eigen
 #include <Eigen/Dense>
 
-namespace canoe {
+namespace kintera {
 
 // x -> y at constant volume (mole concentration)
 template <typename T>
@@ -100,4 +100,4 @@ void equilibrate_uv_rate_impl(T* rate, T const* conc, T const* int_eng,
   }
 }
 
-}  // namespace canoe
+}  // namespace kintera

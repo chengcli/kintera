@@ -5,10 +5,10 @@
 #include <c10/cuda/CUDAGuard.h>
 
 // fmv
-#include <fvm/loops.cuh>
+#include <kintera/loops.cuh>
 // #include "condensation_impl.h"
 
-namespace canoe {
+namespace kintera {
 
 void call_condensation_cuda(at::TensorIterator& iter, int dim, int nvapor) {
   at::cuda::CUDAGuard device_guard(iter.device());
@@ -32,4 +32,4 @@ void call_condensation_cuda(at::TensorIterator& iter, int dim, int nvapor) {
   });
 }
 
-}  // namespace canoe
+}  // namespace kintera

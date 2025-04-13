@@ -6,7 +6,7 @@
 // torch
 #include <torch/torch.h>
 
-namespace canoe {
+namespace kintera {
 inline double svph2o(double t, double p, double beta, double gamma) {
   return p * exp((1. - 1. / t) * beta - gamma * log(t));
 }
@@ -109,4 +109,4 @@ inline double sat_vapor_p_H2O_solid_Ideal(double T) {
   return svph2o(T / tr, pr, betas, gammas);
 }
 
-}  // namespace canoe
+}  // namespace kintera

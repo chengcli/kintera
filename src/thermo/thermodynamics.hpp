@@ -7,7 +7,9 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
-#include <add_arg.h>
+#include <kintera/add_arg.h>
+
+#include <kintera/eos/equation_of_state.hpp>
 
 #include "condensation.hpp"
 
@@ -33,7 +35,7 @@ struct ThermodynamicsOptions {
   ADD_ARG(double, rtol) = 1e-4;
   ADD_ARG(double, boost) = 256;
 
-  ADD_ARG(EOSOptions, eos);
+  ADD_ARG(EquationOfStateOptions, eos);
   ADD_ARG(CondensationOptions, cond);
 };
 
@@ -53,7 +55,7 @@ class ThermodynamicsImpl : public torch::nn::Cloneable<ThermodynamicsImpl> {
 
   //! submodules
   Condensation pcond = nullptr;
-  torch::AnyModule peos = nullptr;
+  EquationOfState peos = nullptr;
 
   //! options with which this `Thermodynamics` was constructed
   ThermodynamicsOptions options;

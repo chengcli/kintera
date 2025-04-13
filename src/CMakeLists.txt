@@ -32,7 +32,8 @@ file(GLOB src_files
   xsection/*.cpp
   utils/*.cpp
   kinetics/*.cpp
-  #thermo/*.cpp
+  thermo/*.cpp
+  math/*.cpp
   eos/*.cpp
   )
 

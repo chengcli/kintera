@@ -1,11 +1,12 @@
 // C/C++
 #include <functional>
 
-// fvm
+// kintera
+#include <kintera/vapors/ammonia_vapors.hpp>
+#include <kintera/vapors/ammonium_hydrosulfide_vapors.hpp>
+#include <kintera/vapors/water_vapors.hpp>
+
 #include "nucleation.hpp"
-#include "vapors/ammonia_vapors.hpp"
-#include "vapors/ammonium_hydrosulfide_vapors.hpp"
-#include "vapors/water_vapors.hpp"
 
 namespace kintera {
 

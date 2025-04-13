@@ -1,20 +1,13 @@
 // base
 #include <configure.h>  // Index
 
-// pyharp
-#include <pyharp/constants.h>
-
 // kintera
+#include <kintera/constants.h>
+
 #include "thermo_formatter.hpp"
 #include "thermodynamics.hpp"
 
 namespace kintera {
-
-ThermodynamicsOptions::ThermodynamicsOptions(ParameterInput pin) {
-  gammad(pin->GetOrAddReal("thermodynamics", "gammad", 1.4));
-  nvapor(pin->GetOrAddInteger("thermodynamics", "nvapor", 0));
-  ncloud(pin->GetOrAddInteger("thermodynamics", "ncloud", 0));
-}
 
 ThermodynamicsImpl::ThermodynamicsImpl(const ThermodynamicsOptions& options_)
     : options(options_) {
@@ -44,17 +37,13 @@ void ThermodynamicsImpl::reset() {
   int nvapor = options.vapor_ids().size();
   int ncloud = options.cloud_ids().size();
 
-  TORCH_CHECK(
-      options.mu_ratio_m1().size() == options.nvapor() + options.ncloud(),
-      "mu_ratio_m1 size mismatch");
-  TORCH_CHECK(
-      options.cv_ratio_m1().size() == options.nvapor() + options.ncloud(),
-      "cv_ratio_m1 size mismatch");
-  TORCH_CHECK(
-      options.cp_ratio_m1().size() == options.nvapor() + options.ncloud(),
-      "cp_ratio_m1 size mismatch");
-  TORCH_CHECK(options.h0().size() == 1 + options.nvapor() + options.ncloud(),
-              "h0 size mismatch");
+  TORCH_CHECK(options.mu_ratio_m1().size() == nvapor + ncloud,
+              "mu_ratio_m1 size mismatch");
+  TORCH_CHECK(options.cv_ratio_m1().size() == nvapor + ncloud,
+              "cv_ratio_m1 size mismatch");
+  TORCH_CHECK(options.cp_ratio_m1().size() == nvapor + ncloud,
+              "cp_ratio_m1 size mismatch");
+  TORCH_CHECK(options.h0().size() == 1 + nvapor + ncloud, "h0 size mismatch");
 
   mu_ratio_m1 = register_buffer(
       "mu_ratio_m1", torch::tensor(options.mu_ratio_m1(), torch::kFloat64));
@@ -67,9 +56,9 @@ void ThermodynamicsImpl::reset() {
 
   h0 = register_buffer("h0", torch::tensor(options.h0(), torch::kFloat64));
 
-  options.cond().species(options.species());
+  // options.cond().species(options.species());
   pcond = register_module("cond", Condensation(options.cond()));
-  options.cond() = pcond->options;
+  // options.cond() = pcond->options;
 }
 
 torch::Tensor ThermodynamicsImpl::f_eps(torch::Tensor yfrac) const {
@@ -82,21 +71,21 @@ torch::Tensor ThermodynamicsImpl::f_eps(torch::Tensor yfrac) const {
 }
 
 torch::Tensor ThermodynamicsImpl::f_sig(torch::Tensor yfrac) const {
-  auto nmass = options.vapor_ids().size() + options.cloud_ids().size();
+  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
 
   auto wu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
   return 1. + wu.matmul(cv_ratio_m1).squeeze(0);
 }
 
 torch::Tensor ThermodynamicsImpl::f_psi(torch::Tensor yfrac) const {
-  auto nmass = options.vapor_ids().size() + options.cloud_ids().size();
+  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
 
   auto wu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
   return 1. + wu.matmul(cp_ratio_m1).squeeze(0);
 }
 
 torch::Tensor ThermodynamicsImpl::get_mu() const {
-  auto nmass = options.nvapor() + options.ncloud();
+  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
 
   auto result = torch::ones({1 + nmass}, mu_ratio_m1.options());
   result[0] = constants::Rgas / options.Rd();
@@ -106,17 +95,17 @@ torch::Tensor ThermodynamicsImpl::get_mu() const {
 }
 
 torch::Tensor ThermodynamicsImpl::get_cv() const {
-  auto nmass = options.nvapor() + options.ncloud();
+  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
 
   auto result = torch::empty({1 + nmass}, cv_ratio_m1.options());
   result[0] = options.Rd() / (options.gammad() - 1.);
-  result.narrow(0, 1, namss) = result[0] * (cv_ratio_m1 + 1.);
+  result.narrow(0, 1, nmass) = result[0] * (cv_ratio_m1 + 1.);
 
   return result;
 }
 
 torch::Tensor ThermodynamicsImpl::get_cp() const {
-  auto nmass = options.nvapor() + options.ncloud();
+  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
 
   auto result = torch::empty({1 + nmass}, cp_ratio_m1.options());
   result[0] = options.gammad() / (options.gammad() - 1.) * options.Rd();
@@ -181,18 +170,18 @@ torch::Tensor ThermodynamicsImpl::get_mass_fraction(torch::Tensor xfrac) const {
 torch::Tensor ThermodynamicsImpl::forward(torch::Tensor rho,
                                           torch::Tensor yfrac,
                                           torch::Tensor intEng) {
-  int nvapor = options.nvapor();
-  int ncloud = options.ncloud();
+  int nvapor = options.vapor_ids().size();
+  int ncloud = options.cloud_ids().size();
 
   // total density
-  auto rho = u[Index::IDN].clone();
-  rho += u.narrow(0, Index::ICY, nvapor + ncloud).sum(0);
+  // auto rho = u[Index::IDN].clone();
+  // rho += u.narrow(0, Index::ICY, nvapor + ncloud).sum(0);
 
   auto feps = f_eps(yfrac);
   auto fsig = f_sig(yfrac);
 
-  auto pres = (options.gammad_ref() - 1.) * u[Index::IEN] * feps / fsig;
-  auto temp = pres / (rho * options.Rd() * feps);
+  // auto pres = (options.gammad() - 1.) * u[Index::IEN] * feps / fsig;
+  // auto temp = pres / (rho * options.Rd() * feps);
 
   auto pres = peos->get_pres(rho, intEng);
   auto temp = peos->get_temp(rho, pres);
@@ -233,17 +222,15 @@ torch::Tensor ThermodynamicsImpl::forward(torch::Tensor rho,
     // std::cout << "temp = " << temp << std::endl;
   }
 
-  auto u0 = u.clone();
-
-  u.narrow(0, index::ICY, nvapor + ncloud) =
-      (conc * mu).narrow(-1, 1, nvapor + ncloud).permute({3, 0, 1, 2});
+  auto yfrac0 = yfrac.clone();
+  yfrac = (conc * mu).narrow(-1, 1, nvapor + ncloud).permute({3, 0, 1, 2});
 
   // total energy
   feps = f_eps(u / rho);
   fsig = f_sig(u / rho);
-  u[index::IPR] = pres * fsig / feps / (options.gammad_ref() - 1.) + ke;
+  intEng = pres * fsig / feps / (options.gammad() - 1.) + ke;
 
-  return u - u0;
+  return yfrac - yfrac0;
 }
 
 torch::Tensor ThermodynamicsImpl::equilibrate_tp(torch::Tensor temp,
@@ -265,8 +252,8 @@ torch::Tensor ThermodynamicsImpl::equilibrate_tp(torch::Tensor temp,
 
 torch::Tensor ThermodynamicsImpl::get_mole_concentration(
     torch::Tensor yfrac) const {
-  auto nvapor = options.nvapor();
-  auto ncloud = options.ncloud();
+  auto nvapor = options.vapor_ids().size();
+  auto ncloud = options.cloud_ids().size();
 
   auto vec = u.sizes().vec();
   vec.erase(vec.begin());
@@ -284,8 +271,8 @@ torch::Tensor ThermodynamicsImpl::get_mole_concentration(
 
 torch::Tensor ThermodynamicsImpl::_get_internal_energy_RT(
     torch::Tensor temp) const {
-  auto nvapor = options.nvapor();
-  auto ncloud = options.ncloud();
+  auto nvapor = options.vapor_ids().size();
+  auto ncloud = options.cloud_ids().size();
 
   auto vec = temp.sizes().vec();
   vec.push_back(1 + nvapor + ncloud);

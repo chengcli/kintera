@@ -10,7 +10,7 @@
 #include "cantera/thermo/IdealMoistPhase.h"
 #include "cantera/thermo/ThermoPhase.h"
 
-namespace canoe {
+namespace kintera {
 
 // x -> y at constant volume (mole concentration)
 inline pair<double, double> satfunc1v(double s, double x, double y,
@@ -412,4 +412,4 @@ Eigen::SparseMatrix<double> Condensation::netRatesOfProgress_ddCi()
   return m_jac;
 }*/
 
-}  // namespace canoe
+}  // namespace kintera

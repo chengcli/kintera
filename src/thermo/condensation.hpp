@@ -5,10 +5,10 @@
 #include <torch/nn/module.h>
 #include <torch/nn/modules/common.h>
 
-// fvm
+// kintera
 #include "nucleation.hpp"
 
-namespace canoe {
+namespace kintera {
 
 struct CondensationOptions {
   CondensationOptions() = default;
@@ -51,4 +51,4 @@ class CondensationImpl : public torch::nn::Cloneable<CondensationImpl> {
 };
 TORCH_MODULE(Condensation);
 
-}  // namespace canoe
+}  // namespace kintera

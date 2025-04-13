@@ -5,11 +5,11 @@
 #include <ATen/native/cpu/Loops.h>
 #include <ATen/native/ReduceOpsUtils.h>
 
-// fvm
-#include <fvm/index.h>
+// kintera
+#include <kintera/index.h>
 // #include "condensation_impl.h"
 
-namespace canoe {
+namespace kintera {
 
 void call_condensation_cpu(at::TensorIterator& iter, int dim, int nvapor) {
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "condensation_cpu", [&] {
@@ -29,4 +29,4 @@ void call_condensation_cpu(at::TensorIterator& iter, int dim, int nvapor) {
   });
 }
 
-}  // namespace canoe
+}  // namespace kintera
