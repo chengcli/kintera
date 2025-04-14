@@ -21,23 +21,50 @@ TEST_P(DeviceTest, feps) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
-  /*auto op_cond = CondensationOptions();
+  ThermoY thermo(op_thermo);
+  thermo->to(device, dtype);
 
-  auto r = Nucleation(
-      "H2O => H2O(l)", "ideal",
-      {{"T3", 273.15}, {"P3", 611.7}, {"beta", 24.8}, {"delta", 0.0}});
-  op_cond.react().push_back(r);
+  int nspecies = thermo->nspecies();
+  auto yfrac =
+      torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
 
-  auto op_thermo = ThermoOptions().cond(op_cond);
-  int nvapor = 1;
-  int ncloud = 1;
+  for (int i = 0; i < nspecies; ++i) {
+    yfrac[i] = 0.01 * (i + 1);
+  }
 
-  op_thermo.nvapor(nvapor).ncloud(ncloud);
-  op_thermo.species().push_back("H2O");
-  op_thermo.species().push_back("H2O(l)");
+  auto feps = thermo->f_eps(yfrac);
+  std::cout << "feps = " << feps << std::endl;
+
+  auto fsig = thermo->f_sig(yfrac);
+  std::cout << "fsig = " << fsig << std::endl;
+
+  auto fpsi = thermo->f_psi(yfrac);
+  std::cout << "fpsi = " << fpsi << std::endl;
+}
+
+TEST_P(DeviceTest, mu) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   ThermoY thermo(op_thermo);
-  std::cout << fmt::format("{}", thermo->options) << std::endl;*/
+  thermo->to(device, dtype);
+
+  int nspecies = thermo->nspecies();
+  auto yfrac =
+      torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < nspecies; ++i) {
+    yfrac[i] = 0.01 * (i + 1);
+  }
+
+  auto mu = thermo->get_mu();
+  std::cout << "mu = " << mu << std::endl;
+
+  auto cv = thermo->get_cv();
+  std::cout << "cv = " << cv << std::endl;
+
+  auto cp = thermo->get_cp();
+  std::cout << "cp = " << cp << std::endl;
 }
 
 /*TEST_P(DeviceTest, eos) {

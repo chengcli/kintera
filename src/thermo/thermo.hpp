@@ -75,6 +75,11 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   explicit ThermoYImpl(const ThermoOptions& options_);
   void reset() override;
 
+  int nspecies() const {
+    return static_cast<int>(options.vapor_ids().size() +
+                            options.cloud_ids().size());
+  }
+
   //! \brief Inverse of the mean molecular weight
   /*!
    * Eq.16 in Li2019

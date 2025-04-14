@@ -31,8 +31,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
       thermo.Tref(config["reference-state"]["Pref"].as<double>());
   }
 
-  std::vector<double> cp_R, cv_R;
-  thermo.h0_R().clear();
+  std::vector<double> cp_R, cv_R, h0_R;
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -58,9 +57,9 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     }
 
     if (sp["h0_R"]) {
-      thermo.h0_R().push_back(sp["h0_R"].as<double>());
+      h0_R.push_back(sp["h0_R"].as<double>());
     } else {
-      thermo.h0_R().push_back(0.);
+      h0_R.push_back(0.);
     }
   }
 
@@ -80,6 +79,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   thermo.Rd(constants::Rgas / species_weights[0]);
   thermo.eos().mu(species_weights[0]);
   thermo.eos().gamma_ref(cp_R[0] / cv_R[0]);
+  thermo.h0_R({0.});
 
   thermo.mu_ratio_m1().clear();
   thermo.cv_ratio_m1().clear();
@@ -107,6 +107,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
                                    1.);
     thermo.cp_ratio_m1().push_back(cp_R[id] / cp_R[0] - 1.);
     thermo.cv_ratio_m1().push_back(cv_R[id] / cv_R[0] - 1.);
+    thermo.h0_R().push_back(h0_R[id]);
   }
 
   // register clouds
@@ -127,6 +128,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
                                    1.);
     thermo.cp_ratio_m1().push_back(cp_R[id] / cp_R[0] - 1.);
     thermo.cv_ratio_m1().push_back(cv_R[id] / cv_R[0] - 1.);
+    thermo.h0_R().push_back(h0_R[id]);
   }
 
   return thermo;

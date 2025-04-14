@@ -61,23 +61,21 @@ torch::Tensor ThermoYImpl::f_eps(torch::Tensor yfrac) const {
   auto nvapor = options.vapor_ids().size();
   auto ncloud = options.cloud_ids().size();
 
-  auto wu = yfrac.narrow(0, 0, nvapor).unfold(0, nvapor, 1);
-  return 1. + wu.matmul(mu_ratio_m1.narrow(0, 0, nvapor)).squeeze(0) -
+  auto yu = yfrac.narrow(0, 0, nvapor).unfold(0, nvapor, 1);
+  return 1. + yu.matmul(mu_ratio_m1.narrow(0, 0, nvapor)).squeeze(0) -
          yfrac.narrow(0, nvapor, ncloud).sum(0);
 }
 
 torch::Tensor ThermoYImpl::f_sig(torch::Tensor yfrac) const {
   int nmass = options.vapor_ids().size() + options.cloud_ids().size();
-
-  auto wu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
-  return 1. + wu.matmul(cv_ratio_m1).squeeze(0);
+  auto yu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
+  return 1. + yu.matmul(cv_ratio_m1).squeeze(0);
 }
 
 torch::Tensor ThermoYImpl::f_psi(torch::Tensor yfrac) const {
   int nmass = options.vapor_ids().size() + options.cloud_ids().size();
-
-  auto wu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
-  return 1. + wu.matmul(cp_ratio_m1).squeeze(0);
+  auto yu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
+  return 1. + yu.matmul(cp_ratio_m1).squeeze(0);
 }
 
 torch::Tensor ThermoYImpl::get_mu() const {
@@ -85,7 +83,7 @@ torch::Tensor ThermoYImpl::get_mu() const {
 
   auto result = torch::ones({1 + nmass}, mu_ratio_m1.options());
   result[0] = constants::Rgas / options.Rd();
-  result.narrow(0, 1, nmass) = result[0] / (mu_ratio_m1 + 1.);
+  result.narrow(0, 1, nmass) = result[0] * (mu_ratio_m1 + 1.);
 
   return result;
 }
