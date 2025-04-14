@@ -15,22 +15,23 @@
 
 namespace kintera {
 
-struct ThermodynamicsOptions {
-  //! \brief Create a `ThermodynamicsOptions` object from a YAML file
+struct ThermoOptions {
+  //! \brief Create a `ThermoOptions` object from a YAML file
   /*!
-   * This function reads a YAML file and creates a `ThermodynamicsOptions`
+   * This function reads a YAML file and creates a `ThermoOptions`
    * object from it. The YAML file must contain the following fields:
    *  - "species", list of species names and their composition
    *  - "vapor": list of vapor species
    *  - "cloud": list of cloud species
    */
-  static ThermodynamicsOptions from_yaml(std::string const& filename);
+  static ThermoOptions from_yaml(std::string const& filename);
 
-  ThermodynamicsOptions() = default;
+  ThermoOptions() = default;
 
   ADD_ARG(double, gammad) = 1.4;
   ADD_ARG(double, Rd) = 287.0;
   ADD_ARG(double, Tref) = 300.0;
+  ADD_ARG(double, Pref) = 1.e5;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);
@@ -38,7 +39,7 @@ struct ThermodynamicsOptions {
   ADD_ARG(std::vector<double>, mu_ratio_m1);
   ADD_ARG(std::vector<double>, cv_ratio_m1);
   ADD_ARG(std::vector<double>, cp_ratio_m1);
-  ADD_ARG(std::vector<double>, h0);
+  ADD_ARG(std::vector<double>, h0_R);
 
   ADD_ARG(int, max_iter) = 5;
   ADD_ARG(double, ftol) = 1e-2;
@@ -49,7 +50,7 @@ struct ThermodynamicsOptions {
   ADD_ARG(CondensationOptions, cond);
 };
 
-class ThermodynamicsImpl : public torch::nn::Cloneable<ThermodynamicsImpl> {
+class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
  public:
   //! mud / mu - 1.
   torch::Tensor mu_ratio_m1;
@@ -61,17 +62,17 @@ class ThermodynamicsImpl : public torch::nn::Cloneable<ThermodynamicsImpl> {
   torch::Tensor cp_ratio_m1;
 
   //! enthalpy offset at T = Tref
-  torch::Tensor h0;
+  torch::Tensor h0_R;
 
   //! submodules
   Condensation pcond = nullptr;
   EquationOfState peos = nullptr;
 
-  //! options with which this `Thermodynamics` was constructed
-  ThermodynamicsOptions options;
+  //! options with which this `ThermoY` was constructed
+  ThermoOptions options;
 
-  ThermodynamicsImpl() = default;
-  explicit ThermodynamicsImpl(const ThermodynamicsOptions& options_);
+  ThermoYImpl() = default;
+  explicit ThermoYImpl(const ThermoOptions& options_);
   void reset() override;
 
   //! \brief Inverse of the mean molecular weight
@@ -114,12 +115,13 @@ class ThermodynamicsImpl : public torch::nn::Cloneable<ThermodynamicsImpl> {
    */
   torch::Tensor get_mole_fraction(torch::Tensor yfrac) const;
 
-  //! \brief Calculate molar concentration fron conserved variables
+  //! \brief Calculate molar concentration fron mass fraction
   /*!
+   * \param rho total density, kg/m^3
    * \param yfrac mass fraction, (nmass, ...)
-   * \return molar concentration, (..., 1 + nmass)
+   * \return mole concentration, (..., 1 + nmass)
    */
-  torch::Tensor get_mole_concentration(torch::Tensor rho, torch::Tensor yfrac) const;
+  torch::Tensor get_concentration(torch::Tensor rho, torch::Tensor yfrac) const;
 
   //! \brief Perform saturation adjustment
   /*!
@@ -128,8 +130,53 @@ class ThermodynamicsImpl : public torch::nn::Cloneable<ThermodynamicsImpl> {
    * \param intEng internal energy
    * \return adjusted density
    */
-  torch::Tensor forward(torch::Tensor rho, torch::Tensor yfrac,
-                        torch::Tensor intEng);
+  torch::Tensor forward(torch::Tensor rho, torch::Tensor intEng,
+                        torch::Tensor yfrac);
+};
+TORCH_MODULE(ThermoY);
+
+class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
+ public:
+  //! mud / mu - 1.
+  torch::Tensor mu_ratio_m1;
+
+  //! cv/cvd - 1.
+  torch::Tensor cv_ratio_m1;
+
+  //! cp/cpd - 1.
+  torch::Tensor cp_ratio_m1;
+
+  //! enthalpy offset at T = Tref
+  torch::Tensor h0_R;
+
+  //! submodules
+  Condensation pcond = nullptr;
+  EquationOfState peos = nullptr;
+
+  //! options with which this `ThermoX` was constructed
+  ThermoOptions options;
+
+  ThermoXImpl() = default;
+  explicit ThermoXImpl(const ThermoOptions& options_);
+  void reset() override;
+
+  //! \brief Calculate the molecular weights
+  /*!
+   * \return a vector of molecular weights
+   */
+  torch::Tensor get_mu() const;
+
+  //! \brief Calculate the specific heat at constant volume
+  /*!
+   * \return a vector of specific heats
+   */
+  torch::Tensor get_cv() const;
+
+  //! \brief Calculate the specific heat at constant pressure
+  /*!
+   * \return a vector of specific heats
+   */
+  torch::Tensor get_cp() const;
 
   //! \brief Calculate mass fraction from mole fraction
   /*!
@@ -138,10 +185,18 @@ class ThermodynamicsImpl : public torch::nn::Cloneable<ThermodynamicsImpl> {
    */
   torch::Tensor get_mass_fraction(torch::Tensor xfrac) const;
 
+  //! \brief Calculate mass density fron mole fraction
+  /*!
+   * \param conc total concentration, mole/m^3
+   * \param xfrac mole fraction, (..., 1 + nmass)
+   * \return mass density, (1 + nmass, ...)
+   */
+  torch::Tensor get_density(torch::Tensor conc, torch::Tensor xfrac) const;
+
   //! \brief Calculate the equilibrium state given temperature and pressure
-  torch::Tensor equilibrate_tp(torch::Tensor temp, torch::Tensor pres,
-                               torch::Tensor yfrac) const;
+  torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
+                        torch::Tensor xfrac);
 };
-TORCH_MODULE(Thermodynamics);
+TORCH_MODULE(ThermoX);
 
 }  // namespace kintera

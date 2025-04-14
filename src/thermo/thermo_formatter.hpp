@@ -6,16 +6,16 @@
 // kintera
 #include <kintera/kintera_formatter.hpp>
 
-#include "thermodynamics.hpp"
+#include "thermo.hpp"
 
 template <>
 struct fmt::formatter<kintera::Nucleation> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const kintera::Nucleation& p, FormatContext& ctx) {
-    return fmt::format_to(ctx.out(), "({}; min_tem = {}; max_tem = {})",
-                          p.reaction(), p.min_tem(), p.max_tem());
+  auto format(const kintera::Nucleation& p, FormatContext& ctx) const {
+    return fmt::format_to(ctx.out(), "({}; minT = {:.2f}; maxT = {:.2f})",
+                          p.reaction(), p.minT(), p.maxT());
   }
 };
 
@@ -24,7 +24,7 @@ struct fmt::formatter<kintera::CondensationOptions> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const kintera::CondensationOptions& p, FormatContext& ctx) {
+  auto format(const kintera::CondensationOptions& p, FormatContext& ctx) const {
     std::ostringstream reactions;
     for (size_t i = 0; i < p.react().size(); ++i) {
       reactions << fmt::format("R{}: {}", i + 1, p.react()[i]);
@@ -47,11 +47,11 @@ struct fmt::formatter<kintera::CondensationOptions> {
 };
 
 template <>
-struct fmt::formatter<kintera::ThermodynamicsOptions> {
+struct fmt::formatter<kintera::ThermoOptions> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const kintera::ThermodynamicsOptions& p, FormatContext& ctx) {
+  auto format(const kintera::ThermoOptions& p, FormatContext& ctx) const {
     std::ostringstream vapors;
     for (size_t i = 0; i < p.vapor_ids().size(); ++i) {
       vapors << p.vapor_ids()[i];
@@ -69,9 +69,9 @@ struct fmt::formatter<kintera::ThermodynamicsOptions> {
     }
 
     return fmt::format_to(ctx.out(),
-                          "(Rd = {}; gammad = {}; vapors = ({}); clouds = "
-                          "({}); cond = {})",
+                          "(Rd = {:.2f}; gammad = {}; vapors = ({}); clouds = "
+                          "({}); Tref = {}; Pref = {}; cond = {})",
                           p.Rd(), p.gammad(), vapors.str(), clouds.str(),
-                          p.cond());
+                          p.Tref(), p.Pref(), p.cond());
   }
 };

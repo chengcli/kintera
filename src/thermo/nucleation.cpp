@@ -55,51 +55,69 @@ std::function<torch::Tensor(torch::Tensor)> find_logsvp_ddT(
                            "'.");
 }
 
-Nucleation::Nucleation(const std::string& equation, const std::string& name,
-                       const std::map<std::string, double>& params) {
-  if (params.find("minT") != params.end()) {
-    min_tem(params.at("minT"));
+Nucleation Nucleation::from_yaml(const YAML::Node& node) {
+  Nucleation nuc;
+
+  TORCH_CHECK(node["type"].as<std::string>() == "nucleation",
+              "Reaction type is not nucleation");
+
+  TORCH_CHECK(node["rate-constant"],
+              "'rate-constant' is not defined in the reaction");
+
+  TORCH_CHECK(node["equation"], "'equation' is not defined in the reaction");
+
+  // reaction equation
+  nuc.reaction() = Reaction(node["equation"].as<std::string>());
+
+  // rate constants
+  auto rate_constant = node["rate-constant"];
+  if (rate_constant["minT"]) {
+    nuc.minT(rate_constant["minT"].as<double>());
   }
 
-  if (params.find("maxT") != params.end()) {
-    max_tem(params.at("maxT"));
+  if (rate_constant["maxT"]) {
+    nuc.maxT(rate_constant["maxT"].as<double>());
   }
 
-  reaction() = Reaction(equation);
+  TORCH_CHECK(rate_constant["formula"],
+              "'formula' is not defined in the rate-constant");
 
-  if (name == "ideal") {
-    auto t3 = params.at("T3");
-    auto p3 = params.at("P3");
-    auto beta = params.at("beta");
-    auto delta = params.at("delta");
-    func() = [=](torch::Tensor T) -> torch::Tensor {
+  auto formula = rate_constant["formula"].as<std::string>();
+  if (formula == "ideal") {
+    auto t3 = rate_constant["T3"].as<double>();
+    auto p3 = rate_constant["P3"].as<double>();
+    auto beta = rate_constant["beta"].as<double>();
+    auto delta = rate_constant["delta"].as<double>();
+    nuc.func() = [=](torch::Tensor T) -> torch::Tensor {
       return p3 * exp((1. - t3 / T) * beta - delta * log(T / t3));
     };
-    logf_ddT() = [=](torch::Tensor T) -> torch::Tensor {
+    nuc.logf_ddT() = [=](torch::Tensor T) -> torch::Tensor {
       return beta * t3 / (T * T) - delta / T;
     };
     if (delta > 0.) {
-      max_tem(std::min(max_tem(), beta * t3 / delta));
+      nuc.maxT(std::min(nuc.maxT(), beta * t3 / delta));
     }
   } else {
-    func() = find_svp(reaction().reactants(), name);
-    logf_ddT() = find_logsvp_ddT(reaction().reactants(), name);
+    nuc.func() = find_svp(nuc.reaction().reactants(), formula);
+    nuc.logf_ddT() = find_logsvp_ddT(nuc.reaction().reactants(), formula);
   }
+
+  return nuc;
 }
 
 torch::Tensor Nucleation::eval_func(torch::Tensor tem) const {
   int order = reaction().reactants().size();
   auto out = func()(tem);
-  out.masked_fill_(tem < min_tem(), -1.);
-  out.masked_fill_(tem > max_tem(), -1.);
+  out.masked_fill_(tem < minT(), -1.);
+  out.masked_fill_(tem > maxT(), -1.);
   return out;
 }
 
 torch::Tensor Nucleation::eval_logf_ddT(torch::Tensor tem) const {
   int order = reaction().reactants().size();
   auto out = logf_ddT()(tem) - order / tem;
-  out.masked_fill_(tem < min_tem(), 0.);
-  out.masked_fill_(tem > max_tem(), 0.);
+  out.masked_fill_(tem < minT(), 0.);
+  out.masked_fill_(tem > maxT(), 0.);
   return out;
 }
 
