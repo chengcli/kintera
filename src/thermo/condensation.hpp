@@ -14,9 +14,10 @@ struct CondensationOptions {
   static CondensationOptions from_yaml(std::string const& filename);
   CondensationOptions() = default;
 
-  ADD_ARG(int, max_iter) = 10;
   ADD_ARG(std::vector<Nucleation>, react);
   ADD_ARG(std::vector<std::string>, species);
+
+  ADD_ARG(int, max_iter) = 10;
   ADD_ARG(bool, enable_boiling) = true;
 };
 
