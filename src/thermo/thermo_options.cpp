@@ -81,9 +81,9 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   thermo.eos().gamma_ref(cp_R[0] / cv_R[0]);
   thermo.h0_R({0.});
 
-  thermo.mu_ratio_m1().clear();
-  thermo.cv_ratio_m1().clear();
-  thermo.cp_ratio_m1().clear();
+  thermo.mu_ratio().clear();
+  thermo.cv_R().clear();
+  thermo.cp_R().clear();
 
   thermo.cond() = CondensationOptions::from_yaml(filename);
   thermo.cond().species().clear();
@@ -103,10 +103,9 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
 
   for (int i = 0; i < thermo.vapor_ids().size(); ++i) {
     auto id = thermo.vapor_ids()[i];
-    thermo.mu_ratio_m1().push_back(species_weights[id] / species_weights[0] -
-                                   1.);
-    thermo.cp_ratio_m1().push_back(cp_R[id] / cp_R[0] - 1.);
-    thermo.cv_ratio_m1().push_back(cv_R[id] / cv_R[0] - 1.);
+    thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
+    thermo.cp_R().push_back(cp_R[id]);
+    thermo.cv_R().push_back(cv_R[id]);
     thermo.h0_R().push_back(h0_R[id]);
   }
 
@@ -124,10 +123,9 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
 
   for (int i = 0; i < thermo.cloud_ids().size(); ++i) {
     auto id = thermo.cloud_ids()[i];
-    thermo.mu_ratio_m1().push_back(species_weights[id] / species_weights[0] -
-                                   1.);
-    thermo.cp_ratio_m1().push_back(cp_R[id] / cp_R[0] - 1.);
-    thermo.cv_ratio_m1().push_back(cv_R[id] / cv_R[0] - 1.);
+    thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
+    thermo.cp_R().push_back(cp_R[id]);
+    thermo.cv_R().push_back(cv_R[id]);
     thermo.h0_R().push_back(h0_R[id]);
   }
 
