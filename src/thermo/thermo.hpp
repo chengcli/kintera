@@ -11,7 +11,7 @@
 
 #include <kintera/eos/equation_of_state.hpp>
 
-#include "condensation.hpp"
+#include "condenser.hpp"
 
 namespace kintera {
 
@@ -47,7 +47,7 @@ struct ThermoOptions {
   ADD_ARG(double, boost) = 256;
 
   ADD_ARG(EquationOfStateOptions, eos);
-  ADD_ARG(CondensationOptions, cond);
+  ADD_ARG(CondenserOptions, cond);
 };
 
 class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
@@ -65,7 +65,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   torch::Tensor h0_R;
 
   //! submodules
-  Condensation pcond = nullptr;
+  CondenserY pcond = nullptr;
   EquationOfState peos = nullptr;
 
   //! options with which this `ThermoY` was constructed
@@ -155,7 +155,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   torch::Tensor h0_R;
 
   //! submodules
-  Condensation pcond = nullptr;
+  CondenserX pcond = nullptr;
   EquationOfState peos = nullptr;
 
   //! options with which this `ThermoX` was constructed

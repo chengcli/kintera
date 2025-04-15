@@ -20,11 +20,11 @@ struct fmt::formatter<kintera::Nucleation> {
 };
 
 template <>
-struct fmt::formatter<kintera::CondensationOptions> {
+struct fmt::formatter<kintera::CondenserOptions> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const kintera::CondensationOptions& p, FormatContext& ctx) const {
+  auto format(const kintera::CondenserOptions& p, FormatContext& ctx) const {
     std::ostringstream reactions;
     for (size_t i = 0; i < p.react().size(); ++i) {
       reactions << fmt::format("R{}: {}", i + 1, p.react()[i]);

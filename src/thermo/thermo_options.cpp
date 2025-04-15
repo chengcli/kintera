@@ -85,9 +85,10 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   thermo.cv_R().clear();
   thermo.cp_R().clear();
 
-  thermo.cond() = CondensationOptions::from_yaml(filename);
+  thermo.cond() = CondenserOptions::from_yaml(filename);
   thermo.cond().species().clear();
   thermo.cond().species().push_back(species_names[0]);
+  thermo.cond().ngas(1 + thermo.vapor_ids().size());
 
   // register vapors
   if (config["vapor"]) {

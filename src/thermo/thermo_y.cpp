@@ -58,7 +58,7 @@ void ThermoYImpl::reset() {
       register_buffer("h0_R", torch::tensor(options.h0_R(), torch::kFloat64));
 
   // options.cond().species(options.species());
-  pcond = register_module("cond", Condensation(options.cond()));
+  pcond = register_module("cond", CondenserY(options.cond()));
   // options.cond() = pcond->options;
 }
 

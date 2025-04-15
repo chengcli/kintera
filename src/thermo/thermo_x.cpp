@@ -58,7 +58,7 @@ void ThermoXImpl::reset() {
       register_buffer("h0_R", torch::tensor(options.h0_R(), torch::kFloat64));
 
   // options.cond().species(options.species());
-  pcond = register_module("cond", Condensation(options.cond()));
+  pcond = register_module("cond", CondenserX(options.cond()));
   // options.cond() = pcond->options;
 }
 
@@ -125,7 +125,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   int iter = 0;
   for (; iter < options.max_iter(); ++iter) {
-    auto rates = pcond->equilibrate_tp(temp, pres, xfrac1, 1 + nvapor);
+    auto rates = pcond->forward(temp, pres, xfrac1);
     xfrac1 += rates;
 
     if ((rates / (xfrac1 + 1.e-10)).max().item<double>() < options.rtol())
