@@ -124,7 +124,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   /*!
    * \param rho total density, kg/m^3
    * \param yfrac mass fraction, (nmass, ...)
-   * \return mole concentration, (..., 1 + nmass)
+   * \return mole concentration, mol/m^3, (..., 1 + nmass)
    */
   torch::Tensor get_concentration(torch::Tensor rho, torch::Tensor yfrac) const;
 

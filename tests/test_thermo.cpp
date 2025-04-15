@@ -65,9 +65,23 @@ TEST_P(DeviceTest, mu) {
 
   auto cp = thermo->get_cp();
   std::cout << "cp = " << cp << std::endl;
+
+  auto xfrac = thermo->get_mole_fraction(yfrac);
+  std::cout << "xfrac = " << xfrac << std::endl;
+
+  EXPECT_EQ(torch::allclose(
+                xfrac.sum(-1),
+                torch::ones({1, 2, 3}, torch::device(device).dtype(dtype)),
+                /*rtol=*/1e-8, /*atol=*/1e-8),
+            true);
+
+  auto rho = torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+  auto conc = thermo->get_concentration(rho, yfrac);
+
+  std::cout << "conc = " << conc << std::endl;
 }
 
-/*TEST_P(DeviceTest, eos) {
+/*TEST_P(DeviceTest, forward) {
   auto op_thermo = ThermodynamicsOptions();
   int nvapor = 1;
   int ncloud = 1;

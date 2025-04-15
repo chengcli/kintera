@@ -225,9 +225,10 @@ torch::Tensor ThermoYImpl::get_concentration(torch::Tensor rho,
   }
   vec[ndim - 1] = 0;
 
-  result.select(-1, 0) = rho / mu[0];
+  auto rhod = rho * (1. - yfrac.sum(0));
+  result.select(-1, 0) = rhod / mu[0];
   result.narrow(-1, 1, nvapor + ncloud) =
-      yfrac.permute(vec) / mu.narrow(0, 1, nvapor + ncloud);
+      rho.unsqueeze(-1) * yfrac.permute(vec) / mu.narrow(0, 1, nvapor + ncloud);
   return result;
 }
 
