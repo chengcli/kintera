@@ -80,16 +80,34 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
                             options.cloud_ids().size());
   }
 
-  //! \brief Inverse of the mean molecular weight
+  //! \brief multi-component density correction
   /*!
    * Eq.16 in Li2019
-   * $ \frac{R}{R_d} = \frac{\mu_d}{\mu}$
+   * $ f_{\epsilon} = 1 + \sum_{i \in V} y_i(1./\epsilon_{i} - 1) - \sum_{j \in
+   * C} y_j $
    *
    * \param yfrac mass fraction
-   * \return $1/\mu$
    */
   torch::Tensor f_eps(torch::Tensor yfrac) const;
+
+  //! \brief multi-component cv correction
+  /*!
+   * Eq.62 in Li2019
+   * $ f_{\sigma} = 1 + \sum_{i \in V} y_i(\sigma_{v,i} - 1) + \sum_{j \in C}
+   * y_j(\sigma_{c,j} - 1) $
+   *
+   * \param yfrac mass fraction
+   */
   torch::Tensor f_sig(torch::Tensor yfrac) const;
+
+  //! \brief multi-component cp correction
+  /*!
+   * Eq.71 in Li2019
+   * $ f_{\psi} = 1 + \sum_{i \in V} y_i(\sigma_{p,i} - 1) + \sum_{j \in C}
+   * y_j(\sigma_{p,j} - 1) $
+   *
+   * \param yfrac mass fraction
+   */
   torch::Tensor f_psi(torch::Tensor yfrac) const;
 
   //! \brief Calculate the molecular weights
@@ -115,6 +133,10 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 
   //! \brief Calculate mole fraction from mass fraction
   /*!
+   * Eq. 77 in Li2019
+   * $ x_i = \frac{y_i/\epsilon_i}{1. + \sum_{i \in V} y_i(1./\epsilon_i - 1.) +
+   * \sum_{j \in C} y_j (1./\epsilon_j - 1.)} $
+   *
    * \param yfrac mass fraction, (nmass, ...)
    * \return mole fraction, (..., 1 + nmass)
    */
@@ -142,7 +164,7 @@ TORCH_MODULE(ThermoY);
 
 class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
  public:
-  //! mud / mu - 1.
+  //! mu / mud - 1.
   torch::Tensor mu_ratio_m1;
 
   //! cv/cvd - 1.
@@ -194,7 +216,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   /*!
    * \param conc total concentration, mole/m^3
    * \param xfrac mole fraction, (..., 1 + nmass)
-   * \return mass density, (1 + nmass, ...)
+   * \return mass density, (...)
    */
   torch::Tensor get_density(torch::Tensor conc, torch::Tensor xfrac) const;
 

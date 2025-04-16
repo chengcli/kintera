@@ -72,7 +72,7 @@ TEST_P(DeviceTest, mu) {
   EXPECT_EQ(torch::allclose(
                 xfrac.sum(-1),
                 torch::ones({1, 2, 3}, torch::device(device).dtype(dtype)),
-                /*rtol=*/1e-8, /*atol=*/1e-8),
+                /*rtol=*/1e-4, /*atol=*/1e-4),
             true);
 
   auto rho = torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));

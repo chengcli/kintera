@@ -67,7 +67,7 @@ torch::Tensor ThermoXImpl::get_mu() const {
 
   auto result = torch::ones({1 + nmass}, mu_ratio_m1.options());
   result[0] = constants::Rgas / options.Rd();
-  result.narrow(0, 1, nmass) = result[0] / (mu_ratio_m1 + 1.);
+  result.narrow(0, 1, nmass) = result[0] * (mu_ratio_m1 + 1.);
 
   return result;
 }
@@ -112,9 +112,8 @@ torch::Tensor ThermoXImpl::get_mass_fraction(torch::Tensor xfrac) const {
   }
   vec[ndim - 1] = 0;
 
-  yfrac.permute(vec) = xfrac.narrow(-1, 1, nmass) / (mu_ratio_m1 + 1.);
-  auto sum =
-      1. - xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1 / (mu_ratio_m1 + 1.));
+  yfrac.permute(vec) = xfrac.narrow(-1, 1, nmass) * (mu_ratio_m1 + 1.);
+  auto sum = 1. - xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1);
   return yfrac / sum.unsqueeze(0);
 }
 

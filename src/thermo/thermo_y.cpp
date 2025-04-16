@@ -39,19 +39,19 @@ void ThermoYImpl::reset() {
   TORCH_CHECK(options.h0_R().size() == 1 + nvapor + ncloud, "h0 size mismatch");
 
   mu_ratio_m1 = register_buffer(
-      "mu_ratio_m1", torch::tensor(options.mu_ratio(), torch::kFloat64));
+      "mu_ratio_m1", 1. / torch::tensor(options.mu_ratio(), torch::kFloat64));
   mu_ratio_m1 -= 1.;
 
   // J/mol/K -> J/kg/K
   auto cv_R = torch::tensor(options.cv_R(), torch::kFloat64);
   cv_ratio_m1 =
-      register_buffer("cv_ratio_m1", cv_R / cv_R[0] / (mu_ratio_m1 + 1.));
+      register_buffer("cv_ratio_m1", cv_R / cv_R[0] * (mu_ratio_m1 + 1.));
   cv_ratio_m1 -= 1.;
 
   // J/mol/K -> J/kg/K
   auto cp_R = torch::tensor(options.cp_R(), torch::kFloat64);
   cp_ratio_m1 =
-      register_buffer("cp_ratio_m1", cp_R / cp_R[0] / (mu_ratio_m1 + 1.));
+      register_buffer("cp_ratio_m1", cp_R / cp_R[0] * (mu_ratio_m1 + 1.));
   cp_ratio_m1 -= 1.;
 
   h0_R =
@@ -88,7 +88,7 @@ torch::Tensor ThermoYImpl::get_mu() const {
 
   auto result = torch::ones({1 + nmass}, mu_ratio_m1.options());
   result[0] = constants::Rgas / options.Rd();
-  result.narrow(0, 1, nmass) = result[0] * (mu_ratio_m1 + 1.);
+  result.narrow(0, 1, nmass) = result[0] / (mu_ratio_m1 + 1.);
 
   return result;
 }
