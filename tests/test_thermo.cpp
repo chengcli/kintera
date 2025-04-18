@@ -28,9 +28,7 @@ TEST_P(DeviceTest, feps) {
   auto yfrac =
       torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
 
-  for (int i = 0; i < nspecies; ++i) {
-    yfrac[i] = 0.01 * (i + 1);
-  }
+  for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
 
   auto feps = thermo->f_eps(yfrac);
   std::cout << "feps = " << feps << std::endl;
@@ -83,7 +81,6 @@ TEST_P(DeviceTest, thermo_y) {
 
 TEST_P(DeviceTest, thermo_x) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
-  std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   ThermoX thermo(op_thermo);
   thermo->to(device, dtype);
@@ -92,9 +89,7 @@ TEST_P(DeviceTest, thermo_x) {
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + nspecies}, torch::device(device).dtype(dtype));
 
-  for (int i = 0; i < nspecies; ++i) {
-    xfrac.select(-1, i + 1) = 0.01 * (i + 1);
-  }
+  for (int i = 0; i < nspecies; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
   xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, nspecies).sum(-1);
 
   auto mu = thermo->get_mu();
@@ -108,6 +103,47 @@ TEST_P(DeviceTest, thermo_x) {
 
   auto yfrac = thermo->get_mass_fraction(xfrac);
   std::cout << "yfrac = " << yfrac << std::endl;
+}
+
+TEST_P(DeviceTest, thermo_xy) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  ThermoX thermo_x(op_thermo);
+  thermo_x->to(device, dtype);
+
+  ThermoY thermo_y(op_thermo);
+  thermo_y->to(device, dtype);
+
+  int nspecies = op_thermo.size();
+  auto xfrac =
+      torch::zeros({1, 2, 3, 1 + nspecies}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < nspecies; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, nspecies).sum(-1);
+
+  auto yfrac = thermo_x->get_mass_fraction(xfrac);
+  auto xfrac2 = thermo_y->get_mole_fraction(yfrac);
+
+  EXPECT_EQ(torch::allclose(xfrac, xfrac2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
+}
+
+TEST_P(DeviceTest, thermo_yx) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  ThermoX thermo_x(op_thermo);
+  thermo_x->to(device, dtype);
+
+  ThermoY thermo_y(op_thermo);
+  thermo_y->to(device, dtype);
+
+  int nspecies = op_thermo.size();
+  auto yfrac =
+      torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
+
+  auto xfrac = thermo_y->get_mole_fraction(yfrac);
+  auto yfrac2 = thermo_x->get_mass_fraction(xfrac);
+
+  EXPECT_EQ(torch::allclose(yfrac, yfrac2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
 
 /*TEST_P(DeviceTest, forward) {
