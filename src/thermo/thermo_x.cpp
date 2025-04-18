@@ -63,7 +63,7 @@ void ThermoXImpl::reset() {
 }
 
 torch::Tensor ThermoXImpl::get_mu() const {
-  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
+  int nmass = options.size();
 
   auto result = torch::ones({1 + nmass}, mu_ratio_m1.options());
   result[0] = constants::Rgas / options.Rd();
@@ -73,7 +73,7 @@ torch::Tensor ThermoXImpl::get_mu() const {
 }
 
 torch::Tensor ThermoXImpl::get_cv() const {
-  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
+  int nmass = options.size();
 
   auto result = torch::empty({1 + nmass}, cv_ratio_m1.options());
   result[0] = constants::Rgas / (options.gammad() - 1.);
@@ -83,7 +83,7 @@ torch::Tensor ThermoXImpl::get_cv() const {
 }
 
 torch::Tensor ThermoXImpl::get_cp() const {
-  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
+  int nmass = options.size();
 
   auto result = torch::empty({1 + nmass}, cp_ratio_m1.options());
   result[0] = options.gammad() / (options.gammad() - 1.) * constants::Rgas;
@@ -94,8 +94,7 @@ torch::Tensor ThermoXImpl::get_cp() const {
 
 torch::Tensor ThermoXImpl::get_mass_fraction(torch::Tensor xfrac) const {
   int nmass = xfrac.size(-1) - 1;
-  TORCH_CHECK(nmass == options.vapor_ids().size() + options.cloud_ids().size(),
-              "mole fraction size mismatch");
+  TORCH_CHECK(nmass == options.size(), "mole fraction size mismatch");
 
   auto vec = xfrac.sizes().vec();
   for (int i = 0; i < vec.size() - 1; ++i) {
@@ -113,7 +112,7 @@ torch::Tensor ThermoXImpl::get_mass_fraction(torch::Tensor xfrac) const {
   vec[ndim - 1] = 0;
 
   yfrac.permute(vec) = xfrac.narrow(-1, 1, nmass) * (mu_ratio_m1 + 1.);
-  auto sum = 1. - xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1);
+  auto sum = 1. + xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1);
   return yfrac / sum.unsqueeze(0);
 }
 

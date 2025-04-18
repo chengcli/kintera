@@ -28,6 +28,10 @@ struct ThermoOptions {
 
   ThermoOptions() = default;
 
+  int size() const {
+    return static_cast<int>(vapor_ids().size() + cloud_ids().size());
+  }
+
   ADD_ARG(double, gammad) = 1.4;
   ADD_ARG(double, Rd) = 287.0;
   ADD_ARG(double, Tref) = 300.0;
@@ -75,16 +79,10 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   explicit ThermoYImpl(const ThermoOptions& options_);
   void reset() override;
 
-  int nspecies() const {
-    return static_cast<int>(options.vapor_ids().size() +
-                            options.cloud_ids().size());
-  }
-
   //! \brief multi-component density correction
   /*!
    * Eq.16 in Li2019
-   * $ f_{\epsilon} = 1 + \sum_{i \in V} y_i(1./\epsilon_{i} - 1) - \sum_{j \in
-   * C} y_j $
+   * $ f_{\epsilon} = 1 + \sum_{i \in V \cup C} y_i(1./\epsilon_{i} - 1) $
    *
    * \param yfrac mass fraction
    */
@@ -93,8 +91,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! \brief multi-component cv correction
   /*!
    * Eq.62 in Li2019
-   * $ f_{\sigma} = 1 + \sum_{i \in V} y_i(\sigma_{v,i} - 1) + \sum_{j \in C}
-   * y_j(\sigma_{c,j} - 1) $
+   * $ f_{\sigma} = 1 + \sum_{i \in V \cup C} y_i(\sigma_{v,i} - 1) $
    *
    * \param yfrac mass fraction
    */
@@ -103,8 +100,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! \brief multi-component cp correction
   /*!
    * Eq.71 in Li2019
-   * $ f_{\psi} = 1 + \sum_{i \in V} y_i(\sigma_{p,i} - 1) + \sum_{j \in C}
-   * y_j(\sigma_{p,j} - 1) $
+   * $ f_{\psi} = 1 + \sum_{i \in V \cup C} y_i(\sigma_{p,i} - 1) $
    *
    * \param yfrac mass fraction
    */
@@ -133,9 +129,9 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 
   //! \brief Calculate mole fraction from mass fraction
   /*!
-   * Eq. 77 in Li2019
-   * $ x_i = \frac{y_i/\epsilon_i}{1. + \sum_{i \in V} y_i(1./\epsilon_i - 1.) +
-   * \sum_{j \in C} y_j (1./\epsilon_j - 1.)} $
+   * Eq.77 in Li2019
+   * $ x_i = \frac{y_i/\epsilon_i}{1. + \sum_{i \in V \cup C} y_i(1./\epsilon_i
+   * - 1.)} $
    *
    * \param yfrac mass fraction, (nmass, ...)
    * \return mole fraction, (..., 1 + nmass)
@@ -207,18 +203,14 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
 
   //! \brief Calculate mass fraction from mole fraction
   /*!
+   * Eq.76 in Li2019
+   * $ y_i = \frac{x_i \epsilon_i}{1. + \sum_{i \in V \cup C} x_i(\epsilon_i
+   * - 1.)} $
+   *
    * \param xfrac mole fraction, (..., 1 + nmass)
    * \return mass fraction, (nmass, ...)
    */
   torch::Tensor get_mass_fraction(torch::Tensor xfrac) const;
-
-  //! \brief Calculate mass density fron mole fraction
-  /*!
-   * \param conc total concentration, mole/m^3
-   * \param xfrac mole fraction, (..., 1 + nmass)
-   * \return mass density, (...)
-   */
-  torch::Tensor get_density(torch::Tensor conc, torch::Tensor xfrac) const;
 
   //! \brief Calculate the equilibrium state given temperature and pressure
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,

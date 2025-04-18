@@ -24,7 +24,7 @@ TEST_P(DeviceTest, feps) {
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int nspecies = thermo->nspecies();
+  int nspecies = thermo->options.size();
   auto yfrac =
       torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
 
@@ -42,14 +42,14 @@ TEST_P(DeviceTest, feps) {
   std::cout << "fpsi = " << fpsi << std::endl;
 }
 
-TEST_P(DeviceTest, mu) {
+TEST_P(DeviceTest, thermo_y) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int nspecies = thermo->nspecies();
+  int nspecies = thermo->options.size();
   auto yfrac =
       torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
 
@@ -79,6 +79,35 @@ TEST_P(DeviceTest, mu) {
   auto conc = thermo->get_concentration(rho, yfrac);
 
   std::cout << "conc = " << conc << std::endl;
+}
+
+TEST_P(DeviceTest, thermo_x) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  std::cout << fmt::format("{}", op_thermo) << std::endl;
+
+  ThermoX thermo(op_thermo);
+  thermo->to(device, dtype);
+
+  int nspecies = thermo->options.size();
+  auto xfrac =
+      torch::zeros({1, 2, 3, 1 + nspecies}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < nspecies; ++i) {
+    xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  }
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, nspecies).sum(-1);
+
+  auto mu = thermo->get_mu();
+  std::cout << "mu = " << mu << std::endl;
+
+  auto cv = thermo->get_cv();
+  std::cout << "cv = " << cv << std::endl;
+
+  auto cp = thermo->get_cp();
+  std::cout << "cp = " << cp << std::endl;
+
+  auto yfrac = thermo->get_mass_fraction(xfrac);
+  std::cout << "yfrac = " << yfrac << std::endl;
 }
 
 /*TEST_P(DeviceTest, forward) {
