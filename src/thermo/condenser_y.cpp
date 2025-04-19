@@ -109,6 +109,8 @@ torch::Tensor CondenserYImpl::forward(torch::Tensor temp, torch::Tensor conc,
   // std::cout << "srv = " << srv << std::endl;
 
   auto A = jac.matmul(stoich_local);
+  // add a small value to avoid singular matrix
+  A += torch::eye(A.size(-1), A.options()) * 1.e-10;
   auto rates = -torch::linalg_solve(A, b, true);
 
   if (!krate.has_value()) {

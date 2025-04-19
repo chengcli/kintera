@@ -137,16 +137,16 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * $ x_i = \frac{y_i/\epsilon_i}{1. + \sum_{i \in V \cup C} y_i(1./\epsilon_i
    * - 1.)} $
    *
-   * \param yfrac mass fraction, (nmass, ...)
-   * \return mole fraction, (..., 1 + nmass)
+   * \param yfrac mass fraction, (nspecies, ...)
+   * \return mole fraction, (..., 1 + nspecies)
    */
   torch::Tensor get_mole_fraction(torch::Tensor yfrac) const;
 
   //! \brief Calculate molar concentration fron mass fraction
   /*!
    * \param rho total density, kg/m^3
-   * \param yfrac mass fraction, (nmass, ...)
-   * \return mole concentration, mol/m^3, (..., 1 + nmass)
+   * \param yfrac mass fraction, (nspecies, ...)
+   * \return mole concentration, mol/m^3, (..., 1 + nspecies)
    */
   torch::Tensor get_concentration(torch::Tensor rho, torch::Tensor yfrac) const;
 
@@ -196,10 +196,22 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * $ y_i = \frac{x_i \epsilon_i}{1. + \sum_{i \in V \cup C} x_i(\epsilon_i
    * - 1.)} $
    *
-   * \param xfrac mole fraction, (..., 1 + nmass)
-   * \return mass fraction, (nmass, ...)
+   * \param xfrac mole fraction, (..., 1 + nspecies)
+   * \return mass fraction, (nspecies, ...)
    */
   torch::Tensor get_mass_fraction(torch::Tensor xfrac) const;
+
+  //! \brief Calculate density from temperature, pressure and mole fraction
+  /*!
+   * Eq.94 in Li2019
+   * $ \rho = \frac{P}{R_d T_v} $
+   *
+   * \param temp temperature, K
+   * \param pres pressure, pa
+   * \param xfrac mole fraction, (..., 1 + nspecies)
+   */
+  torch::Tensor get_density(torch::Tensor temp, torch::Tensor pres,
+                            torch::Tensor xfrac) const;
 
   //! \brief Calculate the equilibrium state given temperature and pressure
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,

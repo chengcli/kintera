@@ -64,7 +64,6 @@ TEST_P(DeviceTest, thermo_y) {
 
   auto rho = torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
   auto conc = thermo->get_concentration(rho, yfrac);
-
   std::cout << "conc = " << conc << std::endl;
 }
 
@@ -126,6 +125,32 @@ TEST_P(DeviceTest, thermo_yx) {
   EXPECT_EQ(torch::allclose(yfrac, yfrac2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
 
+TEST_P(DeviceTest, eng_pres) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  ThermoY thermo_y(op_thermo);
+  thermo_y->to(device, dtype);
+
+  ThermoX thermo_x(op_thermo);
+  thermo_x->to(device, dtype);
+
+  int nspecies = thermo_y->options.nspecies();
+  auto yfrac = torch::zeros({nspecies, 1}, torch::device(device).dtype(dtype));
+  for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
+
+  auto temp = 200.0 * torch::ones({1}, torch::device(device).dtype(dtype));
+  auto pres = 1.e5 * torch::ones({1}, torch::device(device).dtype(dtype));
+
+  auto xfrac = thermo_y->get_mole_fraction(yfrac);
+  auto rho = thermo_x->get_density(temp, pres, xfrac);
+
+  auto intEng = thermo_y->get_intEng(rho, pres, yfrac);
+  auto pres2 = thermo_y->get_pres(rho, intEng, yfrac);
+  EXPECT_EQ(torch::allclose(pres, pres2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
+
+  auto temp2 = thermo_y->get_temp(rho, pres, yfrac);
+  EXPECT_EQ(torch::allclose(temp, temp2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
+}
+
 TEST_P(DeviceTest, forward) {
   // skip mps
   if (device == torch::kMPS) {
@@ -141,7 +166,6 @@ TEST_P(DeviceTest, forward) {
   int nspecies = thermo_y->options.nspecies();
   auto yfrac =
       torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
-
   for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
 
   auto rho = torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
@@ -162,7 +186,7 @@ TEST_P(DeviceTest, forward) {
   auto yfrac3 = yfrac2 + result;
 
   auto pres3 = thermo_y->get_pres(rho, intEng, yfrac3);
-  std::cout << "pres2 = " << pres2 << std::endl;
+  std::cout << "pres3 = " << pres3 << std::endl;
 
   /*std::cout << "w = " << w << std::endl;
 

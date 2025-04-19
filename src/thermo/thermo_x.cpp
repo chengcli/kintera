@@ -63,27 +63,38 @@ void ThermoXImpl::reset() {
 }
 
 torch::Tensor ThermoXImpl::get_mass_fraction(torch::Tensor xfrac) const {
-  int nmass = xfrac.size(-1) - 1;
-  TORCH_CHECK(nmass == options.nspecies(), "mole fraction size mismatch");
+  int nspecies = xfrac.size(-1) - 1;
+  TORCH_CHECK(nspecies == options.nspecies(), "mole fraction size mismatch");
 
   auto vec = xfrac.sizes().vec();
   for (int i = 0; i < vec.size() - 1; ++i) {
     vec[i + 1] = xfrac.size(i);
   }
-  vec[0] = nmass;
+  vec[0] = nspecies;
 
   auto yfrac = torch::empty(vec, xfrac.options());
 
-  // (..., nmass + 1) -> (nmass, ...)
+  // (..., nspecies + 1) -> (nspecies, ...)
   int ndim = xfrac.dim();
   for (int i = 0; i < ndim - 1; ++i) {
     vec[i] = i + 1;
   }
   vec[ndim - 1] = 0;
 
-  yfrac.permute(vec) = xfrac.narrow(-1, 1, nmass) * (mu_ratio_m1 + 1.);
-  auto sum = 1. + xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1);
+  yfrac.permute(vec) = xfrac.narrow(-1, 1, nspecies) * (mu_ratio_m1 + 1.);
+  auto sum = 1. + xfrac.narrow(-1, 1, nspecies).matmul(mu_ratio_m1);
   return yfrac / sum.unsqueeze(0);
+}
+
+torch::Tensor ThermoXImpl::get_density(torch::Tensor temp, torch::Tensor pres,
+                                       torch::Tensor xfrac) const {
+  int nvapor = options.vapor_ids().size();
+  int ncloud = options.cloud_ids().size();
+  int nspecies = nvapor + ncloud;
+
+  auto xgas = 1. - xfrac.narrow(-1, 1 + nvapor, ncloud).sum(-1);
+  auto ftv = xgas / (1. + xfrac.narrow(-1, 1, nspecies).matmul(mu_ratio_m1));
+  return pres / (temp * ftv * options.Rd());
 }
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
