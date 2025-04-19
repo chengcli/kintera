@@ -28,10 +28,10 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     if (config["reference-state"]["Tref"])
       thermo.Tref(config["reference-state"]["Tref"].as<double>());
     if (config["reference-state"]["Pref"])
-      thermo.Tref(config["reference-state"]["Pref"].as<double>());
+      thermo.Pref(config["reference-state"]["Pref"].as<double>());
   }
 
-  std::vector<double> cp_R, cv_R, h0_R;
+  std::vector<double> cp_R, cv_R, u0_R;
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -56,10 +56,10 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
       cv_R.push_back(5. / 2.);
     }
 
-    if (sp["h0_R"]) {
-      h0_R.push_back(sp["h0_R"].as<double>());
+    if (sp["u0_R"]) {
+      u0_R.push_back(sp["u0_R"].as<double>());
     } else {
-      h0_R.push_back(0.);
+      u0_R.push_back(0.);
     }
   }
 
@@ -79,11 +79,11 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   thermo.Rd(constants::Rgas / species_weights[0]);
   thermo.eos().mu(species_weights[0]);
   thermo.eos().gamma_ref(cp_R[0] / cv_R[0]);
-  thermo.h0_R({0.});
 
   thermo.mu_ratio().clear();
   thermo.cv_R().clear();
   thermo.cp_R().clear();
+  thermo.u0_R().clear();
 
   thermo.cond() = CondenserOptions::from_yaml(filename);
   thermo.cond().species().clear();
@@ -107,7 +107,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
     thermo.cp_R().push_back(cp_R[id]);
     thermo.cv_R().push_back(cv_R[id]);
-    thermo.h0_R().push_back(h0_R[id]);
+    thermo.u0_R().push_back(u0_R[id]);
   }
 
   // register clouds
@@ -127,7 +127,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
     thermo.cp_R().push_back(cp_R[id]);
     thermo.cv_R().push_back(cv_R[id]);
-    thermo.h0_R().push_back(h0_R[id]);
+    thermo.u0_R().push_back(u0_R[id]);
   }
 
   return thermo;

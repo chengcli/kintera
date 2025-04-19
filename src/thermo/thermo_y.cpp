@@ -21,8 +21,8 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions& options_) : options(options_) {
     options.cp_R() = std::vector<double>(nvapor + ncloud, 0.);
   }
 
-  if (options.h0_R().empty()) {
-    options.h0_R() = std::vector<double>(1 + nvapor + ncloud, 0.);
+  if (options.u0_R().empty()) {
+    options.u0_R() = std::vector<double>(nvapor + ncloud, 0.);
   }
 
   reset();
@@ -36,7 +36,7 @@ void ThermoYImpl::reset() {
               "mu_ratio size mismatch");
   TORCH_CHECK(options.cv_R().size() == nvapor + ncloud, "cv_R size mismatch");
   TORCH_CHECK(options.cp_R().size() == nvapor + ncloud, "cp_R size mismatch");
-  TORCH_CHECK(options.h0_R().size() == 1 + nvapor + ncloud, "h0 size mismatch");
+  TORCH_CHECK(options.u0_R().size() == nvapor + ncloud, "u0 size mismatch");
 
   mu_ratio_m1 = register_buffer(
       "mu_ratio_m1", 1. / torch::tensor(options.mu_ratio(), torch::kFloat64));
@@ -54,8 +54,8 @@ void ThermoYImpl::reset() {
       register_buffer("cp_ratio_m1", cp_R / cp_R[0] * (mu_ratio_m1 + 1.));
   cp_ratio_m1 -= 1.;
 
-  h0_R =
-      register_buffer("h0_R", torch::tensor(options.h0_R(), torch::kFloat64));
+  u0_R =
+      register_buffer("u0_R", torch::tensor(options.u0_R(), torch::kFloat64));
 
   // options.cond().species(options.species());
   pcond = register_module("cond", CondenserY(options.cond()));
@@ -81,36 +81,6 @@ torch::Tensor ThermoYImpl::f_psi(torch::Tensor yfrac) const {
   int nmass = options.vapor_ids().size() + options.cloud_ids().size();
   auto yu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
   return 1. + yu.matmul(cp_ratio_m1).squeeze(0);
-}
-
-torch::Tensor ThermoYImpl::get_mu() const {
-  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
-
-  auto result = torch::ones({1 + nmass}, mu_ratio_m1.options());
-  result[0] = constants::Rgas / options.Rd();
-  result.narrow(0, 1, nmass) = result[0] / (mu_ratio_m1 + 1.);
-
-  return result;
-}
-
-torch::Tensor ThermoYImpl::get_cv() const {
-  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
-
-  auto result = torch::empty({1 + nmass}, cv_ratio_m1.options());
-  result[0] = options.Rd() / (options.gammad() - 1.);
-  result.narrow(0, 1, nmass) = result[0] * (cv_ratio_m1 + 1.);
-
-  return result;
-}
-
-torch::Tensor ThermoYImpl::get_cp() const {
-  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
-
-  auto result = torch::empty({1 + nmass}, cp_ratio_m1.options());
-  result[0] = options.gammad() / (options.gammad() - 1.) * options.Rd();
-  result.narrow(0, 1, nmass) = result[0] * (cp_ratio_m1 + 1.);
-
-  return result;
 }
 
 torch::Tensor ThermoYImpl::get_mole_fraction(torch::Tensor yfrac) const {
@@ -145,39 +115,48 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   int nvapor = options.vapor_ids().size();
   int ncloud = options.cloud_ids().size();
 
-  // total density
-  // auto rho = u[Index::IDN].clone();
-  // rho += u.narrow(0, Index::ICY, nvapor + ncloud).sum(0);
+  // pressure
+  auto pres = get_pres(rho, intEng, yfrac);
+  std::cout << "pres = " << pres << std::endl;
 
-  auto feps = f_eps(yfrac);
-  auto fsig = f_sig(yfrac);
+  // temperature
+  auto temp = get_temp(rho, pres, yfrac);
+  auto tempa = temp - options.Tref();
 
-  // auto pres = (options.gammad() - 1.) * u[Index::IEN] * feps / fsig;
-  // auto temp = pres / (rho * options.Rd() * feps);
-
-  auto pres = peos->get_pres(rho, intEng);
-  auto temp = peos->get_temp(rho, pres);
+  // concentration
   auto conc = get_concentration(rho, yfrac);
-
-  // std::cout << "pres = " << pres << std::endl;
-  // std::cout << "temp = " << temp << std::endl;
-
-  auto mu = get_mu();
   auto krate = torch::ones_like(temp);
+
+  auto cvd_R = 1. / (options.gammad() - 1.);
+  auto cv_R =
+      torch::tensor(insert_first(cvd_R, options.cv_R()), conc.options());
+  auto intEng_RT = torch::zeros_like(conc);
 
   int iter = 0;
   for (; iter < options.max_iter(); ++iter) {
-    /*std::cout << "iter = " << iter << std::endl;
-    std::cout << "conc = " << conc << std::endl;*/
-    // auto intEng_RT = get_internal_energy_RT(temp);
-    auto intEng_RT = peos->get_intEng(rho, pres) / (constants::Rgas * temp);
-    /*std::cout << "total intEng = "
-              << (conc * intEng_RT).sum(-1) * constants::Rgas * temp
-              << std::endl;*/
+    std::cout << "iter = " << iter << std::endl;
+    // std::cout << "conc = " << conc << std::endl;
 
-    auto cv_R = get_cv() * mu / constants::Rgas;
+    // dry internal energy
+    intEng_RT.select(-1, 0) = cvd_R * tempa;
 
-    auto rates = pcond->forward(temp, pres, conc, intEng_RT, cv_R, krate);
+    // vapors
+    intEng_RT.narrow(-1, 1, nvapor) =
+        (u0_R.narrow(0, 0, nvapor) +
+         cv_R.narrow(0, 1, nvapor) * tempa.unsqueeze(-1));
+
+    // clouds
+    intEng_RT.narrow(-1, 1 + nvapor, ncloud) =
+        (u0_R.narrow(0, nvapor, ncloud) +
+         cv_R.narrow(0, 1 + nvapor, ncloud) * tempa.unsqueeze(-1));
+
+    intEng_RT /= temp.unsqueeze(-1);
+
+    // std::cout << "total intEng = "
+    //           << (conc * intEng_RT).sum(-1) * constants::Rgas * temp
+    //           << std::endl;
+
+    auto rates = pcond->forward(temp, conc, intEng_RT, cv_R, krate);
     // std::cout << "rates = " << rates << std::endl;
     // std::cout << "krate = " << krate << std::endl;
 
@@ -190,20 +169,23 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
     if (dT.abs().max().item<double>() < options.ftol()) break;
     temp += dT;
-    pres = conc.narrow(-1, 0, 1 + nvapor).sum(-1) * constants::Rgas * temp;
-
-    // std::cout << "temp = " << temp << std::endl;
+    // pres = conc.narrow(-1, 0, 1 + nvapor).sum(-1) * constants::Rgas * temp;
+    std::cout << "temp = " << temp << std::endl;
   }
 
-  auto yfrac0 = yfrac.clone();
-  yfrac = (conc * mu).narrow(-1, 1, nvapor + ncloud).permute({3, 0, 1, 2});
+  // (..., nmass + 1) -> (nmass, ...)
+  auto vec = conc.sizes().vec();
+  int ndim = conc.dim();
+  vec[0] = ndim - 1;
+  for (int i = 0; i < ndim - 1; ++i) vec[i + 1] = i;
 
-  // total energy
-  // feps = f_eps(u / rho);
-  // fsig = f_sig(u / rho);
-  // intEng = pres * fsig / feps / (options.gammad() - 1.) + ke;
+  // molecular weights
+  auto mu = torch::ones({1 + options.nspecies()}, mu_ratio_m1.options());
+  mu[0] = constants::Rgas / options.Rd();
+  mu.narrow(0, 1, options.nspecies()) = mu[0] / (mu_ratio_m1 + 1.);
 
-  return yfrac - yfrac0;
+  auto yfrac1 = (conc * mu).narrow(-1, 1, nvapor + ncloud).permute(vec);
+  return yfrac1 - yfrac;
 }
 
 torch::Tensor ThermoYImpl::get_concentration(torch::Tensor rho,
@@ -216,7 +198,6 @@ torch::Tensor ThermoYImpl::get_concentration(torch::Tensor rho,
   vec.push_back(1 + nvapor + ncloud);
 
   auto result = torch::empty(vec, yfrac.options());
-  auto mu = get_mu();
 
   // (nmass, ...) -> (..., nmass + 1)
   int ndim = yfrac.dim();
@@ -226,25 +207,32 @@ torch::Tensor ThermoYImpl::get_concentration(torch::Tensor rho,
   vec[ndim - 1] = 0;
 
   auto rhod = rho * (1. - yfrac.sum(0));
-  result.select(-1, 0) = rhod / mu[0];
+  result.select(-1, 0) = rhod;
   result.narrow(-1, 1, nvapor + ncloud) =
-      rho.unsqueeze(-1) * yfrac.permute(vec) / mu.narrow(0, 1, nvapor + ncloud);
-  return result;
+      rho.unsqueeze(-1) * yfrac.permute(vec) * (mu_ratio_m1 + 1.);
+  return result / (constants::Rgas / options.Rd());
 }
 
-/*torch::Tensor ThermodynamicsImpl::_get_internal_energy_RT(
-    torch::Tensor temp) const {
-  auto nvapor = options.vapor_ids().size();
-  auto ncloud = options.cloud_ids().size();
+torch::Tensor ThermoYImpl::get_intEng(torch::Tensor rho, torch::Tensor pres,
+                                      torch::Tensor yfrac) const {
+  auto vec = yfrac.sizes().vec();
+  for (int n = 1; n < vec.size(); ++n) vec[n] = 1;
 
-  auto vec = temp.sizes().vec();
-  vec.push_back(1 + nvapor + ncloud);
+  auto cv_R = torch::tensor(options.cv_R(), rho.options());
+  auto u0 = (u0_R - cv_R * options.Tref()) * (mu_ratio_m1 + 1.);
+  auto yu0 = options.Rd() * rho * (yfrac * u0.view(vec)).sum(0);
+  return yu0 + pres * f_sig(yfrac) / f_eps(yfrac) / (options.gammad() - 1.);
+}
 
-  auto mu = get_mu();
-  auto cp = get_cp().view({1, 1, 1, -1}) * mu;
-  auto result = h0 * mu + cp * (temp - options.Tref()).unsqueeze(3);
-  result.narrow(3, 0, 1 + nvapor) -= constants::Rgas * temp;
-  return result / (constants::Rgas * temp.unsqueeze(3));
-}*/
+torch::Tensor ThermoYImpl::get_pres(torch::Tensor rho, torch::Tensor intEng,
+                                    torch::Tensor yfrac) const {
+  auto vec = yfrac.sizes().vec();
+  for (int n = 1; n < vec.size(); ++n) vec[n] = 1;
+
+  auto cv_R = torch::tensor(options.cv_R(), rho.options());
+  auto u0 = (u0_R - cv_R * options.Tref()) * (mu_ratio_m1 + 1.);
+  auto yu0 = options.Rd() * rho * (yfrac * u0.view(vec)).sum(0);
+  return (options.gammad() - 1.) * (intEng - yu0) * f_eps(yfrac) / f_sig(yfrac);
+}
 
 }  // namespace kintera

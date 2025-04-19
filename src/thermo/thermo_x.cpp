@@ -21,8 +21,8 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions& options_) : options(options_) {
     options.cp_R() = std::vector<double>(nvapor + ncloud, 0.);
   }
 
-  if (options.h0_R().empty()) {
-    options.h0_R() = std::vector<double>(1 + nvapor + ncloud, 0.);
+  if (options.u0_R().empty()) {
+    options.u0_R() = std::vector<double>(nvapor + ncloud, 0.);
   }
 
   reset();
@@ -36,7 +36,7 @@ void ThermoXImpl::reset() {
               "mu_ratio size mismatch");
   TORCH_CHECK(options.cv_R().size() == nvapor + ncloud, "cv_R size mismatch");
   TORCH_CHECK(options.cp_R().size() == nvapor + ncloud, "cp_R size mismatch");
-  TORCH_CHECK(options.h0_R().size() == 1 + nvapor + ncloud, "h0 size mismatch");
+  TORCH_CHECK(options.u0_R().size() == nvapor + ncloud, "u0 size mismatch");
 
   mu_ratio_m1 = register_buffer(
       "mu_ratio_m1", torch::tensor(options.mu_ratio(), torch::kFloat64));
@@ -54,47 +54,17 @@ void ThermoXImpl::reset() {
   // J/mol/K
   cp_ratio_m1 = cp_ratio_m1 / cp_ratio_m1[0] - 1;
 
-  h0_R =
-      register_buffer("h0_R", torch::tensor(options.h0_R(), torch::kFloat64));
+  u0_R =
+      register_buffer("u0_R", torch::tensor(options.u0_R(), torch::kFloat64));
 
   // options.cond().species(options.species());
   pcond = register_module("cond", CondenserX(options.cond()));
   // options.cond() = pcond->options;
 }
 
-torch::Tensor ThermoXImpl::get_mu() const {
-  int nmass = options.size();
-
-  auto result = torch::ones({1 + nmass}, mu_ratio_m1.options());
-  result[0] = constants::Rgas / options.Rd();
-  result.narrow(0, 1, nmass) = result[0] * (mu_ratio_m1 + 1.);
-
-  return result;
-}
-
-torch::Tensor ThermoXImpl::get_cv() const {
-  int nmass = options.size();
-
-  auto result = torch::empty({1 + nmass}, cv_ratio_m1.options());
-  result[0] = constants::Rgas / (options.gammad() - 1.);
-  result.narrow(0, 1, nmass) = result[0] * (cv_ratio_m1 + 1.);
-
-  return result;
-}
-
-torch::Tensor ThermoXImpl::get_cp() const {
-  int nmass = options.size();
-
-  auto result = torch::empty({1 + nmass}, cp_ratio_m1.options());
-  result[0] = options.gammad() / (options.gammad() - 1.) * constants::Rgas;
-  result.narrow(0, 1, nmass) = result[0] * (cp_ratio_m1 + 1.);
-
-  return result;
-}
-
 torch::Tensor ThermoXImpl::get_mass_fraction(torch::Tensor xfrac) const {
   int nmass = xfrac.size(-1) - 1;
-  TORCH_CHECK(nmass == options.size(), "mole fraction size mismatch");
+  TORCH_CHECK(nmass == options.nspecies(), "mole fraction size mismatch");
 
   auto vec = xfrac.sizes().vec();
   for (int i = 0; i < vec.size() - 1; ++i) {

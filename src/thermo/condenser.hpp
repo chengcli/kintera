@@ -43,9 +43,8 @@ class CondenserYImpl : public torch::nn::Cloneable<CondenserYImpl> {
     return std::distance(options.species().begin(), it);
   }
 
-  torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
-                        torch::Tensor conc, torch::Tensor intEng_RT,
-                        torch::Tensor cv_R,
+  torch::Tensor forward(torch::Tensor temp, torch::Tensor conc,
+                        torch::Tensor intEng_RT, torch::Tensor cv_R,
                         torch::optional<torch::Tensor> krate = torch::nullopt);
 };
 TORCH_MODULE(CondenserY);

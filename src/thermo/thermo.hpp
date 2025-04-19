@@ -15,6 +15,15 @@
 
 namespace kintera {
 
+template <typename T>
+inline std::vector<T> insert_first(T value, std::vector<T> const& input) {
+  std::vector<T> result;
+  result.reserve(input.size() + 1);
+  result.push_back(value);
+  result.insert(result.end(), input.begin(), input.end());
+  return result;
+}
+
 struct ThermoOptions {
   //! \brief Create a `ThermoOptions` object from a YAML file
   /*!
@@ -28,7 +37,7 @@ struct ThermoOptions {
 
   ThermoOptions() = default;
 
-  int size() const {
+  int nspecies() const {
     return static_cast<int>(vapor_ids().size() + cloud_ids().size());
   }
 
@@ -43,7 +52,7 @@ struct ThermoOptions {
   ADD_ARG(std::vector<double>, mu_ratio);
   ADD_ARG(std::vector<double>, cv_R);
   ADD_ARG(std::vector<double>, cp_R);
-  ADD_ARG(std::vector<double>, h0_R);
+  ADD_ARG(std::vector<double>, u0_R);
 
   ADD_ARG(int, max_iter) = 5;
   ADD_ARG(double, ftol) = 1e-2;
@@ -65,12 +74,11 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! cp/cpd - 1.
   torch::Tensor cp_ratio_m1;
 
-  //! enthalpy offset at T = Tref
-  torch::Tensor h0_R;
+  //! internal energy offset at T = Tref
+  torch::Tensor u0_R;
 
   //! submodules
   CondenserY pcond = nullptr;
-  EquationOfState peos = nullptr;
 
   //! options with which this `ThermoY` was constructed
   ThermoOptions options;
@@ -106,23 +114,19 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    */
   torch::Tensor f_psi(torch::Tensor yfrac) const;
 
-  //! \brief Calculate the molecular weights
-  /*!
-   * \return a vector of molecular weights
-   */
-  torch::Tensor get_mu() const;
+  //! \brief Calculate the internal energy, J/m^3
+  torch::Tensor get_intEng(torch::Tensor rho, torch::Tensor pres,
+                           torch::Tensor yfrac) const;
 
-  //! \brief Calculate the specific heat at constant volume
-  /*!
-   * \return a vector of specific heats
-   */
-  torch::Tensor get_cv() const;
+  //! \brief Calculate the pressure, pa
+  torch::Tensor get_pres(torch::Tensor rho, torch::Tensor intEng,
+                         torch::Tensor yfrac) const;
 
-  //! \brief Calculate the specific heat at constant pressure
-  /*!
-   * \return a vector of specific heats
-   */
-  torch::Tensor get_cp() const;
+  //! \brief Calculate the temperature, K
+  torch::Tensor get_temp(torch::Tensor rho, torch::Tensor pres,
+                         torch::Tensor yfrac) const {
+    return pres / (rho * options.Rd() * f_eps(yfrac));
+  }
 
   // torch::Tensor saturation_surplus(torch::Tensor var, int type = kTPMole)
   // const;
@@ -149,8 +153,12 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! \brief Perform saturation adjustment
   /*!
    * \param rho density
+   *
    * \param yfrac mass fraction
-   * \param intEng internal energy
+   *
+   * \param intEng zero-offset total internal energy [J / m^3]
+   * $ U = \rho U_0 f_{sigma} $
+   *
    * \return adjusted density
    */
   torch::Tensor forward(torch::Tensor rho, torch::Tensor intEng,
@@ -169,12 +177,11 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   //! cp/cpd - 1.
   torch::Tensor cp_ratio_m1;
 
-  //! enthalpy offset at T = Tref
-  torch::Tensor h0_R;
+  //! internal energy offset at T = Tref
+  torch::Tensor u0_R;
 
   //! submodules
   CondenserX pcond = nullptr;
-  EquationOfState peos = nullptr;
 
   //! options with which this `ThermoX` was constructed
   ThermoOptions options;
@@ -182,24 +189,6 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   ThermoXImpl() = default;
   explicit ThermoXImpl(const ThermoOptions& options_);
   void reset() override;
-
-  //! \brief Calculate the molecular weights
-  /*!
-   * \return a vector of molecular weights
-   */
-  torch::Tensor get_mu() const;
-
-  //! \brief Calculate the specific heat at constant volume
-  /*!
-   * \return a vector of specific heats
-   */
-  torch::Tensor get_cv() const;
-
-  //! \brief Calculate the specific heat at constant pressure
-  /*!
-   * \return a vector of specific heats
-   */
-  torch::Tensor get_cp() const;
 
   //! \brief Calculate mass fraction from mole fraction
   /*!

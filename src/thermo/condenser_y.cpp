@@ -52,8 +52,7 @@ void CondenserYImpl::reset() {
   }
 }
 
-torch::Tensor CondenserYImpl::forward(torch::Tensor temp, torch::Tensor pres,
-                                      torch::Tensor conc,
+torch::Tensor CondenserYImpl::forward(torch::Tensor temp, torch::Tensor conc,
                                       torch::Tensor intEng_RT,
                                       torch::Tensor cv_R,
                                       torch::optional<torch::Tensor> krate) {
@@ -98,9 +97,8 @@ torch::Tensor CondenserYImpl::forward(torch::Tensor temp, torch::Tensor pres,
     int iy = species_index(r.reaction().products().begin()->first);
 
     auto b_ddt = satfunc1v(b, jac, conc, svp_RT, logsvp_ddT, j, ix, iy);
-    rate_ddT.select(-1, j) =
+    rate_ddT.select(-2, j) =
         intEng_RT * b_ddt.unsqueeze(-1) * temp.unsqueeze(-1);
-
     auto mask = (svp_RT < 0.).unsqueeze(-1).expand(vec);
     stoich_local.select(-1, j).masked_fill_(mask, 0.);
   }
