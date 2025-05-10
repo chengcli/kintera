@@ -11,7 +11,7 @@ repos:
         exclude: ^data/
 
   - repo: https://github.com/pre-commit/mirrors-clang-format
-    rev: v19.1.5  # or match your local version
+    rev: v19.1.5
     hooks:
       - id: clang-format
         name: Fix *.c,*.cc,*.cpp,*.h,*.hpp
