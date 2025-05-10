@@ -1,5 +1,4 @@
 numpy
 pre-commit
-torch
-twine
-wheel
+pyharp>=1.3.15
+torch>=2.7.0

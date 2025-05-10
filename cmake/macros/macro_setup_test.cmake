@@ -13,12 +13,8 @@ macro(setup_test namel)
 
   target_include_directories(
     ${namel}.${buildl}
-    PRIVATE ${CMAKE_BINARY_DIR}
-            ${HARP_INCLUDE_DIR}
-            ${DISORT_INCLUDE_DIR}
-            ${ELEMENTS_INCLUDE_DIR}
-            ${KINTERA_INCLUDE_DIR}
-            ${TORCH_INCLUDE_DIR}
+    PRIVATE ${CMAKE_BINARY_DIR} ${DISORT_INCLUDE_DIR} ${HARP_INCLUDE_DIR}
+            ${KINTERA_INCLUDE_DIR} ${TORCH_INCLUDE_DIR}
             ${TORCH_API_INCLUDE_DIR})
 
   target_link_libraries(

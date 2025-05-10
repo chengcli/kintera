@@ -7,7 +7,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(CUDA "Enable CUDA support" OFF)
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_EXAMPLES "Build examples" OFF)
-option(BUILD_HARP "Build harp" OFF)
 
 if (CUDA)
   project(
@@ -24,8 +23,22 @@ endif()
 # search for <Package>_ROOT
 cmake_policy(SET CMP0074 NEW)
 
+find_program(Python3_EXECUTABLE NAMES python)
+find_package(Python3 REQUIRED COMPONENTS Interpreter Development.Module)
+execute_process(
+  COMMAND ${Python3_EXECUTABLE} -c "import torch; print(int(torch._C._GLIBCXX_USE_CXX11_ABI))"
+  RESULT_VARIABLE _ABI_RESULT
+  OUTPUT_VARIABLE _ABI_OUTPUT
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+if(NOT _ABI_RESULT EQUAL 0)
+  message(FATAL_ERROR "Failed to detect Torch GLIBCXX ABI")
+endif()
+
 # Set the _GLIBCXX_USE_CXX11_ABI flag to 0 (use old ABI)
-add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+#add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
+add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=${_ABI_OUTPUT})
 
 # Set MacOS deployment target
 set(CMAKE_OSX_DEPLOYMENT_TARGET "15.0")
@@ -71,14 +84,7 @@ message(STATUS "Include ${CMAKE_CURRENT_SOURCE_DIR}/cmake/parameters.cmake")
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/parameters.cmake)
 
 message(STATUS "${Blue}${PROJECT_NAME}-3. Setting up system libraries ...${ColorReset}")
-if (BUILD_HARP)
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pyharp.cmake)
-else()
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/elements.cmake)
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/yamlpp.cmake)
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/gtest.cmake)
-  include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fmt.cmake)
-endif()
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pyharp.cmake)
 find_package(Torch REQUIRED)
 
 if (CUDA)

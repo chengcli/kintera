@@ -49,9 +49,7 @@ set_target_properties(${namel}_${buildl}
 
 target_link_libraries(${namel}_${buildl}
     PUBLIC
-    $<IF:$<BOOL:${BUILD_HARP}>,pyharp::harp,elements::elements>
-    $<IF:$<BOOL:${BUILD_HARP}>,,fmt::fmt>
-    $<IF:$<BOOL:${BUILD_HARP}>,,yaml-cpp::yaml-cpp>
+    pyharp::harp
     ${TORCH_LIBRARY}
     ${TORCH_CPU_LIBRARY}
     ${C10_LIBRARY}

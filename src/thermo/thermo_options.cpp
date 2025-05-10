@@ -1,8 +1,8 @@
 // yaml
 #include <yaml-cpp/yaml.h>
 
-// elements
-#include <elements/compound.hpp>
+// harp
+#include <harp/compound.hpp>
 
 // kintera
 #include "thermo.hpp"
@@ -42,7 +42,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
       double value = it.second.as<double>();
       comp[key] = value;
     }
-    species_weights.push_back(elements::get_compound_weight(comp));
+    species_weights.push_back(harp::get_compound_weight(comp));
 
     if (sp["cp_R"]) {
       cp_R.push_back(sp["cp_R"].as<double>());
