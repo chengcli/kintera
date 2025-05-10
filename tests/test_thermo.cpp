@@ -152,11 +152,6 @@ TEST_P(DeviceTest, eng_pres) {
 }
 
 TEST_P(DeviceTest, forward) {
-  // skip mps
-  if (device == torch::kMPS) {
-    GTEST_SKIP() << "Skipping test on MPS device.";
-  }
-
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
