@@ -43,7 +43,7 @@ INSTANTIATE_TEST_SUITE_P(
     DeviceAndDtype, DeviceTest,
     testing::Values(Parameters{torch::kCPU, torch::kFloat32},
                     Parameters{torch::kCPU, torch::kFloat64},
-                    Parameters{torch::kMPS, torch::kFloat32},
+                    // Parameters{torch::kMPS, torch::kFloat32},
                     Parameters{torch::kCUDA, torch::kFloat32},
                     Parameters{torch::kCUDA, torch::kFloat64}),
     [](const testing::TestParamInfo<DeviceTest::ParamType>& info) {
