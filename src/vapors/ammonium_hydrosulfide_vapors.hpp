@@ -12,7 +12,7 @@ const double Pcgs_of_atm = 1013250.0;  // atmospheres to dynes/cm**2
 
 inline double svp_nh3_h2s_Umich(double T) {
   double const GOLB2 = (14.83 - (4715.0 / T));
-  return (pow(10.0, GOLB2)) * Pcgs_of_atm * Pcgs_of_atm;
+  return (pow(10.0, GOLB2))*Pcgs_of_atm * Pcgs_of_atm;
 }
 
 inline torch::Tensor svp_nh3_h2s_Lewis(torch::Tensor T) {

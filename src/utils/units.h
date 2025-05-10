@@ -11,13 +11,12 @@
 #ifndef CT_UNITS_H
 #define CT_UNITS_H
 
+#include <any>
 #include <map>
 #include <string>
 #include <vector>
-#include <any>
 
-namespace kintera
-{
+namespace kintera {
 /*!
  * String representations of units can be written using multiplication,
  * division, and exponentiation. Spaces are ignored. Positive, negative, and
@@ -28,25 +27,26 @@ namespace kintera
  *     m*s^-2
  *     J/kg/K
  *
- * Metric prefixes are recognized for all units, such as nm, hPa, mg, EJ, mL, kcal.
+ * Metric prefixes are recognized for all units, such as nm, hPa, mg, EJ, mL,
+ * kcal.
  *
  * Special functions for converting activation energies allow these values to be
- * expressed as either energy per quantity, energy (for example, eV), or temperature by
- * applying a factor of the Avogadro number or the gas constant where needed.
+ * expressed as either energy per quantity, energy (for example, eV), or
+ * temperature by applying a factor of the Avogadro number or the gas constant
+ * where needed.
  */
-class UnitSystem
-{
-public:
-    double m_mass_factor = 1.0;
-    double m_length_factor = 1.0;
-    double m_time_factor = 1.0;
-    double m_pressure_factor = 1.0;
-    double m_energy_factor = 1.0;
-    double m_activation_energy_factor = 1.0;
-    double m_quantity_factor = 1.0;
-    bool m_explicit_activation_energy = false;
+class UnitSystem {
+ public:
+  double m_mass_factor = 1.0;
+  double m_length_factor = 1.0;
+  double m_time_factor = 1.0;
+  double m_pressure_factor = 1.0;
+  double m_energy_factor = 1.0;
+  double m_activation_energy_factor = 1.0;
+  double m_quantity_factor = 1.0;
+  bool m_explicit_activation_energy = false;
 };
 
-}
+}  // namespace kintera
 
 #endif

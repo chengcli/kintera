@@ -2,7 +2,7 @@
 from numpy import *
 import pickle
 def _isnum(s):
-	try: 
+	try:
 		float(s)
 		return True
 	except ValueError:
@@ -20,7 +20,7 @@ def stoichiometry(line,mol):
 		if line[i][0].isdigit() and not any([line[i][1]==x for x in [',','-']]):
 			num,speci=int(line[i][0]),line[i][1:]
 		else:	num,speci=1,line[i]
-		if not (speci in mol): 
+		if not (speci in mol):
 			if speci!='=':
 				print 'SPECIOUS NOT FOUND IN REACTION: %s' % linecp
 			continue
@@ -57,7 +57,7 @@ if __name__=='__main__':
 		line=line.split()
 		mol.append(line[0])
 		for i in range(1,len(line),3):
-			if (line[i] in atom): 
+			if (line[i] in atom):
 				iatom=atom.index(line[i])
 				tmp[iatom]=float(line[i+2])
 			else: break
@@ -91,26 +91,26 @@ if __name__=='__main__':
 		####
 		tmp,rset=stoichiometry(tmp1,mol)
 		# REMOVE EMPTY REACTION
-		#if all(tmp==0):		
+		#if all(tmp==0):
 		#	line=infile.readline()
 		#	continue
 		stoi.append(tmp)
 		react.append((tmp1,rset))
 		if i<len(line)-1:
 			for j in range(i,len(line)):
-				if not (line[j]=='!'): 
+				if not (line[j]=='!'):
 					if line[j]=='>': NewReaction=True
-					else: 
+					else:
 						koo[ik]=float(line[j])
 						ik=ik+1
 				else: break
 		else: j=i
-		if NewReaction:	
+		if NewReaction:
 			tmp21,tmp22='??',''
-		elif koo[3]==0: 
+		elif koo[3]==0:
 			tmp21='%0.2E*(T/%0.1f)^%0.2f*exp(%0.1f/T)' % (koo[0],koo[6],koo[1],koo[2])
 			tmp22=''
-		else: 
+		else:
 			tmp21='%0.2E*(T/%0.0f)^%0.1f*exp(%0.1f/T)' % (koo[0],koo[6],koo[1],koo[2])
 			tmp22='%0.2E*(T/%0.1f)^%0.2f*exp(%0.1f/T)' % (koo[3],koo[7],koo[4],koo[5])
 		rate.append((tmp21,tmp22,koo))
@@ -144,5 +144,3 @@ if __name__=='__main__':
 	#for i in range(nreact):
 	#	print '%4i%45s' % (i+1,react[i][0])+nmol*'%10i' % tuple(stoi[i,:])
 	####
-
-

@@ -20,12 +20,12 @@ def stoichiometry(name, mol):
         if name[i][0].isdigit():
             num, speci = int(name[i][0]), name[i][1:]
         else:   num, speci = 1, name[i]
-        if speci in mol: 
+        if speci in mol:
             imol = mol.index(speci)
-            if i < eqindex: 
+            if i < eqindex:
                 stoi[imol] -= num
                 for j in range(num): reactant.append(speci)
-            elif i > eqindex: 
+            elif i > eqindex:
                 stoi[imol] += num
                 for j in range(num): resultant.append(speci)
         else:
@@ -116,7 +116,7 @@ def read_chemtable(fname):
             if bmat[i, j] != 0:
                 unbalance = True
                 print atom[j],
-        if unbalance: 
+        if unbalance:
             print ' unbalanced in reaction %d : %s' % (i, react[i])
     print 'DONE!'
     return atom, mass, mol, com, bnd, \
@@ -263,7 +263,7 @@ if __name__ == '__main__':
             './chemtable.txt'
             )
     filter_by_atom(
-            './chemtable.txt', 
+            './chemtable.txt',
             './chemtable.CH.txt',
             ['C', 'H'],
             max_atom_num = [2, -1],
