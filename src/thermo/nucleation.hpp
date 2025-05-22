@@ -7,9 +7,10 @@
 #include <torch/torch.h>
 
 // kintera
-#include <kintera/add_arg.h>
-
 #include <kintera/reaction.hpp>
+
+// arg
+#include <kintera/add_arg.h>
 
 namespace kintera {
 
@@ -30,3 +31,5 @@ struct Nucleation {
 };
 
 }  // namespace kintera
+
+#undef ADD_ARG

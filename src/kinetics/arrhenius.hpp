@@ -7,7 +7,7 @@
 #include <torch/nn/modules/common.h>
 #include <torch/nn/modules/container/any.h>
 
-// kintera
+// arg
 #include <kintera/add_arg.h>
 
 namespace YAML {
@@ -71,3 +71,5 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
 TORCH_MODULE(Arrhenius);
 
 }  // namespace kintera
+
+#undef ADD_ARG

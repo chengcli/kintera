@@ -8,6 +8,9 @@
 // kintera
 #include "nucleation.hpp"
 
+// arg
+#include <kintera/add_arg.h>
+
 namespace kintera {
 
 struct CondenserOptions {

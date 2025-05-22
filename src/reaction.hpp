@@ -36,3 +36,5 @@ bool operator==(Reaction const& lhs, Reaction const& rhs);
 bool operator<(Reaction const& lhs, Reaction const& rhs);
 
 }  // namespace kintera
+
+#undef ADD_ARG

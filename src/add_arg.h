@@ -1,7 +1,4 @@
-#pragma once
-
-// C/C++
-#include <utility>
+// NOLINT(build/header_guard)
 
 #ifdef __CUDACC__
 #define DISPATCH_MACRO __host__ __device__

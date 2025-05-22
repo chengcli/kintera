@@ -8,11 +8,12 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
-// clang-format off
 #include <configure.h>
-#include <add_arg.h>
-// clang-format on
+
 #include "xsection.hpp"
+
+// arg
+#include <kintera/add_arg.h>
 
 namespace kintera {
 
@@ -52,3 +53,5 @@ class VulcanXsectionImpl : public torch::nn::Cloneable<VulcanXsectionImpl>,
 TORCH_MODULE(VulcanXsection);
 
 }  // namespace kintera
+
+#undef ADD_ARG

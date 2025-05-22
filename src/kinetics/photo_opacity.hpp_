@@ -8,13 +8,13 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
-// clang-format off
 #include <configure.h>
-#include <add_arg.h>
-// clang-format on
 
 #include "reaction.hpp"
 #include "xsection/xsection.hpp"
+
+// arg
+#include <kintera/add_arg.h>
 
 namespace kintera {
 
@@ -46,3 +46,5 @@ class PhotoOpacityImpl : public torch::nn::Cloneable<PhotoOpacityImpl> {
 TORCH_MODULE(PhotoOpacity);
 
 }  // namespace kintera
+
+#undef ADD_ARG

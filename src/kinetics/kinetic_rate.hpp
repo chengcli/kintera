@@ -10,6 +10,9 @@
 // kintera
 #include <kintera/reaction.hpp>
 
+// arg
+#include <kintera/add_arg.h>
+
 namespace kintera {
 
 struct KineticRateOptions {

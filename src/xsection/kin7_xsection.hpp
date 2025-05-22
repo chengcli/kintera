@@ -7,7 +7,7 @@
 #include <torch/nn/modules/common.h>
 #include <torch/nn/modules/container/any.h>
 
-// kintera
+// arg
 #include <kintera/add_arg.h>
 
 namespace kintera {
@@ -80,3 +80,5 @@ class Kin7XsectionImpl : public torch::nn::Cloneable<Kin7XsectionImpl> {
 TORCH_MODULE(Kin7Xsection);
 
 }  // namespace kintera
+
+#undef ADD_ARG

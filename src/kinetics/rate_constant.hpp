@@ -10,6 +10,9 @@
 // kintera
 #include "arrhenius.hpp"
 
+// arg
+#include <kintera/add_arg.h>
+
 namespace kintera {
 
 struct RateConstantOptions {

@@ -4,8 +4,10 @@
 #include <torch/torch.h>
 
 // kintera
-#include <kintera/add_arg.h>
 #include <kintera/constants.h>
+
+// arg
+#include <kintera/add_arg.h>
 
 namespace kintera {
 
@@ -53,3 +55,5 @@ class EquationOfStateImpl {
 using EquationOfState = std::shared_ptr<EquationOfStateImpl>;
 
 }  // namespace kintera
+
+#undef ADD_ARG

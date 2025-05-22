@@ -7,11 +7,12 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
-#include <kintera/add_arg.h>
-
 #include <kintera/eos/equation_of_state.hpp>
 
 #include "condenser.hpp"
+
+// arg
+#include <kintera/add_arg.h>
 
 namespace kintera {
 
@@ -63,6 +64,7 @@ struct ThermoOptions {
   ADD_ARG(CondenserOptions, cond);
 };
 
+//! Mass Thermodynamics
 class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
  public:
   //! mud / mu - 1.
@@ -142,7 +144,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    */
   torch::Tensor get_mole_fraction(torch::Tensor yfrac) const;
 
-  //! \brief Calculate molar concentration fron mass fraction
+  //! \brief Calculate molar concentration (mol/m^3) fron mass fraction
   /*!
    * \param rho total density, kg/m^3
    * \param yfrac mass fraction, (nspecies, ...)
@@ -166,6 +168,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 };
 TORCH_MODULE(ThermoY);
 
+//! Molar thermodynamics
 class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
  public:
   //! mu / mud - 1.
@@ -220,3 +223,5 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
 TORCH_MODULE(ThermoX);
 
 }  // namespace kintera
+
+#undef ADD_ARG
