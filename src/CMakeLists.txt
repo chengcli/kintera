@@ -34,6 +34,7 @@ file(GLOB src_files
   kinetics/*.cpp
   thermo/*.cpp
   math/*.cpp
+  math/*.h
   eos/*.cpp
   )
 
