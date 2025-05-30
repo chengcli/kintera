@@ -6,11 +6,6 @@
 #include <torch/nn/modules/common.h>
 #include <torch/nn/modules/container/any.h>
 
-// kintera
-#include <kintera/eos/equation_of_state.hpp>
-
-#include "condenser.hpp"
-
 // arg
 #include <kintera/add_arg.h>
 
@@ -38,10 +33,6 @@ struct ThermoOptions {
 
   ThermoOptions() = default;
 
-  int nspecies() const {
-    return static_cast<int>(vapor_ids().size() + cloud_ids().size());
-  }
-
   ADD_ARG(double, gammad) = 1.4;
   ADD_ARG(double, Rd) = 287.0;
   ADD_ARG(double, Tref) = 300.0;
@@ -55,13 +46,14 @@ struct ThermoOptions {
   ADD_ARG(std::vector<double>, cp_R);
   ADD_ARG(std::vector<double>, u0_R);
 
-  ADD_ARG(int, max_iter) = 5;
-  ADD_ARG(double, ftol) = 1e-2;
-  ADD_ARG(double, rtol) = 1e-4;
-  ADD_ARG(double, boost) = 256;
+  ADD_ARG(std::vector<user_func1>, intEng_extra);
+  ADD_ARG(std::vector<user_func1>, cv_extra);
 
-  ADD_ARG(EquationOfStateOptions, eos);
-  ADD_ARG(CondenserOptions, cond);
+  ADD_ARG(std::vector<Nucleation>, react);
+  ADD_ARG(std::vector<std::string>, species);
+
+  ADD_ARG(int, max_iter) = 5;
+  ADD_ARG(double, ftol) = 1e-6;
 };
 
 //! Mass Thermodynamics
@@ -73,14 +65,11 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! cv/cvd - 1.
   torch::Tensor cv_ratio_m1;
 
-  //! cp/cpd - 1.
-  torch::Tensor cp_ratio_m1;
+  //! internal energy offset at T = Tref [J/kg]
+  torch::Tensor u0;
 
-  //! internal energy offset at T = Tref
-  torch::Tensor u0_R;
-
-  //! submodules
-  CondenserY pcond = nullptr;
+  //! stoichiometry matrix
+  torch::Tensor stoich;
 
   //! options with which this `ThermoY` was constructed
   ThermoOptions options;
@@ -106,15 +95,6 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * \param yfrac mass fraction
    */
   torch::Tensor f_sig(torch::Tensor yfrac) const;
-
-  //! \brief multi-component cp correction
-  /*!
-   * Eq.71 in Li2019
-   * $ f_{\psi} = 1 + \sum_{i \in V \cup C} y_i(\sigma_{p,i} - 1) $
-   *
-   * \param yfrac mass fraction
-   */
-  torch::Tensor f_psi(torch::Tensor yfrac) const;
 
   //! \brief Calculate the internal energy, J/m^3
   torch::Tensor get_intEng(torch::Tensor rho, torch::Tensor pres,
@@ -158,7 +138,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    *
    * \param yfrac mass fraction
    *
-   * \param intEng zero-offset total internal energy [J / m^3]
+   * \param intEng zero-offset total internal energy [J/m^3]
    * $ U = \rho U_0 f_{sigma} $
    *
    * \return adjusted density
@@ -174,17 +154,14 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   //! mu / mud - 1.
   torch::Tensor mu_ratio_m1;
 
-  //! cv/cvd - 1.
-  torch::Tensor cv_ratio_m1;
-
   //! cp/cpd - 1.
   torch::Tensor cp_ratio_m1;
 
-  //! internal energy offset at T = Tref
-  torch::Tensor u0_R;
+  //! enthalpy offset at T = Tref [J/mol]
+  torch::Tensor h0;
 
-  //! submodules
-  CondenserX pcond = nullptr;
+  //! stoichiometry matrix
+  torch::Tensor stoich;
 
   //! options with which this `ThermoX` was constructed
   ThermoOptions options;
@@ -192,6 +169,15 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   ThermoXImpl() = default;
   explicit ThermoXImpl(const ThermoOptions& options_);
   void reset() override;
+
+  //! \brief multi-component cp correction
+  /*!
+   * Eq.71 in Li2019
+   * $ f_{\psi} = 1 + \sum_{i \in V \cup C} x_i(\sigma_{p,i} - 1) $
+   *
+   * \param xfrac mole fraction
+   */
+  torch::Tensor f_psi(torch::Tensor xfrac) const;
 
   //! \brief Calculate mass fraction from mole fraction
   /*!

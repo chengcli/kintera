@@ -93,7 +93,7 @@ cloud: [H2O(l), H2O(s), NH3(l), NH3(s), NH4SH(s)]
 reactions:
   - equation: H2O <=> H2O(l)
     type: nucleation
-    rate-constant: {formula: ideal, T3: 273.16, P3: 611.7, beta: 24.845, delta: 4.986}
+    rate-constant: {formula: h2o_ideal}
 
   - equation: H2O(l) => H2O(p)
     rate-constant: {A: 0.001, b: 0}

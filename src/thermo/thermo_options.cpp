@@ -63,32 +63,16 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     }
   }
 
-  // dry eos
-  if (config["species"][0]["eos"]) {
-    TORCH_CHECK(config["species"][0]["eos"]["type"],
-                "type of eos is not defined");
-    thermo.eos().type(config["species"][0]["eos"]["type"].as<std::string>());
-    if (config["species"][0]["eos"]["file"]) {
-      thermo.eos().file(config["species"][0]["eos"]["file"].as<std::string>());
-    }
-  } else {
-    thermo.eos().type("ideal_gas");
-  }
-
   thermo.gammad(cp_R[0] / cv_R[0]);
   thermo.Rd(constants::Rgas / species_weights[0]);
-  thermo.eos().mu(species_weights[0]);
-  thermo.eos().gamma_ref(cp_R[0] / cv_R[0]);
 
   thermo.mu_ratio().clear();
   thermo.cv_R().clear();
   thermo.cp_R().clear();
   thermo.u0_R().clear();
 
-  thermo.cond() = CondenserOptions::from_yaml(filename);
-  thermo.cond().species().clear();
-  thermo.cond().species().push_back(species_names[0]);
-  thermo.cond().ngas(1 + thermo.vapor_ids().size());
+  thermo.species().clear();
+  thermo.species().push_back(species_names[0]);
 
   // register vapors
   if (config["vapor"]) {
@@ -98,7 +82,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
       TORCH_CHECK(it != species_names.end(), "vapor species ",
                   sp.as<std::string>(), " not found in species list");
       thermo.vapor_ids().push_back(it - species_names.begin());
-      thermo.cond().species().push_back(sp.as<std::string>());
+      thermo.species().push_back(sp.as<std::string>());
     }
   }
 
@@ -118,7 +102,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
       TORCH_CHECK(it != species_names.end(), "cloud species ",
                   sp.as<std::string>(), " not found in species list");
       thermo.cloud_ids().push_back(it - species_names.begin());
-      thermo.cond().species().push_back(sp.as<std::string>());
+      thermo.species().push_back(sp.as<std::string>());
     }
   }
 
@@ -128,6 +112,17 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     thermo.cp_R().push_back(cp_R[id]);
     thermo.cv_R().push_back(cv_R[id]);
     thermo.u0_R().push_back(u0_R[id]);
+  }
+
+  // register reactions
+  TORCH_CHECK(config["reactions"],
+              "'reactions' is not defined in the configuration file");
+
+  for (auto const& node : config["reactions"]) {
+    if (!node["type"] || (node["type"].as<std::string>() != "nucleation")) {
+      continue;
+    }
+    thermo.react().push_back(Nucleation::from_yaml(node));
   }
 
   return thermo;

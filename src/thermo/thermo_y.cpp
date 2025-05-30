@@ -48,18 +48,31 @@ void ThermoYImpl::reset() {
       register_buffer("cv_ratio_m1", cv_R / cv_R[0] * (mu_ratio_m1 + 1.));
   cv_ratio_m1 -= 1.;
 
-  // J/mol/K -> J/kg/K
-  auto cp_R = torch::tensor(options.cp_R(), torch::kFloat64);
-  cp_ratio_m1 =
-      register_buffer("cp_ratio_m1", cp_R / cp_R[0] * (mu_ratio_m1 + 1.));
-  cp_ratio_m1 -= 1.;
+  // J/kg
+  u0 =
+      register_buffer("u0", (mu_ratio_m1 + 1.) * Rd *
+                                torch::tensor(options.u0_R(), torch::kFloat64));
 
-  u0_R =
-      register_buffer("u0_R", torch::tensor(options.u0_R(), torch::kFloat64));
+  // populate stoichiometry matrix
+  int nspecies = options.species().size();
+  int nreact = options.react().size();
 
-  // options.cond().species(options.species());
-  pcond = register_module("cond", CondenserY(options.cond()));
-  // options.cond() = pcond->options;
+  stoich = register_buffer("stoich",
+                           torch::zeros({nspecies, nreact}, torch::kFloat64));
+
+  for (int j = 0; j < options.react().size(); ++j) {
+    auto const& r = options.react()[j];
+    for (int i = 0; i < options.species().size(); ++i) {
+      auto it = r.reaction().reactants().find(options.species()[i]);
+      if (it != r.reaction().reactants().end()) {
+        stoich[i][j] = -it->second;
+      }
+      it = r.reaction().products().find(options.species()[i]);
+      if (it != r.reaction().products().end()) {
+        stoich[i][j] = it->second;
+      }
+    }
+  }
 }
 
 torch::Tensor ThermoYImpl::f_eps(torch::Tensor yfrac) const {
@@ -75,12 +88,6 @@ torch::Tensor ThermoYImpl::f_sig(torch::Tensor yfrac) const {
   int nmass = options.vapor_ids().size() + options.cloud_ids().size();
   auto yu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
   return 1. + yu.matmul(cv_ratio_m1).squeeze(0);
-}
-
-torch::Tensor ThermoYImpl::f_psi(torch::Tensor yfrac) const {
-  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
-  auto yu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
-  return 1. + yu.matmul(cp_ratio_m1).squeeze(0);
 }
 
 torch::Tensor ThermoYImpl::get_mole_fraction(torch::Tensor yfrac) const {

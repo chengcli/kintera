@@ -8,22 +8,6 @@
 
 namespace kintera {
 
-// x -> y at constant volume (mole concentration)
-inline torch::Tensor satfunc1v(torch::Tensor& b, torch::Tensor& jac,
-                               torch::Tensor conc, torch::Tensor s,
-                               torch::Tensor logs_ddT, int j, int ix, int iy) {
-  auto const& x = conc.select(-1, ix);
-  auto const& y = conc.select(-1, iy);
-
-  b.select(-1, j) = x - s;
-  b.select(-1, j).clamp_(-y);
-
-  jac.select(-2, j).select(-1, ix) = where(b.select(-1, j) > 0., 1., 0.);
-  jac.select(-2, j).select(-1, iy) = where(b.select(-1, j) < 0., -1., 0.);
-
-  return -s * logs_ddT;
-}
-
 CondenserYImpl::CondenserYImpl(const CondenserOptions& options_)
     : options(options_) {
   reset();
@@ -52,10 +36,8 @@ void CondenserYImpl::reset() {
   }
 }
 
-torch::Tensor CondenserYImpl::forward(torch::Tensor temp, torch::Tensor conc,
-                                      torch::Tensor intEng_RT,
-                                      torch::Tensor cv_R,
-                                      torch::optional<torch::Tensor> krate) {
+torch::Tensor CondenserYImpl::forward(torch::Tensor temp, torch::Tensor intEng,
+                                      torch::Tensor conc) {
   int nspecies = conc.size(-1);
   int nreact = options.react().size();
   auto vec = conc.sizes().vec();
