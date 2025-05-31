@@ -146,8 +146,7 @@ TEST_P(DeviceTest, eng_pres) {
 }
 
 TEST_P(DeviceTest, equilibrate_tp) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
-  op_thermo.max_iter(10);
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
