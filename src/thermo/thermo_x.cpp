@@ -115,7 +115,7 @@ torch::Tensor ThermoXImpl::get_density(torch::Tensor temp, torch::Tensor pres,
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                                    torch::Tensor xfrac) {
-  auto xfrac1 = xfrac.clone();
+  auto xfrac0 = xfrac.clone();
 
   // prepare data
   auto iter = 
@@ -123,7 +123,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
         .resize_outputs(false)
         .check_all_same_dtype(false)
         .declare_static_shape(xfrac.sizes(), /*squash_dims=*/{xfrac.dim() - 1})
-        .add_output(xfrac1)
+        .add_output(xfrac)
         .add_owned_input(temp.unsqueeze(-1))
         .add_owned_input(pres.unsqueeze(-1))
         .add_owned_input(stoich)
@@ -147,7 +147,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   delete[] logsvp_func;
 
-  return xfrac1 - xfrac;
+  return xfrac - xfrac0;
 }
 
 }  // namespace kintera

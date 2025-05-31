@@ -18,7 +18,6 @@ using namespace kintera;
 
 TEST_P(DeviceTest, feps) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
-  std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
@@ -38,7 +37,6 @@ TEST_P(DeviceTest, feps) {
 
 TEST_P(DeviceTest, thermo_y) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
-  std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
@@ -147,7 +145,33 @@ TEST_P(DeviceTest, eng_pres) {
   EXPECT_EQ(torch::allclose(temp, temp2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
 
-/*TEST_P(DeviceTest, forward) {
+TEST_P(DeviceTest, equilibrate_tp) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  op_thermo.max_iter(10);
+  std::cout << fmt::format("{}", op_thermo) << std::endl;
+
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
+
+  ThermoX thermo_x(op_thermo);
+  thermo_x->to(device, dtype);
+
+  auto xfrac =
+      torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
+
+  auto temp = 200.0 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+  auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+
+  std::cout << "xfrac before = " << xfrac[0][0][0] << std::endl;
+
+  thermo_x->forward(temp, pres, xfrac);
+
+  std::cout << "xfrac after = " << xfrac[0][0][0] << std::endl;
+}
+
+/*TEST_P(DeviceTest, equilibrate_uv) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
