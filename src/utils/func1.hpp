@@ -4,8 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-// kintera
-#include <kintera/thermo/thermo.h>
+typedef double (*user_func1)(double temp);
 
 std::unordered_map<std::string, user_func1>& get_user_func1() {
   static std::unordered_map<std::string, user_func1> f1map;

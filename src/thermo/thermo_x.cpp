@@ -13,10 +13,6 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions& options_) : options(options_) {
     options.mu_ratio() = std::vector<double>(nvapor + ncloud, 0.);
   }
 
-  if (options.cv_R().empty()) {
-    options.cv_R() = std::vector<double>(nvapor + ncloud, 0.);
-  }
-
   if (options.cp_R().empty()) {
     options.cp_R() = std::vector<double>(nvapor + ncloud, 0.);
   }
@@ -34,7 +30,6 @@ void ThermoXImpl::reset() {
 
   TORCH_CHECK(options.mu_ratio().size() == nvapor + ncloud,
               "mu_ratio size mismatch");
-  TORCH_CHECK(options.cv_R().size() == nvapor + ncloud, "cv_R size mismatch");
   TORCH_CHECK(options.cp_R().size() == nvapor + ncloud, "cp_R size mismatch");
   TORCH_CHECK(options.u0_R().size() == nvapor + ncloud, "u0 size mismatch");
 

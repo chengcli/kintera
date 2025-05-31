@@ -17,10 +17,6 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions& options_) : options(options_) {
     options.cv_R() = std::vector<double>(nvapor + ncloud, 0.);
   }
 
-  if (options.cp_R().empty()) {
-    options.cp_R() = std::vector<double>(nvapor + ncloud, 0.);
-  }
-
   if (options.u0_R().empty()) {
     options.u0_R() = std::vector<double>(nvapor + ncloud, 0.);
   }
@@ -35,8 +31,7 @@ void ThermoYImpl::reset() {
   TORCH_CHECK(options.mu_ratio().size() == nvapor + ncloud,
               "mu_ratio size mismatch");
   TORCH_CHECK(options.cv_R().size() == nvapor + ncloud, "cv_R size mismatch");
-  TORCH_CHECK(options.cp_R().size() == nvapor + ncloud, "cp_R size mismatch");
-  TORCH_CHECK(options.u0_R().size() == nvapor + ncloud, "u0 size mismatch");
+  TORCH_CHECK(options.u0_R().size() == nvapor + ncloud, "u0_R size mismatch");
 
   mu_ratio_m1 = register_buffer(
       "mu_ratio_m1", 1. / torch::tensor(options.mu_ratio(), torch::kFloat64));
