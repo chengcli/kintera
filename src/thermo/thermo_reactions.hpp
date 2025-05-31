@@ -8,8 +8,7 @@
 
 // kintera
 #include <kintera/reaction.hpp>
-
-#include "thermo.h"
+#include <kintera/utils/func1.hpp>
 
 // arg
 #include <kintera/add_arg.h>
@@ -19,9 +18,6 @@ namespace kintera {
 struct Nucleation {
   Nucleation() = default;
   static Nucleation from_yaml(const YAML::Node& node);
-
-  torch::Tensor eval_func(torch::Tensor tem) const;
-  torch::Tensor eval_func_ddT(torch::Tensor tem) const;
 
   ADD_ARG(double, minT) = 0.0;
   ADD_ARG(double, maxT) = 3000.;

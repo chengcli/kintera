@@ -6,6 +6,7 @@
 
 // kintera
 #include "thermo.hpp"
+#include <kintera/constants.h>
 
 namespace kintera {
 
@@ -68,7 +69,6 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
 
   thermo.mu_ratio().clear();
   thermo.cv_R().clear();
-  thermo.cp_R().clear();
   thermo.u0_R().clear();
 
   thermo.species().clear();
@@ -89,7 +89,6 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   for (int i = 0; i < thermo.vapor_ids().size(); ++i) {
     auto id = thermo.vapor_ids()[i];
     thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
-    thermo.cp_R().push_back(cp_R[id]);
     thermo.cv_R().push_back(cv_R[id]);
     thermo.u0_R().push_back(u0_R[id]);
   }
@@ -109,7 +108,6 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   for (int i = 0; i < thermo.cloud_ids().size(); ++i) {
     auto id = thermo.cloud_ids()[i];
     thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
-    thermo.cp_R().push_back(cp_R[id]);
     thermo.cv_R().push_back(cv_R[id]);
     thermo.u0_R().push_back(u0_R[id]);
   }

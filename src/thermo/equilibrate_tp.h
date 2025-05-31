@@ -1,14 +1,38 @@
-#include <math.h>
-#include <math/linalg.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+// C/C++
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
-#include "thermo.h"
+// kintera
+#include <kintera/utils/func1.hpp>
+#include <kintera/math/leastsq_kkt.h>
+#include <kintera/math/mmdot.h>
 
-int equilibrate_tp(double *xfrac, double temp, double pres,
-                   double const *stoich, int nspecies, int nreaction, int ngas,
+namespace kintera {
+
+/*!
+ * \brief Calculate thermodynamic equilibrium at gven temperature and pressure
+ *
+ * This function finds the thermodynamic equilibrium for an array
+ * of species.
+ *
+ * \param[in,out] xfrac array of species mole fractions, modified in place.
+ * \param[in] temp equilibrium temperature in Kelvin.
+ * \param[in] pres equilibrium pressure in Pascals.
+ * \param[in] nspecies number of species in the system.
+ * \param[in] ngas number of gas species in the system.
+ * \param[in] logsvp_func user-defined function for logarithm of saturation
+ * vapor pressure.
+ * \param[in] logsvp_func_ddT user-defined function for derivative of logsvp
+ * with respect to temperature.
+ * \param[in] logsvp_eps tolerance for convergence in logarithm of saturation
+ * vapor pressure.
+ * \param[in,out] max_iter maximum number of iterations allowed for convergence.
+ */
+template <typename T>
+int equilibrate_tp(T *xfrac, T temp, T pres,
+                   T const *stoich, int nspecies, int nreaction, int ngas,
                    user_func1 const *logsvp_func, double logsvp_eps,
                    int *max_iter) {
   // check positive temperature and pressure
@@ -42,16 +66,16 @@ int equilibrate_tp(double *xfrac, double temp, double pres,
     return 1;  // error: invalid dimensions
   }
 
-  double *logsvp = (double *)malloc(nreaction * sizeof(double));
+  T *logsvp = (T *)malloc(nreaction * sizeof(T));
 
   // weight matrix
-  double *weight = (double *)malloc(nreaction * nspecies * sizeof(double));
+  T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
 
   // U matrix
-  double *umat = (double *)malloc(nreaction * nreaction * sizeof(double));
+  T *umat = (T *)malloc(nreaction * nreaction * sizeof(T));
 
   // right-hand-side vector
-  double *rhs = (double *)malloc(nreaction * sizeof(double));
+  T *rhs = (T *)malloc(nreaction * sizeof(T));
 
   // active set
   int *reaction_set = (int *)malloc(nreaction * sizeof(int));
@@ -60,14 +84,14 @@ int equilibrate_tp(double *xfrac, double temp, double pres,
   }
 
   // active stoichiometric matrix
-  double *stoich_active =
-      (double *)malloc(nspecies * nreaction * sizeof(double));
+  T *stoich_active =
+      (T *)malloc(nspecies * nreaction * sizeof(T));
 
   // sum of reactant stoichiometric coefficients
-  double *stoich_sum = (double *)malloc(nreaction * sizeof(double));
+  T *stoich_sum = (T *)malloc(nreaction * sizeof(T));
 
   // copy of xfrac
-  double *xfrac0 = (double *)malloc(nspecies * sizeof(double));
+  T *xfrac0 = (T *)malloc(nspecies * sizeof(T));
 
   // evaluate log vapor saturation pressure and its derivative
   for (int j = 0; j < nreaction; j++) {
@@ -83,7 +107,7 @@ int equilibrate_tp(double *xfrac, double temp, double pres,
   int kkt_err = 0;
   while (iter++ < *max_iter) {
     // fraction of gases
-    double xg = 0.0;
+    T xg = 0.0;
     for (int i = 0; i < ngas; i++) {
       xg += xfrac[i];
     }
@@ -93,8 +117,8 @@ int equilibrate_tp(double *xfrac, double temp, double pres,
     int last = nreaction;
     while (first < last) {
       int j = reaction_set[first];
-      double log_frac_sum = 0.0;
-      double prod = 1.0;
+      T log_frac_sum = 0.0;
+      T prod = 1.0;
 
       // active set condition variables
       for (int i = 0; i < nspecies; i++) {
@@ -158,8 +182,8 @@ int equilibrate_tp(double *xfrac, double temp, double pres,
 
     // rate -> xfrac
     // copy xfrac to xfrac0
-    memcpy(xfrac0, xfrac, nspecies * sizeof(double));
-    double lambda = 1.;  // scale
+    memcpy(xfrac0, xfrac, nspecies * sizeof(T));
+    T lambda = 1.;  // scale
 
     while (true) {
       bool positive_vapor = true;
@@ -194,3 +218,5 @@ int equilibrate_tp(double *xfrac, double temp, double pres,
     return kkt_err;  // success or KKT error
   }
 }
+
+} // namespace kintera

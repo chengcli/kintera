@@ -10,7 +10,6 @@
 #include <kintera/eos/equation_of_state.hpp>
 #include <kintera/thermo/thermo.hpp>
 #include <kintera/thermo/thermo_formatter.hpp>
-#include <kintera/vapors/water_vapors.hpp>
 
 // tests
 #include "device_testing.hpp"
@@ -24,20 +23,17 @@ TEST_P(DeviceTest, feps) {
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int nspecies = thermo->options.nspecies();
+  int ny = thermo->options.vapor_ids().size() + thermo->options.cloud_ids().size();
   auto yfrac =
-      torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
+      torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
 
-  for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
+  for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
   auto feps = thermo->f_eps(yfrac);
   std::cout << "feps = " << feps << std::endl;
 
   auto fsig = thermo->f_sig(yfrac);
   std::cout << "fsig = " << fsig << std::endl;
-
-  auto fpsi = thermo->f_psi(yfrac);
-  std::cout << "fpsi = " << fpsi << std::endl;
 }
 
 TEST_P(DeviceTest, thermo_y) {
@@ -47,11 +43,11 @@ TEST_P(DeviceTest, thermo_y) {
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int nspecies = thermo->options.nspecies();
+  int ny = thermo->options.vapor_ids().size() + thermo->options.cloud_ids().size();
   auto yfrac =
-      torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
+      torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
 
-  for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
+  for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
   auto xfrac = thermo->get_mole_fraction(yfrac);
   std::cout << "xfrac = " << xfrac << std::endl;
@@ -73,12 +69,12 @@ TEST_P(DeviceTest, thermo_x) {
   ThermoX thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int nspecies = thermo->options.nspecies();
+  int ny = thermo->options.vapor_ids().size() + thermo->options.cloud_ids().size();
   auto xfrac =
-      torch::zeros({1, 2, 3, 1 + nspecies}, torch::device(device).dtype(dtype));
+      torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
-  for (int i = 0; i < nspecies; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
-  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, nspecies).sum(-1);
+  for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
 
   auto yfrac = thermo->get_mass_fraction(xfrac);
   std::cout << "yfrac = " << yfrac << std::endl;
@@ -92,12 +88,12 @@ TEST_P(DeviceTest, thermo_xy) {
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int nspecies = op_thermo.nspecies();
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
   auto xfrac =
-      torch::zeros({1, 2, 3, 1 + nspecies}, torch::device(device).dtype(dtype));
+      torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
-  for (int i = 0; i < nspecies; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
-  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, nspecies).sum(-1);
+  for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
 
   auto yfrac = thermo_x->get_mass_fraction(xfrac);
   auto xfrac2 = thermo_y->get_mole_fraction(yfrac);
@@ -113,11 +109,11 @@ TEST_P(DeviceTest, thermo_yx) {
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int nspecies = op_thermo.nspecies();
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
   auto yfrac =
-      torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
+      torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
 
-  for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
+  for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
   auto xfrac = thermo_y->get_mole_fraction(yfrac);
   auto yfrac2 = thermo_x->get_mass_fraction(xfrac);
@@ -133,9 +129,9 @@ TEST_P(DeviceTest, eng_pres) {
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
-  int nspecies = thermo_y->options.nspecies();
-  auto yfrac = torch::zeros({nspecies, 1}, torch::device(device).dtype(dtype));
-  for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
+  int ny = thermo_y->options.vapor_ids().size() + thermo_y->options.cloud_ids().size();
+  auto yfrac = torch::zeros({ny, 1}, torch::device(device).dtype(dtype));
+  for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
   auto temp = 200.0 * torch::ones({1}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({1}, torch::device(device).dtype(dtype));
@@ -158,10 +154,10 @@ TEST_P(DeviceTest, forward) {
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int nspecies = thermo_y->options.nspecies();
+  int ny = thermo_y->options.vapor_ids().size() + thermo_y->options.cloud_ids().size();
   auto yfrac =
-      torch::zeros({nspecies, 1, 2, 3}, torch::device(device).dtype(dtype));
-  for (int i = 0; i < nspecies; ++i) yfrac[i] = 0.01 * (i + 1);
+      torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
+  for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
   auto rho = torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));

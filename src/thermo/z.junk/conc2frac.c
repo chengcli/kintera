@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "thermo.h"
+#include "thermo_impl.h"
 
 void conc2frac(double *xfrac, double const *conc, int nspecies, int ngas) {
   // check dimensions

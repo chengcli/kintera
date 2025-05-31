@@ -1,13 +1,5 @@
-// C/C++
-#include <functional>
-
 // kintera
-#include <kintera/vapors/h2o.hpp>
-#include <kintera/vapors/nh3.hpp>
-#include <kintera/vapors/nh3_h2s.hpp>
-#include <kintera/vapors/svp_ideal.hpp>
-
-#include "nucleation.hpp"
+#include "thermo_reactions.hpp"
 
 namespace kintera {
 
@@ -40,32 +32,16 @@ Nucleation Nucleation::from_yaml(const YAML::Node& node) {
 
   auto formula = rate_constant["formula"].as<std::string>();
 
-  TORCH_CHECK(get_user_func1().finds(formula) != get_user_func1().end(),
+  TORCH_CHECK(get_user_func1().find(formula) != get_user_func1().end(),
               "Formula '", formula, "' is not defined in the user functions");
   nuc.func() = get_user_func1()[formula];
 
   TORCH_CHECK(
-      get_user_func1().finds(formula + "_ddT") != get_user_func1().end(),
+      get_user_func1().find(formula + "_ddT") != get_user_func1().end(),
       "Formula '", formula, "' is not defined in the user functions");
-  nuc.func_ddT() = find_logsvp_ddT(nuc.reaction().reactants(), formula);
+  nuc.func_ddT() = get_user_func1()[formula + "_ddT"];
 
   return nuc;
-}
-
-torch::Tensor Nucleation::eval_func(torch::Tensor tem) const {
-  int order = reaction().reactants().size();
-  auto out = func()(tem);
-  out.masked_fill_(tem < minT(), -1.);
-  out.masked_fill_(tem > maxT(), -1.);
-  return out;
-}
-
-torch::Tensor Nucleation::eval_func_ddT(torch::Tensor tem) const {
-  int order = reaction().reactants().size();
-  auto out = func_ddT()(tem) - order / tem;
-  out.masked_fill_(tem < minT(), 0.);
-  out.masked_fill_(tem > maxT(), 0.);
-  return out;
 }
 
 }  // namespace kintera

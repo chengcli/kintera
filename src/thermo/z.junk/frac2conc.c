@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "thermo.h"
+#include "thermo_impl.h"
 
 void frac2conc(double *conc, double p_ov_RT, double const *xfrac, int nspecies,
                int ngas) {

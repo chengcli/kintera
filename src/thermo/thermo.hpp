@@ -6,6 +6,10 @@
 #include <torch/nn/modules/common.h>
 #include <torch/nn/modules/container/any.h>
 
+// kintera
+#include <kintera/utils/func1.hpp>
+#include "thermo_reactions.hpp"
+
 // arg
 #include <kintera/add_arg.h>
 
@@ -43,7 +47,6 @@ struct ThermoOptions {
 
   ADD_ARG(std::vector<double>, mu_ratio);
   ADD_ARG(std::vector<double>, cv_R);
-  ADD_ARG(std::vector<double>, cp_R);
   ADD_ARG(std::vector<double>, u0_R);
 
   ADD_ARG(std::vector<user_func1>, intEng_extra);

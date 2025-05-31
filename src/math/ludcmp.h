@@ -1,13 +1,34 @@
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+#pragma once
+
+// C/C++
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
 #define A(i, j) a[(i) * n + (j)]
 
-int ludcmp(double *a, int *indx, int n) {
+namespace kintera {
+
+/*!
+ * \brief LU decomposition
+ *
+ * Given a row-major sequential storage of matrix a[0..n*n-1],
+ * this routine replaces it by the LU decomposition of a rowwise permutation of
+ * itself. This routine is used in combination with lubksb to solve linear
+ * equationsor invert a matrix. Adapted from Numerical Recipes in C, 2nd Ed.,
+ * p. 46.
+ *
+ * \param[in,out] a[0..n*n-1] row-major input matrix, output LU decomposition
+ * \param[out] indx[0..n-1] vector that records the row permutation effected by
+ * the partial pivoting. Outputs as +/- 1 depending on whether the number of row
+ * interchanges was even or odd, respectively.
+ * \param[in] n size of matrix
+ */
+template <typename T>
+int ludcmp(T *a, int *indx, int n) {
   int i, imax, j, k, d;
-  double big, dum, sum, temp;
-  double *vv = (double *)malloc(n * sizeof(double));
+  T big, dum, sum, temp;
+  T *vv = (T *)malloc(n * sizeof(T));
 
   d = 1;
   for (i = 0; i < n; i++) {
@@ -55,5 +76,7 @@ int ludcmp(double *a, int *indx, int n) {
 
   return d;
 }
+
+} // namespace kintera
 
 #undef A

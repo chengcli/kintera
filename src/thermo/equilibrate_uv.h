@@ -1,13 +1,49 @@
-#include <math.h>
-#include <math/linalg.h>
-#include <stdio.h>
-#include <stdlib.h>
+// C/C++
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 
-#include "thermo.h"
+// kintera
+#include <kintera/constants.h>
+#include <kintera/utils/func1.hpp>
+#include <kintera/math/mmdot.h>
+#include <kintera/math/leastsq_kkt.h>
 
-int equilibrate_uv(double *temp, double *conc, double h0, double const *stoich,
-                   int nspecies, int nreaction, double const *enthalpy_offset,
-                   double const *cp_const, user_func1 const *logsvp_func,
+namespace kintera {
+
+/*!
+ * \brief Calculate thermodynamic equilibrium at fixed volume and internal
+ * energy
+ *
+ * Given an initial guess of temperature and concentrations, this function
+ * adjusts the temperature and concentrations to satisfy the saturation
+ * condition.
+ *
+ * \param[in,out] temp in: initial temperature, out: adjusted temperature.
+ * \param[in,out] conc in: initial concentrations for each species, out:
+ * adjusted concentrations.
+ * \param[in] h0 initial enthalpy.
+ * \param[in] stoich reaction stoichiometric matrix, nspecies x nreaction.
+ * \param[in] nspecies number of species in the system.
+ * \param[in] nreaction number of reactions in the system.
+ * \param[in] enthalpy_offset offset for enthalpy calculations.
+ * \param[in] cp_const const component of heat capacity.
+ * \param[in] logsvp_func user-defined functions for logarithm of saturation
+ * vapor pressure.
+ * \param[in] logsvp_func_ddT user-defined functions for derivative of logsvp
+ *            with respect to temperature.
+ * \param[in] enthalpy_extra user-defined functions for enthalpy calculation
+ *            in addition to the linear term.
+ * \param[in] enthalpy_extra_ddT user-defined functions for enthalpy derivative
+ *            with respect to temperature in addition to the constant term.
+ * \param[in] lnsvp_eps tolerance for convergence in logarithm of saturation
+ * vapor pressure.
+ * \param[in,out] max_iter maximum number of iterations allowed for convergence.
+ */
+template<typename T>
+int equilibrate_uv(T *temp, T *conc, double h0, T const *stoich,
+                   int nspecies, int nreaction, T const *enthalpy_offset,
+                   T const *cp_const, user_func1 const *logsvp_func,
                    user_func1 const *logsvp_func_ddT,
                    user_func1 const *enthalpy_extra,
                    user_func1 const *enthalpy_extra_ddT, double logsvp_eps,
@@ -41,19 +77,19 @@ int equilibrate_uv(double *temp, double *conc, double h0, double const *stoich,
     }
   }
 
-  double *enthalpy = (double *)malloc(nspecies * sizeof(double));
-  double *enthalpy_ddT = (double *)malloc(nspecies * sizeof(double));
-  double *logsvp = (double *)malloc(nreaction * sizeof(double));
-  double *logsvp_ddT = (double *)malloc(nreaction * sizeof(double));
+  T *enthalpy = (T *)malloc(nspecies * sizeof(T));
+  T *enthalpy_ddT = (T *)malloc(nspecies * sizeof(T));
+  T *logsvp = (T *)malloc(nreaction * sizeof(T));
+  T *logsvp_ddT = (T *)malloc(nreaction * sizeof(T));
 
   // weight matrix
-  double *weight = (double *)malloc(nreaction * nspecies * sizeof(double));
+  T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
 
   // U matrix
-  double *umat = (double *)malloc(nreaction * nreaction * sizeof(double));
+  T *umat = (T *)malloc(nreaction * nreaction * sizeof(T));
 
   // right-hand-side vector
-  double *rhs = (double *)malloc(nreaction * sizeof(double));
+  T *rhs = (T *)malloc(nreaction * sizeof(T));
 
   // active set
   int *reaction_set = (int *)malloc(nreaction * sizeof(int));
@@ -74,25 +110,25 @@ int equilibrate_uv(double *temp, double *conc, double h0, double const *stoich,
   }
 
   // active stoichiometric matrix
-  double *stoich_active =
-      (double *)malloc(nspecies * nreaction * sizeof(double));
+  T *stoich_active =
+      (T *)malloc(nspecies * nreaction * sizeof(T));
 
   int iter = 0;
   int err_code = 0;
   while (iter++ < *max_iter) {
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
-      double stoich_sum = 0.0;
+      T stoich_sum = 0.0;
       for (int i = 0; i < nspecies; i++)
         if (stoich[i * nreaction + j] < 0) {  // reactant
           stoich_sum += (-stoich[i * nreaction + j]);
         }
-      logsvp[j] = logsvp_func[j](*temp) - stoich_sum * log(Rgas * (*temp));
+      logsvp[j] = logsvp_func[j](*temp) - stoich_sum * log(constants::Rgas * (*temp));
       logsvp_ddT[j] = logsvp_func_ddT[j](*temp) - stoich_sum / (*temp);
     }
 
     // calculate heat capacity
-    double heat_capacity = 0.0;
+    T heat_capacity = 0.0;
     for (int i = 0; i < nspecies; i++) {
       heat_capacity += enthalpy_ddT[i] * conc[i];
     }
@@ -102,8 +138,8 @@ int equilibrate_uv(double *temp, double *conc, double h0, double const *stoich,
     int last = nreaction;
     while (first < last) {
       int j = reaction_set[first];
-      double log_conc_sum = 0.0;
-      double prod = 1.0;
+      T log_conc_sum = 0.0;
+      T prod = 1.0;
 
       // active set condition variables
       for (int i = 0; i < nspecies; i++) {
@@ -169,10 +205,10 @@ int equilibrate_uv(double *temp, double *conc, double h0, double const *stoich,
     }
 
     // temperature iteration
-    double temp0 = 0.;
+    T temp0 = 0.;
     while (fabs(*temp - temp0) > 1e-4) {
-      double zh = 0.;
-      double zc = 0.;
+      T zh = 0.;
+      T zc = 0.;
 
       // re-evaluate enthalpy and its derivative
       for (int i = 0; i < nspecies; i++) {
@@ -219,3 +255,5 @@ int equilibrate_uv(double *temp, double *conc, double h0, double const *stoich,
     return err_code;  // success or KKT error
   }
 }
+
+}  // namespace kintera

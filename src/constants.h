@@ -2,6 +2,6 @@
 
 namespace kintera {
 namespace constants {
-double const Rgas = 8.31446;
+double constexpr Rgas = 8.31446;  // J/(mol*K), universal gas constant
 }
 }  // namespace kintera

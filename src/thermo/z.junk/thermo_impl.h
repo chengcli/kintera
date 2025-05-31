@@ -6,8 +6,6 @@ extern "C" {
 
 typedef double (*user_func1)(double temp);
 
-static const double Rgas = 8.31446;  // J/(mol*K), universal gas constant
-
 /*!
  * \brief Calculate thermodynamic properties based on temperature and
  * concentrations
