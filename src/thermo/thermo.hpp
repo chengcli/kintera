@@ -68,8 +68,8 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! cv/cvd - 1.
   torch::Tensor cv_ratio_m1;
 
-  //! internal energy offset at T = Tref [J/kg]
-  torch::Tensor u0;
+  //! dimensionless internal energy offset at T = 0
+  torch::Tensor u0_R;
 
   //! stoichiometry matrix
   torch::Tensor stoich;
@@ -160,8 +160,8 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   //! cp/cpd - 1.
   torch::Tensor cp_ratio_m1;
 
-  //! enthalpy offset at T = Tref [J/mol]
-  torch::Tensor h0;
+  //! dimensionless enthalpy offset at T = 0
+  torch::Tensor h0_R;
 
   //! stoichiometry matrix
   torch::Tensor stoich;

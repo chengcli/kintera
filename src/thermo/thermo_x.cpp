@@ -1,6 +1,4 @@
 // kintera
-#include <kintera/constants.h>
-
 #include "thermo.hpp"
 
 namespace kintera {
@@ -41,21 +39,21 @@ void ThermoXImpl::reset() {
       "mu_ratio_m1", torch::tensor(options.mu_ratio(), torch::kFloat64));
   mu_ratio_m1 -= 1.;
 
+  auto cp_R = torch::tensor(options.cv_R(), torch::kFloat64);
+  // gas cp_R = cv_R + 1
+  cp_R.narrow(0, 0, nvapor) += 1.;
+
   // J/mol/K
   cp_ratio_m1 = register_buffer("cp_ratio_m1",
-                                torch::tensor(options.cv_R(), torch::kFloat64));
-  // gas cp_R = cv_R + 1
-  cp_ratio_m1.narrow(0, 0, nvapor) += 1.;
-
-  // J/mol/K
-  cp_ratio_m1 = cp_ratio_m1 * (options.gammad() - 1.) / options.gammad() - 1.;
+      cp_R * (options.gammad() - 1.) / options.gammad());
+  cp_ratio_m1 -= 1.;
 
   // J/mol
-  h0 = register_buffer(
-      "h0", constants::Rgas * torch::tensor(options.u0_R(), torch::kFloat64));
+  h0_R = register_buffer("h0_R", torch::tensor(options.u0_R(), torch::kFloat64));
 
-  // gas h0 = u0_R + Rgas * Tref
-  h0.narrow(0, 0, options.vapor_ids().size()) += constants::Rgas * options.Tref();
+  // gas h0_R = u0_R + Tref
+  h0_R.narrow(0, 0, options.vapor_ids().size()) += options.Tref();
+  h0_R = h0_R - cp_R * options.Tref();
 
   // populate stoichiometry matrix
   int nspecies = options.species().size();

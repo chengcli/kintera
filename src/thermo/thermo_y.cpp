@@ -37,15 +37,15 @@ void ThermoYImpl::reset() {
       "mu_ratio_m1", 1. / torch::tensor(options.mu_ratio(), torch::kFloat64));
   mu_ratio_m1 -= 1.;
 
-  cv_ratio_m1 =
-      register_buffer("cv_ratio_m1", torch::tensor(options.cv_R(), torch::kFloat64));
+  auto cv_R = torch::tensor(options.cv_R(), torch::kFloat64);
 
   // J/mol/K -> J/kg/K
-  cv_ratio_m1 = cv_ratio_m1 * (options.gammad() - 1.) * (mu_ratio_m1 + 1.) - 1;
+  cv_ratio_m1 = register_buffer("cv_ratio_m1", 
+      cv_R * (options.gammad() - 1.) * (mu_ratio_m1 + 1.));
+  cv_ratio_m1 -= 1.;
 
-  // J/kg
-  u0 = register_buffer("u0", (mu_ratio_m1 + 1.) * options.Rd() *
-                        torch::tensor(options.u0_R(), torch::kFloat64));
+  u0_R = register_buffer("u0_R", torch::tensor(options.u0_R(), torch::kFloat64));
+  u0_R = (u0_R - cv_R * options.Tref()) * (mu_ratio_m1 + 1.);
 
   // populate stoichiometry matrix
   int nspecies = options.species().size();
@@ -113,6 +113,49 @@ torch::Tensor ThermoYImpl::get_mole_fraction(torch::Tensor yfrac) const {
 
 torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
                                    torch::Tensor yfrac) {
+}
+
+torch::Tensor ThermoYImpl::get_concentration(torch::Tensor rho,
+                                             torch::Tensor yfrac) const {
+  auto nvapor = options.vapor_ids().size();
+  auto ncloud = options.cloud_ids().size();
+
+  auto vec = yfrac.sizes().vec();
+  vec.erase(vec.begin());
+  vec.push_back(1 + nvapor + ncloud);
+
+  auto result = torch::empty(vec, yfrac.options());
+
+  // (nmass, ...) -> (..., nmass + 1)
+  int ndim = yfrac.dim();
+  for (int i = 0; i < ndim - 1; ++i) {
+    vec[i] = i + 1;
+  }
+  vec[ndim - 1] = 0;
+
+  auto rhod = rho * (1. - yfrac.sum(0));
+  result.select(-1, 0) = rhod;
+  result.narrow(-1, 1, nvapor + ncloud) =
+      rho.unsqueeze(-1) * yfrac.permute(vec) * (mu_ratio_m1 + 1.);
+  return result / (constants::Rgas / options.Rd());
+}
+
+torch::Tensor ThermoYImpl::get_intEng(torch::Tensor rho, torch::Tensor pres,
+                                      torch::Tensor yfrac) const {
+  auto vec = yfrac.sizes().vec();
+  for (int n = 1; n < vec.size(); ++n) vec[n] = 1;
+
+  auto yu0 = options.Rd() * rho * (yfrac * u0_R.view(vec)).sum(0);
+  return yu0 + pres * f_sig(yfrac) / f_eps(yfrac) / (options.gammad() - 1.);
+}
+
+torch::Tensor ThermoYImpl::get_pres(torch::Tensor rho, torch::Tensor intEng,
+                                    torch::Tensor yfrac) const {
+  auto vec = yfrac.sizes().vec();
+  for (int n = 1; n < vec.size(); ++n) vec[n] = 1;
+
+  auto yu0 = options.Rd() * rho * (yfrac * u0_R.view(vec)).sum(0);
+  return (options.gammad() - 1.) * (intEng - yu0) * f_eps(yfrac) / f_sig(yfrac);
 }
 
 }  // namespace kintera
