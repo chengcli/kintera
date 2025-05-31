@@ -4,9 +4,12 @@
 #include <string>
 #include <unordered_map>
 
-typedef double (*user_func1)(double temp);
+using user_func1 = double (*)(double);
 
-std::unordered_map<std::string, user_func1>& get_user_func1();
+inline std::unordered_map<std::string, user_func1>& get_user_func1() {
+  static std::unordered_map<std::string, user_func1> f1map;
+  return f1map;
+}
 
 struct Func1Registrar {
   Func1Registrar(const std::string& name, user_func1 func) {

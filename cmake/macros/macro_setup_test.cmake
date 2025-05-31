@@ -6,7 +6,8 @@ string(TOLOWER ${CMAKE_BUILD_TYPE} buildl)
 string(TOUPPER ${CMAKE_BUILD_TYPE} buildu)
 
 macro(setup_test namel)
-  add_executable(${namel}.${buildl} ${namel}.cpp)
+  file(GLOB vapors "${KINTERA_INCLUDE_DIR}/src/vapors/*.cpp")
+  add_executable(${namel}.${buildl} ${namel}.cpp ${vapors})
 
   set_target_properties(${namel}.${buildl}
                         PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS_${buildu}})

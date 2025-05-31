@@ -38,14 +38,14 @@ void ThermoYImpl::reset() {
   mu_ratio_m1 -= 1.;
 
   auto cv_R = torch::tensor(options.cref_R(), torch::kFloat64);
+  auto uref_R = torch::tensor(options.uref_R(), torch::kFloat64);
 
   // J/mol/K -> J/kg/K
   cv_ratio_m1 = register_buffer("cv_ratio_m1", 
       cv_R * (options.gammad() - 1.) * (mu_ratio_m1 + 1.));
   cv_ratio_m1 -= 1.;
 
-  u0_R = register_buffer("u0_R", torch::tensor(options.uref_R(), torch::kFloat64));
-  u0_R = (u0_R - cv_R * options.Tref()) * (mu_ratio_m1 + 1.);
+  u0_R = register_buffer("u0_R", (uref_R - cv_R * options.Tref()) * (mu_ratio_m1 + 1.));
 
   // populate stoichiometry matrix
   int nspecies = options.species().size();

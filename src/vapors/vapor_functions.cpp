@@ -1,4 +1,4 @@
-// C/C++
+// kintera
 #include "vapor_functions.hpp"
 
 VAPOR_FUNCTION(h2o_ideal, T) {

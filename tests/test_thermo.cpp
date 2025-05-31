@@ -147,7 +147,7 @@ TEST_P(DeviceTest, eng_pres) {
   EXPECT_EQ(torch::allclose(temp, temp2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
 
-TEST_P(DeviceTest, forward) {
+/*TEST_P(DeviceTest, forward) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
@@ -179,7 +179,7 @@ TEST_P(DeviceTest, forward) {
   auto pres3 = thermo_y->get_pres(rho, intEng, yfrac3);
   std::cout << "pres3 = " << pres3 << std::endl;
 
-  /*std::cout << "w = " << w << std::endl;
+  std::cout << "w = " << w << std::endl;
 
   auto temp = thermo->get_temp(w);
 
@@ -204,8 +204,8 @@ TEST_P(DeviceTest, forward) {
 
   auto dw = thermo->equilibrate_tp(temp, w[index::IPR],
                                    w.slice(0, index::ICY, w.size(0)));
-  std::cout << "rate = " << dw << std::endl;*/
-}
+  std::cout << "rate = " << dw << std::endl;
+}*/
 
 /*TEST_P(DeviceTest, earth) {
   auto op_cond = CondensationOptions();

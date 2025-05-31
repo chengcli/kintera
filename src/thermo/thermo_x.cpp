@@ -40,20 +40,17 @@ void ThermoXImpl::reset() {
   mu_ratio_m1 -= 1.;
 
   auto cp_R = torch::tensor(options.cref_R(), torch::kFloat64);
-  // gas cp_R = cv_R + 1
   cp_R.narrow(0, 0, nvapor) += 1.;
+
+  auto href_R = torch::tensor(options.uref_R(), torch::kFloat64);
+  href_R.narrow(0, 0, nvapor) += options.Tref();
 
   // J/mol/K
   cp_ratio_m1 = register_buffer("cp_ratio_m1",
       cp_R * (options.gammad() - 1.) / options.gammad());
   cp_ratio_m1 -= 1.;
 
-  // J/mol
-  h0_R = register_buffer("h0_R", torch::tensor(options.uref_R(), torch::kFloat64));
-
-  // gas h0_R = u0_R + Tref
-  h0_R.narrow(0, 0, options.vapor_ids().size()) += options.Tref();
-  h0_R = h0_R - cp_R * options.Tref();
+  h0_R = register_buffer("h0_R", href_R - cp_R * options.Tref());
 
   // populate stoichiometry matrix
   int nspecies = options.species().size();
