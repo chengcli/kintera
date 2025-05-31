@@ -5,85 +5,71 @@ reference-state:
 species:
   - name: dry
     composition: {H: 1.5, He: 0.15}
-    cp_R: 3.5
     cv_R: 2.5
     u0_R: 0.
 
   - name: H2O
     composition: {H: 2, O: 1}
-    cp_R: 3.5
     cv_R: 2.5
     u0_R: 0.
 
   - name: NH3
     composition: {N: 1, H: 3}
-    cp_R: 3.5
     cv_R: 2.5
     u0_R: 0.
 
   - name: H2S
     composition: {H: 2, S: 1}
-    cp_R: 3.5
     cv_R: 2.5
     u0_R: 0.
 
   - name: H2O(l)
     composition: {H: 2, O: 1}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: H2O(s)
     composition: {H: 2, O: 1}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: H2O(l,p)
     composition: {H: 2, O: 1}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: H2O(s,p)
     composition: {H: 2, O: 1}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: NH3(l)
     composition: {N: 1, H: 3}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: NH3(s)
     composition: {N: 1, H: 3}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: NH3(l,p)
     composition: {N: 1, H: 3}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: NH3(s,p)
     composition: {N: 1, H: 3}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: NH4SH(s)
     composition: {N: 1, H: 5, S: 1}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 
   - name: NH4SH(p)
     composition: {N: 1, H: 5, S: 1}
-    cp_R: 3.5
     cv_R: 3.5
     u0_R: -45.103
 

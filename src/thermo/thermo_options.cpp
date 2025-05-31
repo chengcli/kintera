@@ -32,7 +32,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
       thermo.Pref(config["reference-state"]["Pref"].as<double>());
   }
 
-  std::vector<double> cp_R, cv_R, u0_R;
+  std::vector<double> cref_R, uref_R;
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -45,31 +45,25 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     }
     species_weights.push_back(harp::get_compound_weight(comp));
 
-    if (sp["cp_R"]) {
-      cp_R.push_back(sp["cp_R"].as<double>());
-    } else {
-      cp_R.push_back(7. / 2.);
-    }
-
     if (sp["cv_R"]) {
-      cv_R.push_back(sp["cv_R"].as<double>());
+      cref_R.push_back(sp["cv_R"].as<double>());
     } else {
-      cv_R.push_back(5. / 2.);
+      cref_R.push_back(5. / 2.);
     }
 
     if (sp["u0_R"]) {
-      u0_R.push_back(sp["u0_R"].as<double>());
+      uref_R.push_back(sp["u0_R"].as<double>());
     } else {
-      u0_R.push_back(0.);
+      uref_R.push_back(0.);
     }
   }
 
-  thermo.gammad(cp_R[0] / cv_R[0]);
+  thermo.gammad((cref_R[0] + 1.) / cref_R[0]);
   thermo.Rd(constants::Rgas / species_weights[0]);
 
   thermo.mu_ratio().clear();
-  thermo.cv_R().clear();
-  thermo.u0_R().clear();
+  thermo.cref_R().clear();
+  thermo.uref_R().clear();
 
   thermo.species().clear();
   thermo.species().push_back(species_names[0]);
@@ -89,8 +83,8 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   for (int i = 0; i < thermo.vapor_ids().size(); ++i) {
     auto id = thermo.vapor_ids()[i];
     thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
-    thermo.cv_R().push_back(cv_R[id]);
-    thermo.u0_R().push_back(u0_R[id]);
+    thermo.cref_R().push_back(cref_R[id]);
+    thermo.uref_R().push_back(uref_R[id]);
   }
 
   // register clouds
@@ -108,8 +102,8 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   for (int i = 0; i < thermo.cloud_ids().size(); ++i) {
     auto id = thermo.cloud_ids()[i];
     thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
-    thermo.cv_R().push_back(cv_R[id]);
-    thermo.u0_R().push_back(u0_R[id]);
+    thermo.cref_R().push_back(cref_R[id]);
+    thermo.uref_R().push_back(uref_R[id]);
   }
 
   // register reactions

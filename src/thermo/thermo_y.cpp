@@ -13,12 +13,12 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions& options_) : options(options_) {
     options.mu_ratio() = std::vector<double>(nvapor + ncloud, 1.);
   }
 
-  if (options.cv_R().empty()) {
-    options.cv_R() = std::vector<double>(nvapor + ncloud, 5./2.);
+  if (options.cref_R().empty()) {
+    options.cref_R() = std::vector<double>(nvapor + ncloud, 5./2.);
   }
 
-  if (options.u0_R().empty()) {
-    options.u0_R() = std::vector<double>(nvapor + ncloud, 0.);
+  if (options.uref_R().empty()) {
+    options.uref_R() = std::vector<double>(nvapor + ncloud, 0.);
   }
 
   reset();
@@ -30,21 +30,21 @@ void ThermoYImpl::reset() {
 
   TORCH_CHECK(options.mu_ratio().size() == nvapor + ncloud,
               "mu_ratio size mismatch");
-  TORCH_CHECK(options.cv_R().size() == nvapor + ncloud, "cv_R size mismatch");
-  TORCH_CHECK(options.u0_R().size() == nvapor + ncloud, "u0_R size mismatch");
+  TORCH_CHECK(options.cref_R().size() == nvapor + ncloud, "cref_R size mismatch");
+  TORCH_CHECK(options.uref_R().size() == nvapor + ncloud, "uref_R size mismatch");
 
   mu_ratio_m1 = register_buffer(
       "mu_ratio_m1", 1. / torch::tensor(options.mu_ratio(), torch::kFloat64));
   mu_ratio_m1 -= 1.;
 
-  auto cv_R = torch::tensor(options.cv_R(), torch::kFloat64);
+  auto cv_R = torch::tensor(options.cref_R(), torch::kFloat64);
 
   // J/mol/K -> J/kg/K
   cv_ratio_m1 = register_buffer("cv_ratio_m1", 
       cv_R * (options.gammad() - 1.) * (mu_ratio_m1 + 1.));
   cv_ratio_m1 -= 1.;
 
-  u0_R = register_buffer("u0_R", torch::tensor(options.u0_R(), torch::kFloat64));
+  u0_R = register_buffer("u0_R", torch::tensor(options.uref_R(), torch::kFloat64));
   u0_R = (u0_R - cv_R * options.Tref()) * (mu_ratio_m1 + 1.);
 
   // populate stoichiometry matrix

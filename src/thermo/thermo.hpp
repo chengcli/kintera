@@ -46,8 +46,8 @@ struct ThermoOptions {
   ADD_ARG(std::vector<int>, cloud_ids);
 
   ADD_ARG(std::vector<double>, mu_ratio);
-  ADD_ARG(std::vector<double>, cv_R);
-  ADD_ARG(std::vector<double>, u0_R);
+  ADD_ARG(std::vector<double>, cref_R);
+  ADD_ARG(std::vector<double>, uref_R);
 
   ADD_ARG(std::vector<user_func1>, intEng_extra);
   ADD_ARG(std::vector<user_func1>, cv_extra);
