@@ -4,10 +4,10 @@
 namespace kintera {
 
 void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
-                             user_func1 const *logsvp_func,
-                             double logsvp_eps, int max_iter);
+                             user_func1 const *logsvp_func, double logsvp_eps,
+                             int max_iter);
 
-ThermoXImpl::ThermoXImpl(const ThermoOptions& options_) : options(options_) {
+ThermoXImpl::ThermoXImpl(const ThermoOptions &options_) : options(options_) {
   int nvapor = options.vapor_ids().size();
   int ncloud = options.cloud_ids().size();
 
@@ -16,7 +16,7 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions& options_) : options(options_) {
   }
 
   if (options.cref_R().empty()) {
-    options.cref_R() = std::vector<double>(nvapor + ncloud, 5./2.);
+    options.cref_R() = std::vector<double>(nvapor + ncloud, 5. / 2.);
   }
 
   if (options.uref_R().empty()) {
@@ -32,8 +32,10 @@ void ThermoXImpl::reset() {
 
   TORCH_CHECK(options.mu_ratio().size() == nvapor + ncloud,
               "mu_ratio size mismatch");
-  TORCH_CHECK(options.cref_R().size() == nvapor + ncloud, "cref_R size mismatch");
-  TORCH_CHECK(options.uref_R().size() == nvapor + ncloud, "uref_R size mismatch");
+  TORCH_CHECK(options.cref_R().size() == nvapor + ncloud,
+              "cref_R size mismatch");
+  TORCH_CHECK(options.uref_R().size() == nvapor + ncloud,
+              "uref_R size mismatch");
 
   mu_ratio_m1 = register_buffer(
       "mu_ratio_m1", torch::tensor(options.mu_ratio(), torch::kFloat64));
@@ -46,8 +48,8 @@ void ThermoXImpl::reset() {
   href_R.narrow(0, 0, nvapor) += options.Tref();
 
   // J/mol/K
-  cp_ratio_m1 = register_buffer("cp_ratio_m1",
-      cp_R * (options.gammad() - 1.) / options.gammad());
+  cp_ratio_m1 = register_buffer(
+      "cp_ratio_m1", cp_R * (options.gammad() - 1.) / options.gammad());
   cp_ratio_m1 -= 1.;
 
   h0_R = register_buffer("h0_R", href_R - cp_R * options.Tref());
@@ -60,7 +62,7 @@ void ThermoXImpl::reset() {
                            torch::zeros({nspecies, nreact}, torch::kFloat64));
 
   for (int j = 0; j < options.react().size(); ++j) {
-    auto const& r = options.react()[j];
+    auto const &r = options.react()[j];
     for (int i = 0; i < options.species().size(); ++i) {
       auto it = r.reaction().reactants().find(options.species()[i]);
       if (it != r.reaction().reactants().end()) {
@@ -105,16 +107,16 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
   auto xfrac0 = xfrac.clone();
 
   // prepare data
-  auto iter = 
-    at::TensorIteratorConfig()
-        .resize_outputs(false)
-        .check_all_same_dtype(false)
-        .declare_static_shape(xfrac.sizes(), /*squash_dims=*/{xfrac.dim() - 1})
-        .add_output(xfrac)
-        .add_owned_input(temp.unsqueeze(-1))
-        .add_owned_input(pres.unsqueeze(-1))
-        .add_owned_input(stoich)
-        .build();
+  auto iter = at::TensorIteratorConfig()
+                  .resize_outputs(false)
+                  .check_all_same_dtype(false)
+                  .declare_static_shape(xfrac.sizes(),
+                                        /*squash_dims=*/{xfrac.dim() - 1})
+                  .add_output(xfrac)
+                  .add_owned_input(temp.unsqueeze(-1))
+                  .add_owned_input(pres.unsqueeze(-1))
+                  .add_owned_input(stoich)
+                  .build();
 
   // prepare svp function
   user_func1 *logsvp_func = new user_func1[options.react().size()];
@@ -124,8 +126,8 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   // call the equilibrium solver
   if (xfrac.is_cpu()) {
-    call_equilibrate_tp_cpu(iter, options.vapor_ids().size() + 1,
-                            logsvp_func, options.ftol(), options.max_iter());
+    call_equilibrate_tp_cpu(iter, options.vapor_ids().size() + 1, logsvp_func,
+                            options.ftol(), options.max_iter());
   } else if (xfrac.is_cuda()) {
     TORCH_CHECK(false, "CUDA support not implemented yet");
   } else {

@@ -36,9 +36,8 @@ Nucleation Nucleation::from_yaml(const YAML::Node& node) {
               "Formula '", formula, "' is not defined in the user functions");
   nuc.func() = get_user_func1()[formula];
 
-  TORCH_CHECK(
-      get_user_func1().find(formula + "_ddT") != get_user_func1().end(),
-      "Formula '", formula, "' is not defined in the user functions");
+  TORCH_CHECK(get_user_func1().find(formula + "_ddT") != get_user_func1().end(),
+              "Formula '", formula, "' is not defined in the user functions");
   nuc.func_ddT() = get_user_func1()[formula + "_ddT"];
 
   return nuc;

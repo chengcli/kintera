@@ -12,7 +12,7 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter,
                              user_func1 const *intEng_extra_ddT,
                              float logsvp_eps, int max_iter);
 
-ThermoYImpl::ThermoYImpl(const ThermoOptions& options_) : options(options_) {
+ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
   int nvapor = options.vapor_ids().size();
   int ncloud = options.cloud_ids().size();
 
@@ -21,7 +21,7 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions& options_) : options(options_) {
   }
 
   if (options.cref_R().empty()) {
-    options.cref_R() = std::vector<double>(nvapor + ncloud, 5./2.);
+    options.cref_R() = std::vector<double>(nvapor + ncloud, 5. / 2.);
   }
 
   if (options.uref_R().empty()) {
@@ -46,8 +46,10 @@ void ThermoYImpl::reset() {
 
   TORCH_CHECK(options.mu_ratio().size() == nvapor + ncloud,
               "mu_ratio size mismatch");
-  TORCH_CHECK(options.cref_R().size() == nvapor + ncloud, "cref_R size mismatch");
-  TORCH_CHECK(options.uref_R().size() == nvapor + ncloud, "uref_R size mismatch");
+  TORCH_CHECK(options.cref_R().size() == nvapor + ncloud,
+              "cref_R size mismatch");
+  TORCH_CHECK(options.uref_R().size() == nvapor + ncloud,
+              "uref_R size mismatch");
 
   mu_ratio_m1 = register_buffer(
       "mu_ratio_m1", 1. / torch::tensor(options.mu_ratio(), torch::kFloat64));
@@ -57,11 +59,12 @@ void ThermoYImpl::reset() {
   auto uref_R = torch::tensor(options.uref_R(), torch::kFloat64);
 
   // J/mol/K -> J/kg/K
-  cv_ratio_m1 = register_buffer("cv_ratio_m1", 
-      cv_R * (options.gammad() - 1.) * (mu_ratio_m1 + 1.));
+  cv_ratio_m1 = register_buffer(
+      "cv_ratio_m1", cv_R * (options.gammad() - 1.) * (mu_ratio_m1 + 1.));
   cv_ratio_m1 -= 1.;
 
-  u0_R = register_buffer("u0_R", (uref_R - cv_R * options.Tref()) * (mu_ratio_m1 + 1.));
+  u0_R = register_buffer("u0_R",
+                         (uref_R - cv_R * options.Tref()) * (mu_ratio_m1 + 1.));
 
   // populate stoichiometry matrix
   int nspecies = options.species().size();
@@ -71,7 +74,7 @@ void ThermoYImpl::reset() {
                            torch::zeros({nspecies, nreact}, torch::kFloat64));
 
   for (int j = 0; j < options.react().size(); ++j) {
-    auto const& r = options.react()[j];
+    auto const &r = options.react()[j];
     for (int i = 0; i < options.species().size(); ++i) {
       auto it = r.reaction().reactants().find(options.species()[i]);
       if (it != r.reaction().reactants().end()) {
@@ -162,18 +165,18 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   cv[0] = constants::Rgas / (options.gammad() - 1.);
 
   // prepare data
-  auto iter = 
-    at::TensorIteratorConfig()
-        .resize_outputs(false)
-        .check_all_same_dtype(false)
-        .declare_static_shape(conc.sizes(), /*squash_dims=*/{conc.dim() - 1})
-        .add_output(conc)
-        .add_owned_output(temp.unsqueeze(-1))
-        .add_owned_input(intEng.unsqueeze(-1))
-        .add_input(stoich)
-        .add_input(u0)
-        .add_input(cv)
-        .build();
+  auto iter =
+      at::TensorIteratorConfig()
+          .resize_outputs(false)
+          .check_all_same_dtype(false)
+          .declare_static_shape(conc.sizes(), /*squash_dims=*/{conc.dim() - 1})
+          .add_output(conc)
+          .add_owned_output(temp.unsqueeze(-1))
+          .add_owned_input(intEng.unsqueeze(-1))
+          .add_input(stoich)
+          .add_input(u0)
+          .add_input(cv)
+          .build();
 
   // prepare svp function
   user_func1 *logsvp_func = new user_func1[options.react().size()];
@@ -189,10 +192,9 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
   // call the equilibrium solver
   if (conc.is_cpu()) {
-    call_equilibrate_uv_cpu(iter, logsvp_func, logsvp_func_ddT,
-                            options.intEng_extra().data(),
-                            options.cv_extra().data(),
-                            options.ftol(), options.max_iter());
+    call_equilibrate_uv_cpu(
+        iter, logsvp_func, logsvp_func_ddT, options.intEng_extra().data(),
+        options.cv_extra().data(), options.ftol(), options.max_iter());
   } else if (conc.is_cuda()) {
     TORCH_CHECK(false, "CUDA support not implemented yet");
   } else {
@@ -258,7 +260,8 @@ torch::Tensor ThermoYImpl::_yfrac_to_conc(torch::Tensor rho,
   return result / (constants::Rgas / options.Rd());
 }
 
-torch::Tensor ThermoYImpl::_pres_to_intEng(torch::Tensor rho, torch::Tensor pres,
+torch::Tensor ThermoYImpl::_pres_to_intEng(torch::Tensor rho,
+                                           torch::Tensor pres,
                                            torch::Tensor yfrac) const {
   auto vec = yfrac.sizes().vec();
   for (int n = 1; n < vec.size(); ++n) vec[n] = 1;
@@ -267,7 +270,8 @@ torch::Tensor ThermoYImpl::_pres_to_intEng(torch::Tensor rho, torch::Tensor pres
   return yu0 + pres * f_sig(yfrac) / f_eps(yfrac) / (options.gammad() - 1.);
 }
 
-torch::Tensor ThermoYImpl::_intEng_to_pres(torch::Tensor rho, torch::Tensor intEng,
+torch::Tensor ThermoYImpl::_intEng_to_pres(torch::Tensor rho,
+                                           torch::Tensor intEng,
                                            torch::Tensor yfrac) const {
   auto vec = yfrac.sizes().vec();
   for (int n = 1; n < vec.size(); ++n) vec[n] = 1;
@@ -276,8 +280,8 @@ torch::Tensor ThermoYImpl::_intEng_to_pres(torch::Tensor rho, torch::Tensor intE
   return (options.gammad() - 1.) * (intEng - yu0) * f_eps(yfrac) / f_sig(yfrac);
 }
 
-torch::Tensor ThermoYImpl::_conc_to_yfrac(torch::Tensor conc,
-                                          torch::optional<torch::Tensor> out) const {
+torch::Tensor ThermoYImpl::_conc_to_yfrac(
+    torch::Tensor conc, torch::optional<torch::Tensor> out) const {
   int ny = conc.size(-1) - 1;
 
   auto vec = conc.sizes().vec();
@@ -303,7 +307,8 @@ torch::Tensor ThermoYImpl::_conc_to_yfrac(torch::Tensor conc,
 
   yfrac.permute(vec) = conc.narrow(-1, 1, ny) / (mu_ratio_m1 + 1.);
 
-  auto sum = conc.sum(-1) - conc.narrow(-1, 1, ny).matmul(mu_ratio_m1 / (mu_ratio_m1 + 1.));
+  auto sum = conc.sum(-1) -
+             conc.narrow(-1, 1, ny).matmul(mu_ratio_m1 / (mu_ratio_m1 + 1.));
   yfrac /= sum.unsqueeze(0);
   return yfrac;
 }

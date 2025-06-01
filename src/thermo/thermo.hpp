@@ -11,6 +11,7 @@
 
 // kintera
 #include <kintera/utils/func1.hpp>
+
 #include "thermo_reactions.hpp"
 
 // arg
@@ -118,6 +119,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    */
   torch::Tensor forward(torch::Tensor rho, torch::Tensor intEng,
                         torch::Tensor yfrac);
+
  private:
   //! \brief pressure (pa) -> temperature (K)
   torch::Tensor _pres_to_temp(torch::Tensor rho, torch::Tensor pres,
@@ -159,7 +161,8 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   torch::Tensor _yfrac_to_conc(torch::Tensor rho, torch::Tensor yfrac) const;
 
   //! \brief mole concentration (mol/m^3) to mass fraction
-  torch::Tensor _conc_to_yfrac(torch::Tensor conc,
+  torch::Tensor _conc_to_yfrac(
+      torch::Tensor conc,
       torch::optional<torch::Tensor> out = torch::nullopt) const;
 };
 TORCH_MODULE(ThermoY);
@@ -201,6 +204,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   //! \brief Calculate the equilibrium state given temperature and pressure
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
                         torch::Tensor xfrac);
+
  private:
   //! \brief Calculate mass fraction from mole fraction
   /*!

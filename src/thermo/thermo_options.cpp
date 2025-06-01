@@ -5,8 +5,9 @@
 #include <harp/compound.hpp>
 
 // kintera
-#include "thermo.hpp"
 #include <kintera/constants.h>
+
+#include "thermo.hpp"
 
 namespace kintera {
 

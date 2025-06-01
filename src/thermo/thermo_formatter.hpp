@@ -57,10 +57,11 @@ struct fmt::formatter<kintera::ThermoOptions> {
       }
     }
 
-    return fmt::format_to(ctx.out(),
-                          "(Rd = {:.2f}; gammad = {}; vapors = ({}); clouds = "
-                          "({}); Tref = {}; Pref = {}; react = ({})); species = ({})",
-                          p.Rd(), p.gammad(), vapors.str(), clouds.str(),
-                          p.Tref(), p.Pref(), reactions.str(), species.str());
+    return fmt::format_to(
+        ctx.out(),
+        "(Rd = {:.2f}; gammad = {}; vapors = ({}); clouds = "
+        "({}); Tref = {}; Pref = {}; react = ({})); species = ({})",
+        p.Rd(), p.gammad(), vapors.str(), clouds.str(), p.Tref(), p.Pref(),
+        reactions.str(), species.str());
   }
 };

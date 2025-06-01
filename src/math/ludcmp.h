@@ -77,6 +77,6 @@ int ludcmp(T *a, int *indx, int n) {
   return d;
 }
 
-} // namespace kintera
+}  // namespace kintera
 
 #undef A

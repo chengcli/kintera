@@ -5,7 +5,7 @@
 
 namespace kintera {
 
-/*! 
+/*!
  * \brief matrix-matrix dot product: a.b
  * \param[out] r[0..n1*n3-1] output matrix in row-major sequential storage
  * \param[in] a[0..n1*n2-1] row-major sequential storage of n1 x n2 matrix
@@ -37,4 +37,4 @@ void mmdot(T *r, T const *a, T const *b, int n1, int n2, int n3) {
   }
 }
 
-} // namespace kintera
+}  // namespace kintera

@@ -38,4 +38,4 @@ void lubksb(T *b, T const *a, int const *indx, int n) {
   }
 }
 
-} // namespace kintera
+}  // namespace kintera

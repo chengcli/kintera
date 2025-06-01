@@ -5,9 +5,10 @@
 
 // kintera
 #include <kintera/constants.h>
-#include <kintera/utils/func1.hpp>
-#include <kintera/math/mmdot.h>
 #include <kintera/math/leastsq_kkt.h>
+#include <kintera/math/mmdot.h>
+
+#include <kintera/utils/func1.hpp>
 
 namespace kintera {
 
@@ -40,10 +41,10 @@ namespace kintera {
  * vapor pressure.
  * \param[in,out] max_iter maximum number of iterations allowed for convergence.
  */
-template<typename T>
-int equilibrate_uv(T *temp, T *conc, T h0, T const *stoich,
-                   int nspecies, int nreaction, T const *enthalpy_offset,
-                   T const *cp_const, user_func1 const *logsvp_func,
+template <typename T>
+int equilibrate_uv(T *temp, T *conc, T h0, T const *stoich, int nspecies,
+                   int nreaction, T const *enthalpy_offset, T const *cp_const,
+                   user_func1 const *logsvp_func,
                    user_func1 const *logsvp_func_ddT,
                    user_func1 const *enthalpy_extra,
                    user_func1 const *enthalpy_extra_ddT, float logsvp_eps,
@@ -110,8 +111,7 @@ int equilibrate_uv(T *temp, T *conc, T h0, T const *stoich,
   }
 
   // active stoichiometric matrix
-  T *stoich_active =
-      (T *)malloc(nspecies * nreaction * sizeof(T));
+  T *stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
 
   int iter = 0;
   int err_code = 0;
@@ -123,7 +123,8 @@ int equilibrate_uv(T *temp, T *conc, T h0, T const *stoich,
         if (stoich[i * nreaction + j] < 0) {  // reactant
           stoich_sum += (-stoich[i * nreaction + j]);
         }
-      logsvp[j] = logsvp_func[j](*temp) - stoich_sum * log(constants::Rgas * (*temp));
+      logsvp[j] =
+          logsvp_func[j](*temp) - stoich_sum * log(constants::Rgas * (*temp));
       logsvp_ddT[j] = logsvp_func_ddT[j](*temp) - stoich_sum / (*temp);
     }
 

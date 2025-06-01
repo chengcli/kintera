@@ -6,6 +6,7 @@
 
 namespace kintera {
 
-std::string suggest(const std::string& input, const std::vector<std::string>& allowed);
+std::string suggest(const std::string& input,
+                    const std::vector<std::string>& allowed);
 
-} // namespace kintera
+}  // namespace kintera

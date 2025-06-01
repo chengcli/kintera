@@ -5,9 +5,10 @@
 #include <cstring>
 
 // kintera
-#include <kintera/utils/func1.hpp>
 #include <kintera/math/leastsq_kkt.h>
 #include <kintera/math/mmdot.h>
+
+#include <kintera/utils/func1.hpp>
 
 namespace kintera {
 
@@ -31,10 +32,9 @@ namespace kintera {
  * \param[in,out] max_iter maximum number of iterations allowed for convergence.
  */
 template <typename T>
-int equilibrate_tp(T *xfrac, T temp, T pres,
-                   T const *stoich, int nspecies, int nreaction, int ngas,
-                   user_func1 const *logsvp_func, float logsvp_eps,
-                   int *max_iter) {
+int equilibrate_tp(T *xfrac, T temp, T pres, T const *stoich, int nspecies,
+                   int nreaction, int ngas, user_func1 const *logsvp_func,
+                   float logsvp_eps, int *max_iter) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
     fprintf(stderr, "Error: Non-positive temperature or pressure.\n");
@@ -84,8 +84,7 @@ int equilibrate_tp(T *xfrac, T temp, T pres,
   }
 
   // active stoichiometric matrix
-  T *stoich_active =
-      (T *)malloc(nspecies * nreaction * sizeof(T));
+  T *stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
 
   // sum of reactant stoichiometric coefficients
   T *stoich_sum = (T *)malloc(nreaction * sizeof(T));
@@ -219,4 +218,4 @@ int equilibrate_tp(T *xfrac, T temp, T pres,
   }
 }
 
-} // namespace kintera
+}  // namespace kintera

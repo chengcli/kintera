@@ -5,8 +5,8 @@
 #include <cstring>
 
 // math
-#include "ludcmp.h"
 #include "lubksb.h"
+#include "ludcmp.h"
 
 namespace kintera {
 
@@ -49,4 +49,4 @@ void leastsq(T *b, T const *a, int n1, int n2) {
   free(y);
 }
 
-} // namespace kintera
+}  // namespace kintera

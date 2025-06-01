@@ -32,4 +32,4 @@ void luminv(T *y, T const *a, int const *indx, int n) {
   free(col);
 }
 
-} // namespace kintera
+}  // namespace kintera
