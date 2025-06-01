@@ -15,6 +15,7 @@
 #include "device_testing.hpp"
 
 using namespace kintera;
+using namespace torch::indexing;
 
 TEST_P(DeviceTest, feps) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
@@ -166,12 +167,11 @@ TEST_P(DeviceTest, equilibrate_tp) {
   std::cout << "xfrac before = " << xfrac[0][0][0] << std::endl;
 
   thermo_x->forward(temp, pres, xfrac);
-
   std::cout << "xfrac after = " << xfrac[0][0][0] << std::endl;
 }
 
-/*TEST_P(DeviceTest, equilibrate_uv) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+TEST_P(DeviceTest, equilibrate_uv) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   ThermoY thermo_y(op_thermo);
@@ -182,19 +182,21 @@ TEST_P(DeviceTest, equilibrate_tp) {
       torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
-  auto rho = torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+  auto rho = 0.1 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
-  auto intEng = thermo_y->get_intEng(rho, pres, yfrac);
+  auto intEng = thermo_y->compute("DPY->U", rho, pres, yfrac);
   std::cout << "intEng = " << intEng << std::endl;
+  std::cout << "pres before = " << pres << std::endl;
+  std::cout << "yfrac before = " << yfrac.index({Slice(), 0, 0, 0}) << std::endl;
 
-  auto result = thermo_y->forward(rho, intEng, yfrac);
-  auto yfrac2 = yfrac + result;
+  thermo_y->forward(rho, intEng, yfrac);
+  std::cout << "yfrac after = " << yfrac.index({Slice(), 0, 0, 0}) << std::endl;
+  auto pres2 = thermo_y->compute("DUY->P", rho, intEng, yfrac);
+  std::cout << "pres after = " << pres2 << std::endl;
+  auto intEng2 = thermo_y->compute("DPY->U", rho, pres2, yfrac);
+  std::cout << "intEng after = " << intEng2 << std::endl;
 
-  auto pres2 = thermo_y->get_pres(rho, intEng, yfrac2);
-  std::cout << "pres2 = " << pres2 << std::endl;
-
-  auto intEng2 = thermo_y->get_intEng(rho, pres2, yfrac2);
-  std::cout << "intEng2 = " << intEng2 << std::endl;
+  /*auto yfrac2 = yfrac + result;
 
   auto result2 = thermo_y->forward(rho, intEng, yfrac2);
   auto yfrac3 = yfrac2 + result;
@@ -227,10 +229,10 @@ TEST_P(DeviceTest, equilibrate_tp) {
 
   auto dw = thermo->equilibrate_tp(temp, w[index::IPR],
                                    w.slice(0, index::ICY, w.size(0)));
-  std::cout << "rate = " << dw << std::endl;
+  std::cout << "rate = " << dw << std::endl;*/
 }
 
-TEST_P(DeviceTest, earth) {
+/*TEST_P(DeviceTest, earth) {
   auto op_cond = CondensationOptions();
 
   auto r = Nucleation(

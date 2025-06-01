@@ -159,7 +159,8 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   torch::Tensor _yfrac_to_conc(torch::Tensor rho, torch::Tensor yfrac) const;
 
   //! \brief mole concentration (mol/m^3) to mass fraction
-  torch::Tensor _conc_to_yfrac(torch::Tensor conc) const;
+  torch::Tensor _conc_to_yfrac(torch::Tensor conc,
+      torch::optional<torch::Tensor> out = torch::nullopt) const;
 };
 TORCH_MODULE(ThermoY);
 

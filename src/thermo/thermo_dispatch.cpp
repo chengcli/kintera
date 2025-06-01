@@ -41,8 +41,8 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter,
                              double logsvp_eps, int max_iter)
 {
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "equilibrate_uv_cpu", [&] {
-    int nspecies = at::native::ensure_nonempty_size(iter.input(2), 0);
-    int nreaction = at::native::ensure_nonempty_size(iter.input(2), 1);
+    int nspecies = at::native::ensure_nonempty_size(iter.input(1), 0);
+    int nreaction = at::native::ensure_nonempty_size(iter.input(1), 1);
 
     iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
       auto stoich = reinterpret_cast<scalar_t *>(data[3]);

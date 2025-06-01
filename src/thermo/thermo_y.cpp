@@ -95,8 +95,8 @@ torch::Tensor ThermoYImpl::f_eps(torch::Tensor yfrac) const {
 }
 
 torch::Tensor ThermoYImpl::f_sig(torch::Tensor yfrac) const {
-  int nmass = options.vapor_ids().size() + options.cloud_ids().size();
-  auto yu = yfrac.narrow(0, 0, nmass).unfold(0, nmass, 1);
+  int ny = options.vapor_ids().size() + options.cloud_ids().size();
+  auto yu = yfrac.narrow(0, 0, ny).unfold(0, ny, 1);
   return 1. + yu.matmul(cv_ratio_m1).squeeze(0);
 }
 
@@ -152,6 +152,18 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   auto pres = _intEng_to_pres(rho, intEng, yfrac);
   auto temp = _pres_to_temp(rho, pres, yfrac);
 
+  std::cout << "temp before = " << temp << std::endl;
+  std::cout << "conc before = " << conc << std::endl;
+
+  // dimensional expanded cv and u0 array
+  auto u0 = torch::zeros({1 + (int)options.uref_R().size()}, conc.options());
+  auto cv = torch::zeros({1 + (int)options.cref_R().size()}, conc.options());
+
+  u0.narrow(0, 1, options.uref_R().size()) = u0_R * constants::Rgas;
+  cv.narrow(0, 1, options.cref_R().size()) =
+      constants::Rgas * torch::tensor(options.cref_R(), conc.options());
+  cv[0] = constants::Rgas / (options.gammad() - 1.);
+
   // prepare data
   auto iter = 
     at::TensorIteratorConfig()
@@ -162,8 +174,8 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
         .add_owned_output(temp.unsqueeze(-1))
         .add_owned_input(intEng.unsqueeze(-1))
         .add_input(stoich)
-        .add_owned_input(torch::tensor(options.uref_R(), conc.options()))
-        .add_owned_input(torch::tensor(options.cref_R(), conc.options()))
+        .add_input(u0)
+        .add_input(cv)
         .build();
 
   // prepare svp function
@@ -193,34 +205,37 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   delete[] logsvp_func;
   delete[] logsvp_func_ddT;
 
-  yfrac = _conc_to_yfrac(conc);
+  std::cout << "conc after = " << conc << std::endl;
+  std::cout << "temp after = " << temp << std::endl;
+
+  _conc_to_yfrac(conc, yfrac);
   return yfrac - yfrac0;
 }
 
 torch::Tensor ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac) const {
-  int nmass = yfrac.size(0);
-  TORCH_CHECK(nmass == options.vapor_ids().size() + options.cloud_ids().size(),
+  int ny = yfrac.size(0);
+  TORCH_CHECK(ny == options.vapor_ids().size() + options.cloud_ids().size(),
               "mass fraction size mismatch");
 
   auto vec = yfrac.sizes().vec();
   for (int i = 0; i < vec.size() - 1; ++i) {
     vec[i] = yfrac.size(i + 1);
   }
-  vec.back() = nmass + 1;
+  vec.back() = ny + 1;
 
   auto xfrac = torch::empty(vec, yfrac.options());
 
-  // (nmass, ...) -> (..., nmass + 1)
+  // (ny, ...) -> (..., ny + 1)
   int ndim = yfrac.dim();
   for (int i = 0; i < ndim - 1; ++i) {
     vec[i] = i + 1;
   }
   vec[ndim - 1] = 0;
 
-  xfrac.narrow(-1, 1, nmass) = yfrac.permute(vec) * (mu_ratio_m1 + 1.);
+  xfrac.narrow(-1, 1, ny) = yfrac.permute(vec) * (mu_ratio_m1 + 1.);
   auto sum = 1. + yfrac.permute(vec).matmul(mu_ratio_m1);
-  xfrac.narrow(-1, 1, nmass) /= sum.unsqueeze(-1);
-  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, nmass).sum(-1);
+  xfrac.narrow(-1, 1, ny) /= sum.unsqueeze(-1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
   return xfrac;
 }
 
@@ -235,7 +250,7 @@ torch::Tensor ThermoYImpl::_yfrac_to_conc(torch::Tensor rho,
 
   auto result = torch::empty(vec, yfrac.options());
 
-  // (nmass, ...) -> (..., nmass + 1)
+  // (ny, ...) -> (..., ny + 1)
   int ndim = yfrac.dim();
   for (int i = 0; i < ndim - 1; ++i) {
     vec[i] = i + 1;
@@ -267,9 +282,36 @@ torch::Tensor ThermoYImpl::_intEng_to_pres(torch::Tensor rho, torch::Tensor intE
   return (options.gammad() - 1.) * (intEng - yu0) * f_eps(yfrac) / f_sig(yfrac);
 }
 
-// FIXME
-torch::Tensor ThermoYImpl::_conc_to_yfrac(torch::Tensor conc) const {
-  return conc;
+torch::Tensor ThermoYImpl::_conc_to_yfrac(torch::Tensor conc,
+                                          torch::optional<torch::Tensor> out) const {
+  int ny = conc.size(-1) - 1;
+
+  auto vec = conc.sizes().vec();
+  for (int i = 0; i < vec.size() - 1; ++i) {
+    vec[i + 1] = conc.size(i);
+  }
+  vec[0] = ny;
+
+  torch::Tensor yfrac;
+  if (out.has_value()) {
+    TORCH_CHECK(out->sizes() == vec, "Output tensor size mismatch");
+    yfrac = out.value();
+  } else {
+    yfrac = torch::empty(vec, conc.options());
+  }
+
+  // (..., ny + 1) -> (ny, ...)
+  int ndim = conc.dim();
+  for (int i = 0; i < ndim - 1; ++i) {
+    vec[i] = i + 1;
+  }
+  vec[ndim - 1] = 0;
+
+  yfrac.permute(vec) = conc.narrow(-1, 1, ny) / (mu_ratio_m1 + 1.);
+
+  auto sum = conc.sum(-1) - conc.narrow(-1, 1, ny).matmul(mu_ratio_m1 / (mu_ratio_m1 + 1.));
+  yfrac /= sum.unsqueeze(0);
+  return yfrac;
 }
 
 }  // namespace kintera
