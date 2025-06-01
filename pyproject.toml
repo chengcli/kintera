@@ -7,13 +7,14 @@ name = "kintera"
 version = "0.0.2"
 description = "Mordern Photochemistry Library"
 authors = [
+  { name="Sihe Chen", email="sihechen@caltech.edu"},
   { name="Cheng Li", email="chengcli@umich.edu" }
 ]
 license = { text = "MIT" }
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-  "pyharp>=1.6.3",
+  "pyharp>=1.6.4",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
