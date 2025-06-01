@@ -8,6 +8,8 @@ Once the cache is populated, the build process can be repeated offline.
 ## TODO
 - [ ] EOS
 - [ ] Python bindings
+- [ ] out variable for conversion
+- [ ] write doc/paper section
 
 ### Staying Updated
 If you have forked this repository, please enable notifications or watch for updates!
