@@ -47,7 +47,7 @@ TEST_P(DeviceTest, thermo_y) {
 
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
-  auto xfrac = thermo->get_mole_fraction(yfrac);
+  auto xfrac = thermo->compute("Y->X", yfrac);
   std::cout << "xfrac = " << xfrac << std::endl;
 
   EXPECT_EQ(torch::allclose(
@@ -57,7 +57,7 @@ TEST_P(DeviceTest, thermo_y) {
             true);
 
   auto rho = torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
-  auto conc = thermo->get_concentration(rho, yfrac);
+  auto conc = thermo->compute("DY->C", rho, yfrac);
   std::cout << "conc = " << conc << std::endl;
 }
 
@@ -74,7 +74,7 @@ TEST_P(DeviceTest, thermo_x) {
   for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
   xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
 
-  auto yfrac = thermo->get_mass_fraction(xfrac);
+  auto yfrac = thermo->compute("X->Y", xfrac);
   std::cout << "yfrac = " << yfrac << std::endl;
 }
 
@@ -93,8 +93,8 @@ TEST_P(DeviceTest, thermo_xy) {
   for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
   xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
 
-  auto yfrac = thermo_x->get_mass_fraction(xfrac);
-  auto xfrac2 = thermo_y->get_mole_fraction(yfrac);
+  auto yfrac = thermo_x->compute("X->Y", xfrac);
+  auto xfrac2 = thermo_y->compute("Y->X", yfrac);
 
   EXPECT_EQ(torch::allclose(xfrac, xfrac2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
@@ -113,8 +113,8 @@ TEST_P(DeviceTest, thermo_yx) {
 
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
-  auto xfrac = thermo_y->get_mole_fraction(yfrac);
-  auto yfrac2 = thermo_x->get_mass_fraction(xfrac);
+  auto xfrac = thermo_y->compute("Y->X", yfrac);
+  auto yfrac2 = thermo_x->compute("X->Y", xfrac);
 
   EXPECT_EQ(torch::allclose(yfrac, yfrac2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
@@ -134,14 +134,14 @@ TEST_P(DeviceTest, eng_pres) {
   auto temp = 200.0 * torch::ones({1}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({1}, torch::device(device).dtype(dtype));
 
-  auto xfrac = thermo_y->get_mole_fraction(yfrac);
-  auto rho = thermo_x->get_density(temp, pres, xfrac);
+  auto xfrac = thermo_y->compute("Y->X", yfrac);
+  auto rho = thermo_x->compute("TPX->D", temp, pres, xfrac);
 
-  auto intEng = thermo_y->get_intEng(rho, pres, yfrac);
-  auto pres2 = thermo_y->get_pres(rho, intEng, yfrac);
+  auto intEng = thermo_y->compute("DPY->U", rho, pres, yfrac);
+  auto pres2 = thermo_y->compute("DUY->P", rho, intEng, yfrac);
   EXPECT_EQ(torch::allclose(pres, pres2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 
-  auto temp2 = thermo_y->get_temp(rho, pres, yfrac);
+  auto temp2 = thermo_y->compute("DPY->T", rho, pres, yfrac);
   EXPECT_EQ(torch::allclose(temp, temp2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
 
@@ -228,9 +228,9 @@ TEST_P(DeviceTest, equilibrate_tp) {
   auto dw = thermo->equilibrate_tp(temp, w[index::IPR],
                                    w.slice(0, index::ICY, w.size(0)));
   std::cout << "rate = " << dw << std::endl;
-}*/
+}
 
-/*TEST_P(DeviceTest, earth) {
+TEST_P(DeviceTest, earth) {
   auto op_cond = CondensationOptions();
 
   auto r = Nucleation(

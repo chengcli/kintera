@@ -33,11 +33,11 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
   });
 }
 
-void call_equilibrate_uv_cpu(at::TensorIterator &iter, double h0,
+void call_equilibrate_uv_cpu(at::TensorIterator &iter,
                              user_func1 const *logsvp_func,
                              user_func1 const *logsvp_func_ddT,
-                             user_func1 const *enthalpy_extra,
-                             user_func1 const *enthalpy_extra_ddT,
+                             user_func1 const *intEng_extra,
+                             user_func1 const *intEng_extra_ddT,
                              double logsvp_eps, int max_iter)
 {
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "equilibrate_uv_cpu", [&] {
@@ -45,17 +45,18 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, double h0,
     int nreaction = at::native::ensure_nonempty_size(iter.input(2), 1);
 
     iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
-      auto stoich = reinterpret_cast<scalar_t *>(data[2]);
-      auto enthalpy_offset = reinterpret_cast<scalar_t *>(data[3]);
-      auto cp_const = reinterpret_cast<scalar_t *>(data[4]);
+      auto stoich = reinterpret_cast<scalar_t *>(data[3]);
+      auto intEng_offset = reinterpret_cast<scalar_t *>(data[4]);
+      auto cv_const = reinterpret_cast<scalar_t *>(data[5]);
 
       for (int i = 0; i < n; i++) {
-        auto out = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
-        auto conc = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
+        auto conc = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
+        auto temp = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
+        auto intEng = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
         int max_iter_i = max_iter;
-        equilibrate_uv(out, conc, h0, stoich, nspecies, nreaction, enthalpy_offset,
-                       cp_const, logsvp_func, logsvp_func_ddT, 
-                       enthalpy_extra, enthalpy_extra_ddT,
+        equilibrate_uv(temp, conc, *intEng, stoich, nspecies, nreaction, intEng_offset,
+                       cv_const, logsvp_func, logsvp_func_ddT, 
+                       intEng_extra, intEng_extra_ddT,
                        logsvp_eps, &max_iter_i);
       }
     });

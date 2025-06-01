@@ -79,38 +79,25 @@ torch::Tensor ThermoXImpl::f_psi(torch::Tensor xfrac) const {
   return 1. + xfrac.narrow(-1, 1, nmass).matmul(cp_ratio_m1);
 }
 
-torch::Tensor ThermoXImpl::get_mass_fraction(torch::Tensor xfrac) const {
-  int nmass = xfrac.size(-1) - 1;
+torch::Tensor ThermoXImpl::compute(std::string ab, ...) const {
+  va_list args;
+  torch::Tensor result;
+  va_start(args, ab);
 
-  auto vec = xfrac.sizes().vec();
-  for (int i = 0; i < vec.size() - 1; ++i) {
-    vec[i + 1] = xfrac.size(i);
+  if (ab == "X->Y") {
+    auto xfrac = va_arg(args, torch::Tensor);
+    result = _xfrac_to_yfrac(xfrac);
+  } else if (ab == "TPX->D") {
+    auto temp = va_arg(args, torch::Tensor);
+    auto pres = va_arg(args, torch::Tensor);
+    auto xfrac = va_arg(args, torch::Tensor);
+    result = _temp_to_dens(temp, pres, xfrac);
+  } else {
+    TORCH_CHECK(false, "Unknown abbreviation: ", ab);
   }
-  vec[0] = nmass;
 
-  auto yfrac = torch::empty(vec, xfrac.options());
-
-  // (..., nmass + 1) -> (nmass, ...)
-  int ndim = xfrac.dim();
-  for (int i = 0; i < ndim - 1; ++i) {
-    vec[i] = i + 1;
-  }
-  vec[ndim - 1] = 0;
-
-  yfrac.permute(vec) = xfrac.narrow(-1, 1, nmass) * (mu_ratio_m1 + 1.);
-  auto sum = 1. + xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1);
-  return yfrac / sum.unsqueeze(0);
-}
-
-torch::Tensor ThermoXImpl::get_density(torch::Tensor temp, torch::Tensor pres,
-                                       torch::Tensor xfrac) const {
-  int nvapor = options.vapor_ids().size();
-  int ncloud = options.cloud_ids().size();
-  int nmass = nvapor + ncloud;
-
-  auto xgas = 1. - xfrac.narrow(-1, 1 + nvapor, ncloud).sum(-1);
-  auto ftv = xgas / (1. + xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1));
-  return pres / (temp * ftv * options.Rd());
+  va_end(args);
+  return result;
 }
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
@@ -148,6 +135,40 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
   delete[] logsvp_func;
 
   return xfrac - xfrac0;
+}
+
+torch::Tensor ThermoXImpl::_temp_to_dens(torch::Tensor temp, torch::Tensor pres,
+                                         torch::Tensor xfrac) const {
+  int nvapor = options.vapor_ids().size();
+  int ncloud = options.cloud_ids().size();
+  int nmass = nvapor + ncloud;
+
+  auto xgas = 1. - xfrac.narrow(-1, 1 + nvapor, ncloud).sum(-1);
+  auto ftv = xgas / (1. + xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1));
+  return pres / (temp * ftv * options.Rd());
+}
+
+torch::Tensor ThermoXImpl::_xfrac_to_yfrac(torch::Tensor xfrac) const {
+  int nmass = xfrac.size(-1) - 1;
+
+  auto vec = xfrac.sizes().vec();
+  for (int i = 0; i < vec.size() - 1; ++i) {
+    vec[i + 1] = xfrac.size(i);
+  }
+  vec[0] = nmass;
+
+  auto yfrac = torch::empty(vec, xfrac.options());
+
+  // (..., nmass + 1) -> (nmass, ...)
+  int ndim = xfrac.dim();
+  for (int i = 0; i < ndim - 1; ++i) {
+    vec[i] = i + 1;
+  }
+  vec[ndim - 1] = 0;
+
+  yfrac.permute(vec) = xfrac.narrow(-1, 1, nmass) * (mu_ratio_m1 + 1.);
+  auto sum = 1. + xfrac.narrow(-1, 1, nmass).matmul(mu_ratio_m1);
+  return yfrac / sum.unsqueeze(0);
 }
 
 }  // namespace kintera
