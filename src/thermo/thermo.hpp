@@ -1,7 +1,7 @@
 #pragma once
 
 // C/C++
-#include <cstdarg>
+#include <initializer_list>
 
 // torch
 #include <torch/nn/cloneable.h>
@@ -104,7 +104,9 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   torch::Tensor f_sig(torch::Tensor yfrac) const;
 
   //! \brief perform conversions
-  torch::Tensor compute(std::string ab, ...) const;
+  torch::Tensor compute(std::string ab, 
+                        std::initializer_list<torch::Tensor> args,
+                        torch::optional<torch::Tensor> out = torch::nullopt) const;
 
   //! \brief Perform saturation adjustment
   /*!
@@ -199,7 +201,9 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   torch::Tensor f_psi(torch::Tensor xfrac) const;
 
   //! \brief perform conversions
-  torch::Tensor compute(std::string ab, ...) const;
+  torch::Tensor compute(std::string ab, 
+                        std::initializer_list<torch::Tensor> args,
+                        torch::optional<torch::Tensor> out = torch::nullopt) const;
 
   //! \brief Calculate the equilibrium state given temperature and pressure
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,

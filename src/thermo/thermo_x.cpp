@@ -81,25 +81,19 @@ torch::Tensor ThermoXImpl::f_psi(torch::Tensor xfrac) const {
   return 1. + xfrac.narrow(-1, 1, nmass).matmul(cp_ratio_m1);
 }
 
-torch::Tensor ThermoXImpl::compute(std::string ab, ...) const {
-  va_list args;
-  torch::Tensor result;
-  va_start(args, ab);
-
+torch::Tensor ThermoXImpl::compute(std::string ab,
+                                   std::initializer_list<torch::Tensor> args,
+                                   torch::optional<torch::Tensor> out) const {
   if (ab == "X->Y") {
-    auto xfrac = va_arg(args, torch::Tensor);
-    result = _xfrac_to_yfrac(xfrac);
+    out = _xfrac_to_yfrac(*args.begin());
   } else if (ab == "TPX->D") {
-    auto temp = va_arg(args, torch::Tensor);
-    auto pres = va_arg(args, torch::Tensor);
-    auto xfrac = va_arg(args, torch::Tensor);
-    result = _temp_to_dens(temp, pres, xfrac);
+    out = _temp_to_dens(*args.begin(), *(args.begin() + 1),
+                           *(args.begin() + 2));
   } else {
     TORCH_CHECK(false, "Unknown abbreviation: ", ab);
   }
 
-  va_end(args);
-  return result;
+  return out.value_or(torch::Tensor());
 }
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,

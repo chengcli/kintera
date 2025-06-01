@@ -103,47 +103,32 @@ torch::Tensor ThermoYImpl::f_sig(torch::Tensor yfrac) const {
   return 1. + yu.matmul(cv_ratio_m1).squeeze(0);
 }
 
-torch::Tensor ThermoYImpl::compute(std::string ab, ...) const {
-  va_list args;
-  torch::Tensor result;
-  va_start(args, ab);
-
+torch::Tensor ThermoYImpl::compute(std::string ab,
+                                   std::initializer_list<torch::Tensor> args,
+                                   torch::optional<torch::Tensor> out) const {
   if (ab == "C->Y") {
-    auto conc = va_arg(args, torch::Tensor);
-    result = _conc_to_yfrac(conc);
+    out = _conc_to_yfrac(*args.begin(), out);
   } else if (ab == "Y->X") {
-    auto yfrac = va_arg(args, torch::Tensor);
-    result = _yfrac_to_xfrac(yfrac);
+    out = _yfrac_to_xfrac(*args.begin());
   } else if (ab == "DY->C") {
-    auto rho = va_arg(args, torch::Tensor);
-    auto yfrac = va_arg(args, torch::Tensor);
-    result = _yfrac_to_conc(rho, yfrac);
+    out = _yfrac_to_conc(*args.begin(), *(args.begin() + 1));
   } else if (ab == "DPY->U") {
-    auto rho = va_arg(args, torch::Tensor);
-    auto pres = va_arg(args, torch::Tensor);
-    auto yfrac = va_arg(args, torch::Tensor);
-    result = _pres_to_intEng(rho, pres, yfrac);
+    out = _pres_to_intEng(*args.begin(), *(args.begin() + 1),
+                             *(args.begin() + 2));
   } else if (ab == "DUY->P") {
-    auto rho = va_arg(args, torch::Tensor);
-    auto intEng = va_arg(args, torch::Tensor);
-    auto yfrac = va_arg(args, torch::Tensor);
-    result = _intEng_to_pres(rho, intEng, yfrac);
+    out = _intEng_to_pres(*args.begin(), *(args.begin() + 1),
+                             *(args.begin() + 2));
   } else if (ab == "DPY->T") {
-    auto rho = va_arg(args, torch::Tensor);
-    auto pres = va_arg(args, torch::Tensor);
-    auto yfrac = va_arg(args, torch::Tensor);
-    result = _pres_to_temp(rho, pres, yfrac);
+    out = _pres_to_temp(*args.begin(), *(args.begin() + 1),
+                           *(args.begin() + 2));
   } else if (ab == "DTY->P") {
-    auto rho = va_arg(args, torch::Tensor);
-    auto temp = va_arg(args, torch::Tensor);
-    auto yfrac = va_arg(args, torch::Tensor);
-    result = _temp_to_pres(rho, temp, yfrac);
+    out = _temp_to_pres(*args.begin(), *(args.begin() + 1),
+                           *(args.begin() + 2));
   } else {
     TORCH_CHECK(false, "Unknown abbreviation: ", ab);
   }
 
-  va_end(args);
-  return result;
+  return out.value_or(torch::Tensor());
 }
 
 torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
