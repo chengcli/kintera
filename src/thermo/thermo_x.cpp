@@ -87,8 +87,8 @@ torch::Tensor ThermoXImpl::compute(std::string ab,
   if (ab == "X->Y") {
     out = _xfrac_to_yfrac(*args.begin());
   } else if (ab == "TPX->D") {
-    out = _temp_to_dens(*args.begin(), *(args.begin() + 1),
-                           *(args.begin() + 2));
+    out =
+        _temp_to_dens(*args.begin(), *(args.begin() + 1), *(args.begin() + 2));
   } else {
     TORCH_CHECK(false, "Unknown abbreviation: ", ab);
   }

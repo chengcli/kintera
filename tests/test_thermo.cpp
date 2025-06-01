@@ -190,8 +190,8 @@ TEST_P(DeviceTest, equilibrate_uv) {
   std::cout << "pres before = " << pres << std::endl;
   std::cout << "yfrac before = " << yfrac.index({Slice(), 0, 0, 0})
             << std::endl;
-  std::cout << "temp before = " << thermo_y->compute("DPY->T", {rho, pres, yfrac})
-            << std::endl;
+  std::cout << "temp before = "
+            << thermo_y->compute("DPY->T", {rho, pres, yfrac}) << std::endl;
 
   thermo_y->forward(rho, intEng, yfrac);
   std::cout << "yfrac after = " << yfrac.index({Slice(), 0, 0, 0}) << std::endl;
@@ -199,8 +199,8 @@ TEST_P(DeviceTest, equilibrate_uv) {
   std::cout << "pres after = " << pres2 << std::endl;
   auto intEng2 = thermo_y->compute("DPY->U", {rho, pres2, yfrac});
   std::cout << "intEng after = " << intEng2 << std::endl;
-  std::cout << "temp after = " << thermo_y->compute("DPY->T", {rho, pres2, yfrac})
-            << std::endl;
+  std::cout << "temp after = "
+            << thermo_y->compute("DPY->T", {rho, pres2, yfrac}) << std::endl;
 
   EXPECT_EQ(torch::allclose(intEng, intEng2, /*rtol=*/1e-4, /*atol=*/1e-4),
             true);

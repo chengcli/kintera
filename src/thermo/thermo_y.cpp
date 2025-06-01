@@ -114,16 +114,16 @@ torch::Tensor ThermoYImpl::compute(std::string ab,
     out = _yfrac_to_conc(*args.begin(), *(args.begin() + 1));
   } else if (ab == "DPY->U") {
     out = _pres_to_intEng(*args.begin(), *(args.begin() + 1),
-                             *(args.begin() + 2));
+                          *(args.begin() + 2));
   } else if (ab == "DUY->P") {
     out = _intEng_to_pres(*args.begin(), *(args.begin() + 1),
-                             *(args.begin() + 2));
+                          *(args.begin() + 2));
   } else if (ab == "DPY->T") {
-    out = _pres_to_temp(*args.begin(), *(args.begin() + 1),
-                           *(args.begin() + 2));
+    out =
+        _pres_to_temp(*args.begin(), *(args.begin() + 1), *(args.begin() + 2));
   } else if (ab == "DTY->P") {
-    out = _temp_to_pres(*args.begin(), *(args.begin() + 1),
-                           *(args.begin() + 2));
+    out =
+        _temp_to_pres(*args.begin(), *(args.begin() + 1), *(args.begin() + 2));
   } else {
     TORCH_CHECK(false, "Unknown abbreviation: ", ab);
   }
