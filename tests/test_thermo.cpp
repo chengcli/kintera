@@ -165,7 +165,6 @@ TEST_P(DeviceTest, equilibrate_tp) {
   auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
 
   std::cout << "xfrac before = " << xfrac[0][0][0] << std::endl;
-
   thermo_x->forward(temp, pres, xfrac);
   std::cout << "xfrac after = " << xfrac[0][0][0] << std::endl;
 }
@@ -188,6 +187,8 @@ TEST_P(DeviceTest, equilibrate_uv) {
   std::cout << "intEng = " << intEng << std::endl;
   std::cout << "pres before = " << pres << std::endl;
   std::cout << "yfrac before = " << yfrac.index({Slice(), 0, 0, 0}) << std::endl;
+  std::cout << "temp before = "
+            << thermo_y->compute("DPY->T", rho, pres, yfrac) << std::endl;
 
   thermo_y->forward(rho, intEng, yfrac);
   std::cout << "yfrac after = " << yfrac.index({Slice(), 0, 0, 0}) << std::endl;
@@ -195,41 +196,10 @@ TEST_P(DeviceTest, equilibrate_uv) {
   std::cout << "pres after = " << pres2 << std::endl;
   auto intEng2 = thermo_y->compute("DPY->U", rho, pres2, yfrac);
   std::cout << "intEng after = " << intEng2 << std::endl;
+  std::cout << "temp after = "
+            << thermo_y->compute("DPY->T", rho, pres2, yfrac) << std::endl;
 
-  /*auto yfrac2 = yfrac + result;
-
-  auto result2 = thermo_y->forward(rho, intEng, yfrac2);
-  auto yfrac3 = yfrac2 + result;
-
-  auto pres3 = thermo_y->get_pres(rho, intEng, yfrac3);
-  std::cout << "pres3 = " << pres3 << std::endl;
-
-  std::cout << "w = " << w << std::endl;
-
-  auto temp = thermo->get_temp(w);
-
-  std::cout << "temp = " << temp << std::endl;
-
-  auto op_eos = EquationOfStateOptions().thermo(thermo->options);
-  auto eos = IdealMoist(op_eos);
-
-  auto u = torch::empty_like(w);
-  eos->prim2cons(u, w);
-  std::cout << "u = " << u << std::endl;
-
-  auto w2 = eos->forward(u);
-  std::cout << "w2 = " << w2 << std::endl;
-
-  auto yfrac = w.slice(0, index::ICY, w.size(0));
-  std::cout << "yfrac1 = " << yfrac << std::endl;
-
-  auto xfrac = thermo->get_mole_fraction(yfrac);
-  std::cout << "xfrac = " << xfrac << std::endl;
-  std::cout << "yfrac2 = " << thermo->get_mass_fraction(xfrac) << std::endl;
-
-  auto dw = thermo->equilibrate_tp(temp, w[index::IPR],
-                                   w.slice(0, index::ICY, w.size(0)));
-  std::cout << "rate = " << dw << std::endl;*/
+  EXPECT_EQ(torch::allclose(intEng, intEng2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
 
 /*TEST_P(DeviceTest, earth) {

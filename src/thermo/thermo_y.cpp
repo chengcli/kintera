@@ -10,7 +10,7 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter,
                              user_func1 const *logsvp_func_ddT,
                              user_func1 const *intEng_extra,
                              user_func1 const *intEng_extra_ddT,
-                             double logsvp_eps, int max_iter);
+                             float logsvp_eps, int max_iter);
 
 ThermoYImpl::ThermoYImpl(const ThermoOptions& options_) : options(options_) {
   int nvapor = options.vapor_ids().size();
@@ -152,9 +152,6 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   auto pres = _intEng_to_pres(rho, intEng, yfrac);
   auto temp = _pres_to_temp(rho, pres, yfrac);
 
-  std::cout << "temp before = " << temp << std::endl;
-  std::cout << "conc before = " << conc << std::endl;
-
   // dimensional expanded cv and u0 array
   auto u0 = torch::zeros({1 + (int)options.uref_R().size()}, conc.options());
   auto cv = torch::zeros({1 + (int)options.cref_R().size()}, conc.options());
@@ -204,9 +201,6 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
   delete[] logsvp_func;
   delete[] logsvp_func_ddT;
-
-  std::cout << "conc after = " << conc << std::endl;
-  std::cout << "temp after = " << temp << std::endl;
 
   _conc_to_yfrac(conc, yfrac);
   return yfrac - yfrac0;

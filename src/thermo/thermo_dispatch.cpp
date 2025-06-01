@@ -18,9 +18,9 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "equilibrate_tp_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(iter.input(2), 0);
     int nreaction = at::native::ensure_nonempty_size(iter.input(2), 1);
+    auto stoich = iter.input(2).data_ptr<scalar_t>();
 
     iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
-      auto stoich = reinterpret_cast<scalar_t *>(data[3]);
       for (int i = 0; i < n; i++) {
         auto out = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
         auto temp = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
@@ -38,17 +38,16 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter,
                              user_func1 const *logsvp_func_ddT,
                              user_func1 const *intEng_extra,
                              user_func1 const *intEng_extra_ddT,
-                             double logsvp_eps, int max_iter)
+                             float logsvp_eps, int max_iter)
 {
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "equilibrate_uv_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(iter.input(1), 0);
     int nreaction = at::native::ensure_nonempty_size(iter.input(1), 1);
+    auto stoich = iter.input(1).data_ptr<scalar_t>();
+    auto intEng_offset = iter.input(2).data_ptr<scalar_t>();
+    auto cv_const = iter.input(3).data_ptr<scalar_t>();
 
     iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
-      auto stoich = reinterpret_cast<scalar_t *>(data[3]);
-      auto intEng_offset = reinterpret_cast<scalar_t *>(data[4]);
-      auto cv_const = reinterpret_cast<scalar_t *>(data[5]);
-
       for (int i = 0; i < n; i++) {
         auto conc = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
         auto temp = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);

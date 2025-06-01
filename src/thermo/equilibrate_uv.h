@@ -41,12 +41,12 @@ namespace kintera {
  * \param[in,out] max_iter maximum number of iterations allowed for convergence.
  */
 template<typename T>
-int equilibrate_uv(T *temp, T *conc, double h0, T const *stoich,
+int equilibrate_uv(T *temp, T *conc, T h0, T const *stoich,
                    int nspecies, int nreaction, T const *enthalpy_offset,
                    T const *cp_const, user_func1 const *logsvp_func,
                    user_func1 const *logsvp_func_ddT,
                    user_func1 const *enthalpy_extra,
-                   user_func1 const *enthalpy_extra_ddT, double logsvp_eps,
+                   user_func1 const *enthalpy_extra_ddT, float logsvp_eps,
                    int *max_iter) {
   // check positive temperature
   if (*temp <= 0) {

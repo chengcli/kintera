@@ -33,7 +33,7 @@ namespace kintera {
 template <typename T>
 int equilibrate_tp(T *xfrac, T temp, T pres,
                    T const *stoich, int nspecies, int nreaction, int ngas,
-                   user_func1 const *logsvp_func, double logsvp_eps,
+                   user_func1 const *logsvp_func, float logsvp_eps,
                    int *max_iter) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
