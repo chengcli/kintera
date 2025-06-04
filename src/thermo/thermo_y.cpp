@@ -92,14 +92,14 @@ torch::Tensor ThermoYImpl::f_eps(torch::Tensor yfrac, int n) const {
   auto nvapor = options.vapor_ids().size();
   auto ncloud = options.cloud_ids().size();
 
-  auto yu = yfrac.narrow(n, 0, nvapor).unfold(n, nvapor, 1);
+  auto yu = yfrac.narrow(0, n, nvapor).unfold(0, nvapor, 1);
   return 1. + yu.matmul(mu_ratio_m1.narrow(0, 0, nvapor)).squeeze(0) -
-         yfrac.narrow(n, nvapor, ncloud).sum(0);
+         yfrac.narrow(0, n + nvapor, ncloud).sum(0);
 }
 
 torch::Tensor ThermoYImpl::f_sig(torch::Tensor yfrac, int n) const {
   int ny = options.vapor_ids().size() + options.cloud_ids().size();
-  auto yu = yfrac.narrow(n, 0, ny).unfold(n, ny, 1);
+  auto yu = yfrac.narrow(0, n, ny).unfold(n, ny, 1);
   return 1. + yu.matmul(cv_ratio_m1).squeeze(0);
 }
 
