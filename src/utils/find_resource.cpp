@@ -78,7 +78,7 @@ void set_default_directories() {
   serialize_search_paths(input_dirs);
 }
 
-void add_resource_directory(std::string const& dir) {
+void add_resource_directory(std::string const& dir, bool prepend) {
   std::unique_lock<std::mutex> dirLock(dir_mutex);
   auto input_dirs = deserialize_search_paths(search_paths);
   std::string d = stripnonprint(dir);
@@ -100,8 +100,13 @@ void add_resource_directory(std::string const& dir) {
     input_dirs.erase(iter);
   }
 
-  // Insert this directory at the beginning of the search path
-  input_dirs.insert(input_dirs.begin(), d);
+  if (prepend) {
+    // Insert this directory at the beginning of the search path
+    input_dirs.insert(input_dirs.begin(), d);
+  } else {
+    // Append this directory to the end of the search path
+    input_dirs.push_back(d);
+  }
 
   serialize_search_paths(input_dirs);
 }

@@ -37,7 +37,6 @@ if(NOT _ABI_RESULT EQUAL 0)
 endif()
 
 # Set the _GLIBCXX_USE_CXX11_ABI flag to 0 (use old ABI)
-#add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 add_compile_definitions(_GLIBCXX_USE_CXX11_ABI=${_ABI_OUTPUT})
 
 # Set MacOS deployment target

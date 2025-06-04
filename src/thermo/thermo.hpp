@@ -19,6 +19,12 @@
 
 namespace kintera {
 
+//! names of all species
+extern std::vector<std::string> species_names;
+
+//! molecular weights of all species [kg/mol]
+extern std::vector<double> species_weights;
+
 template <typename T>
 inline std::vector<T> insert_first(T value, std::vector<T> const& input) {
   std::vector<T> result;
@@ -91,8 +97,9 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * $ f_{\epsilon} = 1 + \sum_{i \in V \cup C} y_i(1./\epsilon_{i} - 1) $
    *
    * \param yfrac mass fraction
+   * \param n starting index
    */
-  torch::Tensor f_eps(torch::Tensor yfrac) const;
+  torch::Tensor f_eps(torch::Tensor yfrac, int n = 0) const;
 
   //! \brief multi-component cv correction
   /*!
@@ -100,8 +107,9 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * $ f_{\sigma} = 1 + \sum_{i \in V \cup C} y_i(\sigma_{v,i} - 1) $
    *
    * \param yfrac mass fraction
+   * \param n starting index
    */
-  torch::Tensor f_sig(torch::Tensor yfrac) const;
+  torch::Tensor f_sig(torch::Tensor yfrac, int n = 0) const;
 
   //! \brief perform conversions
   torch::Tensor compute(
