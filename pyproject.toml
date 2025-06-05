@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kintera"
 version = "0.1.0"
-description = "Mordern Photochemistry Library"
+description = "Atmospheric Chemistry and Thermodynamics Library"
 authors = [
   { name="Sihe Chen", email="sihechen@caltech.edu"},
   { name="Cheng Li", email="chengcli@umich.edu" }

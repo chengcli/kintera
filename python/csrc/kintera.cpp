@@ -9,9 +9,9 @@ namespace py = pybind11;
 
 void bind_thermo(py::module &m);
 
-PYBIND11_MODULE(pydisort, m) {
+PYBIND11_MODULE(kintera, m) {
   m.attr("__name__") = "kintera";
-  m.doc() = R"(Modern Photochemistry Model)";
+  m.doc() = R"(Atmospheric Thermodynamics and Chemistry Library)";
 
   bind_thermo(m);
 
