@@ -22,10 +22,14 @@ void integrate_z(T* xfrac, T* temp, T* pres, T* mu, T dz, char const* method,
   T* latent = (T*)malloc(ngas * sizeof(T));
   T* cp_ratio = (T*)malloc(nspecies * sizeof(T));
   memset(latent, 0, ngas * sizeof(T));
+}
 
-  for (int i = 0; i < nspecies; ++i) {
-    cp_ratio[i] = cp[i] / cp[0];
-  }
+void extrapolate_z_(torch::Tensor temp, torch::Tensor pres, torch::Tensor xfrac,
+                    double dz, std::string method, double grav, double adTdz,
+                    ThermoX& thermo) {
+  auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
+  auto cp_ratio = eval_cp_R(temp, xfrac, thermo->options);
+  cp_ratio /= cp_ratio[0];  // normalize to the first species
 
   // This only considers the first (ngas-1) reactions
   for (int i = 1; i < ngas; ++i) {
