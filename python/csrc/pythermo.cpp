@@ -118,24 +118,6 @@ Examples:
     >> op = ThermoOptions.from_yaml("thermo_options.yaml")
     )doc")
 
-      .ADD_OPTION(double, kintera::ThermoOptions, gammad, R"doc(
-Set or get the adiabatic index (default: 1.4).
-
-Args:
-  value (float): Adiabatic index value.
-
-Returns:
-  ThermoOptions | float: class object if argument is not empty, otherwise sets the value
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import ThermoOptions
-    >> op = ThermoOptions().gammad(1.4)
-    >> print(op.gammad())
-    1.4
-    )doc")
-
       .ADD_OPTION(double, kintera::ThermoOptions, Rd, R"doc(
 Set or get the specific gas constant (default: 287.0).
 
@@ -362,7 +344,7 @@ Examples:
     >> thermo_y = ThermoY(options)
     >> result = thermo_y.compute("C->Y", [torch.tensor([1.0, 2.0, 3.0])])
     )doc",
-           py::arg("ab"), py::arg("args"), py::arg("out") = py::none());
+           py::arg("ab"), py::arg("args"));
 
   ADD_KINTERA_MODULE(ThermoX, ThermoOptions, R"doc(
 Perform equilibrium condensation
@@ -407,5 +389,5 @@ Examples:
     >> thermo_x = ThermoX(options)
     >> result = thermo_x.compute("X->Y", [torch.tensor([0.1, 0.2, 0.3])])
     )doc",
-           py::arg("ab"), py::arg("args"), py::arg("out") = py::none());
+           py::arg("ab"), py::arg("args"));
 }
