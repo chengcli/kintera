@@ -94,7 +94,7 @@ Examples:
   .. code-block:: python
 
     >> from kintera import ThermoOptions
-    >> op = ThermoOptions().gammad(1.4).Rd(287.0).Tref(300.0).Pref(1.e5)
+    >> op = ThermoOptions().Rd(287.0).Tref(300.0).Pref(1.e5).cref_R(2.5)
     )doc")
 
       .def("__repr__",
@@ -239,9 +239,9 @@ Examples:
   .. code-block:: python
 
     >> from kintera import ThermoOptions
-    >> op = ThermoOptions().cref_R([1.0, 1.1, 1.2])
+    >> op = ThermoOptions().cref_R([2.5, 2.7, 2.9])
     >> print(op.cref_R())
-    [1.0, 1.1, 1.2]
+    [2.5, 2.7, 2.9]
     )doc")
 
       .ADD_OPTION(std::vector<double>, kintera::ThermoOptions, uref_R, R"doc(
@@ -309,18 +309,18 @@ Args:
   yfrac (torch.Tensor): Mass fraction tensor.
 
 Returns:
-  torch.Tensor: mass fraction tensor after saturation adjustment.
+  torch.Tensor: changed in mass fraction
 
 Examples:
   .. code-block:: python
 
     >> from kintera import ThermoY, ThermoOptions
-    >> options = ThermoOptions().gammad(1.4).Rd(287.0).Tref(300.0).Pref(1.e5)
+    >> options = ThermoOptions().Rd(287.0).Tref(300.0).Pref(1.e5).cref_R(2.5)
     >> thermo_y = ThermoY(options)
     >> rho = torch.tensor([1.0, 2.0, 3.0])
     >> intEng = torch.tensor([1000.0, 2000.0, 3000.0])
     >> yfrac = torch.tensor([0.1, 0.2, 0.3])
-    >> yfrac1 = thermo_y.forward(rho, intEng, yfrac)
+    >> dyfrac = thermo_y.forward(rho, intEng, yfrac)
     )doc",
                      py::arg("rho"), py::arg("intEng"), py::arg("yfrac"))
 
@@ -340,7 +340,7 @@ Examples:
   .. code-block:: python
 
     >> from kintera import ThermoY, ThermoOptions
-    >> options = ThermoOptions().gammad(1.4).Rd(287.0).Tref(300.0).Pref(1.e5)
+    >> options = ThermoOptions().Rd(287.0).Tref(300.0).Pref(1.e5).cref_R(2.5)
     >> thermo_y = ThermoY(options)
     >> result = thermo_y.compute("C->Y", [torch.tensor([1.0, 2.0, 3.0])])
     )doc",
@@ -355,18 +355,18 @@ Args:
   xfrac (torch.Tensor): mole fraction tensor.
 
 Returns:
-  torch.Tensor: mole fraction tensor after equilibrium condensation.
+  torch.Tensor: changes in mole fraction
 
 Examples:
   .. code-block:: python
 
     >> from kintera import ThermoX, ThermoOptions
-    >> options = ThermoOptions().gammad(1.4).Rd(287.0).Tref(300.0).Pref(1.e5)
+    >> options = ThermoOptions().Rd(287.0).Tref(300.0).Pref(1.e5).cref_R(2.5)
     >> thermo_x = ThermoX(options)
     >> temp = torch.tensor([300.0, 310.0, 320.0])
     >> pres = torch.tensor([1.e5, 1.e6, 1.e7])
     >> xfrac = torch.tensor([0.1, 0.2, 0.3])
-    >> xfrac1 = thermo_x.forward(temp, pres, xfrac)
+    >> dxfrac = thermo_x.forward(temp, pres, xfrac)
     )doc",
                      py::arg("temp"), py::arg("pres"), py::arg("xfrac"))
 
@@ -385,7 +385,7 @@ Examples:
   .. code-block:: python
 
     >> from kintera import ThermoX, ThermoOptions
-    >> options = ThermoOptions().gammad(1.4).Rd(287.0).Tref(300.0).Pref(1.e5)
+    >> options = ThermoOptions().Rd(287.0).Tref(300.0).Pref(1.e5).cref_R(2.5)
     >> thermo_x = ThermoX(options)
     >> result = thermo_x.compute("X->Y", [torch.tensor([0.1, 0.2, 0.3])])
     )doc",
