@@ -140,11 +140,11 @@ torch::Tensor const &ThermoXImpl::compute(
     _V.set_(*(args.begin() + 2));
     _entropy_vol(_T, _P, _V, _S);
     return _S;
-  } else if (ab == "PVS->T") {
+  } else if (ab == "PXS->T") {
     _P.set_(*args.begin());
-    _V.set_(*(args.begin() + 1));
+    _X.set_(*(args.begin() + 1));
     _S.set_(*(args.begin() + 2));
-    _entropy_to_temp(_P, _V, _S, _T);
+    _entropy_to_temp(_P, _X, _S, _T);
     return _T;
   } else if (ab == "THS->G") {
     _T.set_(*args.begin());
@@ -227,6 +227,7 @@ void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
     auto entropy_vol = compute("TPV->S", {out, pres, conc});
     auto temp_pre = out.clone();
     out *= 1. + (entropy - entropy_vol) / cp_vol;
+    forward(out, pres, xfrac);
     if ((1. - temp_pre / out).abs().max().item<double>() < options.ftol()) {
       break;
     }
