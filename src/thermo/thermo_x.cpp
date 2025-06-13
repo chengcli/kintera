@@ -3,7 +3,7 @@
 
 #include <kintera/utils/check_resize.hpp>
 
-#include "eval_uh.hpp"
+#include "eval_uhs.hpp"
 #include "thermo.hpp"
 #include "thermo_dispatch.hpp"
 
@@ -126,7 +126,7 @@ torch::Tensor const &ThermoXImpl::compute(
   } else if (ab == "TV->H") {
     _T.set_(*args.begin());
     _V.set_(*(args.begin() + 1));
-    _temp_to_enthalpy(_T, _V, _H);
+    _enthalpy_vol(_T, _V, _H);
     return _H;
   } else if (ab == "TPX->V") {
     _T.set_(*args.begin());
@@ -135,7 +135,10 @@ torch::Tensor const &ThermoXImpl::compute(
     _xfrac_to_conc(_T, _P, _X, _V);
     return _V;
   } else if (ab == "TPV->S") {
-    // TODO(cli)
+    _T.set_(*args.begin());
+    _P.set_(*(args.begin() + 1));
+    _V.set_(*(args.begin() + 2));
+    _entropy_vol(_T, _P, _V, _S);
     return _S;
   } else if (ab == "THS->G") {
     _T.set_(*args.begin());

@@ -13,6 +13,7 @@
 #include <kintera/constants.h>
 
 #include <kintera/utils/func2.hpp>
+#include <kintera/utils/func3.hpp>
 
 #include "eval_uhs.hpp"
 #include "nucleation.hpp"
@@ -65,17 +66,19 @@ struct ThermoOptions {
   ADD_ARG(std::vector<user_func2>, intEng_R_extra);
   ADD_ARG(std::vector<user_func2>, cv_R_extra);
   ADD_ARG(std::vector<user_func2>, cp_R_extra);
-  ADD_ARG(std::vector<user_func3>, entropy_R_extra);
 
   //! This variable is funny. Because compressibility factor only applies to
-  //! gas and we need extra functions for cloud species, so we combined
+  //! gas and we need extra enthalpy functions for cloud species, so we combined
   //! compressibility factor and extra enthalpy functions into one variable
   //! called czh, which has the size of nspcies
   ADD_ARG(std::vector<user_func2>, czh);
 
+  //! only used for gas species, the rests are no-ops
+  ADD_ARG(std::vector<user_func3>, entropy_R_extra);
+
   //! Similarly, the derivative of compressibility factor with respect to
   //! concentration is stored here, with first 'ngas' entries being
-  //! valid numbers
+  //! valid numbers. The rests are no-ops.
   ADD_ARG(std::vector<user_func2>, czh_ddC);
 
   ADD_ARG(std::vector<Nucleation>, react);
@@ -178,8 +181,13 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * \param[in] temp temperature, K
    * \param[out] out volumetric internal energy, J/m^3, (...)
    */
-  void _temp_to_intEng(torch::Tensor ivol, torch::Tensor temp,
-                       torch::Tensor& out) const;
+  void _intEng_vol(torch::Tensor ivol, torch::Tensor temp,
+                   torch::Tensor& out) const {
+    // kg/m^3 -> mol/m^3
+    auto conc = ivol * inv_mu;
+    auto ui = eval_intEng_R(temp, conc, options) * constants::Rgas;
+    out.set_((ui * conc).sum(-1));
+  }
 
   //! \brief calculate temperature (K) from internal energy
   /*!
@@ -198,6 +206,22 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    */
   void _temp_to_pres(torch::Tensor ivol, torch::Tensor temp,
                      torch::Tensor& out) const;
+
+  //! \brief calculate volumetric entropy (J/(m^3 K))
+  /*
+   * \param[in] pres pressure, pa
+   * \param[in] ivol inverse of specific volume, kg/m^3, (..., 1 + ny)
+   * \param[in] temp temperature, K
+   * \param[out] out volumetric entropy, J/(m^3 K), (...)
+   */
+  void _entropy_vol(torch::Tensor pres, torch::Tensor ivol, torch::Tensor temp,
+                    torch::Tensor& out) const {
+    // kg/m^3 -> mol/m^3
+    auto conc = ivol * inv_mu;
+    auto si =
+        eval_entropy_R(temp, pres, conc, stoich, options) * constants::Rgas;
+    out.set_((si * conc).sum(-1));
+  }
 };
 TORCH_MODULE(ThermoY);
 
@@ -268,16 +292,30 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
     out.set_((conc * cp).sum(-1));
   }
 
-  //! \brief calculate enthalpy
+  //! \brief calculate volumetric enthalpy
   /*!
    * \param[in] temp temperature, K
    * \param[in] conc mole concentration, (..., 1 + ny)
    * \param[out] out volumetric enthalpy, J/m^3, (...)
    */
-  void _temp_to_enthalpy(torch::Tensor temp, torch::Tensor conc,
-                         torch::Tensor& out) const {
+  void _enthalpy_vol(torch::Tensor temp, torch::Tensor conc,
+                     torch::Tensor& out) const {
     auto hi = eval_enthalpy_R(temp, conc, options) * constants::Rgas;
     out.set_((conc * hi).sum(-1));
+  }
+
+  //! \brief calculate volumetric entropy
+  /*!
+   * \param[in] temp temperature, K
+   * \param[in] pres pressure, Pa
+   * \param[in] conc mole concentration, (..., 1 + ny)
+   * \param[out] out volumetric entropy, J/(m^3 K), (...)
+   */
+  void _entropy_vol(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
+                    torch::Tensor& out) const {
+    auto si =
+        eval_entropy_R(temp, pres, conc, stoich, options) * constants::Rgas;
+    out.set_((conc * si).sum(-1));
   }
 
   //! \brief Calculate concentration from mole fraction

@@ -7,7 +7,7 @@
 // kintera
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
-#include "integrate_z.h"
+// #include "integrate_z.h"
 #include "thermo_dispatch.hpp"
 
 namespace kintera {
@@ -70,7 +70,7 @@ void call_integrate_z_cpu(at::TensorIterator &iter, float dz,
     auto stoich = iter.input(2).data_ptr<scalar_t>();
     auto mu = iter.input(3).data_ptr<scalar_t>();
 
-    iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
+    /*iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
       for (int i = 0; i < n; i++) {
         auto xfrac = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
         auto temp = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
@@ -82,25 +82,7 @@ void call_integrate_z_cpu(at::TensorIterator &iter, float dz,
                     (scalar_t)adTdz, stoich, nspecies, ngas, enthalpy, cp,
                     logsvp_func, logsvp_eps, &max_iter_i);
       }
-    });
-  });
-}
-
-void call_with_TC_cpu(at::TensorIterator &iter, user_func2 const *func) {
-  AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_with_TC_cpu", [&] {
-    int nspecies = at::native::ensure_nonempty_size(iter.input(0), -1);
-    iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
-      for (int i = 0; i < n; i++) {
-        auto out = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
-        auto temp = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
-        auto conc = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
-        for (int j = 0; j < nspecies; ++j) {
-          if (func[j] != nullptr) {
-            out[j] += func[j](*temp, conc[j]);
-          }
-        }
-      }
-    });
+    });*/
   });
 }
 
@@ -111,13 +93,11 @@ namespace at::native {
 DEFINE_DISPATCH(call_equilibrate_tp);
 DEFINE_DISPATCH(call_equilibrate_uv);
 DEFINE_DISPATCH(call_integrate_z);
-DEFINE_DISPATCH(call_with_TC);
 
 REGISTER_ALL_CPU_DISPATCH(call_equilibrate_tp,
                           &kintera::call_equilibrate_tp_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_equilibrate_uv,
                           &kintera::call_equilibrate_uv_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_integrate_z, &kintera::call_integrate_z_cpu);
-REGISTER_ALL_CPU_DISPATCH(call_with_TC, &kintera::call_with_TC_cpu);
 
 }  // namespace at::native

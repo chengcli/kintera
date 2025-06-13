@@ -27,6 +27,7 @@ torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
                               ThermoOptions const& op);
 
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
-                             torch::Tensor conc, ThermoOptions const& op);
+                             torch::Tensor conc, torch::Tensor stoich,
+                             ThermoOptions const& op);
 
 }  // namespace kintera

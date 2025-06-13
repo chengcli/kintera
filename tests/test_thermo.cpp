@@ -8,7 +8,7 @@
 #include <kintera/constants.h>
 
 #include <kintera/eos/equation_of_state.hpp>
-#include <kintera/thermo/eval_uh.hpp>
+#include <kintera/thermo/eval_uhs.hpp>
 #include <kintera/thermo/thermo.hpp>
 #include <kintera/thermo/thermo_formatter.hpp>
 

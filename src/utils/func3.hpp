@@ -4,7 +4,7 @@
 #include <string>
 #include <unordered_map>
 
-typedef double (*user_func3)(double temp, double pres, double conc);
+using user_func3 = double (*)(double, double, double);
 
 inline std::unordered_map<std::string, user_func3>& get_user_func3() {
   static std::unordered_map<std::string, user_func3> f1map;

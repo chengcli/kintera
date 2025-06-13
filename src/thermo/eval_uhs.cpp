@@ -3,8 +3,9 @@
 
 #include <kintera/constants.h>
 
+#include <kintera/utils/utils_dispatch.hpp>
+
 #include "thermo.hpp"
-#include "thermo_dispatch.hpp"
 
 namespace kintera {
 
@@ -19,13 +20,13 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
                   .declare_static_shape(cv_R_extra.sizes(),
                                         /*squash_dim=*/{conc.dim() - 1})
                   .add_output(cv_R_extra)
-                  .add_owned_input(temp.unsqueeze(-1).expand_as(conc))
+                  .add_owned_input(temp.unsqueeze(-1))
                   .add_input(conc)
                   .build();
 
   // call the evaluation function
-  at::native::call_with_TC(cv_R_extra.device().type(), iter,
-                           op.cv_R_extra().data());
+  at::native::call_func2(cv_R_extra.device().type(), iter,
+                         op.cv_R_extra().data());
 
   auto cref_R =
       torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
@@ -43,13 +44,13 @@ torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
                   .declare_static_shape(cp_R_extra.sizes(),
                                         /*squash_dim=*/{conc.dim() - 1})
                   .add_output(cp_R_extra)
-                  .add_owned_input(temp.unsqueeze(-1).expand_as(conc))
+                  .add_owned_input(temp.unsqueeze(-1))
                   .add_input(conc)
                   .build();
 
   // call the evaluation function
-  at::native::call_with_TC(cp_R_extra.device().type(), iter,
-                           op.cp_R_extra().data());
+  at::native::call_func2(cp_R_extra.device().type(), iter,
+                         op.cp_R_extra().data());
 
   auto cref_R =
       torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
@@ -69,12 +70,12 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
                   .declare_static_shape(cz.sizes(),
                                         /*squash_dim=*/{conc.dim() - 1})
                   .add_output(cz)
-                  .add_owned_input(temp.unsqueeze(-1).expand_as(conc))
+                  .add_owned_input(temp.unsqueeze(-1))
                   .add_input(conc)
                   .build();
 
   // call the evaluation function
-  at::native::call_with_TC(cz.device().type(), iter, op.czh().data());
+  at::native::call_func2(cz.device().type(), iter, op.czh().data());
 
   return cz;
 }
@@ -90,12 +91,12 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
                   .declare_static_shape(cz_ddC.sizes(),
                                         /*squash_dim=*/{conc.dim() - 1})
                   .add_output(cz_ddC)
-                  .add_owned_input(temp.unsqueeze(-1).expand_as(conc))
+                  .add_owned_input(temp.unsqueeze(-1))
                   .add_input(conc)
                   .build();
 
   // call the evaluation function
-  at::native::call_with_TC(cz_ddC.device().type(), iter, op.czh_ddC().data());
+  at::native::call_func2(cz_ddC.device().type(), iter, op.czh_ddC().data());
 
   return cz_ddC;
 }
@@ -111,13 +112,13 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
                   .declare_static_shape(intEng_R_extra.sizes(),
                                         /*squash_dim=*/{conc.dim() - 1})
                   .add_output(intEng_R_extra)
-                  .add_owned_input(temp.unsqueeze(-1).expand_as(conc))
+                  .add_owned_input(temp.unsqueeze(-1))
                   .add_input(conc)
                   .build();
 
   // call the evaluation function
-  at::native::call_with_TC(intEng_R_extra.device().type(), iter,
-                           op.intEng_R_extra().data());
+  at::native::call_func2(intEng_R_extra.device().type(), iter,
+                         op.intEng_R_extra().data());
 
   auto cref_R = torch::tensor(op.cref_R(), temp.options());
   auto uref_R = torch::tensor(op.uref_R(), temp.options());
@@ -126,9 +127,30 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
 }
 
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
-                             torch::Tensor conc, ThermoOptions const& op) {
+                             torch::Tensor conc, torch::Tensor stoich,
+                             ThermoOptions const& op) {
   int ngas = 1 + op.vapor_ids().size();
   int ncloud = op.cloud_ids().size();
+
+  // check dimension consistency
+  TORCH_CHECK(conc.size(-1) == ngas + ncloud,
+              "The last dimension of `conc` must match the number of species "
+              "in the thermodynamic model (1 + ngas + ncloud). "
+              "Expected: ",
+              ngas + ncloud, ", got: ", conc.size(-1));
+
+  TORCH_CHECK(
+      stoich.size(0) == ngas + ncloud,
+      "The first dimension of `stoich` must match the number of species "
+      "in the thermodynamic model (1 + ngas + ncloud). "
+      "Expected: ",
+      ngas + ncloud, ", got: ", stoich.size(0));
+
+  TORCH_CHECK(stoich.size(1) == ngas + ncloud,
+              "The second dimension of `stoich` must match the number of "
+              "species in the thermodynamic model (1 + ngas + ncloud). "
+              "Expected: ",
+              ngas + ncloud, ", got: ", stoich.size(1));
 
   //////////// Evaluate gas entropy ////////////
   auto conc_gas = conc.narrow(-1, 0, ngas);
@@ -143,52 +165,89 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                   .declare_static_shape(entropy_R_extra.sizes(),
                                         /*squash_dim=*/{conc.dim() - 1})
                   .add_output(entropy_R_extra)
-                  .add_owned_input(temp.unsqueeze(-1).expand_as(conc_gas))
-                  .add_owned_input(pres.unsqueeze(-1).expand_as(conc_gas))
+                  .add_owned_input(temp.unsqueeze(-1))
+                  .add_owned_input(pres.unsqueeze(-1))
                   .add_input(conc_gas)
                   .build();
 
   // call the evaluation function
-  at::native::call_with_TCP(entropy_R_extra.device().type(), iter,
-                            op.entropy_R_extra().data());
+  at::native::call_func3(entropy_R_extra.device().type(), iter,
+                         op.entropy_R_extra().data());
 
   auto sref_R = torch::tensor(op.sref_R(), temp.options());
   auto cp_gas_R = torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, ngas);
   cp_gas_R += 1;
 
-  auto entropy = torch::zeros_like(conc);
+  auto entropy_R = torch::zeros_like(conc);
 
   // gas entropy
-  entropy.narrow(-1, 0, ngas) =
+  entropy_R.narrow(-1, 0, ngas) =
       sref_R.narrow(0, 0, ngas) + entropy_R_extra +
-      temp.log().unsqueeze(-1) * cp_gas_R - pres.log() -
+      temp.log().unsqueeze(-1) * cp_gas_R - pres.log().unsqueeze(-1) -
       (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).log();
 
   //////////// Evaluate condensate entropy ////////////
 
   // (1) Evaluate log-svp
-
-  // assemble stoichiometric matrix
-  auto stoich = torch::zeros({, op.react().size()}, conc.options());
-  for (int j = 0; j < op.react().size(); ++j) {
-    auto const& r = options.react()[j];
-    for (int i = ngas; i < op.species().size(); ++i) {
-      auto it = r.reaction().reactants().find(options.species()[i]);
-      if (it != r.reaction().reactants().end()) {
-        stoich[i][j] = -it->second;
-      }
-      it = r.reaction().products().find(options.species()[i]);
-      if (it != r.reaction().products().end()) {
-        stoich[i][j] = it->second;
-      }
-    }
+  user_func1* logsvp_func = new user_func1[op.react().size()];
+  for (int i = 0; i < op.react().size(); ++i) {
+    logsvp_func[i] = op.react()[i].func();
   }
+
+  // bundle iterator
+  auto logsvp = torch::empty_like(conc_gas);
+  iter = at::TensorIteratorConfig()
+             .resize_outputs(false)
+             .check_all_same_dtype(true)
+             .declare_static_shape(logsvp.sizes(),
+                                   /*squash_dim=*/{conc.dim() - 1})
+             .add_output(logsvp)
+             .add_owned_input(temp.unsqueeze(-1))
+             .build();
+
+  // call the evaluation function
+  at::native::call_func1(logsvp.device().type(), iter, logsvp_func);
+
+  // (2) Evaluate enthalpies (..., R)
+  auto enthalpy_R = eval_enthalpy_R(temp, conc, op).matmul(stoich);
+
+  // (3) Evaluate equilibrium vapor entropies (..., V)
+  auto entropy_vapor_R = sref_R.narrow(0, 0, ngas) + entropy_R_extra +
+                         temp.log().unsqueeze(-1) * cp_gas_R;
+
+  // (4) Assemble b vector (..., R)
+  auto b = enthalpy_R / temp.unsqueeze(-1) -
+           entropy_vapor_R.matmul(stoich.narrow(0, 0, ngas)) - logsvp;
+
+  // (5) Assemble S+ matrix and its inverse
+  auto sp = stoich.narrow(0, ngas, ncloud).clamp_min(0.0);
+  auto sp_inv = torch::linalg_pinv(sp.t());
+
+  // broadcast the shape of sp.t()
+  std::vector<int64_t> vec(1 + b.dim(), 1);
+  vec[b.dim() - 2] = sp.size(0);
+  vec[b.dim() - 1] = sp.size(1);
+
+  // (6) Solve for condensate entropy
+  entropy_R.narrow(-1, ngas, ncloud) =
+      sp_inv.view(vec).matmul(b.unsqueeze(-1)).squeeze(-1);
+
+  delete[] logsvp_func;
+
+  return entropy_R;
 }
 
 torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
                               ThermoOptions const& op) {
   int ngas = 1 + op.vapor_ids().size();
   int ncloud = op.cloud_ids().size();
+
+  // check dimension consistency
+  TORCH_CHECK(conc.size(-1) == ngas + ncloud,
+              "The last dimension of `conc` must match the number of species "
+              "in the thermodynamic model (1 + ngas + ncloud). "
+              "Expected: ",
+              ngas + ncloud, ", got: ", conc.size(-1));
 
   auto enthalpy_R = torch::zeros_like(conc);
   auto czh = eval_czh(temp, conc, op);

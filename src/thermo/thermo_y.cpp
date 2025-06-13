@@ -3,7 +3,7 @@
 
 #include <kintera/utils/check_resize.hpp>
 
-#include "eval_uh.hpp"
+#include "eval_uhs.hpp"
 #include "thermo.hpp"
 #include "thermo_dispatch.hpp"
 
@@ -146,7 +146,7 @@ torch::Tensor const &ThermoYImpl::compute(
   } else if (ab == "VT->U") {
     _V.set_(*args.begin());
     _T.set_(*(args.begin() + 1));
-    _temp_to_intEng(_V, _T, _U);
+    _intEng_vol(_V, _T, _U);
     return _U;
   } else if (ab == "VU->T") {
     _V.set_(*args.begin());
@@ -159,7 +159,10 @@ torch::Tensor const &ThermoYImpl::compute(
     _temp_to_pres(_V, _T, _P);
     return _P;
   } else if (ab == "PVT->S") {
-    // TODO(cli)
+    _P.set_(*args.begin());
+    _V.set_(*(args.begin() + 1));
+    _T.set_(*(args.begin() + 2));
+    _entropy_vol(_P, _V, _T, _S);
     return _S;
   } else if (ab == "TUS->F") {
     _T.set_(*args.begin());
@@ -329,14 +332,6 @@ void ThermoYImpl::_cv_vol(torch::Tensor ivol, torch::Tensor temp,
   auto conc = ivol * inv_mu;
   auto cv = eval_cv_R(temp, conc, options) * constants::Rgas;
   out.set_((cv * conc).sum(-1));
-}
-
-void ThermoYImpl::_temp_to_intEng(torch::Tensor ivol, torch::Tensor temp,
-                                  torch::Tensor &out) const {
-  // kg/m^3 -> mol/m^3
-  auto conc = ivol * inv_mu;
-  auto u = eval_intEng_R(temp, conc, options) * constants::Rgas;
-  out.set_((u * conc).sum(-1));
 }
 
 void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
