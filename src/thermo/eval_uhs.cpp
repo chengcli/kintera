@@ -135,22 +135,16 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   // check dimension consistency
   TORCH_CHECK(conc.size(-1) == ngas + ncloud,
               "The last dimension of `conc` must match the number of species "
-              "in the thermodynamic model (1 + ngas + ncloud). "
+              "in the thermodynamic model (ngas + ncloud). "
               "Expected: ",
               ngas + ncloud, ", got: ", conc.size(-1));
 
   TORCH_CHECK(
       stoich.size(0) == ngas + ncloud,
       "The first dimension of `stoich` must match the number of species "
-      "in the thermodynamic model (1 + ngas + ncloud). "
+      "in the thermodynamic model (ngas + ncloud). "
       "Expected: ",
       ngas + ncloud, ", got: ", stoich.size(0));
-
-  TORCH_CHECK(stoich.size(1) == ngas + ncloud,
-              "The second dimension of `stoich` must match the number of "
-              "species in the thermodynamic model (1 + ngas + ncloud). "
-              "Expected: ",
-              ngas + ncloud, ", got: ", stoich.size(1));
 
   //////////// Evaluate gas entropy ////////////
   auto conc_gas = conc.narrow(-1, 0, ngas);
@@ -174,6 +168,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   at::native::call_func3(entropy_R_extra.device().type(), iter,
                          op.entropy_R_extra().data());
 
+  // std::cout << "entropy_R_extra = " << entropy_R_extra << std::endl;
+
   auto sref_R = torch::tensor(op.sref_R(), temp.options());
   auto cp_gas_R = torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, ngas);
   cp_gas_R += 1;
@@ -186,6 +182,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
       temp.log().unsqueeze(-1) * cp_gas_R - pres.log().unsqueeze(-1) -
       (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).log();
 
+  // std::cout << "entropy_R = " << entropy_R << std::endl;
+
   //////////// Evaluate condensate entropy ////////////
 
   // (1) Evaluate log-svp
@@ -195,7 +193,9 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   }
 
   // bundle iterator
-  auto logsvp = torch::empty_like(conc_gas);
+  auto vec1 = temp.sizes().vec();
+  vec1.push_back(op.react().size());
+  auto logsvp = torch::empty(vec1, temp.options());
   iter = at::TensorIteratorConfig()
              .resize_outputs(false)
              .check_all_same_dtype(true)
@@ -207,32 +207,40 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
 
   // call the evaluation function
   at::native::call_func1(logsvp.device().type(), iter, logsvp_func);
+  // std::cout << "logsvp = " << logsvp << std::endl;
 
   // (2) Evaluate enthalpies (..., R)
   auto enthalpy_R = eval_enthalpy_R(temp, conc, op).matmul(stoich);
+  // std::cout << "enthalpy_R = " << enthalpy_R << std::endl;
 
   // (3) Evaluate equilibrium vapor entropies (..., V)
   auto entropy_vapor_R = sref_R.narrow(0, 0, ngas) + entropy_R_extra +
                          temp.log().unsqueeze(-1) * cp_gas_R;
+  // std::cout << "entropy_vaor_R = " << entropy_vapor_R << std::endl;
 
   // (4) Assemble b vector (..., R)
   auto b = enthalpy_R / temp.unsqueeze(-1) -
            entropy_vapor_R.matmul(stoich.narrow(0, 0, ngas)) - logsvp;
+  // std::cout << "b = " << b << std::endl;
 
   // (5) Assemble S+ matrix and its inverse
-  auto sp = stoich.narrow(0, ngas, ncloud).clamp_min(0.0);
+  auto sp = stoich.narrow(0, ngas, ncloud);
   auto sp_inv = torch::linalg_pinv(sp.t());
+  // std::cout << "sp_inv = " << sp_inv << std::endl;
 
   // broadcast the shape of sp.t()
-  std::vector<int64_t> vec(1 + b.dim(), 1);
-  vec[b.dim() - 2] = sp.size(0);
-  vec[b.dim() - 1] = sp.size(1);
+  std::vector<int64_t> vec2(1 + b.dim(), 1);
+  vec2[b.dim() - 1] = sp.size(0);
+  vec2[b.dim()] = sp.size(1);
+  // std::cout << "sp_inv view = " << sp_inv.view(vec2) << std::endl;
 
   // (6) Solve for condensate entropy
   entropy_R.narrow(-1, ngas, ncloud) =
-      sp_inv.view(vec).matmul(b.unsqueeze(-1)).squeeze(-1);
+      sp_inv.view(vec2).matmul(b.unsqueeze(-1)).squeeze(-1);
 
   delete[] logsvp_func;
+
+  // std::cout << "entropy_R = " << entropy_R << std::endl;
 
   return entropy_R;
 }
@@ -245,7 +253,7 @@ torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
   // check dimension consistency
   TORCH_CHECK(conc.size(-1) == ngas + ncloud,
               "The last dimension of `conc` must match the number of species "
-              "in the thermodynamic model (1 + ngas + ncloud). "
+              "in the thermodynamic model (ngas + ncloud). "
               "Expected: ",
               ngas + ncloud, ", got: ", conc.size(-1));
 

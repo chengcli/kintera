@@ -66,6 +66,10 @@ TEST_P(DeviceTest, thermo_y) {
   ////////// Testing VU->T conversion //////////
   auto temp3 = thermo->compute("VU->T", {ivol, intEng});
   EXPECT_EQ(torch::allclose(temp, temp3, /*rtol=*/1e-4, /*atol=*/1e-4), true);
+
+  ////////// Testing PVT->S conversion //////////
+  auto entropy = thermo->compute("PVT->S", {pres, ivol, temp});
+  // std::cout << "entropy = " << entropy << std::endl;
 }
 
 TEST_P(DeviceTest, thermo_x) {
@@ -101,6 +105,9 @@ TEST_P(DeviceTest, thermo_x) {
 
   //////////// Testing VT->H conversion //////////
   auto enthalpy = thermo->compute("TV->H", {temp, conc});
+
+  //////////// Testing TPV->S conversion //////////
+  auto entropy = thermo->compute("TPV->S", {temp, pres, conc});
 }
 
 TEST_P(DeviceTest, thermo_xy) {
