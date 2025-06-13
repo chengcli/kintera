@@ -14,7 +14,7 @@
 
 #include <kintera/utils/func2.hpp>
 
-#include "eval_uh.hpp"
+#include "eval_uhs.hpp"
 #include "nucleation.hpp"
 
 // arg
@@ -60,10 +60,12 @@ struct ThermoOptions {
   ADD_ARG(std::vector<double>, mu_ratio);
   ADD_ARG(std::vector<double>, cref_R);
   ADD_ARG(std::vector<double>, uref_R);
+  ADD_ARG(std::vector<double>, sref_R);
 
   ADD_ARG(std::vector<user_func2>, intEng_R_extra);
   ADD_ARG(std::vector<user_func2>, cv_R_extra);
   ADD_ARG(std::vector<user_func2>, cp_R_extra);
+  ADD_ARG(std::vector<user_func3>, entropy_R_extra);
 
   //! This variable is funny. Because compressibility factor only applies to
   //! gas and we need extra functions for cloud species, so we combined

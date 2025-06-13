@@ -30,6 +30,10 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
     options.intEng_R_extra().push_back(nullptr);
   }
 
+  while (options.entropy_R_extra().size() < options.species().size()) {
+    options.entropy_R_extra().push_back(nullptr);
+  }
+
   while (options.cv_R_extra().size() < options.species().size()) {
     options.cv_R_extra().push_back(nullptr);
   }

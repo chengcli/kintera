@@ -55,6 +55,12 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     } else {
       thermo.uref_R().push_back(0.);
     }
+
+    if (sp["s0_R"]) {
+      thermo.sref_R().push_back(sp["u0_R"].as<double>());
+    } else {
+      thermo.sref_R().push_back(0.);
+    }
   }
 
   thermo.Rd(constants::Rgas / species_weights[0]);

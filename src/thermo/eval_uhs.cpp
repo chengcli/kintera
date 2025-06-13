@@ -1,5 +1,5 @@
 // kintera
-#include "eval_uh.hpp"
+#include "eval_uhs.hpp"
 
 #include <kintera/constants.h>
 
@@ -123,6 +123,66 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
   auto uref_R = torch::tensor(op.uref_R(), temp.options());
 
   return uref_R + temp.unsqueeze(-1) * cref_R + intEng_R_extra;
+}
+
+torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
+                             torch::Tensor conc, ThermoOptions const& op) {
+  int ngas = 1 + op.vapor_ids().size();
+  int ncloud = op.cloud_ids().size();
+
+  //////////// Evaluate gas entropy ////////////
+  auto conc_gas = conc.narrow(-1, 0, ngas);
+
+  // only evaluate vapors
+  auto entropy_R_extra = torch::zeros_like(conc_gas);
+
+  // bundle iterator
+  auto iter = at::TensorIteratorConfig()
+                  .resize_outputs(false)
+                  .check_all_same_dtype(true)
+                  .declare_static_shape(entropy_R_extra.sizes(),
+                                        /*squash_dim=*/{conc.dim() - 1})
+                  .add_output(entropy_R_extra)
+                  .add_owned_input(temp.unsqueeze(-1).expand_as(conc_gas))
+                  .add_owned_input(pres.unsqueeze(-1).expand_as(conc_gas))
+                  .add_input(conc_gas)
+                  .build();
+
+  // call the evaluation function
+  at::native::call_with_TCP(entropy_R_extra.device().type(), iter,
+                            op.entropy_R_extra().data());
+
+  auto sref_R = torch::tensor(op.sref_R(), temp.options());
+  auto cp_gas_R = torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, ngas);
+  cp_gas_R += 1;
+
+  auto entropy = torch::zeros_like(conc);
+
+  // gas entropy
+  entropy.narrow(-1, 0, ngas) =
+      sref_R.narrow(0, 0, ngas) + entropy_R_extra +
+      temp.log().unsqueeze(-1) * cp_gas_R - pres.log() -
+      (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).log();
+
+  //////////// Evaluate condensate entropy ////////////
+
+  // (1) Evaluate log-svp
+
+  // assemble stoichiometric matrix
+  auto stoich = torch::zeros({, op.react().size()}, conc.options());
+  for (int j = 0; j < op.react().size(); ++j) {
+    auto const& r = options.react()[j];
+    for (int i = ngas; i < op.species().size(); ++i) {
+      auto it = r.reaction().reactants().find(options.species()[i]);
+      if (it != r.reaction().reactants().end()) {
+        stoich[i][j] = -it->second;
+      }
+      it = r.reaction().products().find(options.species()[i]);
+      if (it != r.reaction().products().end()) {
+        stoich[i][j] = it->second;
+      }
+    }
+  }
 }
 
 torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
