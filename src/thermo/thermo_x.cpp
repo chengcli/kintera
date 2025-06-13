@@ -140,6 +140,12 @@ torch::Tensor const &ThermoXImpl::compute(
     _V.set_(*(args.begin() + 2));
     _entropy_vol(_T, _P, _V, _S);
     return _S;
+  } else if (ab == "PVS->T") {
+    _P.set_(*args.begin());
+    _V.set_(*(args.begin() + 1));
+    _S.set_(*(args.begin() + 2));
+    _entropy_to_temp(_P, _V, _S, _T);
+    return _T;
   } else if (ab == "THS->G") {
     _T.set_(*args.begin());
     _H.set_(*(args.begin() + 1));
@@ -204,6 +210,31 @@ void ThermoXImpl::_xfrac_to_yfrac(torch::Tensor xfrac,
 
   out.permute(vec) = xfrac.narrow(-1, 1, ny) * mu.narrow(0, 1, ny);
   out /= (xfrac * mu).sum(-1).unsqueeze(0);
+}
+
+void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
+                                   torch::Tensor entropy, torch::Tensor &out) {
+  // check if cached temperature is available
+  if (out.sizes() != pres.sizes() || out.device() != pres.device() ||
+      out.dtype() != pres.dtype()) {
+    out.set_(options.Tref() * torch::ones_like(pres));
+  }
+
+  int iter = 0;
+  while (iter++ < options.max_iter()) {
+    auto conc = compute("TPX->V", {out, pres, xfrac});
+    auto cp_vol = compute("TV->cp", {out, conc});
+    auto entropy_vol = compute("TPV->S", {out, pres, conc});
+    auto temp_pre = out.clone();
+    out *= 1. + (entropy - entropy_vol) / cp_vol;
+    if ((1. - temp_pre / out).abs().max().item<double>() < options.ftol()) {
+      break;
+    }
+  }
+
+  if (iter >= options.max_iter()) {
+    TORCH_WARN("ThermoX:_entropy_to_temp: max iteration reached");
+  }
 }
 
 void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,

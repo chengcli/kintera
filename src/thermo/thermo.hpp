@@ -306,8 +306,8 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
 
   //! \brief calculate volumetric entropy
   /*!
-   * \param[in] temp temperature, K
-   * \param[in] pres pressure, Pa
+   * \param[in] temp temperature, K, (...)
+   * \param[in] pres pressure, Pa, (...)
    * \param[in] conc mole concentration, (..., 1 + ny)
    * \param[out] out volumetric entropy, J/(m^3 K), (...)
    */
@@ -317,6 +317,16 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
         eval_entropy_R(temp, pres, conc, stoich, options) * constants::Rgas;
     out.set_((conc * si).sum(-1));
   }
+
+  //! \brief Calculate temperature from pressure and entropy
+  /*!
+   * \param[in] pres pressure, Pa, (...)
+   * \param[in] xfrac mole fractions, (..., 1 + ny)
+   * \param[in] entropy volumetric entropy, J/(m^3 K), (...)
+   * \param[out] out temperature, K, (...)
+   */
+  void _entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
+                        torch::Tensor entropy, torch::Tensor& out);
 
   //! \brief Calculate concentration from mole fraction
   /*

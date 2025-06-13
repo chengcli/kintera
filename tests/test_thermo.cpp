@@ -108,6 +108,10 @@ TEST_P(DeviceTest, thermo_x) {
 
   //////////// Testing TPV->S conversion //////////
   auto entropy = thermo->compute("TPV->S", {temp, pres, conc});
+
+  //////////// Testing PVS->T conversion //////////
+  auto temp2 = thermo->compute("PXS->T", {pres, xfrac, entropy});
+  EXPECT_EQ(torch::allclose(temp, temp2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
 
 TEST_P(DeviceTest, thermo_xy) {
