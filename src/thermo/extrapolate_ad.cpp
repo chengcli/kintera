@@ -13,7 +13,8 @@ namespace kintera {
 
 torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
                                 torch::Tensor xfrac, torch::Tensor weight,
-                                ThermoX &thermo) {
+                                ThermoX &thermo,
+                                torch::optional<torch::Tensor> conc) {
   // prepare svp function derivatives
   auto vec = temp.sizes().vec();
   vec.push_back(thermo->options.react().size());
@@ -31,17 +32,18 @@ torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
   for (int i = 0; i < thermo->options.react().size(); ++i) {
     logsvp_func_ddT[i] = thermo->options.react()[i].func_ddT();
   }
-
   at::native::call_func1(logsvp_ddT.device().type(), iter, logsvp_func_ddT);
   delete[] logsvp_func_ddT;
 
-  // calcualte pseudo-inverse of weight
   auto rate_ddT = torch::linalg_solve(weight, logsvp_ddT);
 
-  auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
+  if (!conc.has_value()) {
+    conc = thermo->compute("TPX->V", {temp, pres, xfrac});
+  }
+
   auto enthalpy =
-      eval_enthalpy_R(temp, conc, thermo->options) * constants::Rgas;
-  auto cp = eval_cp_R(temp, conc, thermo->options) * constants::Rgas;
+      eval_enthalpy_R(temp, conc.value(), thermo->options) * constants::Rgas;
+  auto cp = eval_cp_R(temp, conc.value(), thermo->options) * constants::Rgas;
 
   auto cp_normal = (cp * xfrac).sum(-1);
   auto cp_latent = (enthalpy.matmul(thermo->stoich) * rate_ddT).sum(-1);
@@ -61,12 +63,11 @@ void extrapolate_ad_(torch::Tensor temp, torch::Tensor pres,
     auto weight = thermo->forward(temp, pres, xfrac);
     conc = thermo->compute("TPX->V", {temp, pres, xfrac});
 
-    auto cp_mole = effective_cp_mole(temp, pres, xfrac, weight, thermo);
+    auto cp_mole = effective_cp_mole(temp, pres, xfrac, weight, thermo, conc);
 
     entropy_vol = thermo->compute("TPV->S", {temp, pres, conc});
     auto entropy_mole = entropy_vol / conc.sum(-1);
 
-    auto temp_pre = temp.clone();
     temp *= 1. + (entropy_mole0 - entropy_mole) / cp_mole;
 
     if ((entropy_mole0 - entropy_mole).abs().max().item<double>() <

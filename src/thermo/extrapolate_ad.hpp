@@ -7,16 +7,19 @@ namespace kintera {
 //! \brief Calculate effective heat capacity at constant pressure
 /*!
  *
- * \param[in] temp Temperature tensor (K)
- * \param[in] pres Pressure tensor (Pa)
- * \param[in] xfrac Mole fraction tensor
- * \param[in] weight Weight tensor
- * \param[in] thermo ThermoX object containing the thermodynamic model
+ * \param temp Temperature tensor (K)
+ * \param pres Pressure tensor (Pa)
+ * \param xfrac Mole fraction tensor
+ * \param weight Weight tensor
+ * \param thermo ThermoX object containing the thermodynamic model
+ * \param conc Optional concentration tensor, if not provided it will be
+ * computed
  * \return Equivalent heat capacity at constant pressure (Cp) tensor [J/(mol K)]
  */
-torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
-                                torch::Tensor xfrac, torch::Tensor weight,
-                                ThermoX& thermo);
+torch::Tensor effective_cp_mole(
+    torch::Tensor temp, torch::Tensor pres, torch::Tensor xfrac,
+    torch::Tensor weight, ThermoX& thermo,
+    torch::optional<torch::Tensor> conc = torch::nullopt);
 
 //! \brief Extrapolate state TPX to a new pressure along an adiabat
 /*!
