@@ -125,7 +125,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * \param[in] rho density
    * \param[in] intEng total internal energy [J/m^3]
    * \param[in,out] yfrac mass fraction, (ny, ...)
-   * \return difference between the output and input mass fraction
+   * \return weight matrix, (..., nreaction, nreaction)
    */
   torch::Tensor forward(torch::Tensor rho, torch::Tensor intEng,
                         torch::Tensor& yfrac);

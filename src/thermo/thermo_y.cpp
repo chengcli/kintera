@@ -185,6 +185,11 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
                                    torch::Tensor &yfrac) {
   auto yfrac0 = yfrac.clone();
   auto ivol = compute("DY->V", {rho, yfrac});
+  auto vec = ivol.sizes().vec();
+
+  // |reactions| x |reactions| weight matrix
+  vec[ivol.dim() - 1] = options.react().size() * options.react().size();
+  auto umat = torch::empty(vec, ivol.options());
 
   // initial guess
   auto &temp = compute("VU->T", {ivol, intEng});
@@ -197,6 +202,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .resize_outputs(false)
           .check_all_same_dtype(false)
           .declare_static_shape(conc.sizes(), /*squash_dims=*/{conc.dim() - 1})
+          .add_output(umat)
           .add_output(conc)
           .add_owned_output(temp.unsqueeze(-1))
           .add_owned_input(intEng.unsqueeze(-1))
@@ -228,7 +234,10 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
   ivol = conc / inv_mu;
   yfrac = compute("V->Y", {ivol});
-  return yfrac - yfrac0;
+
+  vec[ivol.dim() - 1] /= options.react().size();
+  vec.push_back(options.react().size());
+  return umat;
 }
 
 void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor &out) const {

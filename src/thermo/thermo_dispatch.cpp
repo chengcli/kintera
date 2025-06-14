@@ -49,11 +49,12 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter,
 
     iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
       for (int i = 0; i < n; i++) {
-        auto conc = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
-        auto temp = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
-        auto intEng = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
+        auto umat = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
+        auto conc = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
+        auto temp = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
+        auto intEng = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
         int max_iter_i = max_iter;
-        equilibrate_uv(temp, conc, *intEng, stoich, nspecies, nreaction,
+        equilibrate_uv(umat, temp, conc, *intEng, stoich, nspecies, nreaction,
                        intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
                        intEng_extra, intEng_extra_ddT, logsvp_eps, &max_iter_i);
       }

@@ -23,8 +23,9 @@ namespace kintera {
  * adjusts the temperature and concentrations to satisfy the saturation
  * condition.
  *
- * \param[in,out] temp in: initial temperature, out: adjusted temperature.
- * \param[in,out] conc in: initial concentrations for each species, out:
+ * \param[out] umat WS weight matrix
+ * \param[in,out] temp in:initial temperature, out: adjusted temperature.
+ * \param[in,out] conc in:initial concentrations for each species, out:
  * adjusted concentrations.
  * \param[in] h0 initial internal energy.
  * \param[in] stoich reaction stoichiometric matrix, nspecies x nreaction.
@@ -45,9 +46,9 @@ namespace kintera {
  * \param[in,out] max_iter maximum number of iterations allowed for convergence.
  */
 template <typename T>
-int equilibrate_uv(T *temp, T *conc, T h0, T const *stoich, int nspecies,
-                   int nreaction, T const *intEng_offset, T const *cv_const,
-                   user_func1 const *logsvp_func,
+int equilibrate_uv(T *umat, T *temp, T *conc, T h0, T const *stoich,
+                   int nspecies, int nreaction, T const *intEng_offset,
+                   T const *cv_const, user_func1 const *logsvp_func,
                    user_func1 const *logsvp_func_ddT,
                    user_func2 const *intEng_R_extra,
                    user_func2 const *cv_R_extra, float logsvp_eps,
@@ -88,9 +89,6 @@ int equilibrate_uv(T *temp, T *conc, T h0, T const *stoich, int nspecies,
 
   // weight matrix
   T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
-
-  // U matrix
-  T *umat = (T *)malloc(nreaction * nreaction * sizeof(T));
 
   // right-hand-side vector
   T *rhs = (T *)malloc(nreaction * sizeof(T));
@@ -245,7 +243,6 @@ int equilibrate_uv(T *temp, T *conc, T h0, T const *stoich, int nspecies,
   free(logsvp_ddT);
   free(weight);
   free(rhs);
-  free(umat);
   free(reaction_set);
   free(stoich_active);
 
