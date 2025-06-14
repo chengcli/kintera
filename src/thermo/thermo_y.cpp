@@ -70,9 +70,15 @@ void ThermoYImpl::reset() {
       "inv_mu",
       1. / (mud * torch::tensor(options.mu_ratio(), torch::kFloat64)));
 
-  // change offset to T = 0
+  // change internal energy offset to T = 0
   for (int i = 0; i < options.uref_R().size(); ++i) {
     options.uref_R()[i] -= options.cref_R()[i] * options.Tref();
+  }
+
+  // change entropy offset to T = 0
+  for (int i = 0; i < 1 + options.vapor_ids().size(); ++i) {
+    options.sref_R()[i] -=
+        (options.cref_R()[i] + 1) * log(options.Tref()) - log(options.Pref());
   }
 
   auto cv_R = torch::tensor(options.cref_R(), torch::kFloat64);

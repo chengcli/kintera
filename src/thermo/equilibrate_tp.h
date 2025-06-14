@@ -210,8 +210,7 @@ int equilibrate_tp(T *xfrac, T temp, T pres, T const *stoich, int nspecies,
   free(xfrac0);
 
   if (iter >= *max_iter) {
-    fprintf(stderr,
-            "Saturation adjustment did not converge after %d iterations.\n",
+    fprintf(stderr, "equilibrate_tp did not converge after %d iterations.\n",
             *max_iter);
     return 2;  // failure to converge
   } else {

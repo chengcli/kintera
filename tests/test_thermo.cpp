@@ -9,6 +9,7 @@
 
 #include <kintera/eos/equation_of_state.hpp>
 #include <kintera/thermo/eval_uhs.hpp>
+#include <kintera/thermo/extrapolate_ad.hpp>
 #include <kintera/thermo/thermo.hpp>
 #include <kintera/thermo/thermo_formatter.hpp>
 
@@ -186,13 +187,11 @@ TEST_P(DeviceTest, eng_pres) {
 
 TEST_P(DeviceTest, equilibrate_tp) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
-  std::cout << fmt::format("{}", op_thermo) << std::endl;
-
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -210,7 +209,6 @@ TEST_P(DeviceTest, equilibrate_tp) {
 
 TEST_P(DeviceTest, equilibrate_uv) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
-  std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
@@ -247,6 +245,39 @@ TEST_P(DeviceTest, equilibrate_uv) {
   std::cout << "intEng after = " << intEng2 << std::endl;
 
   EXPECT_EQ(torch::allclose(intEng, intEng2, 1e-4, 1e-4), true);
+}
+
+TEST_P(DeviceTest, extrapolate_ad) {
+  if (dtype == torch::kFloat) {
+    GTEST_SKIP() << "Skipping float test";
+  }
+
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+
+  ThermoX thermo_x(op_thermo);
+  thermo_x->to(device, dtype);
+
+  auto temp = 300.0 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
+  auto pres = 1.e5 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
+
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
+  auto xfrac = torch::zeros({2, 3, 1 + ny}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
+
+  thermo_x->forward(temp, pres, xfrac);
+  auto conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
+  auto entropy_vol = thermo_x->compute("TPV->S", {temp, pres, conc});
+  auto entropy_mole0 = entropy_vol / conc.sum(-1);
+
+  extrapolate_ad_(temp, pres, xfrac, thermo_x, -0.1);
+
+  conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
+  entropy_vol = thermo_x->compute("TPV->S", {temp, pres, conc});
+  auto entropy_mole1 = entropy_vol / conc.sum(-1);
+
+  EXPECT_EQ(torch::allclose(entropy_mole0, entropy_mole1, 1e-3, 1e-3), true);
 }
 
 int main(int argc, char **argv) {

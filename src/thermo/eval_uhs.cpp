@@ -195,12 +195,12 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   // bundle iterator
   auto vec1 = temp.sizes().vec();
   vec1.push_back(op.react().size());
-  auto logsvp = torch::empty(vec1, temp.options());
+  auto logsvp = torch::zeros(vec1, temp.options());
   iter = at::TensorIteratorConfig()
              .resize_outputs(false)
              .check_all_same_dtype(true)
              .declare_static_shape(logsvp.sizes(),
-                                   /*squash_dim=*/{conc.dim() - 1})
+                                   /*squash_dim=*/{logsvp.dim() - 1})
              .add_output(logsvp)
              .add_owned_input(temp.unsqueeze(-1))
              .build();

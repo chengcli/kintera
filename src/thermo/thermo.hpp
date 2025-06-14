@@ -85,7 +85,7 @@ struct ThermoOptions {
   ADD_ARG(std::vector<std::string>, species);
 
   ADD_ARG(int, max_iter) = 5;
-  ADD_ARG(double, ftol) = 1e-6;
+  ADD_ARG(double, ftol) = 1e-8;
 };
 
 //! Mass Thermodynamics
