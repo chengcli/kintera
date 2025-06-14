@@ -15,28 +15,6 @@
 
 namespace kintera {
 
-/*!
- * \brief solve constrained least square problem: min ||A.x - b||, s.t. C.x <= d
- *
- * This subroutine solves the constrained least square problem using the active
- * set method based on the KKT conditions. The first `neq` rows of the
- * constraint matrix `C` are treated as equality constraints, while the
- * remaining rows are treated as inequality constraints.
- *
- * \param[in,out] b[0..n1-1] right-hand-side vector and output. Input dimension
- * is n1, output dimension is n2, requiring n1 >= n2
- * \param[in] a[0..n1*n2-1] row-major input matrix, A
- * \param[in] c[0..n3*n2-1] row-major constraint matrix, C
- * \param[in] d[0..n3-1] right-hand-side constraint vector, d
- * \param[in] n1 number of rows in matrix A
- * \param[in] n2 number of columns in matrix A
- * \param[in] n3 number of rows in matrix C
- * \param[in] neq number of equality constraints, 0 <= neq <= n3
- * \param[in,out] max_iter in: maximum number of iterations to perform, out:
- * number of iterations actually performed
- * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
- *         2 on failure (max_iter reached without convergence).
- */
 template <typename T>
 void populate_aug(T *aug, T const *ata, T const *c, int n2, int nact,
                   int const *ct_indx) {
@@ -83,6 +61,28 @@ void populate_rhs(T *rhs, T const *atb, T const *d, int n2, int nact,
   }
 }
 
+/*!
+ * \brief solve constrained least square problem: min ||A.x - b||, s.t. C.x <= d
+ *
+ * This subroutine solves the constrained least square problem using the active
+ * set method based on the KKT conditions. The first `neq` rows of the
+ * constraint matrix `C` are treated as equality constraints, while the
+ * remaining rows are treated as inequality constraints.
+ *
+ * \param[in,out] b[0..n1-1] right-hand-side vector and output. Input dimension
+ * is n1, output dimension is n2, requiring n1 >= n2
+ * \param[in] a[0..n1*n2-1] row-major input matrix, A
+ * \param[in] c[0..n3*n2-1] row-major constraint matrix, C
+ * \param[in] d[0..n3-1] right-hand-side constraint vector, d
+ * \param[in] n1 number of rows in matrix A
+ * \param[in] n2 number of columns in matrix A
+ * \param[in] n3 number of rows in matrix C
+ * \param[in] neq number of equality constraints, 0 <= neq <= n3
+ * \param[in,out] max_iter in: maximum number of iterations to perform, out:
+ * number of iterations actually performed
+ * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
+ *         2 on failure (max_iter reached without convergence).
+ */
 template <typename T>
 int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1, int n2,
                 int n3, int neq, int *max_iter) {

@@ -85,7 +85,7 @@ struct ThermoOptions {
   ADD_ARG(std::vector<std::string>, species);
 
   ADD_ARG(int, max_iter) = 5;
-  ADD_ARG(double, ftol) = 1e-8;
+  ADD_ARG(double, ftol) = 1e-6;
 };
 
 //! Mass Thermodynamics
@@ -255,7 +255,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param[in] temp temperature, K
    * \param[in] pres pressure, Pa
    * \param[in,out] xfrac mole fraction, (..., 1 + ny)
-   * \return difference between the output and input mole fraction
+   * \return weight matrix, (..., nreaction, nreaction)
    */
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
                         torch::Tensor& xfrac);

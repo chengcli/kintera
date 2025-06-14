@@ -252,7 +252,8 @@ TEST_P(DeviceTest, extrapolate_ad) {
     GTEST_SKIP() << "Skipping float test";
   }
 
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  auto op_thermo =
+      ThermoOptions::from_yaml("jupiter.yaml").max_iter(10).ftol(1e-8);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
@@ -270,12 +271,15 @@ TEST_P(DeviceTest, extrapolate_ad) {
   auto conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
   auto entropy_vol = thermo_x->compute("TPV->S", {temp, pres, conc});
   auto entropy_mole0 = entropy_vol / conc.sum(-1);
+  std::cout << "entropy before = " << entropy_mole0 << std::endl;
 
   extrapolate_ad_(temp, pres, xfrac, thermo_x, -0.1);
 
   conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
   entropy_vol = thermo_x->compute("TPV->S", {temp, pres, conc});
   auto entropy_mole1 = entropy_vol / conc.sum(-1);
+
+  std::cout << "entropy after = " << entropy_mole1 << std::endl;
 
   EXPECT_EQ(torch::allclose(entropy_mole0, entropy_mole1, 1e-3, 1e-3), true);
 }

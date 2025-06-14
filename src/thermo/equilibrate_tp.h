@@ -20,6 +20,7 @@ namespace kintera {
  * This function finds the thermodynamic equilibrium for an array
  * of species.
  *
+ * \param[out] umat WS weight matrix
  * \param[in,out] xfrac array of species mole fractions, modified in place.
  * \param[in] temp equilibrium temperature in Kelvin.
  * \param[in] pres equilibrium pressure in Pascals.
@@ -34,9 +35,10 @@ namespace kintera {
  * \param[in,out] max_iter maximum number of iterations allowed for convergence.
  */
 template <typename T>
-int equilibrate_tp(T *xfrac, T temp, T pres, T const *stoich, int nspecies,
-                   int nreaction, int ngas, user_func1 const *logsvp_func,
-                   float logsvp_eps, int *max_iter) {
+int equilibrate_tp(T *umat, T *xfrac, T temp, T pres, T const *stoich,
+                   int nspecies, int nreaction, int ngas,
+                   user_func1 const *logsvp_func, float logsvp_eps,
+                   int *max_iter) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
     fprintf(stderr, "Error: Non-positive temperature or pressure.\n");
@@ -72,9 +74,6 @@ int equilibrate_tp(T *xfrac, T temp, T pres, T const *stoich, int nspecies,
 
   // weight matrix
   T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
-
-  // U matrix
-  T *umat = (T *)malloc(nreaction * nreaction * sizeof(T));
 
   // right-hand-side vector
   T *rhs = (T *)malloc(nreaction * sizeof(T));
@@ -133,17 +132,16 @@ int equilibrate_tp(T *xfrac, T temp, T pres, T const *stoich, int nspecies,
       // active set, weight matrix and rhs vector
       if ((log_frac_sum < (logsvp[j] - logsvp_eps) && prod > 0.) ||
           (log_frac_sum > (logsvp[j] + logsvp_eps))) {
-        for (int i = 0; i < nspecies; i++) {
-          weight[first * nspecies + i] = 0.0;
+        for (int i = 0; i < ngas; i++) {
+          weight[first * nspecies + i] = -stoich_sum[j] / xg;
           if (stoich[i * nreaction + j] < 0) {
             weight[first * nspecies + i] +=
                 (-stoich[i * nreaction + j]) / xfrac[i];
           }
-
-          if (i < ngas) {
-            weight[first * nspecies + i] -= stoich_sum[j] / xg;
-          }
         }
+
+        for (int i = ngas; i < nspecies; i++)
+          weight[first * nspecies + i] = 0.0;
 
         rhs[first] = logsvp[j] - log_frac_sum;
         first++;
@@ -201,9 +199,8 @@ int equilibrate_tp(T *xfrac, T temp, T pres, T const *stoich, int nspecies,
   }
 
   free(logsvp);
-  free(weight);
   free(rhs);
-  free(umat);
+  free(weight);
   free(reaction_set);
   free(stoich_active);
   free(stoich_sum);

@@ -22,12 +22,13 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
 
     iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
       for (int i = 0; i < n; i++) {
-        auto out = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
-        auto temp = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
-        auto pres = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
+        auto umat = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
+        auto xfrac = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
+        auto temp = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
+        auto pres = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
         int max_iter_i = max_iter;
-        equilibrate_tp(out, *temp, *pres, stoich, nspecies, nreaction, ngas,
-                       logsvp_func, logsvp_eps, &max_iter_i);
+        equilibrate_tp(umat, xfrac, *temp, *pres, stoich, nspecies, nreaction,
+                       ngas, logsvp_func, logsvp_eps, &max_iter_i);
       }
     });
   });
@@ -60,44 +61,16 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter,
   });
 }
 
-void call_integrate_z_cpu(at::TensorIterator &iter, float dz,
-                          char const *method, float grav, float adTdz,
-                          user_func1 const *logsvp_func, float logsvp_eps,
-                          int max_iter) {
-  AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_integrate_z_cpu", [&] {
-    int nspecies = at::native::ensure_nonempty_size(iter.input(2), 0);
-    int ngas = at::native::ensure_nonempty_size(iter.input(2), 1);
-    auto stoich = iter.input(2).data_ptr<scalar_t>();
-    auto mu = iter.input(3).data_ptr<scalar_t>();
-
-    /*iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
-      for (int i = 0; i < n; i++) {
-        auto xfrac = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
-        auto temp = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
-        auto pres = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
-        auto enthalpy = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
-        auto cp = reinterpret_cast<scalar_t *>(data[4] + i * strides[4]);
-        int max_iter_i = max_iter;
-        integrate_z(xfrac, temp, pres, mu, (scalar_t)dz, method, (scalar_t)grav,
-                    (scalar_t)adTdz, stoich, nspecies, ngas, enthalpy, cp,
-                    logsvp_func, logsvp_eps, &max_iter_i);
-      }
-    });*/
-  });
-}
-
 }  // namespace kintera
 
 namespace at::native {
 
 DEFINE_DISPATCH(call_equilibrate_tp);
 DEFINE_DISPATCH(call_equilibrate_uv);
-DEFINE_DISPATCH(call_integrate_z);
 
 REGISTER_ALL_CPU_DISPATCH(call_equilibrate_tp,
                           &kintera::call_equilibrate_tp_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_equilibrate_uv,
                           &kintera::call_equilibrate_uv_cpu);
-REGISTER_ALL_CPU_DISPATCH(call_integrate_z, &kintera::call_integrate_z_cpu);
 
 }  // namespace at::native
