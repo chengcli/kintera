@@ -12,7 +12,7 @@
 namespace kintera {
 
 torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
-                                torch::Tensor xfrac, torch::Tensor weight,
+                                torch::Tensor xfrac, torch::Tensor gain,
                                 ThermoX &thermo,
                                 torch::optional<torch::Tensor> conc) {
   // prepare svp function derivatives
@@ -35,7 +35,7 @@ torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
   at::native::call_func1(logsvp_ddT.device().type(), iter, logsvp_func_ddT);
   delete[] logsvp_func_ddT;
 
-  auto rate_ddT = torch::linalg_solve(weight, logsvp_ddT);
+  auto rate_ddT = torch::linalg_solve(gain, logsvp_ddT);
 
   if (!conc.has_value()) {
     conc = thermo->compute("TPX->V", {temp, pres, xfrac});
@@ -60,10 +60,12 @@ void extrapolate_ad_(torch::Tensor temp, torch::Tensor pres,
   int iter = 0;
   pres *= exp(dlnp);
   while (iter++ < thermo->options.max_iter()) {
-    auto weight = thermo->forward(temp, pres, xfrac);
+    auto diag = torch::tensor({0});
+    auto gain = thermo->forward(temp, pres, xfrac, diag);
+    std::cout << "diag = " << diag << std::endl;
     conc = thermo->compute("TPX->V", {temp, pres, xfrac});
 
-    auto cp_mole = effective_cp_mole(temp, pres, xfrac, weight, thermo, conc);
+    auto cp_mole = effective_cp_mole(temp, pres, xfrac, gain, thermo, conc);
 
     entropy_vol = thermo->compute("TPV->S", {temp, pres, conc});
     auto entropy_mole = entropy_vol / conc.sum(-1);

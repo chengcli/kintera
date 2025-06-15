@@ -24,6 +24,7 @@ namespace kintera {
  * condition.
  *
  * \param[out] umat WS weight matrix
+ * \param[out] diag diagnostic output
  * \param[in,out] temp in:initial temperature, out: adjusted temperature.
  * \param[in,out] conc in:initial concentrations for each species, out:
  * adjusted concentrations.
@@ -46,7 +47,7 @@ namespace kintera {
  * \param[in,out] max_iter maximum number of iterations allowed for convergence.
  */
 template <typename T>
-int equilibrate_uv(T *umat, T *temp, T *conc, T h0, T const *stoich,
+int equilibrate_uv(T *umat, T *diag, T *temp, T *conc, T h0, T const *stoich,
                    int nspecies, int nreaction, T const *intEng_offset,
                    T const *cv_const, user_func1 const *logsvp_func,
                    user_func1 const *logsvp_func_ddT,
@@ -116,6 +117,7 @@ int equilibrate_uv(T *umat, T *temp, T *conc, T h0, T const *stoich,
 
   int iter = 0;
   int err_code = 0;
+  int nactive = 0;
   while (iter++ < *max_iter) {
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
@@ -179,7 +181,7 @@ int equilibrate_uv(T *umat, T *temp, T *conc, T h0, T const *stoich,
     }
 
     // form active stoichiometric and constraint matrix
-    int nactive = first;
+    nactive = first;
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < nactive; k++) {
         int j = reaction_set[k];
@@ -237,6 +239,21 @@ int equilibrate_uv(T *umat, T *temp, T *conc, T h0, T const *stoich,
     }
   }
 
+  // restore the reaction order of umat
+  T *umat_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+  memcpy(umat_cpy, umat, nreaction * nreaction * sizeof(T));
+  memset(umat, 0, nreaction * nreaction * sizeof(T));
+
+  for (int i = 0; i < nactive; i++) {
+    for (int j = 0; j < nreaction; j++) {
+      int k = reaction_set[i];
+      umat[k * nreaction + j] = umat_cpy[i * nreaction + j];
+    }
+  }
+
+  // save number of iterations to diag
+  diag[0] = (float)iter;
+
   free(intEng);
   free(intEng_ddT);
   free(logsvp);
@@ -245,6 +262,7 @@ int equilibrate_uv(T *umat, T *temp, T *conc, T h0, T const *stoich,
   free(rhs);
   free(reaction_set);
   free(stoich_active);
+  free(umat_cpy);
 
   if (iter >= *max_iter) {
     fprintf(stderr,

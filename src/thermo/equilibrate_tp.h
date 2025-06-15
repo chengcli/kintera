@@ -28,14 +28,13 @@ namespace kintera {
  * \param[in] ngas number of gas species in the system.
  * \param[in] logsvp_func user-defined function for logarithm of saturation
  * vapor pressure.
- * \param[in] logsvp_func_ddT user-defined function for derivative of logsvp
  * with respect to temperature.
  * \param[in] logsvp_eps tolerance for convergence in logarithm of saturation
  * vapor pressure.
  * \param[in,out] max_iter maximum number of iterations allowed for convergence.
  */
 template <typename T>
-int equilibrate_tp(T *umat, T *xfrac, T temp, T pres, T const *stoich,
+int equilibrate_tp(T *umat, T *diag, T *xfrac, T temp, T pres, T const *stoich,
                    int nspecies, int nreaction, int ngas,
                    user_func1 const *logsvp_func, float logsvp_eps,
                    int *max_iter) {
@@ -105,6 +104,7 @@ int equilibrate_tp(T *umat, T *xfrac, T temp, T pres, T const *stoich,
 
   int iter = 0;
   int kkt_err = 0;
+  int nactive = 0;
   while (iter++ < *max_iter) {
     // fraction of gases
     T xg = 0.0;
@@ -159,7 +159,7 @@ int equilibrate_tp(T *umat, T *xfrac, T temp, T pres, T const *stoich,
     }
 
     // form active stoichiometric and constraint matrix
-    int nactive = first;
+    nactive = first;
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < nactive; k++) {
         int j = reaction_set[k];
@@ -198,6 +198,22 @@ int equilibrate_tp(T *umat, T *xfrac, T temp, T pres, T const *stoich,
     }
   }
 
+  // restore the reaction order of umat
+  T *umat_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+  memcpy(umat_cpy, umat, nreaction * nreaction * sizeof(T));
+  memset(umat, 0, nreaction * nreaction * sizeof(T));
+
+  for (int i = 0; i < nactive; i++) {
+    for (int j = 0; j < nactive; j++) {
+      int k = reaction_set[i];
+      int l = reaction_set[j];
+      umat[k * nreaction + l] = umat_cpy[i * nreaction + j];
+    }
+  }
+
+  // save number of iterations to diag
+  diag[0] = (float)iter;
+
   free(logsvp);
   free(rhs);
   free(weight);
@@ -205,6 +221,7 @@ int equilibrate_tp(T *umat, T *xfrac, T temp, T pres, T const *stoich,
   free(stoich_active);
   free(stoich_sum);
   free(xfrac0);
+  free(umat_cpy);
 
   if (iter >= *max_iter) {
     fprintf(stderr, "equilibrate_tp did not converge after %d iterations.\n",

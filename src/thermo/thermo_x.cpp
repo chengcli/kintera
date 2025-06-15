@@ -164,13 +164,22 @@ torch::Tensor const &ThermoXImpl::compute(
 }
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
-                                   torch::Tensor &xfrac) {
+                                   torch::Tensor &xfrac,
+                                   torch::optional<torch::Tensor> diag) {
   auto xfrac0 = xfrac.clone();
   auto vec = xfrac.sizes().vec();
 
   // |reactions| x |reactions| weight matrix
   vec[xfrac.dim() - 1] = options.react().size() * options.react().size();
-  auto umat = torch::empty(vec, xfrac.options());
+  auto umat = torch::zeros(vec, xfrac.options());
+
+  // diagnostic array
+  vec[xfrac.dim() - 1] = 1;
+  if (!diag.has_value()) {
+    diag = torch::empty(vec, xfrac.options());
+  } else {
+    diag.value().set_(check_resize(diag.value(), vec, xfrac.options()));
+  }
 
   // prepare data
   auto iter = at::TensorIteratorConfig()
@@ -179,6 +188,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .declare_static_shape(xfrac.sizes(),
                                         /*squash_dims=*/{xfrac.dim() - 1})
                   .add_output(umat)
+                  .add_output(diag.value())
                   .add_output(xfrac)
                   .add_owned_input(temp.unsqueeze(-1))
                   .add_owned_input(pres.unsqueeze(-1))

@@ -10,7 +10,7 @@ namespace kintera {
  * \param temp Temperature tensor (K)
  * \param pres Pressure tensor (Pa)
  * \param xfrac Mole fraction tensor
- * \param weight Weight tensor
+ * \param gain Gain tensor
  * \param thermo ThermoX object containing the thermodynamic model
  * \param conc Optional concentration tensor, if not provided it will be
  * computed
@@ -18,7 +18,7 @@ namespace kintera {
  */
 torch::Tensor effective_cp_mole(
     torch::Tensor temp, torch::Tensor pres, torch::Tensor xfrac,
-    torch::Tensor weight, ThermoX& thermo,
+    torch::Tensor gain, ThermoX& thermo,
     torch::optional<torch::Tensor> conc = torch::nullopt);
 
 //! \brief Extrapolate state TPX to a new pressure along an adiabat
