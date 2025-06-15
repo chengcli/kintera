@@ -322,7 +322,8 @@ Examples:
     >> yfrac = torch.tensor([0.1, 0.2, 0.3])
     >> dyfrac = thermo_y.forward(rho, intEng, yfrac)
     )doc",
-                     py::arg("rho"), py::arg("intEng"), py::arg("yfrac"))
+                     py::arg("rho"), py::arg("intEng"), py::arg("yfrac"),
+                     py::arg("diag") = py::none())
 
       .def("compute", &kintera::ThermoYImpl::compute, R"doc(
 Compute the transformation.
@@ -368,7 +369,8 @@ Examples:
     >> xfrac = torch.tensor([0.1, 0.2, 0.3])
     >> dxfrac = thermo_x.forward(temp, pres, xfrac)
     )doc",
-                     py::arg("temp"), py::arg("pres"), py::arg("xfrac"))
+                     py::arg("temp"), py::arg("pres"), py::arg("xfrac"),
+                     py::arg("diag") = py::none())
 
       .def("compute", &kintera::ThermoXImpl::compute, R"doc(
 Compute the transformation.
