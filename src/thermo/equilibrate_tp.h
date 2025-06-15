@@ -106,8 +106,6 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
   int iter = 0;
   int kkt_err = 0;
   int nactive = 0;
-  // oversaturated reactions remains in the active set
-  int oversaturated = 0;
   T lambda = 0.;  // rate scale factor
   while (iter++ < *max_iter) {
     /*printf("iter = %d, oversaturated = %d, lambda = %f\n", iter,
@@ -127,7 +125,7 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
 
     // reorder reaction set
     // reset oversaturated if rates have been scaled
-    if (lambda != 1.) oversaturated = 0;
+    int oversaturated = 0;
     int first = oversaturated;
     int last = nreaction;
 
