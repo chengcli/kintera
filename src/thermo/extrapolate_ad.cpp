@@ -41,8 +41,6 @@ torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
   std::cout << "logsvp_ddT = " << logsvp_ddT << std::endl;
   std::cout << "gain_diag = " << gain_diag << std::endl;
 
-  // auto gain_inv = torch::linalg_pinv(gain);
-  // auto rate_ddT = gain_inv.matmul(logsvp_ddT.unsqueeze(-1)).squeeze(-1);
   auto rate_ddT = std::get<0>(torch::linalg_lstsq(gain, logsvp_ddT));
 
   std::cout << "rate_ddT = " << rate_ddT << std::endl;

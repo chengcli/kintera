@@ -274,7 +274,7 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
     for (int l = 0; l < nactive; l++) {
       int i = reaction_set[k];
       int j = reaction_set[l];
-      gain[i * nreaction + j] = gain_cpy[k * nreaction + l];
+      gain[i * nreaction + j] = gain_cpy[k * nactive + l];
     }
   }
 
