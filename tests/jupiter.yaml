@@ -80,6 +80,14 @@ reactions:
     type: nucleation
     rate-constant: {formula: h2o_ideal}
 
+  - equation: NH3 <=> H2O(s)
+    type: nucleation
+    rate-constant: {formula: nh3_ideal}
+
+  - equation: NH3 + H2S <=> NH4SH(s)
+    type: nucleation
+    rate-constant: {formula: nh3_h2s_lewis}
+
   - equation: H2O(l) => H2O(p)
     rate-constant: {A: 0.001, b: 0}
 
