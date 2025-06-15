@@ -35,7 +35,17 @@ torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
   at::native::call_func1(logsvp_ddT.device().type(), iter, logsvp_func_ddT);
   delete[] logsvp_func_ddT;
 
+  auto gain_diag = (gain.diagonal(0, -2, -1) != 0).to(gain.dtype());
+  logsvp_ddT *= gain_diag;
+
+  std::cout << "logsvp_ddT = " << logsvp_ddT << std::endl;
+  std::cout << "gain_diag = " << gain_diag << std::endl;
+
+  // auto gain_inv = torch::linalg_pinv(gain);
+  // auto rate_ddT = gain_inv.matmul(logsvp_ddT.unsqueeze(-1)).squeeze(-1);
   auto rate_ddT = std::get<0>(torch::linalg_lstsq(gain, logsvp_ddT));
+
+  std::cout << "rate_ddT = " << rate_ddT << std::endl;
 
   if (!conc.has_value()) {
     conc = thermo->compute("TPX->V", {temp, pres, xfrac});
@@ -60,10 +70,15 @@ void extrapolate_ad_(torch::Tensor temp, torch::Tensor pres,
   int iter = 0;
   pres *= exp(dlnp);
   while (iter++ < thermo->options.max_iter()) {
+    std::cout << "iter = " << iter << std::endl;
+    std::cout << "temp = " << temp << std::endl;
+
     auto gain = thermo->forward(temp, pres, xfrac);
+    std::cout << "gain = " << gain << std::endl;
     conc = thermo->compute("TPX->V", {temp, pres, xfrac});
 
     auto cp_mole = effective_cp_mole(temp, pres, xfrac, gain, thermo, conc);
+    std::cout << "cp_mole = " << cp_mole << std::endl;
 
     entropy_vol = thermo->compute("TPV->S", {temp, pres, conc});
     auto entropy_mole = entropy_vol / conc.sum(-1);
