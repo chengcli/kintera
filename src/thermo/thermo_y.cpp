@@ -190,14 +190,12 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
   // |reactions| x |reactions| weight matrix
   vec[ivol.dim() - 1] = options.react().size() * options.react().size();
-  auto umat = torch::empty(vec, ivol.options());
+  auto gain = torch::empty(vec, ivol.options());
 
   // diagnostic array
   vec[ivol.dim() - 1] = 1;
   if (!diag.has_value()) {
     diag = torch::zeros(vec, ivol.options());
-  } else {
-    diag.value().set_(check_resize(diag.value(), vec, ivol.options()));
   }
 
   // initial guess
@@ -211,7 +209,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .resize_outputs(false)
           .check_all_same_dtype(false)
           .declare_static_shape(conc.sizes(), /*squash_dims=*/{conc.dim() - 1})
-          .add_output(umat)
+          .add_output(gain)
           .add_output(diag.value())
           .add_output(conc)
           .add_owned_output(temp.unsqueeze(-1))
@@ -247,7 +245,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
   vec[ivol.dim() - 1] /= options.react().size();
   vec.push_back(options.react().size());
-  return umat.view(vec);
+  return gain.view(vec);
 }
 
 void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor &out) const {

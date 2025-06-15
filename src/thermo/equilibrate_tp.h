@@ -20,7 +20,7 @@ namespace kintera {
  * This function finds the thermodynamic equilibrium for an array
  * of species.
  *
- * \param[out] umat WS weight matrix
+ * \param[out] gain WS gain matrix
  * \param[in,out] xfrac array of species mole fractions, modified in place.
  * \param[in] temp equilibrium temperature in Kelvin.
  * \param[in] pres equilibrium pressure in Pascals.
@@ -34,7 +34,7 @@ namespace kintera {
  * \param[in,out] max_iter maximum number of iterations allowed for convergence.
  */
 template <typename T>
-int equilibrate_tp(T *umat, T *diag, T *xfrac, T temp, T pres, T const *stoich,
+int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
                    int nspecies, int nreaction, int ngas,
                    user_func1 const *logsvp_func, float logsvp_eps,
                    int *max_iter) {
@@ -166,7 +166,7 @@ int equilibrate_tp(T *umat, T *diag, T *xfrac, T temp, T pres, T const *stoich,
         stoich_active[i * nactive + k] = stoich[i * nreaction + j];
       }
 
-    mmdot(umat, weight, stoich_active, nactive, nspecies, nactive);
+    mmdot(gain, weight, stoich_active, nactive, nspecies, nactive);
 
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < nactive; k++) {
@@ -175,7 +175,7 @@ int equilibrate_tp(T *umat, T *diag, T *xfrac, T temp, T pres, T const *stoich,
 
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
-    kkt_err = leastsq_kkt(rhs, umat, stoich_active, xfrac, nactive, nactive,
+    kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, nactive, nactive,
                           nspecies, 0, &max_kkt_iter);
     if (kkt_err != 0) break;
 
@@ -198,21 +198,21 @@ int equilibrate_tp(T *umat, T *diag, T *xfrac, T temp, T pres, T const *stoich,
     }
   }
 
-  // restore the reaction order of umat
-  T *umat_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
-  memcpy(umat_cpy, umat, nreaction * nreaction * sizeof(T));
-  memset(umat, 0, nreaction * nreaction * sizeof(T));
+  // restore the reaction order of gain
+  T *gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+  memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
+  memset(gain, 0, nreaction * nreaction * sizeof(T));
 
   for (int i = 0; i < nactive; i++) {
     for (int j = 0; j < nactive; j++) {
       int k = reaction_set[i];
       int l = reaction_set[j];
-      umat[k * nreaction + l] = umat_cpy[i * nreaction + j];
+      gain[k * nreaction + l] = gain_cpy[i * nreaction + j];
     }
   }
 
   // save number of iterations to diag
-  diag[0] = (float)iter;
+  diag[0] = iter;
 
   free(logsvp);
   free(rhs);
@@ -221,7 +221,7 @@ int equilibrate_tp(T *umat, T *diag, T *xfrac, T temp, T pres, T const *stoich,
   free(stoich_active);
   free(stoich_sum);
   free(xfrac0);
-  free(umat_cpy);
+  free(gain_cpy);
 
   if (iter >= *max_iter) {
     fprintf(stderr, "equilibrate_tp did not converge after %d iterations.\n",

@@ -271,7 +271,9 @@ TEST_P(DeviceTest, extrapolate_ad) {
   auto conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
   auto entropy_vol = thermo_x->compute("TPV->S", {temp, pres, conc});
   auto entropy_mole0 = entropy_vol / conc.sum(-1);
+
   std::cout << "entropy before = " << entropy_mole0 << std::endl;
+  std::cout << "temp before = " << temp << std::endl;
 
   extrapolate_ad_(temp, pres, xfrac, thermo_x, -0.1);
 
@@ -280,6 +282,7 @@ TEST_P(DeviceTest, extrapolate_ad) {
   auto entropy_mole1 = entropy_vol / conc.sum(-1);
 
   std::cout << "entropy after = " << entropy_mole1 << std::endl;
+  std::cout << "temp after = " << temp << std::endl;
 
   EXPECT_EQ(torch::allclose(entropy_mole0, entropy_mole1, 1e-3, 1e-3), true);
 }
