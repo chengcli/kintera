@@ -142,6 +142,20 @@ int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1, int n2,
   int iter = 0;
 
   while (iter++ < *max_iter) {
+    /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
+    printf("ct_indx = ");
+    for (int i = 0; i < neq; ++i) {
+      printf("%d ", ct_indx[i]);
+    }
+    printf("| ");
+    for (int i = neq; i < nactive; ++i) {
+      printf("%d ", ct_indx[i]);
+    }
+    printf("| ");
+    for (int i = nactive; i < n3; ++i) {
+      printf("%d ", ct_indx[i]);
+    }
+    printf("\n");*/
     int nactive0 = nactive;
     populate_aug(aug, ata, c, n2, nactive, ct_indx);
     populate_rhs(rhs, atb, d, n2, nactive, ct_indx);
@@ -158,6 +172,17 @@ int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1, int n2,
         eval[k] += C(k, j) * rhs[j];
       }
     }
+
+    /* print solution vector (rhs)
+    printf("rhs = ");
+    for (int i = 0; i < n2; ++i) {
+      printf("%f ", rhs[i]);
+    }
+    printf("| ");
+    for (int i = n2; i < n2 + nactive; ++i) {
+      printf("%f ", rhs[i]);
+    }
+    printf("\n");*/
 
     // remove inactive constraints (three-way swap)
     //           mu < 0
@@ -178,12 +203,31 @@ int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1, int n2,
         ct_indx[first] = ct_indx[mid - 1];
         ct_indx[mid - 1] = ct_indx[last - 1];
         ct_indx[last - 1] = tmp;
+
+        T val = rhs[n2 + first];
+        rhs[n2 + first] = rhs[n2 + mid - 1];
+        rhs[n2 + mid - 1] = val;
         --last;
         --mid;
       } else {
         ++first;
       }
     }
+
+    /* print ct_indx after removing
+    printf("ct_indx after removing = ");
+    for (int i = 0; i < neq; ++i) {
+      printf("%d ", ct_indx[i]);
+    }
+    printf("| ");
+    for (int i = neq; i < nactive; ++i) {
+      printf("%d ", ct_indx[i]);
+    }
+    printf("| ");
+    for (int i = nactive; i < n3; ++i) {
+      printf("%d ", ct_indx[i]);
+    }
+    printf("\n");*/
 
     // add back inactive constraints (two-way swap)
     //                     C.x <= d

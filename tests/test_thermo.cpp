@@ -186,7 +186,7 @@ TEST_P(DeviceTest, eng_pres) {
 }
 
 TEST_P(DeviceTest, equilibrate_tp) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(15);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
@@ -205,6 +205,12 @@ TEST_P(DeviceTest, equilibrate_tp) {
   std::cout << "xfrac before = " << xfrac[0][0][0] << std::endl;
   thermo_x->forward(temp, pres, xfrac);
   std::cout << "xfrac after = " << xfrac[0][0][0] << std::endl;
+
+  EXPECT_EQ(torch::allclose(
+                xfrac.sum(-1),
+                torch::ones({1, 2, 3}, torch::device(device).dtype(dtype)),
+                /*rtol=*/1e-4, /*atol=*/1e-4),
+            true);
 }
 
 TEST_P(DeviceTest, equilibrate_uv) {

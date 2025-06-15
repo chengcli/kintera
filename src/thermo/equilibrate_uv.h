@@ -194,6 +194,7 @@ int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0, T const *stoich,
       for (int k = 0; k < nactive; k++) {
         stoich_active[i * nactive + k] *= -1;
       }
+    // note that stoich_active is negated
 
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
