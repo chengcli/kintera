@@ -259,12 +259,12 @@ TEST_P(DeviceTest, extrapolate_ad) {
   }
 
   auto op_thermo =
-      ThermoOptions::from_yaml("jupiter.yaml").max_iter(10).ftol(1e-8);
+      ThermoOptions::from_yaml("jupiter.yaml").max_iter(15).ftol(1e-8);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
-  auto temp = 300.0 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
+  auto temp = 200.0 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
 
   int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();

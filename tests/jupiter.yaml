@@ -24,53 +24,53 @@ species:
 
   - name: H2O(l)
     composition: {H: 2, O: 1}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.0
+    u0_R: -3430.
 
   - name: H2O(s)
     composition: {H: 2, O: 1}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.0
+    u0_R: -3430.
 
   - name: H2O(l,p)
     composition: {H: 2, O: 1}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.0
+    u0_R: -3430.
 
   - name: H2O(s,p)
     composition: {H: 2, O: 1}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.0
+    u0_R: -3430.
 
   - name: NH3(l)
     composition: {N: 1, H: 3}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.6
+    u0_R: -5520.
 
   - name: NH3(s)
     composition: {N: 1, H: 3}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.6
+    u0_R: -5520.
 
   - name: NH3(l,p)
     composition: {N: 1, H: 3}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.6
+    u0_R: -5520.
 
   - name: NH3(s,p)
     composition: {N: 1, H: 3}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.6
+    u0_R: -5520.
 
   - name: NH4SH(s)
     composition: {N: 1, H: 5, S: 1}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.6
+    u0_R: -1.2e4
 
   - name: NH4SH(p)
     composition: {N: 1, H: 5, S: 1}
-    cv_R: 3.5
-    u0_R: -4510.3
+    cv_R: 9.6
+    u0_R: -1.2e4
 
 vapor: [H2O, NH3, H2S]
 cloud: [H2O(l), H2O(s), NH3(l), NH3(s), NH4SH(s)]

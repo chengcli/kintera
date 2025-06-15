@@ -117,9 +117,7 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
 
     // fraction of gases
     T xg = 0.0;
-    for (int i = 0; i < ngas; i++) {
-      xg += xfrac[i];
-    }
+    for (int i = 0; i < ngas; i++) xg += xfrac[i];
 
     // populate weight matrix, rhs vector and active set
     int first = 0;
@@ -219,9 +217,57 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
     for (int i = 0; i < nspecies; i++) xfrac[i] /= xsum;
   }
 
-  // restore the reaction order of gain
+  /////////// Construct a gain matrix of active reactions ///////////
+  int first = 0;
+  int last = nreaction;
+  T xg = 0.0;
+  for (int i = 0; i < ngas; i++) xg += xfrac[i];
+
+  while (first < last) {
+    int j = reaction_set[first];
+    T log_frac_sum = 0.0;
+    T prod = 1.0;
+
+    // active set condition variables
+    for (int i = 0; i < nspecies; i++) {
+      if (stoich[i * nreaction + j] < 0) {  // reactant
+        log_frac_sum += (-stoich[i * nreaction + j]) * log(xfrac[i] / xg);
+      } else if (stoich[i * nreaction + j] > 0) {  // product
+        prod *= xfrac[i];
+      }
+    }
+
+    // active set and weight matrix
+    if ((log_frac_sum >= (logsvp[j] - logsvp_eps) &&
+         (log_frac_sum <= (logsvp[j] + logsvp_eps)))) {
+      for (int i = 0; i < ngas; i++) {
+        weight[first * nspecies + i] = -stoich_sum[j] / xg;
+        if (stoich[i * nreaction + j] < 0) {
+          weight[first * nspecies + i] -= stoich[i * nreaction + j] / xfrac[i];
+        }
+      }
+      for (int i = ngas; i < nspecies; i++) {
+        weight[first * nspecies + i] = 0.0;
+      }
+      first++;
+    } else {
+      int tmp = reaction_set[first];
+      reaction_set[first] = reaction_set[last - 1];
+      reaction_set[last - 1] = tmp;
+      last--;
+    }
+  }
+
+  // populate active stoichiometric and constraint matrix
+  nactive = first;
+  for (int i = 0; i < nspecies; i++)
+    for (int k = 0; k < nactive; k++) {
+      int j = reaction_set[k];
+      stoich_active[i * nactive + k] = stoich[i * nreaction + j];
+    }
+
   T *gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
-  memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
+  mmdot(gain_cpy, weight, stoich_active, nactive, nspecies, nactive);
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
   for (int k = 0; k < nactive; k++) {

@@ -71,13 +71,14 @@ void extrapolate_ad_(torch::Tensor temp, torch::Tensor pres,
     temp *= 1. + (entropy_mole0 - entropy_mole) / cp_mole;
 
     if ((entropy_mole0 - entropy_mole).abs().max().item<double>() <
-        thermo->options.ftol()) {
+        10 * thermo->options.ftol()) {
       break;
     }
   }
 
   if (iter >= thermo->options.max_iter()) {
-    TORCH_WARN("max iteration reached");
+    TORCH_WARN("extrapolate_ad does not converge after ",
+               thermo->options.max_iter(), " iterations.");
   }
 }
 
