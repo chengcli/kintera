@@ -80,7 +80,7 @@ reactions:
     type: nucleation
     rate-constant: {formula: h2o_ideal}
 
-  - equation: NH3 <=> H2O(s)
+  - equation: NH3 <=> NH3(s)
     type: nucleation
     rate-constant: {formula: nh3_ideal}
 

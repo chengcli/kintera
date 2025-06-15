@@ -243,7 +243,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   ivol = conc / inv_mu;
   yfrac = compute("V->Y", {ivol});
 
-  vec[ivol.dim() - 1] /= options.react().size();
+  vec[ivol.dim() - 1] = options.react().size();
   vec.push_back(options.react().size());
   return gain.view(vec);
 }

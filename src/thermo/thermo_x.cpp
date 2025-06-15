@@ -206,7 +206,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   delete[] logsvp_func;
 
-  vec[xfrac.dim() - 1] /= options.react().size();
+  vec[xfrac.dim() - 1] = options.react().size();
   vec.push_back(options.react().size());
   return gain.view(vec);
 }

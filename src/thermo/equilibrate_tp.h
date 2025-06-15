@@ -105,7 +105,13 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
   int iter = 0;
   int kkt_err = 0;
   int nactive = 0;
+  int oversaturated = 0;  // number of oversaturated reactions
   while (iter++ < *max_iter) {
+    printf("iter = %d, xfrac = ", iter);
+    for (int i = 0; i < nspecies; i++) {
+      printf("%g ", xfrac[i]);
+    }
+    printf("\n");
     // fraction of gases
     T xg = 0.0;
     for (int i = 0; i < ngas; i++) {
@@ -113,7 +119,7 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
     }
 
     // populate weight matrix, rhs vector and active set
-    int first = 0;
+    int first = oversaturated;
     int last = nreaction;
     while (first < last) {
       int j = reaction_set[first];
@@ -140,10 +146,12 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
           }
         }
 
-        for (int i = ngas; i < nspecies; i++)
+        for (int i = ngas; i < nspecies; i++) {
           weight[first * nspecies + i] = 0.0;
+        }
 
         rhs[first] = logsvp[j] - log_frac_sum;
+        if (log_frac_sum > (logsvp[j] + logsvp_eps)) oversaturated++;
         first++;
       } else {
         int tmp = reaction_set[first];
@@ -153,7 +161,9 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
       }
     }
 
-    if (first == 0) {
+    printf("first = %d, last = %d, oversaturated = %d\n", first, last,
+           oversaturated);
+    if (first == oversaturated) {
       // all reactions are in equilibrium, no need to adjust saturation
       break;
     }
@@ -189,7 +199,7 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
       for (int i = 0; i < nspecies; i++) {
         for (int k = 0; k < nactive; k++) {
           int j = reaction_set[k];
-          xfrac[i] = xfrac0[i] + stoich[i * nactive + j] * rhs[k] * lambda;
+          xfrac[i] = xfrac0[i] + stoich[i * nreaction + j] * rhs[k] * lambda;
         }
         if (i < ngas && xfrac[i] <= 0.) positive_vapor = false;
       }

@@ -74,7 +74,7 @@ TEST_P(DeviceTest, thermo_y) {
 }
 
 TEST_P(DeviceTest, thermo_x) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
 
   ThermoX thermo(op_thermo);
   thermo->to(device, dtype);
