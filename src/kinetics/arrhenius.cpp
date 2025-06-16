@@ -100,7 +100,7 @@ void ArrheniusImpl::pretty_print(std::ostream& os) const {
   for (size_t i = 0; i < options.A().size(); i++) {
     os << "(" << i + 1 << ") A = " << options.A()[i]
        << ", b = " << options.b()[i]
-       << ", Ea = " << options.Ea_R()[i] * constants::GasConstant << " J/kmol"
+       << ", Ea = " << options.Ea_R()[i] * constants::GasConstant << " J/mol"
        << std::endl;
   }
 }

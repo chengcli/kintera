@@ -22,7 +22,7 @@ struct ArrheniusOptions {
   static ArrheniusOptions from_map(
       const std::vector<std::map<std::string, std::string>>& param);
 
-  //! Pre-exponential factor. The unit system is (kmol, m, s);
+  //! Pre-exponential factor. The unit system is (mol, m, s);
   //! actual units depend on the reaction order
   ADD_ARG(std::vector<double>, A) = {};
 
@@ -59,11 +59,11 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
-  //! Compute the reaction rate constant
+  //! Compute the log reaction rate constant
   /*!
    * \param T temperature [K], shape (ncol, nlyr)
    * \param other additional parameters
-   * \return log reaction rate constant in ln(kmol, m, s)
+   * \return log reaction rate constant in ln(mol, m, s), (..., nreaction)
    */
   torch::Tensor forward(torch::Tensor T,
                         std::map<std::string, torch::Tensor> const& other);

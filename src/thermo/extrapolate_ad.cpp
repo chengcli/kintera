@@ -4,10 +4,9 @@
 // kintera
 #include <kintera/constants.h>
 
-#include <kintera/utils/utils_dispatch.hpp>
-
 #include "eval_uhs.hpp"
 #include "extrapolate_ad.hpp"
+#include "log_svp.hpp"
 
 namespace kintera {
 
@@ -15,29 +14,9 @@ torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
                                 torch::Tensor xfrac, torch::Tensor gain,
                                 ThermoX &thermo,
                                 torch::optional<torch::Tensor> conc) {
-  // prepare svp function derivatives
-  auto vec = temp.sizes().vec();
-  vec.push_back(thermo->options.react().size());
-  auto logsvp_ddT = torch::zeros(vec, temp.options());
-  auto iter = at::TensorIteratorConfig()
-                  .resize_outputs(false)
-                  .check_all_same_dtype(true)
-                  .declare_static_shape(logsvp_ddT.sizes(),
-                                        /*squash_dim=*/{logsvp_ddT.dim() - 1})
-                  .add_output(logsvp_ddT)
-                  .add_owned_input(temp.unsqueeze(-1))
-                  .build();
+  LogSVPFunc::init(thermo->options.react());
 
-  user_func1 *logsvp_func_ddT = new user_func1[thermo->options.react().size()];
-  for (int i = 0; i < thermo->options.react().size(); ++i) {
-    logsvp_func_ddT[i] = thermo->options.react()[i].func_ddT();
-  }
-  at::native::call_func1(logsvp_ddT.device().type(), iter, logsvp_func_ddT);
-  delete[] logsvp_func_ddT;
-
-  // auto gain_diag = (gain.diagonal(0, -2, -1) != 0).to(gain.dtype());
-  // logsvp_ddT *= gain_diag;
-
+  auto logsvp_ddT = LogSVPFunc::grad(temp);
   auto rate_ddT = std::get<0>(torch::linalg_lstsq(gain, logsvp_ddT));
 
   if (!conc.has_value()) {
