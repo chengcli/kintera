@@ -1,4 +1,6 @@
-# KINTERA
+# JINKELA: Joint INtegrated Kinetics for Exoplanetary and pLanetary Atmospheres
+
+*A fork of [KINTERA](https://github.com/chengcli/kintera)*
 
 **Atmospheric Chemistry and Thermodynamics Library**
 
