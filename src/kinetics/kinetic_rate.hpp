@@ -18,14 +18,14 @@ namespace kintera {
 struct KineticRateOptions {
   ADD_ARG(std::vector<std::string>, species) = {};
   ADD_ARG(std::vector<Reaction>, reactions) = {};
+
+  ADD_ARG(ArrheniusOptions, arrhenius) = {};
+  ADD_ARG(EvaporationOptions, evaporation) = {};
 };
 
 class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
  public:
-  //! activity order matrix, shape (nreaction, nspecies)
-  torch::Tensor order;
-
-  //! stoichiometry matrix, shape (nreaction, nspecies)
+  //! stoichiometry matrix, shape (nspecies, nreaction)
   torch::Tensor stoich;
 
   //! options with which this `KineticRateImpl` was constructed

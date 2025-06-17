@@ -59,13 +59,14 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
-  //! Compute the log reaction rate constant
+  //! Compute the log rate constant
   /*!
    * \param T temperature [K], shape (...)
+   * \param P pressure [pa], shape (...)
    * \param other additional parameters
    * \return log reaction rate constant in ln(mol, m, s), (..., nreaction)
    */
-  torch::Tensor forward(torch::Tensor T,
+  torch::Tensor forward(torch::Tensor T, torch::Tensor P,
                         std::map<std::string, torch::Tensor> const& other);
 };
 TORCH_MODULE(Arrhenius);

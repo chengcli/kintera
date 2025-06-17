@@ -1,3 +1,6 @@
+// yaml
+#include <yaml-cpp/yaml.h>
+
 // kintera
 #include "nucleation.hpp"
 

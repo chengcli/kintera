@@ -100,7 +100,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! internal energy offset at T = 0 [J/kg]
   torch::Tensor u0;
 
-  //! stoichiometry matrix
+  //! stoichiometry matrix (nspecies, nreaction)
   torch::Tensor stoich;
 
   //! options with which this `ThermoY` was constructed

@@ -16,7 +16,7 @@ ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root) {
       TORCH_CHECK(false, "Reaction type not specified");
     }
 
-    if (rxn_node["type"].as<std::string>() != "Arrhenius") {
+    if (rxn_node["type"].as<std::string>() != "arrhenius") {
       continue;
     }
 
@@ -83,7 +83,7 @@ ArrheniusOptions ArrheniusOptions::from_map(
 }
 
 ArrheniusImpl::ArrheniusImpl(ArrheniusOptions const& options_)
-    : options(options_) {
+    : options(std::move(options_)) {
   reset();
 }
 
@@ -109,7 +109,8 @@ void ArrheniusImpl::pretty_print(std::ostream& os) const {
 }
 
 torch::Tensor ArrheniusImpl::forward(
-    torch::Tensor T, std::map<std::string, torch::Tensor> const& other) {
+    torch::Tensor T, torch::Tensor P,
+    std::map<std::string, torch::Tensor> const& other) {
   return logA + b * T.unsqueeze(-1).log() - Ea_R / T.unsqueeze(-1);
 }
 

@@ -1,8 +1,5 @@
 #pragma once
 
-// yaml
-#include <yaml-cpp/yaml.h>
-
 // torch
 #include <torch/torch.h>
 
@@ -12,6 +9,10 @@
 
 // arg
 #include <kintera/add_arg.h>
+
+namespace YAML {
+class Node;
+}
 
 namespace kintera {
 
