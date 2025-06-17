@@ -61,7 +61,7 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
 
   //! Compute the log reaction rate constant
   /*!
-   * \param T temperature [K], shape (ncol, nlyr)
+   * \param T temperature [K], shape (...)
    * \param other additional parameters
    * \return log reaction rate constant in ln(mol, m, s), (..., nreaction)
    */

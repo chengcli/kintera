@@ -88,10 +88,13 @@ ArrheniusImpl::ArrheniusImpl(ArrheniusOptions const& options_)
 }
 
 void ArrheniusImpl::reset() {
-  logA = register_buffer("logA", torch::tensor(options.A()).log());
-  b = register_buffer("b", torch::tensor(options.b()));
-  Ea_R = register_buffer("Ea_R", torch::tensor(options.Ea_R()));
-  E4_R = register_buffer("E4_R", torch::tensor(options.E4_R()));
+  logA = register_buffer("logA",
+                         torch::tensor(options.A(), torch::kFloat64).log());
+  b = register_buffer("b", torch::tensor(options.b(), torch::kFloat64));
+  Ea_R =
+      register_buffer("Ea_R", torch::tensor(options.Ea_R(), torch::kFloat64));
+  E4_R =
+      register_buffer("E4_R", torch::tensor(options.E4_R(), torch::kFloat64));
 }
 
 void ArrheniusImpl::pretty_print(std::ostream& os) const {
@@ -107,8 +110,7 @@ void ArrheniusImpl::pretty_print(std::ostream& os) const {
 
 torch::Tensor ArrheniusImpl::forward(
     torch::Tensor T, std::map<std::string, torch::Tensor> const& other) {
-  return logA.view({1, 1, -1}) + b.view({1, 1, -1}) * T.unsqueeze(-1).log() -
-         Ea_R.view({1, 1, -1}) / T.unsqueeze(-1);
+  return logA + b * T.unsqueeze(-1).log() - Ea_R / T.unsqueeze(-1);
 }
 
 /*torch::Tensor ArrheniusRate::ddTRate(torch::Tensor T, torch::Tensor P) const {
