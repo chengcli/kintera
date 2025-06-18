@@ -9,44 +9,33 @@
 
 namespace kintera {
 
-ThermoXImpl::ThermoXImpl(const ThermoOptions &options_) : options(options_) {
-  int nvapor = options.vapor_ids().size();
-  int ncloud = options.cloud_ids().size();
-
-  if (options.mu_ratio().empty()) {
-    options.mu_ratio() = std::vector<double>(1 + nvapor + ncloud, 1.);
-  }
-
-  if (options.cref_R().empty()) {
-    options.cref_R() = std::vector<double>(1 + nvapor + ncloud, 5. / 2.);
-  }
-
-  if (options.uref_R().empty()) {
-    options.uref_R() = std::vector<double>(1 + nvapor + ncloud, 0.);
-  }
+ThermoXImpl::ThermoXImpl(const ThermoOptions &options_)
+    : options(std::move(options_)) {
+  // populate higher-order thermodynamic functions
+  auto nspecies = options.species().size();
 
   // populate higher-order thermodynamic functions
-  while (options.intEng_R_extra().size() < options.species().size()) {
+  while (options.intEng_R_extra().size() < nspecies) {
     options.intEng_R_extra().push_back(nullptr);
   }
 
-  while (options.entropy_R_extra().size() < options.species().size()) {
+  while (options.entropy_R_extra().size() < nspecies) {
     options.entropy_R_extra().push_back(nullptr);
   }
 
-  while (options.cv_R_extra().size() < options.species().size()) {
+  while (options.cv_R_extra().size() < nspecies) {
     options.cv_R_extra().push_back(nullptr);
   }
 
-  while (options.cp_R_extra().size() < options.species().size()) {
+  while (options.cp_R_extra().size() < nspecies) {
     options.cp_R_extra().push_back(nullptr);
   }
 
-  while (options.czh().size() < options.species().size()) {
+  while (options.czh().size() < nspecies) {
     options.czh().push_back(nullptr);
   }
 
-  while (options.czh_ddC().size() < options.species().size()) {
+  while (options.czh_ddC().size() < nspecies) {
     options.czh_ddC().push_back(nullptr);
   }
 
@@ -54,16 +43,23 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions &options_) : options(options_) {
 }
 
 void ThermoXImpl::reset() {
-  int nvapor = options.vapor_ids().size();
-  int ncloud = options.cloud_ids().size();
+  auto nspecies = options.species().size();
 
-  TORCH_CHECK(options.mu_ratio().size() == 1 + nvapor + ncloud,
+  TORCH_CHECK(options.mu_ratio().size() == nspecies,
               "mu_ratio size  = ", options.mu_ratio().size(),
-              ". Expected =  ", 1 + nvapor + ncloud);
+              ". Expected =  ", nspecies);
 
-  // restrict cref and uref
-  options.cref_R().resize(1 + nvapor + ncloud);
-  options.uref_R().resize(1 + nvapor + ncloud);
+  TORCH_CHECK(options.cref_R().size() == nspecies,
+              "cref_R size = ", options.cref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(options.uref_R().size() == nspecies,
+              "uref_R size = ", options.uref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(options.sref_R().size() == nspecies,
+              "sref_R size = ", options.sref_R().size(),
+              ". Expected = ", nspecies);
 
   auto mud = constants::Rgas / options.Rd();
   mu = register_buffer(
@@ -75,26 +71,27 @@ void ThermoXImpl::reset() {
   }
 
   // change entropy offset to T = 0
-  for (int i = 0; i < 1 + options.vapor_ids().size(); ++i) {
+  for (int i = 0; i < options.vapor_ids().size(); ++i) {
     options.sref_R()[i] -=
         (options.cref_R()[i] + 1) * log(options.Tref()) - log(options.Pref());
   }
 
   // populate stoichiometry matrix
-  int nspecies = options.species().size();
+  auto species = options.species();
+  int nspecies = species.size();
   int nreact = options.react().size();
 
   stoich = register_buffer("stoich",
                            torch::zeros({nspecies, nreact}, torch::kFloat64));
 
-  for (int j = 0; j < options.react().size(); ++j) {
+  for (int j = 0; j < nreact; ++j) {
     auto const &r = options.react()[j];
-    for (int i = 0; i < options.species().size(); ++i) {
-      auto it = r.reaction().reactants().find(options.species()[i]);
+    for (int i = 0; i < nspecies; ++i) {
+      auto it = r.reaction().reactants().find(species[i]);
       if (it != r.reaction().reactants().end()) {
         stoich[i][j] = -it->second;
       }
-      it = r.reaction().products().find(options.species()[i]);
+      it = r.reaction().products().find(species[i]);
       if (it != r.reaction().products().end()) {
         stoich[i][j] = it->second;
       }
@@ -201,7 +198,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   // call the equilibrium solver
   at::native::call_equilibrate_tp(xfrac.device().type(), iter,
-                                  options.vapor_ids().size() + 1, logsvp_func,
+                                  options.vapor_ids().size(), logsvp_func,
                                   options.ftol(), options.max_iter());
 
   delete[] logsvp_func;
@@ -263,7 +260,7 @@ void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
 void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
                                  torch::Tensor xfrac,
                                  torch::Tensor &out) const {
-  int ngas = 1 + options.vapor_ids().size();
+  int ngas = options.vapor_ids().size();
   int ncloud = options.cloud_ids().size();
 
   auto xgas = xfrac.narrow(-1, 0, ngas).sum(-1, /*keepdim=*/true);

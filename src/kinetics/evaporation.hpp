@@ -1,11 +1,17 @@
 #pragma once
 
+// C/C++
+#include <set>
+
 // torch
 #include <torch/nn/cloneable.h>
 #include <torch/nn/functional.h>
 #include <torch/nn/module.h>
 #include <torch/nn/modules/common.h>
 #include <torch/nn/modules/container/any.h>
+
+// kintera
+#include <kintera/reaction.hpp>
 
 // arg
 #include <kintera/add_arg.h>
@@ -26,6 +32,9 @@ struct EvaporationOptions {
   // reference pressure
   ADD_ARG(double, Pref) = 1.e5;
 
+  //! reactions
+  ADD_ARG(std::vector<Reaction>, reactions) = {};
+
   //! Diffusivity [cm^2/s] at reference temperature and pressure
   ADD_ARG(std::vector<double>, diff_c) = {};
 
@@ -40,19 +49,23 @@ struct EvaporationOptions {
 
   //! Particle diameter [cm]
   ADD_ARG(std::vector<double>, diameter) = {};
-}
+};
+
+void add_to_vapor_cloud(std::set<std::string>& vapor_set,
+                        std::set<std::string>& cloud_set,
+                        EvaporationOptions op);
 
 class EvaporationImpl : public torch::nn::Cloneable<EvaporationImpl> {
  public:
-  //! diffusivity, shape (nreaction,)
+  //! diffusivity ln[m^2/s], shape (nreaction,)
   torch::Tensor log_diff_c,
       diff_T,  // temperature exponent
       diff_P;  // pressure exponent
 
-  //! molar volume, shape (nreaction,)
+  //! molar volume ln[m^3/mol], shape (nreaction,)
   torch::Tensor log_vm;
 
-  //! particle diameter, shape (nreaction,)
+  //! log particle diameter ln[m], shape (nreaction,)
   torch::Tensor log_diameter;
 
   //! options with which this `EvaporationImpl` was constructed

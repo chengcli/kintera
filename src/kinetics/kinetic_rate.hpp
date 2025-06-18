@@ -8,18 +8,26 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
-#include <kintera/reaction.hpp>
+#include <kintera/species.hpp>
+
+#include "arrhenius.hpp"
+#include "coagulation.hpp"
+#include "evaporation.hpp"
 
 // arg
 #include <kintera/add_arg.h>
 
 namespace kintera {
 
-struct KineticRateOptions {
-  ADD_ARG(std::vector<std::string>, species) = {};
-  ADD_ARG(std::vector<Reaction>, reactions) = {};
+struct KineticRateOptions : public SpeciesThermo {
+  static KineticRateOptions from_yaml(std::string const& filename);
+
+  KineticRateOptions() = default;
+
+  std::vector<Reaction> reactions() const;
 
   ADD_ARG(ArrheniusOptions, arrhenius) = {};
+  ADD_ARG(CoagulationOptions, coagulation) = {};
   ADD_ARG(EvaporationOptions, evaporation) = {};
 };
 
@@ -27,6 +35,12 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
  public:
   //! stoichiometry matrix, shape (nspecies, nreaction)
   torch::Tensor stoich;
+
+  //! log rate constant in ln(mol, m, s), shape (..., nreaction)
+  torch::Tensor log_rate_constant;
+
+  //! rate constant evaluator
+  std::vector<torch::nn::AnyModule> rce;
 
   //! options with which this `KineticRateImpl` was constructed
   KineticRateOptions options;
@@ -38,13 +52,13 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
 
   //! Compute kinetic rate of reactions
   /*!
-   * \param conc concentration [kmol/m^3], shape (ncol, nlyr, nspecies)
-   * \param log_rate_constant log rate constant in ln(kmol, m, s),
-   *        shape (ncol, nlyr, nreaction)
-   * \return kinetic rate of reactions [kmol/m^3/s],
-   *        shape (ncol, nlyr, nreaction)
+   * \param temp temperature [K], shape (...)
+   * \param pres pressure [Pa], shape (...)
+   * \param conc concentration [mol/m^3], shape (..., nspecies)
+   * \return kinetic rate of reactions [mol/(m^3 s)], shape (..., nreaction)
    */
-  torch::Tensor forward(torch::Tensor conc, torch::Tensor log_rate_constant);
+  torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
+                        torch::Tensor conc);
 };
 
 TORCH_MODULE(KineticRate);

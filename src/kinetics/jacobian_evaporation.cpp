@@ -9,7 +9,7 @@ namespace kintera {
 
 torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor temp,
                                    torch::Tensor pres, torch::Tensor stoich,
-                                   torch::Tensor conc, ThermoOptions op,
+                                   torch::Tensor conc, ThermoOptions const& op,
                                    double ftol) {
   // evaluate svp function
   LogSVPFunc::init(op.react());

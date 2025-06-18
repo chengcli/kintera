@@ -9,44 +9,32 @@
 
 namespace kintera {
 
-ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
-  int nvapor = options.vapor_ids().size();
-  int ncloud = options.cloud_ids().size();
-
-  if (options.mu_ratio().empty()) {
-    options.mu_ratio() = std::vector<double>(1 + nvapor + ncloud, 1.);
-  }
-
-  if (options.cref_R().empty()) {
-    options.cref_R() = std::vector<double>(1 + nvapor + ncloud, 5. / 2.);
-  }
-
-  if (options.uref_R().empty()) {
-    options.uref_R() = std::vector<double>(1 + nvapor + ncloud, 0.);
-  }
-
+ThermoYImpl::ThermoYImpl(const ThermoOptions &options_)
+    : options(std::move(options_)) {
   // populate higher-order thermodynamic functions
-  while (options.intEng_R_extra().size() < options.species().size()) {
+  auto nspecies = options.species().size();
+
+  while (options.intEng_R_extra().size() < nspecies) {
     options.intEng_R_extra().push_back(nullptr);
   }
 
-  while (options.entropy_R_extra().size() < options.species().size()) {
+  while (options.entropy_R_extra().size() < nspecies) {
     options.entropy_R_extra().push_back(nullptr);
   }
 
-  while (options.cv_R_extra().size() < options.species().size()) {
+  while (options.cv_R_extra().size() < nspecies) {
     options.cv_R_extra().push_back(nullptr);
   }
 
-  while (options.cp_R_extra().size() < options.species().size()) {
+  while (options.cp_R_extra().size() < nspecies) {
     options.cp_R_extra().push_back(nullptr);
   }
 
-  while (options.czh().size() < options.species().size()) {
+  while (options.czh().size() < nspecies) {
     options.czh().push_back(nullptr);
   }
 
-  while (options.czh_ddC().size() < options.species().size()) {
+  while (options.czh_ddC().size() < nspecies) {
     options.czh_ddC().push_back(nullptr);
   }
 
@@ -54,16 +42,23 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
 }
 
 void ThermoYImpl::reset() {
-  int nvapor = options.vapor_ids().size();
-  int ncloud = options.cloud_ids().size();
+  auto nspecies = options.species().size();
 
-  TORCH_CHECK(options.mu_ratio().size() == 1 + nvapor + ncloud,
+  TORCH_CHECK(options.mu_ratio().size() == nspecies,
               "mu_ratio size = ", options.mu_ratio().size(),
-              ". Expected = ", 1 + nvapor + ncloud);
+              ". Expected = ", nspecies);
 
-  // restrict cref and uref
-  options.cref_R().resize(1 + nvapor + ncloud);
-  options.uref_R().resize(1 + nvapor + ncloud);
+  TORCH_CHECK(options.cref_R().size() == nspecies,
+              "cref_R size = ", options.cref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(options.uref_R().size() == nspecies,
+              "uref_R size = ", options.uref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(options.sref_R().size() == nspecies,
+              "sref_R size = ", options.sref_R().size(),
+              ". Expected = ", nspecies);
 
   auto mud = constants::Rgas / options.Rd();
   inv_mu = register_buffer(
@@ -76,7 +71,7 @@ void ThermoYImpl::reset() {
   }
 
   // change entropy offset to T = 0
-  for (int i = 0; i < 1 + options.vapor_ids().size(); ++i) {
+  for (int i = 0; i < options.vapor_ids().size(); ++i) {
     options.sref_R()[i] -=
         (options.cref_R()[i] + 1) * log(options.Tref()) - log(options.Pref());
   }
@@ -91,20 +86,21 @@ void ThermoYImpl::reset() {
   u0 = register_buffer("u0", uref_R * constants::Rgas * inv_mu);
 
   // populate stoichiometry matrix
-  int nspecies = options.species().size();
+  auto species = options.species();
+  int nspecies = species.size();
   int nreact = options.react().size();
 
   stoich = register_buffer("stoich",
                            torch::zeros({nspecies, nreact}, torch::kFloat64));
 
-  for (int j = 0; j < options.react().size(); ++j) {
+  for (int j = 0; j < nreact; ++j) {
     auto const &r = options.react()[j];
-    for (int i = 0; i < options.species().size(); ++i) {
-      auto it = r.reaction().reactants().find(options.species()[i]);
+    for (int i = 0; i < nspecies; ++i) {
+      auto it = r.reaction().reactants().find(species[i]);
       if (it != r.reaction().reactants().end()) {
         stoich[i][j] = -it->second;
       }
-      it = r.reaction().products().find(options.species()[i]);
+      it = r.reaction().products().find(species[i]);
       if (it != r.reaction().products().end()) {
         stoich[i][j] = it->second;
       }
@@ -250,7 +246,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
 void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor &out) const {
   int ny = ivol.size(-1) - 1;
-  TORCH_CHECK(ny == options.vapor_ids().size() + options.cloud_ids().size(),
+  TORCH_CHECK(ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
               "mass fraction size mismatch");
 
   auto vec = ivol.sizes().vec();
@@ -274,7 +270,7 @@ void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor &out) const {
 void ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac,
                                   torch::Tensor &out) const {
   int ny = yfrac.size(0);
-  TORCH_CHECK(ny == options.vapor_ids().size() + options.cloud_ids().size(),
+  TORCH_CHECK(ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
               "mass fraction size mismatch");
 
   auto vec = yfrac.sizes().vec();
@@ -303,7 +299,7 @@ void ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac,
 void ThermoYImpl::_yfrac_to_ivol(torch::Tensor rho, torch::Tensor yfrac,
                                  torch::Tensor &out) const {
   int ny = yfrac.size(0);
-  TORCH_CHECK(ny == options.vapor_ids().size() + options.cloud_ids().size(),
+  TORCH_CHECK(ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
               "mass fraction size mismatch");
 
   auto vec = yfrac.sizes().vec();
@@ -325,7 +321,7 @@ void ThermoYImpl::_yfrac_to_ivol(torch::Tensor rho, torch::Tensor yfrac,
 
 void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
                                 torch::Tensor &out) const {
-  int ngas = 1 + options.vapor_ids().size();
+  int ngas = options.vapor_ids().size();
 
   // kg/m^3 -> mol/m^3
   auto conc_gas = (ivol * inv_mu).narrow(-1, 0, ngas);
@@ -383,7 +379,7 @@ void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
 
 void ThermoYImpl::_temp_to_pres(torch::Tensor ivol, torch::Tensor temp,
                                 torch::Tensor &out) const {
-  int ngas = 1 + options.vapor_ids().size();
+  int ngas = options.vapor_ids().size();
 
   // kg/m^3 -> mol/m^3
   auto conc_gas = (ivol * inv_mu).narrow(-1, 0, ngas);

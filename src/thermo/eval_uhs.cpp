@@ -10,7 +10,7 @@
 namespace kintera {
 
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
-                        ThermoOptions const& op) {
+                        SpeciesThermo const& op) {
   auto cv_R_extra = torch::zeros_like(conc);
 
   // bundle iterator
@@ -34,7 +34,7 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
 }
 
 torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
-                        ThermoOptions const& op) {
+                        SpeciesThermo const& op) {
   auto cp_R_extra = torch::zeros_like(conc);
 
   // bundle iterator
@@ -54,14 +54,14 @@ torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
 
   auto cref_R =
       torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
-  cref_R.narrow(-1, 0, 1 + op.vapor_ids().size()) += 1;
+  cref_R.narrow(-1, 0, op.vapor_ids().size()) += 1;
   return cp_R_extra + cref_R;
 }
 
 torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
-                       ThermoOptions const& op) {
+                       SpeciesThermo const& op) {
   auto cz = torch::zeros_like(conc);
-  cz.narrow(-1, 0, 1 + op.vapor_ids().size()) = 1.;
+  cz.narrow(-1, 0, op.vapor_ids().size()) = 1.;
 
   // bundle iterator
   auto iter = at::TensorIteratorConfig()
@@ -81,7 +81,7 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
 }
 
 torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
-                           ThermoOptions const& op) {
+                           SpeciesThermo const& op) {
   auto cz_ddC = torch::zeros_like(conc);
 
   // bundle iterator
@@ -102,7 +102,7 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
 }
 
 torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
-                            ThermoOptions const& op) {
+                            SpeciesThermo const& op) {
   auto intEng_R_extra = torch::zeros_like(conc);
 
   // bundle iterator
@@ -128,8 +128,8 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
 
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                              torch::Tensor conc, torch::Tensor stoich,
-                             ThermoOptions const& op) {
-  int ngas = 1 + op.vapor_ids().size();
+                             SpeciesThermo const& op) {
+  int ngas = op.vapor_ids().size();
   int ncloud = op.cloud_ids().size();
 
   // check dimension consistency
@@ -246,8 +246,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
 }
 
 torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
-                              ThermoOptions const& op) {
-  int ngas = 1 + op.vapor_ids().size();
+                              SpeciesThermo const& op) {
+  int ngas = op.vapor_ids().size();
   int ncloud = op.cloud_ids().size();
 
   // check dimension consistency

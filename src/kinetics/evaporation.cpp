@@ -1,7 +1,34 @@
 // yaml
 #include <yaml-cpp/yaml.h>
 
+// kintera
+#include "evaporation.hpp"
+
 namespace kintera {
+
+extern std::vector<std::string> species_names;
+
+void add_to_vapor_cloud(std::set<std::string>& vapor_set,
+                        std::set<std::string>& cloud_set,
+                        EvaporationOptions op) {
+  for (auto& react : op.reactions()) {
+    // go through reactants
+    for (auto& [name, _] : react.reactants()) {
+      auto it = std::find(species_names.begin(), species_names.end(), name);
+      TORCH_CHECK(it != species_names.end(), "Species ", name,
+                  " not found in species list");
+      cloud_set.insert(name);
+    }
+
+    // go through products
+    for (auto& [name, _] : react.products()) {
+      auto it = std::find(species_names.begin(), species_names.end(), name);
+      TORCH_CHECK(it != species_names.end(), "Species ", name,
+                  " not found in species list");
+      vapor_set.insert(name);
+    }
+  }
+}
 
 EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
   EvaporationOptions options;
@@ -15,12 +42,14 @@ EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
       continue;
     }
 
-    auto node = rxn_node["rate-constant"];
+    std::string equation = rxn_node["equation"].as<std::string>();
+    options.reactions().push_back(Reaction(equation));
 
+    auto node = rxn_node["rate-constant"];
     if (node["diff_c"]) {
-      options.A().push_back(node["diffu"].as<double>());
+      options.diff_c().push_back(node["diff_c"].as<double>());
     } else {
-      options.A().push_back(0.2);
+      options.diff_c().push_back(0.2);
     }
 
     if (node["diff_T"]) {
@@ -36,15 +65,15 @@ EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
     }
 
     if (node["vm"]) {
-      options.b().push_back(node["vm"].as<double>());
+      options.vm().push_back(node["vm"].as<double>());
     } else {
-      options.b().push_back(18.);
+      options.vm().push_back(18.);
     }
 
     if (node["diameter"]) {
-      options.Ea_R().push_back(node["radius"].as<double>());
+      options.diameter().push_back(node["radius"].as<double>());
     } else {
-      options.Ea_R().push_back(1.);
+      options.diameter().push_back(1.);
     }
   }
 
@@ -100,4 +129,6 @@ torch::Tensor EvaporationImpl::forward(
 
   // Calculate the rate constant based on the diffusivity and molar volume
   return log(12.) + log_diff + log_vm - 2. * log_diameter;
+}
+
 }  // namespace kintera

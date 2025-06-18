@@ -4,7 +4,7 @@
 #include <map>
 #include <string>
 
-// kinetra
+// arg
 #include "add_arg.h"
 
 namespace kintera {

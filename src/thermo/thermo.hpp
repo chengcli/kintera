@@ -12,8 +12,7 @@
 // kintera
 #include <kintera/constants.h>
 
-#include <kintera/utils/func2.hpp>
-#include <kintera/utils/func3.hpp>
+#include <kintera/species.hpp>
 
 #include "eval_uhs.hpp"
 #include "nucleation.hpp"
@@ -22,12 +21,6 @@
 #include <kintera/add_arg.h>
 
 namespace kintera {
-
-//! names of all species
-extern std::vector<std::string> species_names;
-
-//! molecular weights of all species [kg/mol]
-extern std::vector<double> species_weights;
 
 template <typename T>
 inline std::vector<T> insert_first(T value, std::vector<T> const& input) {
@@ -38,12 +31,11 @@ inline std::vector<T> insert_first(T value, std::vector<T> const& input) {
   return result;
 }
 
-struct ThermoOptions {
+struct ThermoOptions : public SpeciesThermo {
   //! \brief Create a `ThermoOptions` object from a YAML file
   /*!
    * This function reads a YAML file and creates a `ThermoOptions`
    * object from it. The YAML file must contain the following fields:
-   *  - "species", list of species names and their composition
    *  - "vapor": list of vapor species
    *  - "cloud": list of cloud species
    */
@@ -55,17 +47,7 @@ struct ThermoOptions {
   ADD_ARG(double, Tref) = 300.0;
   ADD_ARG(double, Pref) = 1.e5;
 
-  ADD_ARG(std::vector<int>, vapor_ids);
-  ADD_ARG(std::vector<int>, cloud_ids);
-
   ADD_ARG(std::vector<double>, mu_ratio);
-  ADD_ARG(std::vector<double>, cref_R);
-  ADD_ARG(std::vector<double>, uref_R);
-  ADD_ARG(std::vector<double>, sref_R);
-
-  ADD_ARG(std::vector<user_func2>, intEng_R_extra);
-  ADD_ARG(std::vector<user_func2>, cv_R_extra);
-  ADD_ARG(std::vector<user_func2>, cp_R_extra);
 
   //! This variable is funny. Because compressibility factor only applies to
   //! gas and we need extra enthalpy functions for cloud species, so we combined
@@ -73,16 +55,12 @@ struct ThermoOptions {
   //! called czh, which has the size of nspcies
   ADD_ARG(std::vector<user_func2>, czh);
 
-  //! only used for gas species, the rests are no-ops
-  ADD_ARG(std::vector<user_func3>, entropy_R_extra);
-
   //! Similarly, the derivative of compressibility factor with respect to
   //! concentration is stored here, with first 'ngas' entries being
   //! valid numbers. The rests are no-ops.
   ADD_ARG(std::vector<user_func2>, czh_ddC);
 
   ADD_ARG(std::vector<Nucleation>, react);
-  ADD_ARG(std::vector<std::string>, species);
 
   ADD_ARG(int, max_iter) = 10;
   ADD_ARG(double, ftol) = 1e-6;

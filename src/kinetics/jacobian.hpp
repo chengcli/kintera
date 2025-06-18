@@ -13,11 +13,13 @@ namespace kintera {
 
 torch::Tensor jacobian_mass_action(
     torch::Tensor rate, torch::Tensor stoich, torch::Tensor conc,
+    torch::optional<torch::Tensor> temp = torch::nullopt,
     torch::optional<torch::Tensor> rc_ddT = torch::nullopt,
-    torch::optional<ThermoOptions> op = torch::nullopt);
+    torch::optional<SpeciesThermo> op = torch::nullopt);
 
-torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor stoich,
-                                   torch::Tensor conc, ThermoOptions op,
+torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor temp,
+                                   torch::Tensor pres, torch::Tensor stoich,
+                                   torch::Tensor conc, ThermoOptions const& op,
                                    double ftol = 1.e-6);
 
 }  // namespace kintera

@@ -1,11 +1,17 @@
 #pragma once
 
+// C/C++
+#include <set>
+
 // torch
 #include <torch/nn/cloneable.h>
 #include <torch/nn/functional.h>
 #include <torch/nn/module.h>
 #include <torch/nn/modules/common.h>
 #include <torch/nn/modules/container/any.h>
+
+// kintera
+#include <kintera/reaction.hpp>
 
 // arg
 #include <kintera/add_arg.h>
@@ -19,10 +25,12 @@ namespace kintera {
 //! Options to initialize all reaction rate constants
 struct ArrheniusOptions {
   static ArrheniusOptions from_yaml(const YAML::Node& node);
-  static ArrheniusOptions from_map(
-      const std::vector<std::map<std::string, std::string>>& param);
+  virtual ~ArrheniusOptions() = default;
 
-  //! Pre-exponential factor. The unit system is (mol, m, s);
+  //! reactions
+  ADD_ARG(std::vector<Reaction>, reactions) = {};
+
+  //! Pre-exponential factor. The unit system is (mol, cm, s);
   //! actual units depend on the reaction order
   ADD_ARG(std::vector<double>, A) = {};
 
@@ -36,15 +44,18 @@ struct ArrheniusOptions {
   ADD_ARG(std::vector<double>, E4_R) = {};
 };
 
+void add_to_vapor_cloud(std::set<std::string>& vapor_set,
+                        std::set<std::string>& cloud_set, ArrheniusOptions op);
+
 class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
  public:
-  //! log pre-exponential factor, shape (nreaction,)
+  //! log pre-exponential factor [ln(mol, m, s)], shape (nreaction,)
   torch::Tensor logA;
 
   //! temperature exponent, shape (nreaction,)
   torch::Tensor b;
 
-  //! activation energy in K, shape (nreaction,)
+  //! activation energy [K], shape (nreaction,)
   torch::Tensor Ea_R;
 
   //! additional 4th parameter in the rate expression, shape (nreaction,)
