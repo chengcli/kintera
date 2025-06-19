@@ -19,7 +19,6 @@ torch::Tensor jacobian_mass_action(
 
 torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor temp,
                                    torch::Tensor pres, torch::Tensor stoich,
-                                   torch::Tensor conc, ThermoOptions const& op,
-                                   double ftol = 1.e-6);
+                                   torch::Tensor conc, ThermoOptions const& op);
 
 }  // namespace kintera

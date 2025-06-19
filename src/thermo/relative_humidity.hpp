@@ -7,6 +7,6 @@ namespace kintera {
 
 torch::Tensor relative_humidity(torch::Tensor temp, torch::Tensor pres,
                                 torch::Tensor conc, torch::Tensor stoich,
-                                ThermoOptions op);
+                                ThermoOptions const& op);
 
 }  // namespace kintera

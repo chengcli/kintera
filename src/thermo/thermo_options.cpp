@@ -47,28 +47,9 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   TORCH_CHECK(config["reactions"],
               "'reactions' is not defined in the configuration file");
 
-  for (auto const& node : config["reactions"]) {
-    if (!node["type"] || (node["type"].as<std::string>() != "nucleation")) {
-      continue;
-    }
-    thermo.react().push_back(Nucleation::from_yaml(node));
-
-    // go through reactants
-    for (auto& [name, _] : thermo.react().back().reaction().reactants()) {
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name,
-                  " not found in species list");
-      vapor_set.insert(name);
-    }
-
-    // go through products
-    for (auto& [name, _] : thermo.react().back().reaction().products()) {
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name,
-                  " not found in species list");
-      cloud_set.insert(name);
-    }
-  }
+  // add nucleation reactions
+  thermo.nucleation() = NucleationOptions::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, thermo.nucleation());
 
   // register vapors
   for (const auto& sp : vapor_set) {
@@ -105,6 +86,17 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   }
 
   return thermo;
+}
+
+std::vector<Reaction> ThermoOptions::reactions() const {
+  std::vector<Reaction> reactions;
+  reactions.reserve(nucleation().reactions().size());
+
+  for (const auto& reaction : nucleation().reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  return reactions;
 }
 
 }  // namespace kintera

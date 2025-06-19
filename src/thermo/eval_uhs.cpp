@@ -246,14 +246,9 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   //////////// Evaluate condensate entropy ////////////
 
   // (1) Evaluate log-svp
-  user_func1* logsvp_func = new user_func1[op.react().size()];
-  for (int i = 0; i < op.react().size(); ++i) {
-    logsvp_func[i] = op.react()[i].func();
-  }
-
   // bundle iterator
   auto vec1 = temp.sizes().vec();
-  vec1.push_back(op.react().size());
+  vec1.push_back(op.nucleation().reactions().size());
   auto logsvp = torch::zeros(vec1, temp.options());
   iter = at::TensorIteratorConfig()
              .resize_outputs(false)
@@ -265,7 +260,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
              .build();
 
   // call the evaluation function
-  at::native::call_func1(logsvp.device().type(), iter, logsvp_func);
+  at::native::call_func1(logsvp.device().type(), iter,
+                         op.nucleation().logsvp().data());
   // std::cout << "logsvp = " << logsvp << std::endl;
 
   // (2) Evaluate enthalpies (..., R)
@@ -296,8 +292,6 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   // (6) Solve for condensate entropy
   entropy_R.narrow(-1, ngas, ncloud) =
       sp_inv.view(vec2).matmul(b.unsqueeze(-1)).squeeze(-1);
-
-  delete[] logsvp_func;
 
   // std::cout << "entropy_R = " << entropy_R << std::endl;
 

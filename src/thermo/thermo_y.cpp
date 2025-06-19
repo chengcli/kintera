@@ -11,9 +11,9 @@ namespace kintera {
 
 ThermoYImpl::ThermoYImpl(const ThermoOptions &options_)
     : options(std::move(options_)) {
-  // populate higher-order thermodynamic functions
   auto nspecies = options.species().size();
 
+  // populate higher-order thermodynamic functions
   while (options.intEng_R_extra().size() < nspecies) {
     options.intEng_R_extra().push_back(nullptr);
   }
@@ -42,6 +42,7 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions &options_)
 }
 
 void ThermoYImpl::reset() {
+  auto reactions = options.reactions();
   auto species = options.species();
   auto nspecies = species.size();
 
@@ -87,20 +88,18 @@ void ThermoYImpl::reset() {
   u0 = register_buffer("u0", uref_R * constants::Rgas * inv_mu);
 
   // populate stoichiometry matrix
-  int nreact = options.react().size();
+  stoich = register_buffer(
+      "stoich", torch::zeros({nspecies, reactions.size()}, torch::kFloat64));
 
-  stoich = register_buffer("stoich",
-                           torch::zeros({nspecies, nreact}, torch::kFloat64));
-
-  for (int j = 0; j < nreact; ++j) {
-    auto const &r = options.react()[j];
+  for (int j = 0; j < reactions.size(); ++j) {
+    auto const &r = reactions[j];
     for (int i = 0; i < nspecies; ++i) {
-      auto it = r.reaction().reactants().find(species[i]);
-      if (it != r.reaction().reactants().end()) {
+      auto it = r.reactants().find(species[i]);
+      if (it != r.reactants().end()) {
         stoich[i][j] = -it->second;
       }
-      it = r.reaction().products().find(species[i]);
-      if (it != r.reaction().products().end()) {
+      it = r.products().find(species[i]);
+      if (it != r.products().end()) {
         stoich[i][j] = it->second;
       }
     }
@@ -182,9 +181,10 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   auto yfrac0 = yfrac.clone();
   auto ivol = compute("DY->V", {rho, yfrac});
   auto vec = ivol.sizes().vec();
+  auto reactions = options.reactions();
 
   // |reactions| x |reactions| weight matrix
-  vec[ivol.dim() - 1] = options.react().size() * options.react().size();
+  vec[ivol.dim() - 1] = reactions.size() * reactions.size();
   auto gain = torch::empty(vec, ivol.options());
 
   // diagnostic array
@@ -214,32 +214,17 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .add_owned_input(cv0 / inv_mu)  // J(kg K) -> J/(mol K)
           .build();
 
-  // prepare svp function
-  user_func1 *logsvp_func = new user_func1[options.react().size()];
-  for (int i = 0; i < options.react().size(); ++i) {
-    logsvp_func[i] = options.react()[i].func();
-  }
-
-  // prepare svp function derivatives
-  user_func1 *logsvp_func_ddT = new user_func1[options.react().size()];
-  for (int i = 0; i < options.react().size(); ++i) {
-    logsvp_func_ddT[i] = options.react()[i].func_ddT();
-  }
-
   // call the equilibrium solver
   at::native::call_equilibrate_uv(
-      conc.device().type(), iter, logsvp_func, logsvp_func_ddT,
-      options.intEng_R_extra().data(), options.cv_R_extra().data(),
-      options.ftol(), options.max_iter());
-
-  delete[] logsvp_func;
-  delete[] logsvp_func_ddT;
+      conc.device().type(), iter, options.nucleation().logsvp().data(),
+      options.nucleation().logsvp_ddT().data(), options.intEng_R_extra().data(),
+      options.cv_R_extra().data(), options.ftol(), options.max_iter());
 
   ivol = conc / inv_mu;
   yfrac = compute("V->Y", {ivol});
 
-  vec[ivol.dim() - 1] = options.react().size();
-  vec.push_back(options.react().size());
+  vec[ivol.dim() - 1] = reactions.size();
+  vec.push_back(reactions.size());
   return gain.view(vec);
 }
 

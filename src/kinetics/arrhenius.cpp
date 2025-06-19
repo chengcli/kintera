@@ -35,16 +35,20 @@ ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root) {
   ArrheniusOptions options;
 
   for (auto const& rxn_node : root) {
-    if (!rxn_node["type"]) {
-      TORCH_CHECK(false, "Reaction type not specified");
-    }
+    TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
 
     if (rxn_node["type"].as<std::string>() != "arrhenius") {
       continue;
     }
 
+    TORCH_CHECK(rxn_node["equation"],
+                "'equation' is not defined in the reaction");
+
     std::string equation = rxn_node["equation"].as<std::string>();
     options.reactions().push_back(Reaction(equation));
+
+    TORCH_CHECK(rxn_node["rate-constant"],
+                "'rate-constant' is not defined in the reaction");
 
     auto node = rxn_node["rate-constant"];
     if (node["A"]) {

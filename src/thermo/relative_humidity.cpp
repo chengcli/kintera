@@ -8,9 +8,9 @@ namespace kintera {
 
 torch::Tensor relative_humidity(torch::Tensor temp, torch::Tensor pres,
                                 torch::Tensor conc, torch::Tensor stoich,
-                                ThermoOptions op) {
+                                ThermoOptions const& op) {
   // evaluate svp function
-  LogSVPFunc::init(op.react());
+  LogSVPFunc::init(op.nucleation());
   auto logsvp = LogSVPFunc::apply(temp);
 
   // mark reactants

@@ -9,10 +9,10 @@ namespace kintera {
 
 torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor temp,
                                    torch::Tensor pres, torch::Tensor stoich,
-                                   torch::Tensor conc, ThermoOptions const& op,
-                                   double ftol) {
+                                   torch::Tensor conc,
+                                   ThermoOptions const& op) {
   // evaluate svp function
-  LogSVPFunc::init(op.react());
+  LogSVPFunc::init(op.nucleation());
 
   // evaluate relative humidity
   auto rh = relative_humidity(temp, pres, conc, -stoich, op);
@@ -38,7 +38,7 @@ torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor temp,
               cv_vol.unsqueeze(-1);
 
   // flag saturated reactions
-  auto jsat = rh > 1.0 - ftol;
+  auto jsat = rh > 1.0 - op.ftol();
   jacobian.masked_fill_(jsat.unsqueeze(-1), 0.0);
 
   return rate.unsqueeze(-1) * jacobian;

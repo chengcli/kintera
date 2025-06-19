@@ -43,6 +43,7 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions &options_)
 }
 
 void ThermoXImpl::reset() {
+  auto reactions = options.reactions();
   auto species = options.species();
   auto nspecies = species.size();
 
@@ -78,20 +79,18 @@ void ThermoXImpl::reset() {
   }
 
   // populate stoichiometry matrix
-  int nreact = options.react().size();
+  stoich = register_buffer(
+      "stoich", torch::zeros({nspecies, reactions.size()}, torch::kFloat64));
 
-  stoich = register_buffer("stoich",
-                           torch::zeros({nspecies, nreact}, torch::kFloat64));
-
-  for (int j = 0; j < nreact; ++j) {
-    auto const &r = options.react()[j];
+  for (int j = 0; j < reactions.size(); ++j) {
+    auto const &r = reactions[j];
     for (int i = 0; i < nspecies; ++i) {
-      auto it = r.reaction().reactants().find(species[i]);
-      if (it != r.reaction().reactants().end()) {
+      auto it = r.reactants().find(species[i]);
+      if (it != r.reactants().end()) {
         stoich[i][j] = -it->second;
       }
-      it = r.reaction().products().find(species[i]);
-      if (it != r.reaction().products().end()) {
+      it = r.products().find(species[i]);
+      if (it != r.products().end()) {
         stoich[i][j] = it->second;
       }
     }
@@ -164,9 +163,10 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                                    torch::optional<torch::Tensor> diag) {
   auto xfrac0 = xfrac.clone();
   auto vec = xfrac.sizes().vec();
+  auto reactions = options.reactions();
 
   // |reactions| x |reactions| weight matrix
-  vec[xfrac.dim() - 1] = options.react().size() * options.react().size();
+  vec[xfrac.dim() - 1] = reactions.size() * reactions.size();
   auto gain = torch::zeros(vec, xfrac.options());
 
   // diagnostic array
@@ -189,21 +189,13 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .add_owned_input(stoich)
                   .build();
 
-  // prepare svp function
-  user_func1 *logsvp_func = new user_func1[options.react().size()];
-  for (int i = 0; i < options.react().size(); ++i) {
-    logsvp_func[i] = options.react()[i].func();
-  }
-
   // call the equilibrium solver
-  at::native::call_equilibrate_tp(xfrac.device().type(), iter,
-                                  options.vapor_ids().size(), logsvp_func,
-                                  options.ftol(), options.max_iter());
+  at::native::call_equilibrate_tp(
+      xfrac.device().type(), iter, options.vapor_ids().size(),
+      options.nucleation().logsvp().data(), options.ftol(), options.max_iter());
 
-  delete[] logsvp_func;
-
-  vec[xfrac.dim() - 1] = options.react().size();
-  vec.push_back(options.react().size());
+  vec[xfrac.dim() - 1] = reactions.size();
+  vec.push_back(reactions.size());
   return gain.view(vec);
 }
 

@@ -14,7 +14,7 @@ torch::Tensor effective_cp_mole(torch::Tensor temp, torch::Tensor pres,
                                 torch::Tensor xfrac, torch::Tensor gain,
                                 ThermoX &thermo,
                                 torch::optional<torch::Tensor> conc) {
-  LogSVPFunc::init(thermo->options.react());
+  LogSVPFunc::init(thermo->options.nucleation());
 
   auto logsvp_ddT = LogSVPFunc::grad(temp);
   auto rate_ddT = std::get<0>(torch::linalg_lstsq(gain, logsvp_ddT));

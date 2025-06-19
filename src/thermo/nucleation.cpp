@@ -6,44 +6,79 @@
 
 namespace kintera {
 
-Nucleation Nucleation::from_yaml(const YAML::Node& node) {
-  Nucleation nuc;
+extern std::vector<std::string> species_names;
 
-  TORCH_CHECK(node["type"].as<std::string>() == "nucleation",
-              "Reaction type is not nucleation");
+void add_to_vapor_cloud(std::set<std::string>& vapor_set,
+                        std::set<std::string>& cloud_set,
+                        NucleationOptions op) {
+  for (auto const& react : op.reactions()) {
+    // go through reactants
+    for (auto& [name, _] : react.reactants()) {
+      auto it = std::find(species_names.begin(), species_names.end(), name);
+      TORCH_CHECK(it != species_names.end(), "Species ", name,
+                  " not found in species list");
+      vapor_set.insert(name);
+    }
 
-  TORCH_CHECK(node["rate-constant"],
-              "'rate-constant' is not defined in the reaction");
+    // go through products
+    for (auto& [name, _] : react.products()) {
+      auto it = std::find(species_names.begin(), species_names.end(), name);
+      TORCH_CHECK(it != species_names.end(), "Species ", name,
+                  " not found in species list");
+      cloud_set.insert(name);
+    }
+  }
+}
 
-  TORCH_CHECK(node["equation"], "'equation' is not defined in the reaction");
+NucleationOptions NucleationOptions::from_yaml(const YAML::Node& root) {
+  NucleationOptions options;
 
-  // reaction equation
-  nuc.reaction() = Reaction(node["equation"].as<std::string>());
+  for (auto const& rxn_node : root) {
+    TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
 
-  // rate constants
-  auto rate_constant = node["rate-constant"];
-  if (rate_constant["minT"]) {
-    nuc.minT(rate_constant["minT"].as<double>());
+    if (rxn_node["type"].as<std::string>() != "nucleation") {
+      continue;
+    }
+
+    TORCH_CHECK(rxn_node["equation"],
+                "'equation' is not defined in the reaction");
+
+    std::string equation = rxn_node["equation"].as<std::string>();
+    options.reactions().push_back(Reaction(equation));
+
+    TORCH_CHECK(rxn_node["rate-constant"],
+                "'rate-constant' is not defined in the reaction");
+
+    // rate constants
+    auto node = rxn_node["rate-constant"];
+    if (node["minT"]) {
+      options.minT().push_back(node["minT"].as<double>());
+    } else {
+      options.minT().push_back(0.);
+    }
+
+    if (node["maxT"]) {
+      options.maxT().push_back(node["maxT"].as<double>());
+    } else {
+      options.maxT().push_back(1.e4);
+    }
+
+    TORCH_CHECK(node["formula"],
+                "'formula' is not defined in the rate-constant");
+
+    auto formula = node["formula"].as<std::string>();
+
+    TORCH_CHECK(get_user_func1().find(formula) != get_user_func1().end(),
+                "Formula '", formula, "' is not defined in the user functions");
+    options.logsvp().push_back(get_user_func1()[formula]);
+
+    TORCH_CHECK(
+        get_user_func1().find(formula + "_ddT") != get_user_func1().end(),
+        "Formula '", formula, "' is not defined in the user functions");
+    options.logsvp_ddT().push_back(get_user_func1()[formula + "_ddT"]);
   }
 
-  if (rate_constant["maxT"]) {
-    nuc.maxT(rate_constant["maxT"].as<double>());
-  }
-
-  TORCH_CHECK(rate_constant["formula"],
-              "'formula' is not defined in the rate-constant");
-
-  auto formula = rate_constant["formula"].as<std::string>();
-
-  TORCH_CHECK(get_user_func1().find(formula) != get_user_func1().end(),
-              "Formula '", formula, "' is not defined in the user functions");
-  nuc.func() = get_user_func1()[formula];
-
-  TORCH_CHECK(get_user_func1().find(formula + "_ddT") != get_user_func1().end(),
-              "Formula '", formula, "' is not defined in the user functions");
-  nuc.func_ddT() = get_user_func1()[formula + "_ddT"];
-
-  return nuc;
+  return options;
 }
 
 }  // namespace kintera

@@ -1,5 +1,8 @@
 #pragma once
 
+// C/C++
+#include <set>
+
 // torch
 #include <torch/torch.h>
 
@@ -16,16 +19,19 @@ class Node;
 
 namespace kintera {
 
-struct Nucleation {
-  Nucleation() = default;
-  static Nucleation from_yaml(const YAML::Node& node);
+struct NucleationOptions {
+  static NucleationOptions from_yaml(const YAML::Node& node);
+  NucleationOptions() = default;
 
-  ADD_ARG(double, minT) = 0.0;
-  ADD_ARG(double, maxT) = 3000.;
-  ADD_ARG(Reaction, reaction);
-  ADD_ARG(user_func1, func);
-  ADD_ARG(user_func1, func_ddT);
+  ADD_ARG(std::vector<Reaction>, reactions) = {};
+  ADD_ARG(std::vector<double>, minT) = {};
+  ADD_ARG(std::vector<double>, maxT) = {};
+  ADD_ARG(std::vector<user_func1>, logsvp) = {};
+  ADD_ARG(std::vector<user_func1>, logsvp_ddT) = {};
 };
+
+void add_to_vapor_cloud(std::set<std::string>& vapor_set,
+                        std::set<std::string>& cloud_set, NucleationOptions op);
 
 }  // namespace kintera
 

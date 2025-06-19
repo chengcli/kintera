@@ -12,7 +12,10 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
  public:
   static constexpr bool is_traceable = true;
 
-  static void init(std::vector<Nucleation> const& react) { _react = react; }
+  static void init(NucleationOptions const& op) {
+    _logsvp = op.logsvp();
+    _logsvp_ddT = op.logsvp_ddT();
+  }
 
   static torch::Tensor grad(torch::Tensor const& temp);
 
@@ -24,7 +27,8 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
       std::vector<torch::Tensor> grad_outputs);
 
  private:
-  static std::vector<Nucleation> _react;
+  static std::vector<user_func1> _logsvp;
+  static std::vector<user_func1> _logsvp_ddT;
 };
 
 }  // namespace kintera

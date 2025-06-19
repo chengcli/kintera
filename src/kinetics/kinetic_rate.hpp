@@ -29,9 +29,10 @@ struct KineticRateOptions : public SpeciesThermo {
   ADD_ARG(double, Tref) = 298.15;
   ADD_ARG(double, Pref) = 101325.0;
 
-  ADD_ARG(ArrheniusOptions, arrhenius) = {};
-  ADD_ARG(CoagulationOptions, coagulation) = {};
-  ADD_ARG(EvaporationOptions, evaporation) = {};
+  ADD_ARG(ArrheniusOptions, arrhenius);
+  ADD_ARG(CoagulationOptions, coagulation);
+  ADD_ARG(EvaporationOptions, evaporation);
+
   ADD_ARG(bool, evolve_temperature) = false;
 };
 

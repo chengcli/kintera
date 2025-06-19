@@ -40,16 +40,16 @@ struct ThermoOptions : public SpeciesThermo {
    *  - "cloud": list of cloud species
    */
   static ThermoOptions from_yaml(std::string const& filename);
-
   ThermoOptions() = default;
+
+  std::vector<Reaction> reactions() const;
 
   ADD_ARG(double, Rd) = 287.0;
   ADD_ARG(double, Tref) = 300.0;
   ADD_ARG(double, Pref) = 1.e5;
-
   ADD_ARG(std::vector<double>, mu_ratio);
 
-  ADD_ARG(std::vector<Nucleation>, react);
+  ADD_ARG(NucleationOptions, nucleation);
 
   ADD_ARG(int, max_iter) = 10;
   ADD_ARG(double, ftol) = 1e-6;

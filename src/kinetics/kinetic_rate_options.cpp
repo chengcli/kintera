@@ -30,12 +30,15 @@ KineticRateOptions KineticRateOptions::from_yaml(std::string const& filename) {
       kinet.Pref(config["reference-state"]["Pref"].as<double>());
   }
 
+  std::set<std::string> vapor_set;
+  std::set<std::string> cloud_set;
+
+  // add reference species
+  vapor_set.insert(species_names[0]);
+
   // register reactions
   TORCH_CHECK(config["reactions"],
               "'reactions' is not defined in the configuration file");
-
-  std::set<std::string> vapor_set;
-  std::set<std::string> cloud_set;
 
   // add arrhenius reactions
   kinet.arrhenius() = ArrheniusOptions::from_yaml(config["reactions"]);
