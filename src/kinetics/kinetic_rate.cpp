@@ -69,7 +69,7 @@ void KineticRateImpl::reset() {
   //     torch::zeros({nspecies, nreaction}), torch::kFloat64);
   stoich = register_buffer(
       "stoich",
-      torch::zeros({species.size(), reactions.size()}, torch::kFloat64));
+      torch::zeros({(int)nspecies, (int)reactions.size()}, torch::kFloat64));
 
   for (int j = 0; j < reactions.size(); ++j) {
     auto const& r = reactions[j];

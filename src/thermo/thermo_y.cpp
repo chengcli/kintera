@@ -88,7 +88,8 @@ void ThermoYImpl::reset() {
 
   // populate stoichiometry matrix
   stoich = register_buffer(
-      "stoich", torch::zeros({nspecies, reactions.size()}, torch::kFloat64));
+      "stoich",
+      torch::zeros({(int)nspecies, (int)reactions.size()}, torch::kFloat64));
 
   for (int j = 0; j < reactions.size(); ++j) {
     auto const &r = reactions[j];
