@@ -46,6 +46,9 @@ struct SpeciesThermo {
   ADD_ARG(std::vector<user_func2>, czh_ddC);
 };
 
+SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
+                           SpeciesThermo const& thermo2);
+
 }  // namespace kintera
 
 #undef ADD_ARG

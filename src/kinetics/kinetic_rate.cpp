@@ -91,16 +91,18 @@ void KineticRateImpl::reset() {
   }
 
   // register Arrhenius rates
-  rce.push_back(torch::nn::AnyModule(Arrhenius(options.arrhenius())));
-  register_module("arrhenius", rce.back().ptr());
+  rc_evaluator.push_back(torch::nn::AnyModule(Arrhenius(options.arrhenius())));
+  register_module("arrhenius", rc_evaluator.back().ptr());
 
   // register Coagulation rates
-  rce.push_back(torch::nn::AnyModule(Arrhenius(options.coagulation())));
-  register_module("coagulation", rce.back().ptr());
+  rc_evaluator.push_back(
+      torch::nn::AnyModule(Arrhenius(options.coagulation())));
+  register_module("coagulation", rc_evaluator.back().ptr());
 
   // register Evaporation rates
-  rce.push_back(torch::nn::AnyModule(Evaporation(options.evaporation())));
-  register_module("evaporation", rce.back().ptr());
+  rc_evaluator.push_back(
+      torch::nn::AnyModule(Evaporation(options.evaporation())));
+  register_module("evaporation", rc_evaluator.back().ptr());
 }
 
 std::pair<torch::Tensor, torch::optional<torch::Tensor>>
@@ -125,8 +127,8 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
   }
 
   int first = 0;
-  for (int i = 0; i < rce.size(); ++i) {
-    auto logr = rce[i].forward(temp, pres, other);
+  for (int i = 0; i < rc_evaluator.size(); ++i) {
+    auto logr = rc_evaluator[i].forward(temp, pres, other);
     int nreactions = logr.size(-1);
 
     if (options.evolve_temperature()) {

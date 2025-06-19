@@ -42,7 +42,7 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
   torch::Tensor stoich;
 
   //! rate constant evaluator
-  std::vector<torch::nn::AnyModule> rce;
+  std::vector<torch::nn::AnyModule> rc_evaluator;
 
   //! options with which this `KineticRateImpl` was constructed
   KineticRateOptions options;
