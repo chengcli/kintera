@@ -26,7 +26,7 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
       auto it = std::find(species_names.begin(), species_names.end(), name);
       TORCH_CHECK(it != species_names.end(), "Species ", name,
                   " not found in species list");
-      cloud_set.insert(name);
+      vapor_set.insert(name);
     }
   }
 }

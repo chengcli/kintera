@@ -15,6 +15,10 @@ extern std::vector<std::string> species_names;
 extern std::vector<double> species_weights;
 extern bool species_initialized;
 
+extern std::vector<double> species_cref_R;
+extern std::vector<double> species_uref_R;
+extern std::vector<double> species_sref_R;
+
 ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   TORCH_CHECK(
       species_initialized,
@@ -50,7 +54,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     thermo.react().push_back(Nucleation::from_yaml(node));
 
     // go through reactants
-    for (auto& [name, _] : thermo.react().back().reactants()) {
+    for (auto& [name, _] : thermo.react().back().reaction().reactants()) {
       auto it = std::find(species_names.begin(), species_names.end(), name);
       TORCH_CHECK(it != species_names.end(), "Species ", name,
                   " not found in species list");
@@ -58,7 +62,7 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     }
 
     // go through products
-    for (auto& [name, _] : thermo.react().back().products()) {
+    for (auto& [name, _] : thermo.react().back().reaction().products()) {
       auto it = std::find(species_names.begin(), species_names.end(), name);
       TORCH_CHECK(it != species_names.end(), "Species ", name,
                   " not found in species list");
@@ -68,38 +72,36 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
 
   // register vapors
   for (const auto& sp : vapor_set) {
-    auto it = std::find(species_names.begin(), species_names.end(),
-                        sp.as<std::string>());
+    auto it = std::find(species_names.begin(), species_names.end(), sp);
     int id = it - species_names.begin();
     thermo.vapor_ids().push_back(id);
   }
 
   // sort vapor ids
-  std::sort(thermo.vapor_ids.begin(), thermo.vapor_ids.end());
+  std::sort(thermo.vapor_ids().begin(), thermo.vapor_ids().end());
 
   for (const auto& id : thermo.vapor_ids()) {
     thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
-    thermo.cref_R().push_back(cref_R[id]);
-    thermo.uref_R().push_back(uref_R[id]);
-    thermo.sref_R().push_back(sref_R[id]);
+    thermo.cref_R().push_back(species_cref_R[id]);
+    thermo.uref_R().push_back(species_uref_R[id]);
+    thermo.sref_R().push_back(species_sref_R[id]);
   }
 
   // register clouds
   for (const auto& sp : cloud_set) {
-    auto it = std::find(species_names.begin(), species_names.end(),
-                        sp.as<std::string>());
+    auto it = std::find(species_names.begin(), species_names.end(), sp);
     int id = it - species_names.begin();
     thermo.cloud_ids().push_back(id);
   }
 
   // sort cloud ids
-  std::sort(thermo.cloud_ids.begin(), thermo.cloud_ids.end());
+  std::sort(thermo.cloud_ids().begin(), thermo.cloud_ids().end());
 
-  for (const auto& id : kinet.cloud_ids) {
+  for (const auto& id : thermo.cloud_ids()) {
     thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
-    thermo.cref_R().push_back(cref_R[id]);
-    thermo.uref_R().push_back(uref_R[id]);
-    thermo.sref_R().push_back(sref_R[id]);
+    thermo.cref_R().push_back(species_cref_R[id]);
+    thermo.uref_R().push_back(species_uref_R[id]);
+    thermo.sref_R().push_back(species_sref_R[id]);
   }
 
   return thermo;

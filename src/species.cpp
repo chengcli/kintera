@@ -15,24 +15,25 @@ namespace kintera {
 
 std::vector<std::string> species_names;
 std::vector<double> species_weights;
-std::vector<double>, cref_R;
-std::vector<double>, uref_R;
-std::vector<double>, sref_R;
+std::vector<double> species_cref_R;
+std::vector<double> species_uref_R;
+std::vector<double> species_sref_R;
 bool species_initialized = false;
 
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
 
   // check if species are defined
-  TORCH_CHECK(
-      config["species"],
-      "'species' is not defined in the thermodynamics configuration file");
+  if (!config["species"]) {
+    throw std::runtime_error(
+        "'species' is not defined in the kintera configuration file");
+  }
 
   species_names.clear();
   species_weights.clear();
-  cref_R.clear();
-  uref_R.clear();
-  sref_R.clear();
+  species_cref_R.clear();
+  species_uref_R.clear();
+  species_sref_R.clear();
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -46,33 +47,35 @@ void init_species_from_yaml(std::string filename) {
     species_weights.push_back(harp::get_compound_weight(comp));
 
     if (sp["cv_R"]) {
-      cref_R.push_back(sp["cv_R"].as<double>());
+      species_cref_R.push_back(sp["cv_R"].as<double>());
     } else {
-      cref_R.push_back(5. / 2.);
+      species_cref_R.push_back(5. / 2.);
     }
 
     if (sp["u0_R"]) {
-      uref_R.push_back(sp["u0_R"].as<double>());
+      species_uref_R.push_back(sp["u0_R"].as<double>());
     } else {
-      uref_R.push_back(0.);
+      species_uref_R.push_back(0.);
     }
 
     if (sp["s0_R"]) {
-      sref_R.push_back(sp["u0_R"].as<double>());
+      species_sref_R.push_back(sp["u0_R"].as<double>());
     } else {
-      sref_R.push_back(0.);
+      species_sref_R.push_back(0.);
     }
   }
 
   species_initialized = true;
 }
 
-std::vector<string> SpeciesThermo::species() const {
-  TORCH_CHECK(species_initialized,
-              "Species must be initialized before calling species().",
-              "Please call init_species_from_yaml() first.");
+std::vector<std::string> SpeciesThermo::species() const {
+  if (!species_initialized) {
+    throw std::runtime_error(
+        "Species must be initialized before calling species()."
+        "Please call init_species_from_yaml() first.");
+  }
 
-  std::vector<string> species_list;
+  std::vector<std::string> species_list;
 
   // add vapors
   for (int i = 0; i < vapor_ids().size(); ++i) {
@@ -82,11 +85,6 @@ std::vector<string> SpeciesThermo::species() const {
   // add clouds
   for (int i = 0; i < cloud_ids().size(); ++i) {
     species_list.push_back(species_names[cloud_ids()[i]]);
-  }
-
-  // add the reference species
-  if (species_list.find(species_names[0]) == species_list.end()) {
-    species_list.insert(species_list.begin(), species_names[0]);
   }
 
   return species_list;

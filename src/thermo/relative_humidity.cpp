@@ -11,7 +11,7 @@ torch::Tensor relative_humidity(torch::Tensor temp, torch::Tensor pres,
                                 ThermoOptions op) {
   // evaluate svp function
   LogSVPFunc::init(op.react());
-  logsvp = LogSVPFunc::apply(temp);
+  auto logsvp = LogSVPFunc::apply(temp);
 
   // mark reactants
   auto sm = stoich.clamp_max(0.).abs();

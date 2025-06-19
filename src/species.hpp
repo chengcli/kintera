@@ -33,6 +33,17 @@ struct SpeciesThermo {
 
   //! only used for gas species, the rests are no-ops
   ADD_ARG(std::vector<user_func3>, entropy_R_extra);
+
+  //! This variable is funny. Because compressibility factor only applies to
+  //! gas and we need extra enthalpy functions for cloud species, so we combined
+  //! compressibility factor and extra enthalpy functions into one variable
+  //! called czh, which has the size of nspcies
+  ADD_ARG(std::vector<user_func2>, czh);
+
+  //! Similarly, the derivative of compressibility factor with respect to
+  //! concentration is stored here, with first 'ngas' entries being
+  //! valid numbers. The rests are no-ops.
+  ADD_ARG(std::vector<user_func2>, czh_ddC);
 };
 
 }  // namespace kintera

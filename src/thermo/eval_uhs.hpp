@@ -3,13 +3,11 @@
 // torch
 #include <torch/torch.h>
 
-// kinetara
-#include <kintera/species.hpp>
-
 namespace kintera {
 
 // Forward declaration
 struct SpeciesThermo;
+struct ThermoOptions;
 
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
                         SpeciesThermo const& op);
@@ -32,5 +30,9 @@ torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                              torch::Tensor conc, torch::Tensor stoich,
                              SpeciesThermo const& op);
+
+torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
+                             torch::Tensor conc, torch::Tensor stoich,
+                             ThermoOptions const& op);
 
 }  // namespace kintera

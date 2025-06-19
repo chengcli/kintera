@@ -42,7 +42,8 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions &options_)
 }
 
 void ThermoYImpl::reset() {
-  auto nspecies = options.species().size();
+  auto species = options.species();
+  auto nspecies = species.size();
 
   TORCH_CHECK(options.mu_ratio().size() == nspecies,
               "mu_ratio size = ", options.mu_ratio().size(),
@@ -86,8 +87,6 @@ void ThermoYImpl::reset() {
   u0 = register_buffer("u0", uref_R * constants::Rgas * inv_mu);
 
   // populate stoichiometry matrix
-  auto species = options.species();
-  int nspecies = species.size();
   int nreact = options.react().size();
 
   stoich = register_buffer("stoich",

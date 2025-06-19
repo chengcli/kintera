@@ -8,52 +8,99 @@ namespace kintera {
 
 extern std::vector<std::string> species_names;
 extern std::vector<double> species_weights;
+extern bool species_initialized;
 
-KineticRateOptions KineticRateOptions::from_yaml(const std::string& filename) {
-  KineticRateOptions kinetics;
-  auto config = YAML::LoadFile(filename);
+extern std::vector<double> species_cref_R;
+extern std::vector<double> species_uref_R;
+extern std::vector<double> species_sref_R;
 
-  // check if species are defined
+KineticRateOptions KineticRateOptions::from_yaml(std::string const& filename) {
   TORCH_CHECK(
-      config["species"],
-      "'species' is not defined in the thermodynamics configuration file");
+      species_initialized,
+      "Species must be initialized before loading kinetic rate options.",
+      "Please call init_species_from_yaml() first.");
+
+  KineticRateOptions kinet;
+  auto config = YAML::LoadFile(filename);
 
   if (config["reference-state"]) {
     if (config["reference-state"]["Tref"])
-      kinetics.Tref(config["reference-state"]["Tref"].as<double>());
+      kinet.Tref(config["reference-state"]["Tref"].as<double>());
     if (config["reference-state"]["Pref"])
-      kinetics.Pref(config["reference-state"]["Pref"].as<double>());
+      kinet.Pref(config["reference-state"]["Pref"].as<double>());
   }
 
-  for (const auto& sp : config["species"]) {
-    if (species_names.find(sp["name"].as<std::string>()) ==
-        species_names.end()) {
-      species_names.push_back(sp["name"].as<std::string>());
-      std::map<std::string, double> comp;
+  // register reactions
+  TORCH_CHECK(config["reactions"],
+              "'reactions' is not defined in the configuration file");
 
-      for (const auto& it : sp["composition"]) {
-        std::string key = it.first.as<std::string>();
-        double value = it.second.as<double>();
-        comp[key] = value;
-      }
-      species_weights.push_back(harp::get_compound_weight(comp));
-    }
-  }
+  std::set<std::string> vapor_set;
+  std::set<std::string> cloud_set;
 
-  if (node["species"]) {
-    options.species() = node["species"].as<std::vector<std::string>>();
-  }
-  if (node["reactions"]) {
-    options.reactions() = node["reactions"].as<std::vector<Reaction>>();
-  }
-  if (node["arrhenius"]) {
-    options.arrhenius() = node["arrhenius"].as<ArrheniusOptions>();
-  }
-  if (node["evaporation"]) {
-    options.evaporation() = node["evaporation"].as<EvaporationOptions>();
+  // add arrhenius reactions
+  kinet.arrhenius() = ArrheniusOptions::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet.arrhenius());
+
+  // add coagulation reactions
+  kinet.coagulation() = ArrheniusOptions::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet.coagulation());
+
+  // add evaporation reactions
+  kinet.evaporation() = EvaporationOptions::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet.evaporation());
+
+  // register vapors
+  for (const auto& sp : vapor_set) {
+    auto it = std::find(species_names.begin(), species_names.end(), sp);
+    int id = it - species_names.begin();
+    kinet.vapor_ids().push_back(id);
   }
 
-  return options;
+  // sort vapor ids
+  std::sort(kinet.vapor_ids().begin(), kinet.vapor_ids().end());
+
+  for (const auto& id : kinet.vapor_ids()) {
+    kinet.cref_R().push_back(species_cref_R[id]);
+    kinet.uref_R().push_back(species_uref_R[id]);
+    kinet.sref_R().push_back(species_sref_R[id]);
+  }
+
+  // register clouds
+  for (const auto& sp : cloud_set) {
+    auto it = std::find(species_names.begin(), species_names.end(), sp);
+    int id = it - species_names.begin();
+    kinet.cloud_ids().push_back(id);
+  }
+
+  // sort cloud ids
+  std::sort(kinet.cloud_ids().begin(), kinet.cloud_ids().end());
+
+  for (const auto& id : kinet.cloud_ids()) {
+    kinet.cref_R().push_back(species_cref_R[id]);
+    kinet.uref_R().push_back(species_uref_R[id]);
+    kinet.sref_R().push_back(species_sref_R[id]);
+  }
+
+  return kinet;
+}
+
+std::vector<Reaction> KineticRateOptions::reactions() const {
+  std::vector<Reaction> reactions;
+  reactions.reserve(arrhenius().reactions().size() +
+                    coagulation().reactions().size() +
+                    evaporation().reactions().size());
+
+  for (const auto& reaction : arrhenius().reactions()) {
+    reactions.push_back(reaction);
+  }
+  for (const auto& reaction : coagulation().reactions()) {
+    reactions.push_back(reaction);
+  }
+  for (const auto& reaction : evaporation().reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  return reactions;
 }
 
 }  // namespace kintera

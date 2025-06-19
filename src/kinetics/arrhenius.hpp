@@ -49,7 +49,7 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
 
 class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
  public:
-  //! log pre-exponential factor [ln(mol, m, s)], shape (nreaction,)
+  //! log pre-exponential factor ln[mol, m, s], shape (nreaction,)
   torch::Tensor logA;
 
   //! temperature exponent, shape (nreaction,)

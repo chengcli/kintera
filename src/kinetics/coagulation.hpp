@@ -11,7 +11,7 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
-#include <kintera/arrhenius.hpp>
+#include "arrhenius.hpp"
 
 namespace kintera {
 

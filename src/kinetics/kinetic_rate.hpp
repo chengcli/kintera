@@ -26,9 +26,13 @@ struct KineticRateOptions : public SpeciesThermo {
 
   std::vector<Reaction> reactions() const;
 
+  ADD_ARG(double, Tref) = 298.15;
+  ADD_ARG(double, Pref) = 101325.0;
+
   ADD_ARG(ArrheniusOptions, arrhenius) = {};
   ADD_ARG(CoagulationOptions, coagulation) = {};
   ADD_ARG(EvaporationOptions, evaporation) = {};
+  ADD_ARG(bool, evolve_temperature) = false;
 };
 
 class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
@@ -37,7 +41,7 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
   torch::Tensor stoich;
 
   //! log rate constant in ln(mol, m, s), shape (..., nreaction)
-  torch::Tensor log_rate_constant;
+  torch::Tensor logrc_ddT;
 
   //! rate constant evaluator
   std::vector<torch::nn::AnyModule> rce;
