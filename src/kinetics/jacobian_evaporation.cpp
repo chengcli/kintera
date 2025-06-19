@@ -7,15 +7,14 @@
 
 namespace kintera {
 
-torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor temp,
-                                   torch::Tensor pres, torch::Tensor stoich,
-                                   torch::Tensor conc,
+torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor stoich,
+                                   torch::Tensor conc, torch::Tensor temp,
                                    ThermoOptions const& op) {
   // evaluate svp function
   LogSVPFunc::init(op.nucleation());
 
   // evaluate relative humidity
-  auto rh = relative_humidity(temp, pres, conc, -stoich, op);
+  auto rh = relative_humidity(temp, conc, -stoich, op);
 
   // mark reactants
   auto sm = stoich.clamp_max(0.).t();

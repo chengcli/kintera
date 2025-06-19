@@ -89,6 +89,7 @@ reactions:
     rate-constant: {formula: nh3_h2s_lewis}
 
   - equation: H2O(l) => H2O(p)
+    type: coagulation
     rate-constant: {A: 0.001, b: 0}
 
   - equation: H2O(p) => H2O

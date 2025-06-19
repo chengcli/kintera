@@ -17,8 +17,8 @@ torch::Tensor jacobian_mass_action(
     torch::optional<torch::Tensor> logrc_ddT = torch::nullopt,
     torch::optional<SpeciesThermo> op = torch::nullopt);
 
-torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor temp,
-                                   torch::Tensor pres, torch::Tensor stoich,
-                                   torch::Tensor conc, ThermoOptions const& op);
+torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor stoich,
+                                   torch::Tensor conc, torch::Tensor temp,
+                                   ThermoOptions const& op);
 
 }  // namespace kintera

@@ -10,6 +10,7 @@
 #include <kintera/eos/equation_of_state.hpp>
 #include <kintera/thermo/eval_uhs.hpp>
 #include <kintera/thermo/extrapolate_ad.hpp>
+#include <kintera/thermo/relative_humidity.hpp>
 #include <kintera/thermo/thermo.hpp>
 #include <kintera/thermo/thermo_formatter.hpp>
 
@@ -25,8 +26,8 @@ TEST_P(DeviceTest, thermo_y) {
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int ny =
-      thermo->options.vapor_ids().size() + thermo->options.cloud_ids().size();
+  int ny = thermo->options.vapor_ids().size() +
+           thermo->options.cloud_ids().size() - 1;
   auto yfrac = torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
 
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
@@ -79,8 +80,8 @@ TEST_P(DeviceTest, thermo_x) {
   ThermoX thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int ny =
-      thermo->options.vapor_ids().size() + thermo->options.cloud_ids().size();
+  int ny = thermo->options.vapor_ids().size() +
+           thermo->options.cloud_ids().size() - 1;
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -125,7 +126,7 @@ TEST_P(DeviceTest, thermo_xy) {
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -146,7 +147,7 @@ TEST_P(DeviceTest, thermo_yx) {
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
   auto yfrac = torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
@@ -165,7 +166,7 @@ TEST_P(DeviceTest, eng_pres) {
   thermo_x->to(device, dtype);
 
   int ny = thermo_y->options.vapor_ids().size() +
-           thermo_y->options.cloud_ids().size();
+           thermo_y->options.cloud_ids().size() - 1;
   auto yfrac = torch::zeros({ny, 1}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
@@ -191,7 +192,7 @@ TEST_P(DeviceTest, equilibrate_tp) {
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -220,7 +221,7 @@ TEST_P(DeviceTest, equilibrate_uv) {
   thermo_y->to(device, dtype);
 
   int ny = thermo_y->options.vapor_ids().size() +
-           thermo_y->options.cloud_ids().size();
+           thermo_y->options.cloud_ids().size() - 1;
   auto yfrac = torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
@@ -267,7 +268,7 @@ TEST_P(DeviceTest, extrapolate_ad) {
   auto temp = 200.0 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size();
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
   auto xfrac = torch::zeros({2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
   for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
@@ -291,6 +292,34 @@ TEST_P(DeviceTest, extrapolate_ad) {
   std::cout << "temp after = " << temp << std::endl;
 
   EXPECT_EQ(torch::allclose(entropy_mole0, entropy_mole1, 1e-3, 1e-3), true);
+}
+
+TEST_P(DeviceTest, relative_humidity) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(15);
+
+  ThermoX thermo_x(op_thermo);
+  thermo_x->to(device, dtype);
+
+  int ny = thermo_x->options.vapor_ids().size() +
+           thermo_x->options.cloud_ids().size() - 1;
+
+  auto xfrac =
+      torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
+
+  auto temp =
+      200.0 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+  auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+
+  thermo_x->forward(temp, pres, xfrac);
+
+  auto conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
+  auto rh = relative_humidity(temp, conc, thermo_x->stoich, thermo_x->options);
+  std::cout << "rh = " << rh << std::endl;
+  EXPECT_LE(rh.min().item<float>(), 1.0);
+  EXPECT_GE(rh.max().item<float>(), 0.0);
 }
 
 int main(int argc, char **argv) {

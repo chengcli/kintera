@@ -40,6 +40,30 @@ KineticRateImpl::KineticRateImpl(const KineticRateOptions& options_)
 void KineticRateImpl::reset() {
   auto reactions = options.reactions();
   auto species = options.species();
+  auto nspecies = species.size();
+
+  TORCH_CHECK(options.cref_R().size() == nspecies,
+              "cref_R size = ", options.cref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(options.uref_R().size() == nspecies,
+              "uref_R size = ", options.uref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(options.sref_R().size() == nspecies,
+              "sref_R size = ", options.sref_R().size(),
+              ". Expected = ", nspecies);
+
+  // change internal energy offset to T = 0
+  for (int i = 0; i < options.uref_R().size(); ++i) {
+    options.uref_R()[i] -= options.cref_R()[i] * options.Tref();
+  }
+
+  // change entropy offset to T = 0
+  for (int i = 0; i < options.vapor_ids().size(); ++i) {
+    options.sref_R()[i] -=
+        (options.cref_R()[i] + 1) * log(options.Tref()) - log(options.Pref());
+  }
 
   // order = register_buffer("order",
   //     torch::zeros({nspecies, nreaction}), torch::kFloat64);

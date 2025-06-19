@@ -20,10 +20,9 @@ extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 
 ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
-  TORCH_CHECK(
-      species_initialized,
-      "Species must be initialized before loading thermodynamics options.",
-      "Please call init_species_from_yaml() first.");
+  if (!species_initialized) {
+    init_species_from_yaml(filename);
+  }
 
   ThermoOptions thermo;
   auto config = YAML::LoadFile(filename);

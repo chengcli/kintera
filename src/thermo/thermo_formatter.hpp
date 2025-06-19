@@ -26,7 +26,7 @@ struct fmt::formatter<kintera::NucleationOptions> {
       if (i != r.size() - 1) reactions << ";\n";
     }
 
-    return fmt::format_to(ctx.out(), "({})", reactions.str());
+    return fmt::format_to(ctx.out(), "{}", reactions.str());
   }
 };
 
@@ -43,10 +43,10 @@ struct fmt::formatter<kintera::ThermoOptions> {
       if (i != r.size() - 1) reactions << ";\n";
     }
 
-    return fmt::format_to(
-        ctx.out(),
-        "(species= {}; Rd={:.2f}; Tref= {}; Pref= {};\nreactions= ({}))",
-        static_cast<kintera::SpeciesThermo>(p), p.Rd(), p.Tref(), p.Pref(),
-        reactions.str());
+    return fmt::format_to(ctx.out(),
+                          "species= (\n{}\n);\nRd={:.2f}; Tref= {}; Pref= "
+                          "{};\nreactions= (\n{}\n)",
+                          static_cast<kintera::SpeciesThermo>(p), p.Rd(),
+                          p.Tref(), p.Pref(), reactions.str());
   }
 };

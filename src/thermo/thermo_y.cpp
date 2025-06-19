@@ -9,8 +9,7 @@
 
 namespace kintera {
 
-ThermoYImpl::ThermoYImpl(const ThermoOptions &options_)
-    : options(std::move(options_)) {
+ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
   auto nspecies = options.species().size();
 
   // populate higher-order thermodynamic functions

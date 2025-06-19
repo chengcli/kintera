@@ -52,7 +52,7 @@ struct fmt::formatter<kintera::EvaporationOptions> {
       if (i != r.size() - 1) reactions << ";\n";
     }
 
-    return fmt::format_to(ctx.out(), "({})", reactions.str());
+    return fmt::format_to(ctx.out(), "{}", reactions.str());
   }
 };
 
@@ -69,9 +69,10 @@ struct fmt::formatter<kintera::KineticRateOptions> {
       if (i != r.size() - 1) reactions << ";\n";
     }
 
-    return fmt::format_to(ctx.out(),
-                          "(species= {}; Tref= {}; Pref= {};\nreactions= ({}))",
-                          static_cast<kintera::SpeciesThermo>(p), p.Tref(),
-                          p.Pref(), reactions.str());
+    return fmt::format_to(
+        ctx.out(),
+        "species= (\n{}\n); Tref= {}; Pref= {};\nreactions= (\n{}\n)",
+        static_cast<kintera::SpeciesThermo>(p), p.Tref(), p.Pref(),
+        reactions.str());
   }
 };

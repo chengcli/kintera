@@ -13,7 +13,7 @@ struct fmt::formatter<kintera::Composition> {
 
   template <typename FormatContext>
   auto format(const kintera::Composition& p, FormatContext& ctx) const {
-    return fmt::format_to(ctx.out(), "({})", kintera::to_string(p));
+    return fmt::format_to(ctx.out(), "{}", kintera::to_string(p));
   }
 };
 
@@ -23,7 +23,7 @@ struct fmt::formatter<kintera::Reaction> {
 
   template <typename FormatContext>
   auto format(const kintera::Reaction& p, FormatContext& ctx) const {
-    return fmt::format_to(ctx.out(), "({})", p.equation());
+    return fmt::format_to(ctx.out(), "{}", p.equation());
   }
 };
 
@@ -75,7 +75,7 @@ struct fmt::formatter<kintera::SpeciesThermo> {
 
     return fmt::format_to(
         ctx.out(),
-        "(vapors= ({});\nclouds= ({});\ncv_R= ({});\nu0_R= ({});\ns0_R= ({}))",
+        "vapors= ({});\nclouds= ({});\ncv_R= ({});\nu0_R= ({});\ns0_R= ({})",
         vapors.str(), clouds.str(), cref.str(), uref.str(), sref.str());
   }
 };
