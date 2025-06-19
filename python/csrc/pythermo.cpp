@@ -11,79 +11,86 @@
 namespace py = pybind11;
 
 void bind_thermo(py::module &m) {
-  py::class_<kintera::Nucleation>(m, "Nucleation")
+  auto pyNucleationOptions =
+      py::class_<kintera::NucleationOptions>(m, "NucleationOptions");
+
+  pyNucleationOptions
       .def(py::init<>(), R"doc(
 Returns:
-  Nucleation: class object
+  NucleationOptions: class object
 
 Examples:
   .. code-block:: python
 
-    >> from kintera import Nucleation
-    >> nucleation = Nucleation().minT(200.0).maxT(300.0).reaction("H2O + CO2 -> H2CO3")
+    >> from kintera import NucleationOptions
+    >> nucleation = NucleationOptions().minT([200.0]).maxT([300.0]).reaction(["H2O + CO2 -> H2CO3"])
     )doc")
 
       .def("__repr__",
-           [](const kintera::Nucleation &self) {
-             return fmt::format("Nucleation({})", self);
+           [](const kintera::NucleationOptions &self) {
+             return fmt::format("NucleationOptions({})", self);
            })
 
-      .ADD_OPTION(double, kintera::Nucleation, minT, R"doc(
+      .ADD_OPTION(std::vector<double>, kintera::NucleationOptions, minT, R"doc(
 Set or get the minimum temperature for the nucleation reaction.
 
 Args:
-  value (float): Minimum temperature in Kelvin.
+  value (list[float]): list of Minimum temperature in Kelvin.
 
 Returns:
-  Nucleation | float: class object if argument is not empty, otherwise sets the value
+  Nucleation | list[float]: class object if argument is not empty, otherwise sets the value
 
 Examples:
   .. code-block:: python
 
-    >> from kintera import Nucleation
-    >> nucleation = Nucleation().minT(200.0)
+    >> from kintera import NucleationOptions
+    >> nucleation = NucleationOptions().minT([200.0])
     >> print(nucleation.minT())
-    200.0
+    [200.0]
     )doc")
 
-      .ADD_OPTION(double, kintera::Nucleation, maxT, R"doc(
+      .ADD_OPTION(std::vector<double>, kintera::NucleationOptions, maxT, R"doc(
 Set or get the maximum temperature for the nucleation reaction.
 
 Args:
-  value (float): Maximum temperature in Kelvin.
+  value (list[float]): list of Maximum temperature in Kelvin.
 
 Returns:
-  Nucleation | float: class object if argument is not empty, otherwise sets the value
+  Nucleation | list[float]: class object if argument is not empty, otherwise sets the value
 
 Examples:
   .. code-block:: python
 
-    >> from kintera import Nucleation
-    >> nucleation = Nucleation().maxT(300.0)
+    >> from kintera import NucleationOptions
+    >> nucleation = NucleationOptionis().maxT(300.0)
     >> print(nucleation.maxT())
-    300.0
+    [300.0]
     )doc")
 
-      .ADD_OPTION(kintera::Reaction, kintera::Nucleation, reaction, R"doc(
+      .ADD_OPTION(std::vector<kintera::Reaction>, kintera::NucleationOptions,
+                  reactions,
+                  R"doc(
 Set or get the reaction associated with the nucleation.
 
 Args:
-  value (Reaction): Reaction object representing the nucleation reaction.
+  value (list[Reaction]): list of Reaction object representing the nucleation reactions.
 
 Returns:
-  Nucleation | Reaction: class object if argument is not empty, otherwise sets the value
+  Nucleation | list[Reaction]: class object if argument is not empty, otherwise sets the value
 
 Examples:
   .. code-block:: python
 
-    >> from kintera import Nucleation, Reaction
+    >> from kintera import NucleationOptions, Reaction
     >> reaction = Reaction("H2O + CO2 -> H2CO3")
-    >> nucleation = Nucleation().reaction(reaction)
-    >> print(nucleation.reaction())
-    Reaction(H2O + CO2 -> H2CO3)
+    >> nucleation = NucleationOptions().reactions([reaction])
+    >> print(nucleation.reactions())
+    [Reaction(H2O + CO2 -> H2CO3)]
     )doc");
 
-  auto pyThermoOptions = py::class_<kintera::ThermoOptions>(m, "ThermoOptions");
+  auto pyThermoOptions =
+      py::class_<kintera::ThermoOptions, kintera::SpeciesThermo>(
+          m, "ThermoOptions");
 
   pyThermoOptions
       .def(py::init<>(), R"doc(
@@ -101,6 +108,19 @@ Examples:
            [](const kintera::ThermoOptions &self) {
              return fmt::format("ThermoOptions({})", self);
            })
+
+      .def("reactions", &kintera::ThermoOptions::reactions, R"doc(
+Returns:
+  list[Reaction]: list of reactions
+
+Examples:
+  .. code-block:: python
+
+    >> from kintera import ThermoOptions
+    >> op = ThermoOptions().reactions([Reaction("H2 + O2 -> H2O")])
+    >> print(op.reactions())
+    [Reaction(H2 + O2 -> H2O)]
+    )doc")
 
       .def("from_yaml", &kintera::ThermoOptions::from_yaml, R"doc(
 Create a `ThermoOptions` object from a YAML file.
@@ -172,42 +192,6 @@ Examples:
     100000.0
     )doc")
 
-      .ADD_OPTION(std::vector<int>, kintera::ThermoOptions, vapor_ids, R"doc(
-Set or get the vapor species IDs.
-
-Args:
-  value (list[int]): List of vapor species IDs.
-
-Returns:
-  ThermoOptions | list[int]: class object if argument is not empty, otherwise sets the value
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import ThermoOptions
-    >> op = ThermoOptions().vapor_ids([1, 2, 3])
-    >> print(op.vapor_ids())
-    [1, 2, 3]
-    )doc")
-
-      .ADD_OPTION(std::vector<int>, kintera::ThermoOptions, cloud_ids, R"doc(
-Set or get the cloud species IDs.
-
-Args:
-  value (list[int]): List of cloud species IDs.
-
-Returns:
-  ThermoOptions | list[int]: class object if argument is not empty, otherwise sets the value
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import ThermoOptions
-    >> op = ThermoOptions().cloud_ids([4, 5])
-    >> print(op.cloud_ids())
-    [4, 5]
-    )doc")
-
       .ADD_OPTION(std::vector<double>, kintera::ThermoOptions, mu_ratio, R"doc(
 Set or get the molecular weight ratios.
 
@@ -226,78 +210,23 @@ Examples:
     [1.0, 1.2, 1.5]
     )doc")
 
-      .ADD_OPTION(std::vector<double>, kintera::ThermoOptions, cref_R, R"doc(
-Set or get the specific heat ratio for the reference state.
+      .ADD_OPTION(kintera::NucleationOptions, kintera::ThermoOptions,
+                  nucleation, R"doc(
+Set or get the nucleation reactions options
 
 Args:
-  value (list[float]): List of specific heat ratios for the reference state.
+  value (NucleationOptions): nucleation reaction options
 
 Returns:
-  ThermoOptions | list[float]: class object if argument is not empty, otherwise sets the value
+  SpeciesThermo | NucleationOptions: class object if argument is not empty, otherwise sets the value
 
 Examples:
   .. code-block:: python
 
-    >> from kintera import ThermoOptions
-    >> op = ThermoOptions().cref_R([2.5, 2.7, 2.9])
-    >> print(op.cref_R())
-    [2.5, 2.7, 2.9]
-    )doc")
-
-      .ADD_OPTION(std::vector<double>, kintera::ThermoOptions, uref_R, R"doc(
-Set or get the internal energy for the reference state.
-
-Args:
-  value (list[float]): List of internal energies for the reference state.
-
-Returns:
-  ThermoOptions | list[float]: class object if argument is not empty, otherwise sets the value
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import ThermoOptions
-    >> op = ThermoOptions().uref_R([0.0, 1.0, 2.0])
-    >> print(op.uref_R())
-    [0.0, 1.0, 2.0]
-    )doc")
-
-      .ADD_OPTION(std::vector<kintera::Nucleation>, kintera::ThermoOptions,
-                  react, R"doc(
-Set or get the nucleation reactions.
-
-Args:
-  value (list[Nucleation]): List of nucleation reactions.
-
-Returns:
-  ThermoOptions | list[Nucleation]: class object if argument is not empty, otherwise sets the value
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import ThermoOptions, Nucleation
-    >> op = ThermoOptions().react([Nucleation("R1", 200.0, 300.0), Nucleation("R2", 250.0, 350.0)])
+    >> from kintera import SpeciesThermo, NucleationOptions
+    >> op = SpeciesThermo().react([Nucleation("R1", 200.0, 300.0), Nucleation("R2", 250.0, 350.0)])
     >> print(op.react())
     [Nucleation(R1; minT = 200.00; maxT = 300.00), Nucleation(R2; minT = 250.00; maxT = 350.00)]
-    )doc")
-
-      .ADD_OPTION(std::vector<std::string>, kintera::ThermoOptions, species,
-                  R"doc(
-Set or get the species names.
-
-Args:
-  value (list[str]): List of species names.
-
-Returns:
-  ThermoOptions | list[str]: class object if argument is not empty, otherwise sets the value
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import ThermoOptions
-    >> op = ThermoOptions().species(["H2O", "CO2", "O2"])
-    >> print(op.species())
-    ['H2O', 'CO2', 'O2']
     )doc");
 
   ADD_KINTERA_MODULE(ThermoY, ThermoOptions, R"doc(

@@ -69,12 +69,6 @@ void init_species_from_yaml(std::string filename) {
 }
 
 std::vector<std::string> SpeciesThermo::species() const {
-  if (!species_initialized) {
-    throw std::runtime_error(
-        "Species must be initialized before calling species()."
-        "Please call init_species_from_yaml() first.");
-  }
-
   std::vector<std::string> species_list;
 
   // add vapors
