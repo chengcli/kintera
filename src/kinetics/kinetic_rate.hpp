@@ -41,9 +41,6 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
   //! stoichiometry matrix, shape (nspecies, nreaction)
   torch::Tensor stoich;
 
-  //! log rate constant in ln(mol, m, s), shape (..., nreaction)
-  torch::Tensor logrc_ddT;
-
   //! rate constant evaluator
   std::vector<torch::nn::AnyModule> rce;
 
@@ -60,10 +57,12 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
    * \param temp temperature [K], shape (...)
    * \param pres pressure [Pa], shape (...)
    * \param conc concentration [mol/m^3], shape (..., nspecies)
-   * \return kinetic rate of reactions [mol/(m^3 s)], shape (..., nreaction)
+   * \return (1) kinetic rate of reactions [mol/(m^3 s)], shape (..., nreaction)
+   * (2) optional: rate constant derivative [mol/(m*3 K s)], shape (...,
+   * nreaction)
    */
-  torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
-                        torch::Tensor conc);
+  std::pair<torch::Tensor, torch::optional<torch::Tensor>> forward(
+      torch::Tensor temp, torch::Tensor pres, torch::Tensor conc);
 };
 
 TORCH_MODULE(KineticRate);

@@ -65,6 +65,11 @@ void KineticRateImpl::reset() {
         (options.cref_R()[i] + 1) * log(options.Tref()) - log(options.Pref());
   }
 
+  // set cloud entropy offset to 0 (not used)
+  for (int i = options.vapor_ids().size(); i < options.sref_R().size(); ++i) {
+    options.sref_R()[i] = 0.;
+  }
+
   // order = register_buffer("order",
   //     torch::zeros({nspecies, nreaction}), torch::kFloat64);
   stoich = register_buffer(
@@ -85,9 +90,6 @@ void KineticRateImpl::reset() {
     }
   }
 
-  // placeholder for log rate constant
-  logrc_ddT = register_buffer("logrc_ddT", torch::zeros({1}, torch::kFloat64));
-
   // register Arrhenius rates
   rce.push_back(torch::nn::AnyModule(Arrhenius(options.arrhenius())));
   register_module("arrhenius", rce.back().ptr());
@@ -101,9 +103,10 @@ void KineticRateImpl::reset() {
   register_module("evaporation", rce.back().ptr());
 }
 
-torch::Tensor KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
-                                       torch::Tensor conc) {
-  // compute Arrhenius rate constants
+std::pair<torch::Tensor, torch::optional<torch::Tensor>>
+KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
+                         torch::Tensor conc) {
+  // prepare data
   std::map<std::string, torch::Tensor> other = {};
   other["conc"] = conc;
 
@@ -113,12 +116,13 @@ torch::Tensor KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   auto result = torch::empty(vec, temp.options());
 
+  torch::optional<torch::Tensor> logrc_ddT;
+
   // track rate constant derivative
   if (options.evolve_temperature()) {
     temp.requires_grad_(true);
+    logrc_ddT = torch::empty(vec, temp.options());
   }
-
-  logrc_ddT.set_(check_resize(logrc_ddT, vec, temp.options()));
 
   int first = 0;
   for (int i = 0; i < rce.size(); ++i) {
@@ -128,7 +132,8 @@ torch::Tensor KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
     if (options.evolve_temperature()) {
       auto identity = torch::eye(nreactions, logr.options());
       logr.backward(identity);
-      logrc_ddT.narrow(1, first, nreactions) = temp.grad().unsqueeze(-1);
+      logrc_ddT.value().narrow(1, first, nreactions) =
+          temp.grad().unsqueeze(-1);
     }
 
     // mark reactants
@@ -148,7 +153,7 @@ torch::Tensor KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
     temp.requires_grad_(false);
   }
 
-  return result;
+  return std::make_pair(result, logrc_ddT);
 }
 
 }  // namespace kintera

@@ -16,8 +16,13 @@ struct fmt::formatter<kintera::ArrheniusOptions> {
   auto format(const kintera::ArrheniusOptions& p, FormatContext& ctx) const {
     std::ostringstream reactions;
     auto r = p.reactions();
+
+    if (r.size() == 0) {
+      return fmt::format_to(ctx.out(), "--");
+    }
+
     for (size_t i = 0; i < r.size(); ++i) {
-      reactions << fmt::format("R{}: {}", i + 1, r[i]);
+      reactions << fmt::format("R{}: {}, ", i + 1, r[i]);
       if (i != r.size() - 1) {
         reactions << ", ";
       }
@@ -27,7 +32,7 @@ struct fmt::formatter<kintera::ArrheniusOptions> {
       if (i != r.size() - 1) reactions << ";\n";
     }
 
-    return fmt::format_to(ctx.out(), "({})", reactions.str());
+    return fmt::format_to(ctx.out(), "{}", reactions.str());
   }
 };
 
@@ -39,8 +44,13 @@ struct fmt::formatter<kintera::EvaporationOptions> {
   auto format(const kintera::EvaporationOptions& p, FormatContext& ctx) const {
     std::ostringstream reactions;
     auto r = p.reactions();
+
+    if (r.size() == 0) {
+      return fmt::format_to(ctx.out(), "--");
+    }
+
     for (size_t i = 0; i < r.size(); ++i) {
-      reactions << fmt::format("R{}: {}", i + 1, r[i]);
+      reactions << fmt::format("R{}: {}, ", i + 1, r[i]);
       if (i != r.size() - 1) {
         reactions << ", ";
       }

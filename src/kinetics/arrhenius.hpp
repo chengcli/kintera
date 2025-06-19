@@ -24,7 +24,8 @@ namespace kintera {
 
 //! Options to initialize all reaction rate constants
 struct ArrheniusOptions {
-  static ArrheniusOptions from_yaml(const YAML::Node& node);
+  static ArrheniusOptions from_yaml(const YAML::Node& node,
+                                    std::string const& other_type = "");
   virtual ~ArrheniusOptions() = default;
 
   //! reactions

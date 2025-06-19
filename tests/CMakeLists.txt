@@ -9,6 +9,7 @@ setup_problem(test_yaml_parse)
 
 setup_test(test_eos)
 setup_test(test_thermo)
+setup_test(test_kinetics)
 
 file(GLOB inputs *.inp *.dat *.yaml)
 foreach(input ${inputs})

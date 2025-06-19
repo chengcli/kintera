@@ -82,6 +82,11 @@ void ThermoXImpl::reset() {
         (options.cref_R()[i] + 1) * log(options.Tref()) - log(options.Pref());
   }
 
+  // set cloud entropy offset to 0 (not used)
+  for (int i = options.vapor_ids().size(); i < options.sref_R().size(); ++i) {
+    options.sref_R()[i] = 0.;
+  }
+
   // populate stoichiometry matrix
   stoich = register_buffer(
       "stoich",

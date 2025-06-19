@@ -82,6 +82,11 @@ void ThermoYImpl::reset() {
         (options.cref_R()[i] + 1) * log(options.Tref()) - log(options.Pref());
   }
 
+  // set cloud entropy offset to 0 (not used)
+  for (int i = options.vapor_ids().size(); i < options.sref_R().size(); ++i) {
+    options.sref_R()[i] = 0.;
+  }
+
   auto cv_R = torch::tensor(options.cref_R(), torch::kFloat64);
   auto uref_R = torch::tensor(options.uref_R(), torch::kFloat64);
 

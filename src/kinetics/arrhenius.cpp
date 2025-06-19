@@ -31,14 +31,16 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
   }
 }
 
-ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root) {
+ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root,
+                                             std::string const& other_type) {
   ArrheniusOptions options;
 
   for (auto const& rxn_node : root) {
     TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
 
-    if (rxn_node["type"].as<std::string>() != "arrhenius") {
-      continue;
+    if (rxn_node["type"].as<std::string>() != "arrhenius" &&
+        rxn_node["type"].as<std::string>() != other_type) {
+      continue;  // skip this reaction
     }
 
     TORCH_CHECK(rxn_node["equation"],

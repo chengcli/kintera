@@ -3,6 +3,7 @@
 
 // kintera
 #include "kinetic_rate.hpp"
+#include "kinetics_formatter.hpp"
 
 namespace kintera {
 
@@ -41,14 +42,19 @@ KineticRateOptions KineticRateOptions::from_yaml(std::string const& filename) {
 
   // add arrhenius reactions
   kinet.arrhenius() = ArrheniusOptions::from_yaml(config["reactions"]);
+  std::cout << fmt::format("{}", kinet.arrhenius()) << std::endl;
   add_to_vapor_cloud(vapor_set, cloud_set, kinet.arrhenius());
 
   // add coagulation reactions
-  kinet.coagulation() = ArrheniusOptions::from_yaml(config["reactions"]);
+  kinet.coagulation() =
+      ArrheniusOptions::from_yaml(config["reactions"], "coagulation");
+  std::cout << fmt::format("{}", (ArrheniusOptions)kinet.coagulation())
+            << std::endl;
   add_to_vapor_cloud(vapor_set, cloud_set, kinet.coagulation());
 
   // add evaporation reactions
   kinet.evaporation() = EvaporationOptions::from_yaml(config["reactions"]);
+  std::cout << fmt::format("{}", kinet.evaporation()) << std::endl;
   add_to_vapor_cloud(vapor_set, cloud_set, kinet.evaporation());
 
   // register vapors
