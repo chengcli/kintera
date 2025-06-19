@@ -38,12 +38,15 @@ void KineticRateImpl::reset() {
 
   // register Arrhenius rates
   rce.push_back(torch::nn::AnyModule(Arrhenius(options.arrhenius())));
+  register_module("arrhenius", rce.back().ptr());
 
   // register Coagulation rates
   rce.push_back(torch::nn::AnyModule(Arrhenius(options.coagulation())));
+  register_module("coagulation", rce.back().ptr());
 
   // register Evaporation rates
   rce.push_back(torch::nn::AnyModule(Evaporation(options.evaporation())));
+  register_module("evaporation", rce.back().ptr());
 }
 
 torch::Tensor KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
