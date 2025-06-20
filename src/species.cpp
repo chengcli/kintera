@@ -1,5 +1,4 @@
 // C/C++
-#include <algorithm>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -11,6 +10,8 @@
 #include <harp/compound.hpp>
 
 // kintera
+#include <kintera/utils/vectors.hpp>
+
 #include "species.hpp"
 
 namespace kintera {
@@ -21,20 +22,6 @@ std::vector<double> species_cref_R;
 std::vector<double> species_uref_R;
 std::vector<double> species_sref_R;
 bool species_initialized = false;
-
-template <typename T>
-std::vector<size_t> find_common_(std::vector<T> const& a,
-                                 std::vector<T> const& b) {
-  std::unordered_set<T> a_set(a.begin(), a.end());
-  std::vector<size_t> indices;
-
-  for (size_t i = 0; i < b.size(); ++i) {
-    if (a_set.count(b[i])) {
-      indices.push_back(i);
-    }
-  }
-  return indices;
-}
 
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
@@ -107,23 +94,6 @@ std::vector<std::string> SpeciesThermo::copy_from(
     int id = vapor_ids()[i];
     int jd = other.vapor_ids().index(id);
   }
-}
-
-template <typename T>
-std::vector<T> merge_vectors(std::vector<T> const& vec1,
-                             std::vector<T> const& vec2) {
-  std::vector<T> merged = vec1;
-  merged.insert(merged.end(), vec2.begin(), vec2.end());
-  return merged;
-}
-
-template <typename T>
-std::vector<T> sort_vectors(std::vector<T> const& vec,
-                            std::vector<int> const& indices) {
-  std::vector<T> sorted(vec.size());
-  std::transform(indices.begin(), indices.end(), sorted.begin(),
-                 [&vec](int index) { return vec[index]; });
-  return sorted;
 }
 
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,

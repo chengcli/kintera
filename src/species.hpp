@@ -2,7 +2,7 @@
 
 // C/C++
 #include <string>
-#include <vecto>
+#include <vector>
 
 // torch
 #include <torch/torch.h>
