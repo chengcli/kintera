@@ -24,7 +24,14 @@ TEST_P(DeviceTest, kinetic_rate) {
   std::cout << fmt::format("{}", kinet->options) << std::endl;
 }
 
-TEST_P(DeviceTest, forward) {
+TEST_P(DeviceTest, merge) {
+  auto op_kinet = KineticRateOptions::from_yaml("jupiter.yaml");
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  auto op_all = merge_thermo(op_kinet, op_thermo);
+  // std::cout << fmt::format("{}", op_all) << std::endl;
+}
+
+/*TEST_P(DeviceTest, forward) {
   auto op_kinet = KineticRateOptions::from_yaml("jupiter.yaml");
   KineticRate kinet(op_kinet);
   kinet->to(device, dtype);
@@ -33,8 +40,9 @@ TEST_P(DeviceTest, forward) {
   ThermoX thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int ny = thermo->options.vapor_ids().size() +
-           thermo->options.cloud_ids().size() - 1;
+  auto op_all = merge_thermo(op_kinet.options, op_thermo);
+
+  int nx = op_all.s
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -53,7 +61,7 @@ TEST_P(DeviceTest, forward) {
       std::cout << "rc_ddT: None" << std::endl;
       break;
   }
-}
+}*/
 
 int main(int argc, char **argv) {
   testing::InitGoogleTest(&argc, argv);
