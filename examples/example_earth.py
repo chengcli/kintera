@@ -79,9 +79,11 @@ if __name__ == "__main__":
     entropy_mol = entropy_vol / conc.sum(dim=-1)
 
     # compute relative humdity
-    rh = relative_humdity(temp, conc, thermo.stoich, thermo.options)
+    stoich = thermo.get_buffer("stoich")
+    rh = relative_humidity(temp, conc, stoich, thermo.options)
 
     print("temp = ", temp)
     print("pres = ", pres)
     print("xfrac = ", xfrac)
     print("entropy_mol = ", entropy_mol)
+    print("rh = ", rh)

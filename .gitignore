@@ -9,3 +9,6 @@ data/example.speos
 
 # egg
 *.egg-info
+
+# mac
+.DS_Store
