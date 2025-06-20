@@ -17,7 +17,6 @@ def parse_library_names(libdir):
 
     # add system netcdf library
     library_names.extend(['netcdf'])
-
     return library_names
 
 current_dir = os.getenv("WORKSPACE", Path().absolute())
@@ -41,6 +40,7 @@ if torch.cuda.is_available():
     ext_module = cpp_extension.CUDAExtension(
         name='kintera.kintera',
         sources=glob.glob('python/csrc/*.cpp')
+        + glob.glob('src/vapors/*.cpp')
         + glob.glob('src/**/*.cu', recursive=True),
         include_dirs=include_dirs,
         library_dirs=lib_dirs,
@@ -51,7 +51,8 @@ if torch.cuda.is_available():
 else:
     ext_module = cpp_extension.CppExtension(
         name='kintera.kintera',
-        sources=glob.glob('python/csrc/*.cpp'),
+        sources=glob.glob('python/csrc/*.cpp')
+        + glob.glob('src/vapors/*.cpp'),
         include_dirs=include_dirs,
         library_dirs=lib_dirs,
         libraries=libraries,

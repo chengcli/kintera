@@ -6,8 +6,7 @@ string(TOLOWER ${CMAKE_BUILD_TYPE} buildl)
 string(TOUPPER ${CMAKE_BUILD_TYPE} buildu)
 
 macro(setup_test namel)
-  file(GLOB vapors "${KINTERA_INCLUDE_DIR}/src/vapors/*.cpp")
-  add_executable(${namel}.${buildl} ${namel}.cpp ${vapors})
+  add_executable(${namel}.${buildl} ${namel}.cpp)
 
   set_target_properties(${namel}.${buildl}
                         PROPERTIES COMPILE_FLAGS ${CMAKE_CXX_FLAGS_${buildu}})
@@ -20,7 +19,7 @@ macro(setup_test namel)
 
   target_link_libraries(
     ${namel}.${buildl}
-    PRIVATE kintera::kintera gtest_main
+    PRIVATE kintera::kintera kintera::vapors gtest_main
             $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>)
 
   add_test(NAME ${namel}.${buildl} COMMAND ${namel}.${buildl})
