@@ -17,7 +17,8 @@ def parse_library_names(libdir):
 
     # add system netcdf library
     library_names.extend(['netcdf'])
-    return library_names
+
+    return sorted(library_names)
 
 current_dir = os.getenv("WORKSPACE", Path().absolute())
 include_dirs = [
