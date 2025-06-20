@@ -14,10 +14,10 @@ std::vector<T> merge_vectors(std::vector<T> const& vec1,
 
 template <typename T>
 std::vector<T> sort_vectors(std::vector<T> const& vec,
-                            std::vector<int> const& indices) {
+                            std::vector<size_t> const& indices) {
   std::vector<T> sorted(vec.size());
   std::transform(indices.begin(), indices.end(), sorted.begin(),
-                 [&vec](int index) { return vec[index]; });
+                 [&vec](size_t index) { return vec[index]; });
   return sorted;
 }
 

@@ -6,6 +6,9 @@
 // yaml
 #include <yaml-cpp/yaml.h>
 
+// torch
+#include <torch/torch.h>
+
 // harp
 #include <harp/compound.hpp>
 
@@ -87,15 +90,6 @@ std::vector<std::string> SpeciesThermo::species() const {
   return species_list;
 }
 
-std::vector<std::string> SpeciesThermo::copy_from(
-    torch::Tensor tensor, SpeciesThermo const& other) const {
-  // find my vapor ids in other
-  for (int i = 0; i < vapor_ids().size(); ++i) {
-    int id = vapor_ids()[i];
-    int jd = other.vapor_ids().index(id);
-  }
-}
-
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
                            SpeciesThermo const& thermo2) {
   // return a new SpeciesThermo object with merged data
@@ -156,8 +150,11 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   }
 
   // argsort vapor ids
-  auto vapor_sorted = std::sort(vapor_ids.begin(), vapor_ids.end(),
-                                [](int a, int b) { return a < b; });
+  std::vector<size_t> vidx(vapor_ids.size());
+  std::iota(vidx.begin(), vidx.end(), 0);
+  std::sort(vidx.begin(), vidx.end(), [&vapor_ids](size_t a, size_t b) {
+    return vapor_ids[a] < vapor_ids[b];
+  });
 
   // identify duplicated cloud ids and remove them from all vectors
   first = 0;
@@ -185,14 +182,17 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   }
 
   // argsort cloud ids
-  auto cloud_sorted = std::sort(cloud_ids.begin(), cloud_ids.end(),
-                                [](int a, int b) { return a < b; });
+  std::vector<size_t> cidx(cloud_ids.size());
+  std::iota(cidx.begin(), cidx.end(), nvapor);
+  std::sort(cidx.begin(), cidx.end(), [&cloud_ids](size_t a, size_t b) {
+    return cloud_ids[a] < cloud_ids[b];
+  });
 
-  auto sorted = merge_vectors(vapor_sorted, cloud_sorted);
+  auto sorted = merge_vectors(vidx, cidx);
 
   // re-arrange all vectors according to the sorted indices
-  vapor_ids = sort_vectors(vapor_ids, vapor_sorted);
-  cloud_ids = sort_vectors(cloud_ids, cloud_sorted);
+  vapor_ids = sort_vectors(vapor_ids, vidx);
+  cloud_ids = sort_vectors(cloud_ids, cidx);
 
   cref_R = sort_vectors(cref_R, sorted);
   uref_R = sort_vectors(uref_R, sorted);
@@ -207,6 +207,13 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   czh_ddC = sort_vectors(czh_ddC, sorted);
 
   return merged;
+}
+
+at::Tensor narrow(at::Tensor data, SpeciesThermo const& thermo) {
+  auto indices = merge_vectors(thermo.vapor_ids(), thermo.cloud_ids());
+  auto id =
+      torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
+  return data.index_select(-1, id);
 }
 
 }  // namespace kintera

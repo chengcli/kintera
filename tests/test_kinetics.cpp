@@ -44,7 +44,15 @@ TEST_P(DeviceTest, forward) {
 
   auto [rate, rc_ddT] = kinet->forward(temp, pres, conc);
   std::cout << "rate: " << rate << std::endl;
-  std::cout << "rc_ddT: " << rc_ddT << std::endl;
+
+  switch (rc_ddT.has_value()) {
+    case true:
+      std::cout << "rc_ddT: " << rc_ddT.value() << std::endl;
+      break;
+    case false:
+      std::cout << "rc_ddT: None" << std::endl;
+      break;
+  }
 }
 
 int main(int argc, char **argv) {

@@ -4,15 +4,16 @@
 #include <string>
 #include <vector>
 
-// torch
-#include <torch/torch.h>
-
 // kintera
 #include <kintera/utils/func2.hpp>
 #include <kintera/utils/func3.hpp>
 
 // arg
 #include "add_arg.h"
+
+namespace at {
+class Tensor;
+}  // namespace at
 
 namespace kintera {
 
@@ -23,11 +24,6 @@ struct SpeciesThermo {
 
   //! \return species names
   std::vector<std::string> species() const;
-
-  torch::Tensor copy_from(torch::Tensor tensor,
-                          SpeciesThermo const& other) const;
-  torch::Tensor copy_to(torch::Tensor tensor, SpeciesThermo const& other,
-                        torch::Tensor my) const;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);
@@ -57,6 +53,8 @@ struct SpeciesThermo {
 
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
                            SpeciesThermo const& thermo2);
+
+at::Tensor narrow(at::Tensor data, SpeciesThermo const& thermo);
 
 }  // namespace kintera
 
