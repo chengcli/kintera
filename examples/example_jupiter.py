@@ -4,7 +4,6 @@ import torch
 from kintera import SpeciesThermo, ThermoOptions, ThermoX
 
 if __name__ == "__main__":
-    # Create an instance of ThermoOptions
     op = ThermoOptions.from_yaml("jupiter.yaml").max_iter(15).ftol(1.e-8)
     thermo = ThermoX(op)
 

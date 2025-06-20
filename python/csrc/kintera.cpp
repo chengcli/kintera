@@ -157,8 +157,22 @@ Examples:
   .. code-block:: python
 
     >> from kintera import Reaction
-    >> op = Reaction("H2 + O2 => H2O2")
+    >> op = Reaction()
       )doc")
+
+      .def(py::init<const std::string &>(), R"doc(
+Returns:
+  Reaction: class object
+
+Args:
+  equation (str): The chemical equation of the reaction.
+
+Examples:
+  .. code-block:: python
+
+    >> from kintera import Reaction
+    >> op = Reaction("H2 + O2 => H2O2")
+    )doc")
 
       .def("__repr__",
            [](const kintera::Reaction &self) {
@@ -224,9 +238,25 @@ Examples:
       R"doc(Retrieves the list of species names)doc");
 
   m.def(
+      "set_species_names",
+      [](const std::vector<std::string> &names) {
+        kintera::species_names = names;
+        return kintera::species_names;
+      },
+      R"doc(Sets the list of species names.)doc");
+
+  m.def(
       "species_weights",
       []() -> const std::vector<double> & { return kintera::species_weights; },
       R"doc(Retrieves the list of species molecular weights [kg/mol])doc");
+
+  m.def(
+      "set_species_weights",
+      [](const std::vector<double> &weights) {
+        kintera::species_weights = weights;
+        return kintera::species_weights;
+      },
+      R"doc(Sets the list of species molecular weights [kg/mol])doc");
 
   m.def(
       "set_search_paths",

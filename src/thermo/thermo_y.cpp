@@ -6,6 +6,7 @@
 #include "eval_uhs.hpp"
 #include "thermo.hpp"
 #include "thermo_dispatch.hpp"
+#include "thermo_formatter.hpp"
 
 namespace kintera {
 
@@ -116,6 +117,10 @@ void ThermoYImpl::reset() {
   _S = register_buffer("S", torch::empty({0}));
   _F = register_buffer("F", torch::empty({0}));
   _cv = register_buffer("cv", torch::empty({0}));
+}
+
+void ThermoYImpl::pretty_print(std::ostream &os) const {
+  os << fmt::format("ThermoY({})", options) << std::endl;
 }
 
 torch::Tensor const &ThermoYImpl::compute(

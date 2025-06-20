@@ -76,6 +76,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   ThermoYImpl() = default;
   explicit ThermoYImpl(const ThermoOptions& options_);
   void reset() override;
+  void pretty_print(std::ostream& os) const override;
 
   //! \brief perform conversions
   torch::Tensor const& compute(std::string ab,
@@ -209,6 +210,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   ThermoXImpl() = default;
   explicit ThermoXImpl(const ThermoOptions& options_);
   void reset() override;
+  void pretty_print(std::ostream& os) const override;
 
   //! \brief perform conversions
   /*!
@@ -218,6 +220,35 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    */
   torch::Tensor const& compute(std::string ab,
                                std::initializer_list<torch::Tensor> args);
+
+  //! \brief Calculate effective heat capacity at constant pressure
+  /*!
+   *
+   * \param temp Temperature tensor (K)
+   * \param pres Pressure tensor (Pa)
+   * \param xfrac Mole fraction tensor
+   * \param gain Gain tensor
+   * \param conc Optional concentration tensor, if not provided it will be
+   * computed
+   * \return Equivalent heat capacity at constant pressure (Cp) tensor [J/(mol
+   * K)]
+   */
+  torch::Tensor effective_cp(
+      torch::Tensor temp, torch::Tensor pres, torch::Tensor xfrac,
+      torch::Tensor gain, torch::optional<torch::Tensor> conc = torch::nullopt);
+
+  //! \brief Extrapolate state TPX to a new pressure along an adiabat
+  /*!
+   * Extrapolates the state variables (temperature, pressure, and mole
+   * fractions)
+   *
+   * \param[in,out] temp Temperature tensor (K)
+   * \param[in,out] pres Pressure tensor (Pa)
+   * \param[in,out] xfrac Mole fraction tensor
+   * \param[in] dlnp Logarithmic change in pressure (dlnp = ln(p_new / p_old))
+   */
+  void extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
+                      torch::Tensor xfrac, double dlnp);
 
   //! \brief Calculate the equilibrium state given temperature and pressure
   /*!

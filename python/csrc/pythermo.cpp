@@ -2,6 +2,7 @@
 #include <torch/extension.h>
 
 // kintera
+#include <kintera/thermo/extrapolate_ad.hpp>
 #include <kintera/thermo/thermo.hpp>
 #include <kintera/thermo/thermo_formatter.hpp>
 
@@ -86,6 +87,39 @@ Examples:
     >> nucleation = NucleationOptions().reactions([reaction])
     >> print(nucleation.reactions())
     [Reaction(H2O + CO2 -> H2CO3)]
+    )doc")
+
+      .def(
+          "set_logsvp",
+          [](kintera::NucleationOptions &self,
+             std::vector<std::string> const &formula) {
+            for (auto f : formula) {
+              if (get_user_func1().find(f) == get_user_func1().end()) {
+                throw std::runtime_error(
+                    fmt::format("Cannot find formula '{}'", f));
+              }
+
+              self.logsvp().push_back(get_user_func1()[f]);
+
+              if (get_user_func1().find(f + "_ddT") == get_user_func1().end()) {
+                throw std::runtime_error(
+                    fmt::format("Cannot find formula '{}'", f));
+              }
+
+              self.logsvp_ddT().push_back(get_user_func1()[f + "_ddT"]);
+            }
+          },
+          R"doc(
+Set the log vapor saturation pressure and its derivative with respect to temperature for the nucleation reactions.
+
+Args:
+  formula (list[str]): List of chemical formulas for which to set the log vapor saturation pressure and its derivative.
+
+Examples:
+  .. code-block:: python
+
+    >> from kintera import NucleationOptions
+    >> nucleation = NucleationOptions().set_logsvp(["h2o_ideal", "co2_ideal"])
     )doc");
 
   auto pyThermoOptions =
@@ -356,5 +390,47 @@ Examples:
     >> thermo_x = ThermoX(options)
     >> result = thermo_x.compute("X->Y", [torch.tensor([0.1, 0.2, 0.3])])
     )doc",
-           py::arg("ab"), py::arg("args"));
+           py::arg("ab"), py::arg("args"))
+
+      .def("effective_cp", &kintera::ThermoXImpl::effective_cp, R"doc(
+Compute the effective specific heat capacity at constant pressure.
+
+Args:
+  temp (torch.Tensor): Temperature tensor [K].
+  pres (torch.Tensor): Pressure tensor [Pa].
+  xfrac (torch.Tensor): Mole fraction tensor.
+  gain (torch.Tensor): gain tensor.
+  conc (torch.Tensor, optional): Concentration tensor.
+
+Returns:
+  torch.Tensor: Effective molar heat capacity tensor [J/(mol*K)].
+  )doc",
+           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("gain"),
+           py::arg("conc") = py::none())
+
+      .def("extrapolate_ad", &kintera::ThermoXImpl::extrapolate_ad, R"doc(
+Extrapolate the temperature and pressure along an adiabatic path.
+
+Args:
+  temp (torch.Tensor): Temperature tensor [K].
+  pres (torch.Tensor): Pressure tensor [Pa].
+  xfrac (torch.Tensor): Mole fraction tensor.
+  thermo (kintera.ThermoX): Thermodynamic object.
+  dlnp (float): delta ln pressure
+
+Returns:
+  None
+
+Examples:
+  .. code-block:: python
+
+    >> from kintera import ThermoX, ThermoOptions
+    >> options = ThermoOptions().Rd(287.0).Tref(300.0).Pref(1.e5).cref_R(2.5)
+    >> thermo = ThermoX(options)
+    >> temp = torch.tensor([300.0, 310.0, 320.0])
+    >> pres = torch.tensor([1.e5, 1.e6, 1.e7])
+    >> xfrac = torch.tensor([0.1, 0.2, 0.3])
+    >> thermo_x.extrapolate_ad_(temp, pres, xfrac, thermo, -0.01)
+    )doc",
+           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"));
 }

@@ -6,6 +6,7 @@
 #include "eval_uhs.hpp"
 #include "thermo.hpp"
 #include "thermo_dispatch.hpp"
+#include "thermo_formatter.hpp"
 
 namespace kintera {
 
@@ -107,6 +108,10 @@ void ThermoXImpl::reset() {
   _S = register_buffer("S", torch::empty({0}));
   _G = register_buffer("G", torch::empty({0}));
   _cp = register_buffer("cp", torch::empty({0}));
+}
+
+void ThermoXImpl::pretty_print(std::ostream &os) const {
+  os << fmt::format("ThermoX({})", options) << std::endl;
 }
 
 torch::Tensor const &ThermoXImpl::compute(
