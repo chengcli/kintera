@@ -227,6 +227,42 @@ Examples:
     >> op = SpeciesThermo().react([Nucleation("R1", 200.0, 300.0), Nucleation("R2", 250.0, 350.0)])
     >> print(op.react())
     [Nucleation(R1; minT = 200.00; maxT = 300.00), Nucleation(R2; minT = 250.00; maxT = 350.00)]
+    )doc")
+
+      .ADD_OPTION(int, kintera::ThermoOptions, max_iter, R"doc(
+Set or get the maximum number of iterations for convergence (default: 10).
+
+Args:
+  value (int): Maximum number of iterations.
+
+Returns:
+  ThermoOptions | int: class object if argument is not empty, otherwise sets the value
+
+Examples:
+  .. code-block:: python
+
+    >> from kintera import ThermoOptions
+    >> op = ThermoOptions().max_iter(10)
+    >> print(op.max_iter())
+    10
+    )doc")
+
+      .ADD_OPTION(double, kintera::ThermoOptions, ftol, R"doc(
+Set or get the convergence tolerance for the free energy (default: 1.e-6).
+
+Args:
+  value (float): Convergence tolerance for the free energy.
+
+Returns:
+  ThermoOptions | float: class object if argument is not empty, otherwise sets the value
+
+Examples:
+  .. code-block:: python
+
+    >> from kintera import ThermoOptions
+    >> op = ThermoOptions().ftol(1.e-6)
+    >> print(op.ftol())
+    1e-06
     )doc");
 
   ADD_KINTERA_MODULE(ThermoY, ThermoOptions, R"doc(
