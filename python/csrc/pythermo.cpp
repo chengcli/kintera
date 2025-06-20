@@ -1,6 +1,9 @@
 // torch
 #include <torch/extension.h>
 
+// pybind11
+#include <pybind11/stl.h>
+
 // kintera
 #include <kintera/thermo/thermo.hpp>
 #include <kintera/thermo/thermo_formatter.hpp>
@@ -134,7 +137,7 @@ Examples:
   .. code-block:: python
 
     >> from kintera import ThermoOptions
-    >> op = ThermoOptions().Rd(287.0).Tref(300.0).Pref(1.e5).cref_R(2.5)
+    >> op = ThermoOptions().Tref(300.0).Pref(1.e5).cref_R(2.5)
     )doc")
 
       .def("__repr__",
@@ -171,24 +174,6 @@ Examples:
     >> op = ThermoOptions.from_yaml("thermo_options.yaml")
     )doc")
 
-      .ADD_OPTION(double, kintera::ThermoOptions, Rd, R"doc(
-Set or get the specific gas constant (default: 287.0).
-
-Args:
-  value (float): Specific gas constant value.
-
-Returns:
-  ThermoOptions | float: class object if argument is not empty, otherwise sets the value
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import ThermoOptions
-    >> op = ThermoOptions().Rd(287.0)
-    >> print(op.Rd())
-    287.0
-    )doc")
-
       .ADD_OPTION(double, kintera::ThermoOptions, Tref, R"doc(
 Set or get the reference temperature (default: 300.0).
 
@@ -223,24 +208,6 @@ Examples:
     >> op = ThermoOptions().Pref(1.e5)
     >> print(op.Pref())
     100000.0
-    )doc")
-
-      .ADD_OPTION(std::vector<double>, kintera::ThermoOptions, mu_ratio, R"doc(
-Set or get the molecular weight ratios.
-
-Args:
-  value (list[float]): List of molecular weight ratios.
-
-Returns:
-  ThermoOptions | list[float]: class object if argument is not empty, otherwise sets the value
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import ThermoOptions
-    >> op = ThermoOptions().mu_ratio([1.0, 1.2, 1.5])
-    >> print(op.mu_ratio())
-    [1.0, 1.2, 1.5]
     )doc")
 
       .ADD_OPTION(kintera::NucleationOptions, kintera::ThermoOptions,

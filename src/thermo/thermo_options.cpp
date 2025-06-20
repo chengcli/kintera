@@ -37,8 +37,6 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   std::set<std::string> vapor_set;
   std::set<std::string> cloud_set;
 
-  thermo.Rd(constants::Rgas / species_weights[0]);
-
   // add reference species
   vapor_set.insert(species_names[0]);
 
@@ -61,7 +59,6 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   std::sort(thermo.vapor_ids().begin(), thermo.vapor_ids().end());
 
   for (const auto& id : thermo.vapor_ids()) {
-    thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
     thermo.cref_R().push_back(species_cref_R[id]);
     thermo.uref_R().push_back(species_uref_R[id]);
     thermo.sref_R().push_back(species_sref_R[id]);
@@ -78,7 +75,6 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   std::sort(thermo.cloud_ids().begin(), thermo.cloud_ids().end());
 
   for (const auto& id : thermo.cloud_ids()) {
-    thermo.mu_ratio().push_back(species_weights[id] / species_weights[0]);
     thermo.cref_R().push_back(species_cref_R[id]);
     thermo.uref_R().push_back(species_uref_R[id]);
     thermo.sref_R().push_back(species_sref_R[id]);

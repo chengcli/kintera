@@ -44,10 +44,8 @@ struct ThermoOptions : public SpeciesThermo {
 
   std::vector<Reaction> reactions() const;
 
-  ADD_ARG(double, Rd) = 287.0;
   ADD_ARG(double, Tref) = 300.0;
   ADD_ARG(double, Pref) = 1.e5;
-  ADD_ARG(std::vector<double>, mu_ratio);
 
   ADD_ARG(NucleationOptions, nucleation);
 
@@ -80,7 +78,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 
   //! \brief perform conversions
   torch::Tensor const& compute(std::string ab,
-                               std::initializer_list<torch::Tensor> args);
+                               std::vector<torch::Tensor> const& args);
 
   //! \brief Perform saturation adjustment
   /*!
@@ -219,7 +217,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \return result of the conversion
    */
   torch::Tensor const& compute(std::string ab,
-                               std::initializer_list<torch::Tensor> args);
+                               std::vector<torch::Tensor> const& args);
 
   //! \brief Calculate effective heat capacity at constant pressure
   /*!

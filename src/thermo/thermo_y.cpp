@@ -10,6 +10,8 @@
 
 namespace kintera {
 
+extern std::vector<double> species_weights;
+
 ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
   auto nspecies = options.species().size();
 
@@ -46,10 +48,6 @@ void ThermoYImpl::reset() {
   auto species = options.species();
   auto nspecies = species.size();
 
-  TORCH_CHECK(options.mu_ratio().size() == nspecies,
-              "mu_ratio size = ", options.mu_ratio().size(),
-              ". Expected = ", nspecies);
-
   TORCH_CHECK(options.cref_R().size() == nspecies,
               "cref_R size = ", options.cref_R().size(),
               ". Expected = ", nspecies);
@@ -62,10 +60,16 @@ void ThermoYImpl::reset() {
               "sref_R size = ", options.sref_R().size(),
               ". Expected = ", nspecies);
 
-  auto mud = constants::Rgas / options.Rd();
-  inv_mu = register_buffer(
-      "inv_mu",
-      1. / (mud * torch::tensor(options.mu_ratio(), torch::kFloat64)));
+  std::vector<double> mu_vec(nspecies);
+  for (int i = 0; i < options.vapor_ids().size(); ++i) {
+    mu_vec[i] = species_weights[options.vapor_ids()[i]];
+  }
+  for (int i = 0; i < options.cloud_ids().size(); ++i) {
+    mu_vec[i + options.vapor_ids().size()] =
+        species_weights[options.cloud_ids()[i]];
+  }
+  inv_mu =
+      register_buffer("inv_mu", 1. / torch::tensor(mu_vec, torch::kFloat64));
 
   // change internal energy offset to T = 0
   for (int i = 0; i < options.uref_R().size(); ++i) {
@@ -107,16 +111,16 @@ void ThermoYImpl::reset() {
   }
 
   // populate buffers
-  _D = register_buffer("D", torch::empty({0}));
-  _P = register_buffer("P", torch::empty({0}));
-  _Y = register_buffer("Y", torch::empty({0}));
-  _X = register_buffer("X", torch::empty({0}));
-  _V = register_buffer("V", torch::empty({0}));
-  _T = register_buffer("T", torch::empty({0}));
-  _U = register_buffer("U", torch::empty({0}));
-  _S = register_buffer("S", torch::empty({0}));
-  _F = register_buffer("F", torch::empty({0}));
-  _cv = register_buffer("cv", torch::empty({0}));
+  _D = register_buffer("D", torch::empty({0}, torch::kFloat64));
+  _P = register_buffer("P", torch::empty({0}, torch::kFloat64));
+  _Y = register_buffer("Y", torch::empty({0}, torch::kFloat64));
+  _X = register_buffer("X", torch::empty({0}, torch::kFloat64));
+  _V = register_buffer("V", torch::empty({0}, torch::kFloat64));
+  _T = register_buffer("T", torch::empty({0}, torch::kFloat64));
+  _U = register_buffer("U", torch::empty({0}, torch::kFloat64));
+  _S = register_buffer("S", torch::empty({0}, torch::kFloat64));
+  _F = register_buffer("F", torch::empty({0}, torch::kFloat64));
+  _cv = register_buffer("cv", torch::empty({0}, torch::kFloat64));
 }
 
 void ThermoYImpl::pretty_print(std::ostream &os) const {
@@ -124,7 +128,7 @@ void ThermoYImpl::pretty_print(std::ostream &os) const {
 }
 
 torch::Tensor const &ThermoYImpl::compute(
-    std::string ab, std::initializer_list<torch::Tensor> args) {
+    std::string ab, std::vector<torch::Tensor> const &args) {
   if (ab == "V->Y") {
     _V.set_(*args.begin());
     _ivol_to_yfrac(_V, _Y);
@@ -277,7 +281,7 @@ void ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac,
   }
   vec[ndim - 1] = 0;
 
-  auto mud = constants::Rgas / options.Rd();
+  auto mud = species_weights[options.vapor_ids()[0]];
   out.narrow(-1, 1, ny) = yfrac.permute(vec) * inv_mu.narrow(0, 1, ny) * mud;
 
   auto sum = 1. + yfrac.permute(vec).matmul(mud * inv_mu.narrow(0, 1, ny) - 1.);

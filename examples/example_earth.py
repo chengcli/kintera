@@ -2,13 +2,16 @@
 
 import torch
 import kintera
+import numpy as np
 from kintera import (
         Reaction,
         NucleationOptions,
         SpeciesThermo,
         ThermoOptions,
         ThermoX,
+        relative_humidity
         )
+torch.set_default_dtype(torch.float64)
 
 def setup_earth_thermo():
     kintera.set_species_names(["dry", "H2O", "H2O(l)"])
@@ -28,8 +31,6 @@ def setup_earth_thermo():
     op.sref_R([0.0, 0.0, 0.0])
     op.Tref(300.0)
     op.Pref(1.e5)
-    op.Rd(287.)
-    op.mu_ratio([1.0, 0.621, 0.621])
     op.nucleation(nucleation)
 
     return ThermoX(op)
@@ -37,12 +38,50 @@ def setup_earth_thermo():
 if __name__ == "__main__":
     thermo = setup_earth_thermo()
     print(thermo.options)
+    print(thermo.options.species())
 
-    temp = torch.tensor([300.], dtype=torch.float64)
-    pres = torch.tensor([1.e5], dtype=torch.float64)
-    xfrac = torch.tensor([[0.9, 0.1, 0.0]], dtype=torch.float64)
+    ncol = 1
+    nlyr = 40
+    pmax = 1.e5
+    pmin = 1.e4
+    Tbot = 310.0  # Surface temperature in Kelvin
+    nspecies = len(thermo.options.species())
+    dlnp = np.log(pmax / pmin) / (nlyr - 1)
 
-    print("xfrac before = ", xfrac)
+    temp = Tbot * torch.ones((ncol, nlyr))
+    pres = pmax * torch.ones((ncol, nlyr))
+    xfrac = torch.zeros((ncol, nlyr, nspecies))
+
+    # set bottom concentration
+    xfrac[:, 0, :] = torch.tensor([0.98, 0.02, 0.])
+
+    # calculate equilibrium condensation at the bottom layer
+    thermo.forward(temp[:, 0], pres[:, 0], xfrac[:, 0, :])
+    print("xfrac bottom = ", xfrac[:, 0, :])
+
+    # loop through layers
+    for i in range(1, nlyr):
+        # set state to previous layer
+        temp[:, i] = temp[:, i - 1]
+        pres[:, i] = pres[:, i - 1]
+        xfrac[:, i, :] = xfrac[:, i - 1, :]
+
+        # adiabatic extrapolation
+        thermo.extrapolate_ad(temp[:, i], pres[:, i], xfrac[:, i, :], -dlnp);
+
+    # compute molar concentration
+    conc = thermo.compute("TPX->V", [temp, pres, xfrac])
+
+    # comptue volumetric entropy
+    entropy_vol = thermo.compute("TPV->S", [temp, pres, conc])
+
+    # compute molar entropy
+    entropy_mol = entropy_vol / conc.sum(dim=-1)
+
+    # compute relative humdity
+    rh = relative_humdity(temp, conc, thermo.stoich, thermo.options)
+
     print("temp = ", temp)
-    thermo.extrapolate_ad(temp, pres, xfrac, -0.1);
-    print("xfrac after = ", xfrac)
+    print("pres = ", pres)
+    print("xfrac = ", xfrac)
+    print("entropy_mol = ", entropy_mol)

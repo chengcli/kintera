@@ -10,6 +10,8 @@
 
 namespace kintera {
 
+extern std::vector<double> species_weights;
+
 ThermoXImpl::ThermoXImpl(const ThermoOptions &options_) : options(options_) {
   // populate higher-order thermodynamic functions
   auto nspecies = options.species().size();
@@ -47,10 +49,6 @@ void ThermoXImpl::reset() {
   auto species = options.species();
   auto nspecies = species.size();
 
-  TORCH_CHECK(options.mu_ratio().size() == nspecies,
-              "mu_ratio size  = ", options.mu_ratio().size(),
-              ". Expected =  ", nspecies);
-
   TORCH_CHECK(options.cref_R().size() == nspecies,
               "cref_R size = ", options.cref_R().size(),
               ". Expected = ", nspecies);
@@ -63,9 +61,15 @@ void ThermoXImpl::reset() {
               "sref_R size = ", options.sref_R().size(),
               ". Expected = ", nspecies);
 
-  auto mud = constants::Rgas / options.Rd();
-  mu = register_buffer(
-      "mu", mud * torch::tensor(options.mu_ratio(), torch::kFloat64));
+  std::vector<double> mu_vec(nspecies);
+  for (int i = 0; i < options.vapor_ids().size(); ++i) {
+    mu_vec[i] = species_weights[options.vapor_ids()[i]];
+  }
+  for (int i = 0; i < options.cloud_ids().size(); ++i) {
+    mu_vec[i + options.vapor_ids().size()] =
+        species_weights[options.cloud_ids()[i]];
+  }
+  mu = register_buffer("mu", torch::tensor(mu_vec, torch::kFloat64));
 
   // change internal energy offset to T = 0
   for (int i = 0; i < options.uref_R().size(); ++i) {
@@ -115,7 +119,7 @@ void ThermoXImpl::pretty_print(std::ostream &os) const {
 }
 
 torch::Tensor const &ThermoXImpl::compute(
-    std::string ab, std::initializer_list<torch::Tensor> args) {
+    std::string ab, std::vector<torch::Tensor> const &args) {
   if (ab == "X->Y") {
     _X.set_(*args.begin());
     _xfrac_to_yfrac(_X, _Y);

@@ -44,9 +44,9 @@ struct fmt::formatter<kintera::ThermoOptions> {
     }
 
     return fmt::format_to(ctx.out(),
-                          "species= (\n{}\n);\nRd= {:.2f}; Tref= {}; Pref= "
+                          "species= (\n{}\n);\nTref= {}; Pref= "
                           "{};\nreactions= (\n{}\n)",
-                          static_cast<kintera::SpeciesThermo>(p), p.Rd(),
-                          p.Tref(), p.Pref(), reactions.str());
+                          static_cast<kintera::SpeciesThermo>(p), p.Tref(),
+                          p.Pref(), reactions.str());
   }
 };
