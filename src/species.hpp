@@ -2,6 +2,10 @@
 
 // C/C++
 #include <string>
+#include <vecto>
+
+// torch
+#include <torch/torch.h>
 
 // kintera
 #include <kintera/utils/func2.hpp>
@@ -19,6 +23,11 @@ struct SpeciesThermo {
 
   //! \return species names
   std::vector<std::string> species() const;
+
+  torch::Tensor copy_from(torch::Tensor tensor,
+                          SpeciesThermo const& other) const;
+  torch::Tensor copy_to(torch::Tensor tensor, SpeciesThermo const& other,
+                        torch::Tensor my) const;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);

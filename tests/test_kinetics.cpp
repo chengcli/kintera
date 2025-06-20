@@ -9,6 +9,7 @@
 
 #include <kintera/kinetics/kinetic_rate.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
+#include <kintera/thermo/thermo.hpp>
 
 // tests
 #include "device_testing.hpp"
@@ -43,7 +44,7 @@ TEST_P(DeviceTest, forward) {
 
   auto [rate, rc_ddT] = kinet->forward(temp, pres, conc);
   std::cout << "rate: " << rate << std::endl;
-  std::cout << "rc_ddT: " << rate_ddT << std::endl;
+  std::cout << "rc_ddT: " << rc_ddT << std::endl;
 }
 
 int main(int argc, char **argv) {
