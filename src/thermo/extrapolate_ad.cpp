@@ -42,6 +42,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
   pres *= exp(dlnp);
   while (iter++ < options.max_iter()) {
     auto gain = forward(temp, pres, xfrac);
+
     conc = compute("TPX->V", {temp, pres, xfrac});
 
     auto cp_mole = effective_cp(temp, pres, xfrac, gain, conc);

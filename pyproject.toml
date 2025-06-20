@@ -15,7 +15,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
   "numpy",
-  "pyharp>=1.6.4",
+  "pyharp>=1.6.8",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",

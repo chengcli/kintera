@@ -30,7 +30,7 @@ def stoichiometry(name, mol):
                 for j in range(num): resultant.append(speci)
         else:
             if speci != '=':
-                print 'SPECIOUS %s NOT FOUND IN REACTION: %s' % (speci, name_copy)
+                print('SPECIOUS %s NOT FOUND IN REACTION: %s' % (speci, name_copy))
             continue
     return stoi, reactant, resultant
 
@@ -108,17 +108,17 @@ def read_chemtable(fname):
     type = array(type)
     coeff = array(coeff)
     stoi = array(stoi)
-    print 'checking mass balance...'
+    print('checking mass balance...')
     bmat = dot(stoi, com)
     for i in range(nreact):
         unbalance = False
         for j in range(natom):
             if bmat[i, j] != 0:
                 unbalance = True
-                print atom[j],
+                print(atom[j],)
         if unbalance:
-            print ' unbalanced in reaction %d : %s' % (i, react[i])
-    print 'DONE!'
+            print(' unbalanced in reaction %d : %s' % (i, react[i]))
+    print('DONE!')
     return atom, mass, mol, com, bnd, \
             react, type, coeff, reactant, resultant, stoi
 
@@ -254,7 +254,7 @@ def reaction_matrix(fname):
             else:
                 kernal[id[0] + 1, id[1] + 1] = -1
                 kernal[id[1] + 1, id[0] + 1] = -1
-    print kernal
+    print(kernal)
 
 
 if __name__ == '__main__':

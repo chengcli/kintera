@@ -2,7 +2,6 @@
 #include <torch/extension.h>
 
 // kintera
-#include <kintera/thermo/extrapolate_ad.hpp>
 #include <kintera/thermo/thermo.hpp>
 #include <kintera/thermo/thermo_formatter.hpp>
 

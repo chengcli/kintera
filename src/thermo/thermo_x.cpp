@@ -98,16 +98,16 @@ void ThermoXImpl::reset() {
   }
 
   // populate buffers
-  _T = register_buffer("T", torch::empty({0}));
-  _P = register_buffer("P", torch::empty({0}));
-  _X = register_buffer("X", torch::empty({0}));
-  _Y = register_buffer("Y", torch::empty({0}));
-  _V = register_buffer("V", torch::empty({0}));
-  _D = register_buffer("D", torch::empty({0}));
-  _H = register_buffer("H", torch::empty({0}));
-  _S = register_buffer("S", torch::empty({0}));
-  _G = register_buffer("G", torch::empty({0}));
-  _cp = register_buffer("cp", torch::empty({0}));
+  _T = register_buffer("T", torch::empty({0}, torch::kFloat64));
+  _P = register_buffer("P", torch::empty({0}, torch::kFloat64));
+  _X = register_buffer("X", torch::empty({0}, torch::kFloat64));
+  _Y = register_buffer("Y", torch::empty({0}, torch::kFloat64));
+  _V = register_buffer("V", torch::empty({0}, torch::kFloat64));
+  _D = register_buffer("D", torch::empty({0}, torch::kFloat64));
+  _H = register_buffer("H", torch::empty({0}, torch::kFloat64));
+  _S = register_buffer("S", torch::empty({0}, torch::kFloat64));
+  _G = register_buffer("G", torch::empty({0}, torch::kFloat64));
+  _cp = register_buffer("cp", torch::empty({0}, torch::kFloat64));
 }
 
 void ThermoXImpl::pretty_print(std::ostream &os) const {
