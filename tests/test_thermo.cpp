@@ -314,7 +314,8 @@ TEST_P(DeviceTest, relative_humidity) {
   thermo_x->forward(temp, pres, xfrac);
 
   auto conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
-  auto rh = relative_humidity(temp, conc, thermo_x->stoich, thermo_x->options);
+  auto rh = relative_humidity(temp, conc, thermo_x->stoich,
+                              thermo_x->options.nucleation());
   std::cout << "rh = " << rh << std::endl;
   EXPECT_LE(rh.min().item<float>(), 1.0);
   EXPECT_GE(rh.max().item<float>(), 0.0);

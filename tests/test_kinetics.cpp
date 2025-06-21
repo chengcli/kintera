@@ -9,6 +9,8 @@
 
 #include <kintera/kinetics/kinetic_rate.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
+#include <kintera/thermo/log_svp.hpp>
+#include <kintera/thermo/relative_humidity.hpp>
 #include <kintera/thermo/thermo.hpp>
 #include <kintera/thermo/thermo_formatter.hpp>
 
@@ -75,17 +77,50 @@ TEST_P(DeviceTest, forward) {
   // kinet->options.accumulate(conc, conc_kinet, thermo->options);
   // std::cout << "conc2 = " << conc << std::endl;
 
-  auto [rate, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
+  auto [rate, logrc_ddT] = kinet->forward(temp, pres, conc_kinet);
   std::cout << "rate: " << rate << std::endl;
 
-  switch (rc_ddT.has_value()) {
+  switch (logrc_ddT.has_value()) {
     case true:
-      std::cout << "rc_ddT: " << rc_ddT.value() << std::endl;
+      std::cout << "logrc_ddT: " << logrc_ddT.value() << std::endl;
       break;
     case false:
-      std::cout << "rc_ddT: None" << std::endl;
+      std::cout << "logrc_ddT: None" << std::endl;
       break;
   }
+}
+
+TEST_P(DeviceTest, jacobian) {
+  auto op_kinet =
+      KineticRateOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
+  KineticRate kinet(op_kinet);
+  kinet->to(device, dtype);
+
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  ThermoX thermo(op_thermo, op_kinet);
+  thermo->to(device, dtype);
+
+  auto species = thermo->options.species();
+  int ny = species.size() - 1;  // exclude the reference species
+
+  auto xfrac =
+      torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
+
+  auto temp = 300. * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+  auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+
+  auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
+  auto conc_kinet = kinet->options.narrow_copy(conc, thermo->options);
+  auto [rate, logrc_ddT] = kinet->forward(temp, pres, conc_kinet);
+
+  auto cp_vol = thermo->compute("TV->cp", {temp, conc});
+
+  auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, logrc_ddT);
+
+  std::cout << "jacobian: " << jac << std::endl;
 }
 
 int main(int argc, char **argv) {

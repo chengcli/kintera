@@ -5,8 +5,8 @@
 
 namespace kintera {
 
-torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
-                              torch::Tensor jacobian, double dt) {
+inline torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
+                                     torch::Tensor jacobian, double dt) {
   auto nspecies = stoich.size(0);
   auto eye = torch::eye(nspecies, rate.options());
   auto SJ = stoich.matmul(jacobian);

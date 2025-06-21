@@ -52,21 +52,34 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
   explicit KineticRateImpl(const KineticRateOptions& options_);
   void reset() override;
 
+  torch::Tensor jacobian(torch::Tensor temp, torch::Tensor conc,
+                         torch::Tensor cvol, torch::Tensor rate,
+                         torch::optional<torch::Tensor> logrc_ddT) const;
+
   //! Compute kinetic rate of reactions
   /*!
    * \param temp temperature [K], shape (...)
    * \param pres pressure [Pa], shape (...)
    * \param conc concentration [mol/m^3], shape (..., nspecies)
    * \return (1) kinetic rate of reactions [mol/(m^3 s)], shape (..., nreaction)
-   * (2) optional: rate constant derivative [mol/(m*3 K s)], shape (...,
-   * nreaction)
+   * (2) optional: log rate constant derivative [1/K], shape (..., nreaction)
    */
   std::pair<torch::Tensor, torch::optional<torch::Tensor>> forward(
       torch::Tensor temp, torch::Tensor pres, torch::Tensor conc);
 
  private:
   // used in evaluating jacobian
-  std::vector<int> nreactions_;
+  std::vector<int> _nreactions;
+
+  void _jacobian_mass_action(torch::Tensor temp, torch::Tensor conc,
+                             torch::Tensor cvol, torch::Tensor rate,
+                             torch::optional<torch::Tensor> logrc_ddT,
+                             int begin, int end, torch::Tensor& out) const;
+
+  void _jacobian_evaporation(torch::Tensor temp, torch::Tensor conc,
+                             torch::Tensor cvol, torch::Tensor rate,
+                             torch::optional<torch::Tensor> logrc_ddT,
+                             int begin, int end, torch::Tensor& out) const;
 };
 
 TORCH_MODULE(KineticRate);

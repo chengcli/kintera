@@ -1,11 +1,12 @@
 #pragma once
 
 // kintera
-#include "thermo.hpp"
+#include "nucleation.hpp"
 
 namespace kintera {
 
 torch::Tensor relative_humidity(torch::Tensor temp, torch::Tensor conc,
-                                torch::Tensor stoich, ThermoOptions const& op);
+                                torch::Tensor stoich,
+                                NucleationOptions const& op);
 
 }  // namespace kintera

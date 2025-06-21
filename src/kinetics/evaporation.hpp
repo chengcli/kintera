@@ -12,6 +12,7 @@
 
 // kintera
 #include <kintera/reaction.hpp>
+#include <kintera/thermo/nucleation.hpp>
 
 // arg
 #include <kintera/add_arg.h>
@@ -23,7 +24,7 @@ class Node;
 namespace kintera {
 
 //! Options to initialize all reaction rate constants
-struct EvaporationOptions {
+struct EvaporationOptions : public NucleationOptions {
   static EvaporationOptions from_yaml(const YAML::Node& node);
 
   // reference temperature

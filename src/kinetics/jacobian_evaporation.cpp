@@ -1,46 +1,51 @@
 // kintera
+#include <kintera/constants.h>
+
 #include <kintera/thermo/eval_uhs.hpp>
 #include <kintera/thermo/log_svp.hpp>
 #include <kintera/thermo/relative_humidity.hpp>
 
-#include "jacobian.hpp"
+#include "kinetic_rate.hpp"
 
 namespace kintera {
 
-torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor stoich,
-                                   torch::Tensor conc, torch::Tensor temp,
-                                   ThermoOptions const& op) {
-  // evaluate svp function
-  LogSVPFunc::init(op.nucleation());
+void KineticRateImpl::_jacobian_evaporation(
+    torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
+    torch::Tensor rate, torch::optional<torch::Tensor> logrc_ddT, int begin,
+    int end, torch::Tensor& out) const {
+  auto stoich_local = stoich.slice(1, begin, end);
 
   // evaluate relative humidity
-  auto rh = relative_humidity(temp, conc, -stoich, op);
+  auto rh = relative_humidity(temp, conc, -stoich_local, options.evaporation());
 
   // mark reactants
-  auto sm = stoich.clamp_max(0.).t();
+  auto sm = stoich_local.clamp_max(0.).t();
 
   // mark products
-  auto sp = stoich.clamp_min(0.).t();
+  auto sp = stoich_local.clamp_min(0.).t();
 
   // extend concentration
   auto conc2 = conc.unsqueeze(-1).unsqueeze(-1);
 
   // calculate jacobian
-  auto jacobian = -rh / (1. - rh) * sp / conc2 - sm / conc2;
+  out = -rh / (1. - rh) * sp / conc2 - sm / conc2;
 
   // add temperature derivative
+  // evaluate svp function
   auto logsvp_ddT = LogSVPFunc::grad(temp);
-  auto intEng_R = eval_intEng_R(temp, conc, op);
-  auto cv_R = eval_cv_R(temp, conc, op);
-  auto cv_vol = (cv_R * conc).sum(-1, /*keepdim=*/true);
-  jacobian -= (logsvp_ddT / (1. - rh)).unsqueeze(-1) * intEng_R.unsqueeze(-2) /
-              cv_vol.unsqueeze(-1);
+  auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
+  out -= (logsvp_ddT / (1. - rh)).unsqueeze(-1) * intEng.unsqueeze(-2) /
+         cvol.unsqueeze(-1).unsqueeze(-1);
 
   // flag saturated reactions
-  auto jsat = rh > 1.0 - op.ftol();
-  jacobian.masked_fill_(jsat.unsqueeze(-1), 0.0);
+  auto jsat = rh > 1.0 - 1.e-6;
+  out.masked_fill_(jsat.unsqueeze(-1), 0.0);
 
-  return rate.unsqueeze(-1) * jacobian;
+  out *= rate.unsqueeze(-1);
+
+  // add temperature derivative if provided
+  if (logrc_ddT.has_value()) {
+  }
 }
 
 }  // namespace kintera

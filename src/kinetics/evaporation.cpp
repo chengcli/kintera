@@ -79,6 +79,32 @@ EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
     } else {
       options.diameter().push_back(1.);
     }
+
+    if (node["minT"]) {
+      options.minT().push_back(node["minT"].as<double>());
+    } else {
+      options.minT().push_back(0.);
+    }
+
+    if (node["maxT"]) {
+      options.maxT().push_back(node["maxT"].as<double>());
+    } else {
+      options.maxT().push_back(1.e4);
+    }
+
+    TORCH_CHECK(node["formula"],
+                "'formula' is not defined in the rate-constant");
+
+    auto formula = node["formula"].as<std::string>();
+
+    TORCH_CHECK(get_user_func1().find(formula) != get_user_func1().end(),
+                "Formula '", formula, "' is not defined in the user functions");
+    options.logsvp().push_back(get_user_func1()[formula]);
+
+    TORCH_CHECK(
+        get_user_func1().find(formula + "_ddT") != get_user_func1().end(),
+        "Formula '", formula, "' is not defined in the user functions");
+    options.logsvp_ddT().push_back(get_user_func1()[formula + "_ddT"]);
   }
 
   return options;
