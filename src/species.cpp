@@ -101,6 +101,7 @@ at::Tensor SpeciesThermo::narrow(at::Tensor data,
 
   auto id =
       torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
+
   std::cout << "id = " << id << std::endl;
   return data.index_select(-1, id);
 }

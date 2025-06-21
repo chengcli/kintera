@@ -31,8 +31,8 @@ std::vector<T> sort_vectors(std::vector<T> const& vec,
 }
 
 template <typename T>
-std::vector<size_t> locate_vectors(std::vector<T> const& a,
-                                   std::vector<T> const& b) {
+std::vector<int> locate_vectors(std::vector<T> const& a,
+                                std::vector<T> const& b) {
   std::unordered_set<T> a_set(a.begin(), a.end());
   std::vector<int> indices;
 
