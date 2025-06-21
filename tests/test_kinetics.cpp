@@ -66,16 +66,14 @@ TEST_P(DeviceTest, forward) {
   auto temp = 300. * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
 
-  std::cout << "xfrac = " << xfrac << std::endl;
-
   auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
   std::cout << "conc = " << conc << std::endl;
 
   auto conc_kinet = kinet->options.narrow_copy(conc, thermo->options);
   std::cout << "conc_kinet = " << conc_kinet << std::endl;
 
-  kinet->options.accumulate(conc, conc_kinet, thermo->options);
-  std::cout << "conc2 = " << conc << std::endl;
+  // kinet->options.accumulate(conc, conc_kinet, thermo->options);
+  // std::cout << "conc2 = " << conc << std::endl;
 
   auto [rate, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
   std::cout << "rate: " << rate << std::endl;
