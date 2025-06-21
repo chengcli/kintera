@@ -35,9 +35,7 @@ struct ThermoOptions : public SpeciesThermo {
   //! \brief Create a `ThermoOptions` object from a YAML file
   /*!
    * This function reads a YAML file and creates a `ThermoOptions`
-   * object from it. The YAML file must contain the following fields:
-   *  - "vapor": list of vapor species
-   *  - "cloud": list of cloud species
+   * object from it.
    */
   static ThermoOptions from_yaml(std::string const& filename);
   ThermoOptions() = default;
