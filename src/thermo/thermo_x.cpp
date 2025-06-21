@@ -17,6 +17,14 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions &options_) : options(options_) {
   reset();
 }
 
+ThermoXImpl::ThermoXImpl(const ThermoOptions &options1_,
+                         const ThermoOptions &options2_) {
+  auto options1 = options1_;
+  auto options2 = options2_;
+  options = merge_thermo(options1, options2);
+  reset();
+}
+
 void ThermoXImpl::reset() {
   auto reactions = options.reactions();
   auto species = options.species();

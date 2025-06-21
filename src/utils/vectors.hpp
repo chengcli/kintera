@@ -34,7 +34,7 @@ template <typename T>
 std::vector<size_t> locate_vectors(std::vector<T> const& a,
                                    std::vector<T> const& b) {
   std::unordered_set<T> a_set(a.begin(), a.end());
-  std::vector<size_t> indices;
+  std::vector<int> indices;
 
   for (size_t i = 0; i < b.size(); ++i) {
     if (a_set.count(b[i])) {

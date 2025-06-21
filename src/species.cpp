@@ -90,6 +90,21 @@ std::vector<std::string> SpeciesThermo::species() const {
   return species_list;
 }
 
+at::Tensor SpeciesThermo::narrow(at::Tensor data,
+                                 SpeciesThermo const& other) const {
+  auto indices =
+      locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
+                     merge_vectors(other.vapor_ids(), other.cloud_ids()));
+
+  TORCH_CHECK(indices.size() == vapor_ids().size() + cloud_ids().size(),
+              "Missing indices for some species in other's thermo data.");
+
+  auto id =
+      torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
+  std::cout << "id = " << id << std::endl;
+  return data.index_select(-1, id);
+}
+
 void populate_thermo(SpeciesThermo& thermo) {
   int nspecies = thermo.vapor_ids().size() + thermo.cloud_ids().size();
 
@@ -134,9 +149,6 @@ SpeciesThermo merge_thermo(SpeciesThermo& thermo1, SpeciesThermo& thermo2) {
   auto& entropy_R_extra = merged.entropy_R_extra();
   auto& czh = merged.czh();
   auto& czh_ddC = merged.czh_ddC();
-
-  populate_thermo(thermo1);
-  populate_thermo(thermo2);
 
   // concatenate fields
   int nvapor1 = thermo1.vapor_ids().size();
@@ -251,13 +263,6 @@ SpeciesThermo merge_thermo(SpeciesThermo& thermo1, SpeciesThermo& thermo2) {
   czh_ddC = sort_vectors(czh_ddC, sorted);
 
   return merged;
-}
-
-at::Tensor narrow(at::Tensor data, SpeciesThermo const& thermo) {
-  auto indices = merge_vectors(thermo.vapor_ids(), thermo.cloud_ids());
-  auto id =
-      torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
-  return data.index_select(-1, id);
 }
 
 }  // namespace kintera
