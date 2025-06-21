@@ -92,8 +92,15 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   int first = 0;
   for (auto rc : rc_evaluator) {
+    std::cout << "first = " << first << std::endl;
     auto logr = rc.forward(temp, pres, other);
+
+    // no reaction, skip
+    if (logr.size(-1) == 0) continue;
+
+    std::cout << "log rc = " << logr << std::endl;
     int nreactions = logr.size(-1);
+    std::cout << "nreactions = " << nreactions << std::endl;
 
     if (options.evolve_temperature()) {
       auto identity = torch::eye(nreactions, logr.options());
@@ -109,8 +116,11 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
     vec2.push_back(sm.size(0));
     vec2.push_back(sm.size(1));
 
+    // TODO(cli) Take care of zero or negative concentrations
     logr += conc.log().unsqueeze(-2).matmul(sm.view(vec2)).squeeze(-2);
-    result.narrow(1, first, nreactions) = logr.exp();
+    std::cout << "log rate = " << logr << std::endl;
+
+    result.narrow(-1, first, nreactions) = logr.exp();
 
     first += nreactions;
   }

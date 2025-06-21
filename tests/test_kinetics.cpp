@@ -76,7 +76,7 @@ TEST_P(DeviceTest, forward) {
   kinet->options.accumulate(conc, conc_kinet, thermo->options);
   std::cout << "conc2 = " << conc << std::endl;
 
-  /*auto [rate, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
+  auto [rate, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
   std::cout << "rate: " << rate << std::endl;
 
   switch (rc_ddT.has_value()) {
@@ -86,7 +86,7 @@ TEST_P(DeviceTest, forward) {
     case false:
       std::cout << "rc_ddT: None" << std::endl;
       break;
-  }*/
+  }
 }
 
 int main(int argc, char **argv) {
