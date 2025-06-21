@@ -55,6 +55,8 @@ struct SpeciesThermo {
 
 void populate_thermo(SpeciesThermo& thermo);
 
+void check_dimensions(SpeciesThermo const& thermo);
+
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
                            SpeciesThermo const& thermo2);
 

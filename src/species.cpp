@@ -135,13 +135,62 @@ void populate_thermo(SpeciesThermo& thermo) {
   }
 }
 
+void check_dimensions(SpeciesThermo const& thermo) {
+  int nspecies = thermo.vapor_ids().size() + thermo.cloud_ids().size();
+
+  TORCH_CHECK(thermo.cref_R().size() == nspecies,
+              "cref_R size = ", thermo.cref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(thermo.uref_R().size() == nspecies,
+              "uref_R size = ", thermo.uref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(thermo.sref_R().size() == nspecies,
+              "sref_R size = ", thermo.sref_R().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(
+      thermo.intEng_R_extra().size() == nspecies,
+      "Missing non-ideal internal energies. Please call `populate_thermo` "
+      "to fill in the missing data.");
+
+  TORCH_CHECK(
+      thermo.cv_R_extra().size() == nspecies,
+      "Missing non-ideal heat capacities at constant volume. Please call "
+      "`populate_thermo` to fill in the missing data.");
+
+  TORCH_CHECK(
+      thermo.cp_R_extra().size() == nspecies,
+      "Missing non-ideal heat capacities at constant pressure. Please call "
+      "`populate_thermo` to fill in the missing data.");
+
+  TORCH_CHECK(thermo.entropy_R_extra().size() == nspecies,
+              "Missing non-ideal entropies. Please call `populate_thermo` "
+              "to fill in the missing data.");
+
+  TORCH_CHECK(
+      thermo.czh().size() == nspecies,
+      "Missing non-ideal compressibilities. Please call `populate_thermo` "
+      "to fill in the missing data.");
+
+  TORCH_CHECK(thermo.czh_ddC().size() == nspecies,
+              "Missing non-ideal compressibility derivatives. Please call "
+              "`populate_thermo` to fill in the missing data.");
+}
+
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
                            SpeciesThermo const& thermo2) {
+  // check dimensions
+  check_dimensions(thermo1);
+  check_dimensions(thermo2);
+
   // return a new SpeciesThermo object with merged data
   SpeciesThermo merged;
 
   auto& vapor_ids = merged.vapor_ids();
   auto& cloud_ids = merged.cloud_ids();
+
   auto& cref_R = merged.cref_R();
   auto& uref_R = merged.uref_R();
   auto& sref_R = merged.sref_R();

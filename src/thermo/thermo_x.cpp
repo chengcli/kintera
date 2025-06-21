@@ -32,17 +32,7 @@ void ThermoXImpl::reset() {
   auto species = options.species();
   auto nspecies = species.size();
 
-  TORCH_CHECK(options.cref_R().size() == nspecies,
-              "cref_R size = ", options.cref_R().size(),
-              ". Expected = ", nspecies);
-
-  TORCH_CHECK(options.uref_R().size() == nspecies,
-              "uref_R size = ", options.uref_R().size(),
-              ". Expected = ", nspecies);
-
-  TORCH_CHECK(options.sref_R().size() == nspecies,
-              "sref_R size = ", options.sref_R().size(),
-              ". Expected = ", nspecies);
+  check_dimensions(options);
 
   std::vector<double> mu_vec(nspecies);
   for (int i = 0; i < options.vapor_ids().size(); ++i) {
