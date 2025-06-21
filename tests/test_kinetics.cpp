@@ -20,15 +20,14 @@ TEST_P(DeviceTest, kinetic_rate) {
   auto op_kinet = KineticRateOptions::from_yaml("jupiter.yaml");
   KineticRate kinet(op_kinet);
   kinet->to(device, dtype);
-
   std::cout << fmt::format("{}", kinet->options) << std::endl;
 }
 
 TEST_P(DeviceTest, merge) {
-  auto op_kinet = KineticRateOptions::from_yaml("jupiter.yaml");
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
-  auto op_all = merge_thermo(op_kinet, op_thermo);
-  // std::cout << fmt::format("{}", op_all) << std::endl;
+  auto op_kinet = KineticRateOptions::from_yaml("jupiter.yaml");
+  auto op_all = merge_thermo(op_thermo, op_kinet);
+  std::cout << fmt::format("{}", op_all) << std::endl;
 }
 
 /*TEST_P(DeviceTest, forward) {

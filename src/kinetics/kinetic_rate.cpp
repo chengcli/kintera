@@ -7,33 +7,7 @@ namespace kintera {
 
 KineticRateImpl::KineticRateImpl(const KineticRateOptions& options_)
     : options(options_) {
-  auto nspecies = options.species().size();
-
-  // populate higher-order thermodynamic functions
-  while (options.intEng_R_extra().size() < nspecies) {
-    options.intEng_R_extra().push_back(nullptr);
-  }
-
-  while (options.entropy_R_extra().size() < nspecies) {
-    options.entropy_R_extra().push_back(nullptr);
-  }
-
-  while (options.cv_R_extra().size() < nspecies) {
-    options.cv_R_extra().push_back(nullptr);
-  }
-
-  while (options.cp_R_extra().size() < nspecies) {
-    options.cp_R_extra().push_back(nullptr);
-  }
-
-  while (options.czh().size() < nspecies) {
-    options.czh().push_back(nullptr);
-  }
-
-  while (options.czh_ddC().size() < nspecies) {
-    options.czh_ddC().push_back(nullptr);
-  }
-
+  populate_thermo(options);
   reset();
 }
 

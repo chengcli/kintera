@@ -51,10 +51,11 @@ struct SpeciesThermo {
   ADD_ARG(std::vector<user_func2>, czh_ddC);
 };
 
-SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
-                           SpeciesThermo const& thermo2);
+void populate_thermo(SpeciesThermo &thermo);
 
-at::Tensor narrow(at::Tensor data, SpeciesThermo const& thermo);
+SpeciesThermo merge_thermo(SpeciesThermo &thermo1, SpeciesThermo &thermo2);
+
+at::Tensor narrow(at::Tensor data, SpeciesThermo const &thermo);
 
 }  // namespace kintera
 

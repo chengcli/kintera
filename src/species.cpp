@@ -90,8 +90,36 @@ std::vector<std::string> SpeciesThermo::species() const {
   return species_list;
 }
 
-SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
-                           SpeciesThermo const& thermo2) {
+void populate_thermo(SpeciesThermo& thermo) {
+  int nspecies = thermo.vapor_ids().size() + thermo.cloud_ids().size();
+
+  // populate higher-order thermodynamic functions
+  while (thermo.intEng_R_extra().size() < nspecies) {
+    thermo.intEng_R_extra().push_back(nullptr);
+  }
+
+  while (thermo.entropy_R_extra().size() < nspecies) {
+    thermo.entropy_R_extra().push_back(nullptr);
+  }
+
+  while (thermo.cv_R_extra().size() < nspecies) {
+    thermo.cv_R_extra().push_back(nullptr);
+  }
+
+  while (thermo.cp_R_extra().size() < nspecies) {
+    thermo.cp_R_extra().push_back(nullptr);
+  }
+
+  while (thermo.czh().size() < nspecies) {
+    thermo.czh().push_back(nullptr);
+  }
+
+  while (thermo.czh_ddC().size() < nspecies) {
+    thermo.czh_ddC().push_back(nullptr);
+  }
+}
+
+SpeciesThermo merge_thermo(SpeciesThermo& thermo1, SpeciesThermo& thermo2) {
   // return a new SpeciesThermo object with merged data
   SpeciesThermo merged;
 
@@ -107,28 +135,41 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   auto& czh = merged.czh();
   auto& czh_ddC = merged.czh_ddC();
 
+  populate_thermo(thermo1);
+  populate_thermo(thermo2);
+
   // concatenate fields
+  int nvapor1 = thermo1.vapor_ids().size();
+  int nvapor2 = thermo2.vapor_ids().size();
+
   vapor_ids = merge_vectors(thermo1.vapor_ids(), thermo2.vapor_ids());
   cloud_ids = merge_vectors(thermo1.cloud_ids(), thermo2.cloud_ids());
 
-  cref_R = merge_vectors(thermo1.cref_R(), thermo2.cref_R());
-  uref_R = merge_vectors(thermo1.uref_R(), thermo2.uref_R());
-  sref_R = merge_vectors(thermo1.sref_R(), thermo2.sref_R());
+  cref_R = merge_vectors(thermo1.cref_R(), thermo2.cref_R(), nvapor1, nvapor2);
 
-  intEng_R_extra =
-      merge_vectors(thermo1.intEng_R_extra(), thermo2.intEng_R_extra());
-  cv_R_extra = merge_vectors(thermo1.cv_R_extra(), thermo2.cv_R_extra());
-  cp_R_extra = merge_vectors(thermo1.cp_R_extra(), thermo2.cp_R_extra());
-  entropy_R_extra =
-      merge_vectors(thermo1.entropy_R_extra(), thermo2.entropy_R_extra());
+  uref_R = merge_vectors(thermo1.uref_R(), thermo2.uref_R(), nvapor1, nvapor2);
 
-  czh = merge_vectors(thermo1.czh(), thermo2.czh());
-  czh_ddC = merge_vectors(thermo1.czh_ddC(), thermo2.czh_ddC());
+  sref_R = merge_vectors(thermo1.sref_R(), thermo2.sref_R(), nvapor1, nvapor2);
+
+  intEng_R_extra = merge_vectors(thermo1.intEng_R_extra(),
+                                 thermo2.intEng_R_extra(), nvapor1, nvapor2);
+
+  cv_R_extra = merge_vectors(thermo1.cv_R_extra(), thermo2.cv_R_extra(),
+                             nvapor1, nvapor2);
+
+  cp_R_extra = merge_vectors(thermo1.cp_R_extra(), thermo2.cp_R_extra(),
+                             nvapor1, nvapor2);
+  entropy_R_extra = merge_vectors(thermo1.entropy_R_extra(),
+                                  thermo2.entropy_R_extra(), nvapor1, nvapor2);
+
+  czh = merge_vectors(thermo1.czh(), thermo2.czh(), nvapor1, nvapor2);
+
+  czh_ddC =
+      merge_vectors(thermo1.czh_ddC(), thermo2.czh_ddC(), nvapor1, nvapor2);
 
   // identify duplicated vapor ids and remove them from all vectors
   int first = 0;
   std::set<int> seen_vapor_ids;
-
   while (first < vapor_ids.size()) {
     int vapor_id = vapor_ids[first];
     if (seen_vapor_ids.find(vapor_id) != seen_vapor_ids.end()) {
@@ -183,16 +224,19 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
 
   // argsort cloud ids
   std::vector<size_t> cidx(cloud_ids.size());
-  std::iota(cidx.begin(), cidx.end(), nvapor);
+  std::iota(cidx.begin(), cidx.end(), 0);
   std::sort(cidx.begin(), cidx.end(), [&cloud_ids](size_t a, size_t b) {
     return cloud_ids[a] < cloud_ids[b];
   });
 
-  auto sorted = merge_vectors(vidx, cidx);
-
   // re-arrange all vectors according to the sorted indices
   vapor_ids = sort_vectors(vapor_ids, vidx);
   cloud_ids = sort_vectors(cloud_ids, cidx);
+
+  // add nvapor to cidx
+  for (auto& idx : cidx) idx += nvapor;
+
+  auto sorted = merge_vectors(vidx, cidx);
 
   cref_R = sort_vectors(cref_R, sorted);
   uref_R = sort_vectors(uref_R, sorted);

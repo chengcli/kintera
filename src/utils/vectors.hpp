@@ -13,6 +13,15 @@ std::vector<T> merge_vectors(std::vector<T> const& vec1,
 }
 
 template <typename T>
+std::vector<T> merge_vectors(std::vector<T> const& vec1,
+                             std::vector<T> const& vec2, int n1, int n2) {
+  std::vector<T> merged = vec1;
+  merged.insert(merged.begin() + n1, vec2.begin(), vec2.begin() + n2);
+  merged.insert(merged.end(), vec2.begin() + n2, vec2.end());
+  return merged;
+}
+
+template <typename T>
 std::vector<T> sort_vectors(std::vector<T> const& vec,
                             std::vector<size_t> const& indices) {
   std::vector<T> sorted(vec.size());
