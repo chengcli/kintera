@@ -28,7 +28,6 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions &options1_,
 }
 
 void ThermoXImpl::reset() {
-  auto reactions = options.reactions();
   auto species = options.species();
   auto nspecies = species.size();
 
@@ -61,6 +60,7 @@ void ThermoXImpl::reset() {
   }
 
   // populate stoichiometry matrix
+  auto reactions = options.reactions();
   stoich = register_buffer(
       "stoich",
       torch::zeros({(int)nspecies, (int)reactions.size()}, torch::kFloat64));

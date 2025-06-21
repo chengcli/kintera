@@ -90,8 +90,8 @@ std::vector<std::string> SpeciesThermo::species() const {
   return species_list;
 }
 
-at::Tensor SpeciesThermo::narrow(at::Tensor data,
-                                 SpeciesThermo const& other) const {
+at::Tensor SpeciesThermo::narrow_copy(at::Tensor data,
+                                      SpeciesThermo const& other) const {
   auto indices =
       locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
                      merge_vectors(other.vapor_ids(), other.cloud_ids()));
@@ -102,8 +102,21 @@ at::Tensor SpeciesThermo::narrow(at::Tensor data,
   auto id =
       torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
 
-  std::cout << "id = " << id << std::endl;
   return data.index_select(-1, id);
+}
+
+void SpeciesThermo::accumulate(at::Tensor& data, at::Tensor const& other_data,
+                               SpeciesThermo const& other) const {
+  auto indices =
+      locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
+                     merge_vectors(other.vapor_ids(), other.cloud_ids()));
+
+  TORCH_CHECK(indices.size() == vapor_ids().size() + cloud_ids().size(),
+              "Missing indices for some species in other's thermo data.");
+
+  auto id =
+      torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
+  data.index_add_(-1, id, other_data);
 }
 
 void populate_thermo(SpeciesThermo& thermo) {

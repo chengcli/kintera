@@ -43,12 +43,14 @@ TEST_P(DeviceTest, forward) {
   kinet->to(device, dtype);
 
   std::cout << fmt::format("{}", kinet->options) << std::endl;
+  std::cout << "kinet stoich =\n" << kinet->stoich << std::endl;
 
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
   ThermoX thermo(op_thermo, op_kinet);
   thermo->to(device, dtype);
 
   std::cout << fmt::format("{}", thermo->options) << std::endl;
+  std::cout << "thermo stoich =\n" << thermo->stoich << std::endl;
 
   auto species = thermo->options.species();
   int ny = species.size() - 1;  // exclude the reference species
@@ -66,9 +68,15 @@ TEST_P(DeviceTest, forward) {
   std::cout << "xfrac = " << xfrac << std::endl;
 
   auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
+  std::cout << "conc = " << conc << std::endl;
 
-  /*auto conc_kinet = kinet->options.narrow(conc, thermo->options);
-  auto [rate, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
+  auto conc_kinet = kinet->options.narrow_copy(conc, thermo->options);
+  std::cout << "conc_kinet = " << conc_kinet << std::endl;
+
+  kinet->options.accumulate(conc, conc_kinet, thermo->options);
+  std::cout << "conc2 = " << conc << std::endl;
+
+  /*auto [rate, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
   std::cout << "rate: " << rate << std::endl;
 
   switch (rc_ddT.has_value()) {

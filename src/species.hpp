@@ -25,7 +25,9 @@ struct SpeciesThermo {
   //! \return species names
   std::vector<std::string> species() const;
 
-  at::Tensor narrow(at::Tensor data, SpeciesThermo const& other) const;
+  at::Tensor narrow_copy(at::Tensor data, SpeciesThermo const& other) const;
+  void accumulate(at::Tensor& data, at::Tensor const& other_data,
+                  SpeciesThermo const& other) const;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);

@@ -28,7 +28,6 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions &options1_,
 }
 
 void ThermoYImpl::reset() {
-  auto reactions = options.reactions();
   auto species = options.species();
   auto nspecies = species.size();
 
@@ -71,6 +70,7 @@ void ThermoYImpl::reset() {
   u0 = register_buffer("u0", uref_R * constants::Rgas * inv_mu);
 
   // populate stoichiometry matrix
+  auto reactions = options.reactions();
   stoich = register_buffer(
       "stoich",
       torch::zeros({(int)nspecies, (int)reactions.size()}, torch::kFloat64));

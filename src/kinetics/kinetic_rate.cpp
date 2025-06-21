@@ -12,21 +12,10 @@ KineticRateImpl::KineticRateImpl(const KineticRateOptions& options_)
 }
 
 void KineticRateImpl::reset() {
-  auto reactions = options.reactions();
   auto species = options.species();
   auto nspecies = species.size();
 
-  TORCH_CHECK(options.cref_R().size() == nspecies,
-              "cref_R size = ", options.cref_R().size(),
-              ". Expected = ", nspecies);
-
-  TORCH_CHECK(options.uref_R().size() == nspecies,
-              "uref_R size = ", options.uref_R().size(),
-              ". Expected = ", nspecies);
-
-  TORCH_CHECK(options.sref_R().size() == nspecies,
-              "sref_R size = ", options.sref_R().size(),
-              ". Expected = ", nspecies);
+  check_dimensions(options);
 
   // change internal energy offset to T = 0
   for (int i = 0; i < options.uref_R().size(); ++i) {
@@ -44,6 +33,7 @@ void KineticRateImpl::reset() {
     options.sref_R()[i] = 0.;
   }
 
+  auto reactions = options.reactions();
   // order = register_buffer("order",
   //     torch::zeros({nspecies, nreaction}), torch::kFloat64);
   stoich = register_buffer(
@@ -101,8 +91,8 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
   }
 
   int first = 0;
-  for (int i = 0; i < rc_evaluator.size(); ++i) {
-    auto logr = rc_evaluator[i].forward(temp, pres, other);
+  for (auto rc : rc_evaluator) {
+    auto logr = rc.forward(temp, pres, other);
     int nreactions = logr.size(-1);
 
     if (options.evolve_temperature()) {
