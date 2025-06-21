@@ -38,7 +38,8 @@ TEST_P(DeviceTest, merge) {
 }
 
 TEST_P(DeviceTest, forward) {
-  auto op_kinet = KineticRateOptions::from_yaml("jupiter.yaml");
+  auto op_kinet =
+      KineticRateOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
   KineticRate kinet(op_kinet);
   kinet->to(device, dtype);
 

@@ -127,9 +127,15 @@ void EvaporationImpl::pretty_print(std::ostream& os) const {
 torch::Tensor EvaporationImpl::forward(
     torch::Tensor T, torch::Tensor P,
     std::map<std::string, torch::Tensor> const& other) {
-  auto log_diff = log_diff_c +
-                  diff_T * (T / options.Tref()).log().unsqueeze(-1) +
-                  diff_P * (P / options.Pref()).log().unsqueeze(-1);
+  // check if T is already expanded
+  torch::Tensor log_diff;
+  if (T.sizes() == P.sizes()) {  // not yet expanded
+    log_diff = log_diff_c + diff_T * (T / options.Tref()).log().unsqueeze(-1) +
+               diff_P * (P / options.Pref()).log().unsqueeze(-1);
+  } else {
+    log_diff = log_diff_c + diff_T * (T / options.Tref()).log() +
+               diff_P * (P / options.Pref()).log().unsqueeze(-1);
+  }
 
   // Calculate the rate constant based on the diffusivity and molar volume
   return log(12.) + log_diff + log_vm - 2. * log_diameter;

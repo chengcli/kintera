@@ -1,10 +1,7 @@
 // yaml
-#include <yaml-cpp/yaml.h>
-
-// kintera
-#include <kintera/utils/constants.hpp>
-
 #include "arrhenius.hpp"
+
+#include <yaml-cpp/yaml.h>
 
 namespace kintera {
 
@@ -65,8 +62,8 @@ ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root,
       options.b().push_back(0.);
     }
 
-    if (node["Ea"]) {
-      options.Ea_R().push_back(node["Ea"].as<double>());
+    if (node["Ea_R"]) {
+      options.Ea_R().push_back(node["Ea_R"].as<double>());
     } else {
       options.Ea_R().push_back(1.);
     }
@@ -101,8 +98,7 @@ void ArrheniusImpl::pretty_print(std::ostream& os) const {
 
   for (size_t i = 0; i < options.A().size(); i++) {
     os << "(" << i + 1 << ") A = " << options.A()[i]
-       << ", b = " << options.b()[i]
-       << ", Ea = " << options.Ea_R()[i] * constants::GasConstant << " J/mol"
+       << ", b = " << options.b()[i] << ", Ea_R = " << options.Ea_R()[i] << " K"
        << std::endl;
   }
 }
@@ -110,11 +106,14 @@ void ArrheniusImpl::pretty_print(std::ostream& os) const {
 torch::Tensor ArrheniusImpl::forward(
     torch::Tensor T, torch::Tensor P,
     std::map<std::string, torch::Tensor> const& other) {
-  return logA + b * T.unsqueeze(-1).log() - Ea_R / T.unsqueeze(-1);
+  // check if T is already expanded
+  if (T.sizes() == P.sizes()) {  // not yet expanded
+    return logA + b * T.unsqueeze(-1).log() - Ea_R / T.unsqueeze(-1);
+  } else {
+    TORCH_CHECK(T.size(-1) == logA.size(-1),
+                "Temperature tensor size does not match logA size");
+    return logA + b * T.log() - Ea_R / T;
+  }
 }
-
-/*torch::Tensor ArrheniusRate::ddTRate(torch::Tensor T, torch::Tensor P) const {
-    return (m_Ea_R * 1.0 / T + m_b) * 1.0 / T;
-}*/
 
 }  // namespace kintera

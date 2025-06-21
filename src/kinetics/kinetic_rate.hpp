@@ -63,6 +63,10 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
    */
   std::pair<torch::Tensor, torch::optional<torch::Tensor>> forward(
       torch::Tensor temp, torch::Tensor pres, torch::Tensor conc);
+
+ private:
+  // used in evaluating jacobian
+  std::vector<int> nreactions_;
 };
 
 TORCH_MODULE(KineticRate);
