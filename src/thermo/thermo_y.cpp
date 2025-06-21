@@ -17,6 +17,16 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
   reset();
 }
 
+ThermoYImpl::ThermoYImpl(const ThermoOptions &options1_,
+                         const SpeciesThermo &options2_)
+    : options(options1_) {
+  auto options2 = options2_;
+  populate_thermo(options);
+  populate_thermo(options2);
+  static_cast<SpeciesThermo &>(options) = merge_thermo(options, options2);
+  reset();
+}
+
 void ThermoYImpl::reset() {
   auto reactions = options.reactions();
   auto species = options.species();

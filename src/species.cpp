@@ -135,7 +135,8 @@ void populate_thermo(SpeciesThermo& thermo) {
   }
 }
 
-SpeciesThermo merge_thermo(SpeciesThermo& thermo1, SpeciesThermo& thermo2) {
+SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
+                           SpeciesThermo const& thermo2) {
   // return a new SpeciesThermo object with merged data
   SpeciesThermo merged;
 

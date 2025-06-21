@@ -21,7 +21,9 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions &options1_,
                          const SpeciesThermo &options2_)
     : options(options1_) {
   auto options2 = options2_;
-  options = merge_thermo(options1, options2);
+  populate_thermo(options);
+  populate_thermo(options2);
+  static_cast<SpeciesThermo &>(options) = merge_thermo(options, options2);
   reset();
 }
 

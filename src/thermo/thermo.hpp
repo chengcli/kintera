@@ -73,7 +73,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 
   ThermoYImpl() = default;
   explicit ThermoYImpl(const ThermoOptions& options_);
-  ThermoYImpl(const ThermoOptions& options1_, const ThermoOptions& options2);
+  ThermoYImpl(const ThermoOptions& options1_, const SpeciesThermo& options2);
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
@@ -208,7 +208,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
 
   ThermoXImpl() = default;
   explicit ThermoXImpl(const ThermoOptions& options_);
-  ThermoXImpl(const ThermoOptions& options1_, const ThermoOptions& options2_);
+  ThermoXImpl(const ThermoOptions& options1_, const SpeciesThermo& options2_);
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
