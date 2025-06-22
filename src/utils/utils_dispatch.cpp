@@ -19,7 +19,8 @@ void call_func1_cpu(at::TensorIterator &iter, user_func1 const *func,
         // temp
         auto arg1 = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
         for (int j = 0; j < nout; ++j)
-          if (func[j]) out[j] += func[j](*(arg1 + expanded * j));
+          // if (func[j]) out[j] += func[j](*(arg1 + expanded * j));
+          if (func[j]) out[j] += func[j](*arg1);
       }
     });
   });
