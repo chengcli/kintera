@@ -145,13 +145,23 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
       temp1.requires_grad_(true);
 
       rate = rc_evaluator[i].forward(temp1, pres, conc1, other);
-      rate.backward(torch::ones_like(rate));
-
-      rc_ddC.narrow(-1, first, _nreactions[i]) = conc1.grad();
-      rc_ddT.value().narrow(-1, first, _nreactions[i]) = temp1.grad();
-
-      std::cout << "first = " << first << std::endl;
       std::cout << "rate = " << rate << std::endl;
+
+      rate.backward(torch::ones_like(rate));
+      std::cout << "temp grad = " << temp1.grad() << std::endl;
+      std::cout << "conc grad = " << conc1.grad() << std::endl;
+
+      if (conc1.grad().defined()) {
+        rc_ddC.narrow(-1, first, _nreactions[i]) = conc1.grad();
+      } else {
+        rc_ddC.narrow(-1, first, _nreactions[i]).fill_(0.);
+      }
+
+      if (temp1.grad().defined()) {
+        rc_ddT.value().narrow(-1, first, _nreactions[i]) = temp1.grad();
+      } else {
+        rc_ddT.value().narrow(-1, first, _nreactions[i]).fill_(0.);
+      }
     } else {
       rate = rc_evaluator[i].forward(temp, pres, conc1, other);
       rate.backward(torch::ones_like(rate));

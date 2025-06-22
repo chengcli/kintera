@@ -166,7 +166,7 @@ torch::Tensor EvaporationImpl::forward(
   auto conc = C.dim() == temp.dim() ? C.unsqueeze(-1) : C;
 
   auto diffusivity = diff_c * (temp / options.Tref()).pow(diff_T) *
-                     (P / options.Pref()).pow(diff_P).unsqueeze(-1);
+                     (P / options.Pref()).unsqueeze(-1).pow(diff_P);
 
   auto kappa = 12. * diffusivity * vm / (diameter * diameter);
 
