@@ -5,6 +5,7 @@
 
 #include <kintera/utils/utils_dispatch.hpp>
 
+#include "log_svp.hpp"
 #include "thermo.hpp"
 
 namespace kintera {
@@ -246,22 +247,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   //////////// Evaluate condensate entropy ////////////
 
   // (1) Evaluate log-svp
-  // bundle iterator
-  auto vec1 = temp.sizes().vec();
-  vec1.push_back(op.nucleation().reactions().size());
-  auto logsvp = torch::zeros(vec1, temp.options());
-  iter = at::TensorIteratorConfig()
-             .resize_outputs(false)
-             .check_all_same_dtype(true)
-             .declare_static_shape(logsvp.sizes(),
-                                   /*squash_dim=*/{logsvp.dim() - 1})
-             .add_output(logsvp)
-             .add_owned_input(temp.unsqueeze(-1))
-             .build();
-
-  // call the evaluation function
-  at::native::call_func1(logsvp.device().type(), iter,
-                         op.nucleation().logsvp().data());
+  LogSVPFunc::init(op.nucleation());
+  auto logsvp = LogSVPFunc::apply(temp);
   // std::cout << "logsvp = " << logsvp << std::endl;
 
   // (2) Evaluate enthalpies (..., R)
