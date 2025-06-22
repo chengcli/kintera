@@ -80,20 +80,21 @@ torch::Tensor KineticRateImpl::jacobian(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::Tensor rc_ddC,
     torch::optional<torch::Tensor> rc_ddT) const {
-  auto vec = temp.sizes().vec();
-  vec.push_back(stoich.size(0));
-  vec.push_back(stoich.size(1));
-
   auto stoich_local = (-stoich).clamp_min(0.0).t();
 
-  // forward reaction mask
-  auto jacobian = stoich_local * rate.unsqueeze(-1) / conc.unsqueeze(-2);
+  // concentration products
+  auto concp = conc.unsqueeze(-2).pow(stoich_local).prod(-1, /*keepdim=*/true);
 
-  // add temperature derivative if provided
+  // part I, concentration derivative
+  auto jacobian =
+      concp * rc_ddC.transpose(-1, -2) +
+      stoich_local * rate.unsqueeze(-1) / conc.unsqueeze(-2).clamp_min(1e-20);
+
+  // part II, add temperature derivative if provided
   if (rc_ddT.has_value()) {
     auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
-    jacobian -= rate.unsqueeze(-1) * rc_ddT.value().unsqueeze(-1) *
-                intEng.unsqueeze(-2) / cvol.unsqueeze(-1).unsqueeze(-1);
+    jacobian -= concp * rc_ddT.value().unsqueeze(-1) * intEng.unsqueeze(-2) /
+                cvol.unsqueeze(-1).unsqueeze(-1);
   }
 
   return jacobian;
@@ -102,9 +103,6 @@ torch::Tensor KineticRateImpl::jacobian(
 std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
 KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
                          torch::Tensor conc) {
-  // prepare data
-  std::map<std::string, torch::Tensor> other = {};
-
   // dimension of reaction rate constants
   auto vec1 = temp.sizes().vec();
   vec1.push_back(stoich.size(1));
@@ -123,6 +121,8 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
     rc_ddT = torch::empty(vec1, temp.options());
   }
 
+  // other data passed to rate constant evaluator
+  std::map<std::string, torch::Tensor> other = {};
   int first = 0;
   for (int i = 0; i < rc_evaluator.size(); ++i) {
     // no reaction, skip
@@ -166,7 +166,11 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
       rate = rc_evaluator[i].forward(temp, pres, conc1, other);
       rate.backward(torch::ones_like(rate));
 
-      rc_ddC.narrow(-1, first, _nreactions[i]) = conc1.grad();
+      if (conc1.grad().defined()) {
+        rc_ddC.narrow(-1, first, _nreactions[i]) = conc1.grad();
+      } else {
+        rc_ddC.narrow(-1, first, _nreactions[i]).fill_(0.);
+      }
     }
 
     result.narrow(-1, first, _nreactions[i]) = rate;

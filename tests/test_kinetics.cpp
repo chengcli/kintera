@@ -7,6 +7,7 @@
 // kintera
 #include <kintera/constants.h>
 
+#include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetic_rate.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
 #include <kintera/thermo/log_svp.hpp>
@@ -92,7 +93,7 @@ TEST_P(DeviceTest, forward) {
   }
 }
 
-/*TEST_P(DeviceTest, jacobian) {
+TEST_P(DeviceTest, evolve_implicit) {
   auto op_kinet =
       KineticRateOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
   KineticRate kinet(op_kinet);
@@ -116,14 +117,27 @@ TEST_P(DeviceTest, forward) {
 
   auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
   auto conc_kinet = kinet->options.narrow_copy(conc, thermo->options);
-  auto [rate, logrc_ddT] = kinet->forward(temp, pres, conc_kinet);
+  auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
 
   auto cp_vol = thermo->compute("TV->cp", {temp, conc});
 
-  auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, logrc_ddT);
-
+  auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT);
   std::cout << "jacobian: " << jac << std::endl;
-}*/
+
+  auto del_conc = evolve_implicit(rate, kinet->stoich, jac, 1.e8);
+
+  EXPECT_EQ(torch::allclose(
+                del_conc.sum(-1),
+                torch::zeros({1, 2, 3}, torch::device(device).dtype(dtype)),
+                1.e-6, 1.e-6),
+            true);
+
+  std::cout << "del_conc: " << del_conc << std::endl;
+  std::cout << "conc before: " << conc << std::endl;
+
+  kinet->options.accumulate(conc, del_conc, thermo->options);
+  std::cout << "conc after = " << conc << std::endl;
+}
 
 int main(int argc, char **argv) {
   testing::InitGoogleTest(&argc, argv);
