@@ -170,22 +170,18 @@ torch::Tensor EvaporationImpl::forward(
 
   auto kappa = 12. * diffusivity * vm / (diameter * diameter);
 
-  std::cout << "kappa = " << kappa << std::endl;
-
   // saturation deficit
   auto stoich = other.at("stoich");
   auto sp = stoich.clamp_min(0.);
 
   LogSVPFunc::init(options);
   auto logsvp = LogSVPFunc::apply(temp);
-  std::cout << "logsvp = " << logsvp << std::endl;
 
   auto eta = torch::exp(logsvp - sp.sum(0) * (constants::Rgas * temp).log()) -
              conc.pow(sp).prod(-2);
 
   eta.clamp_min_(0);
 
-  std::cout << "eta = " << eta << std::endl;
   return kappa * eta;
 }
 

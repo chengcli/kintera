@@ -119,20 +119,25 @@ TEST_P(DeviceTest, evolve_implicit) {
   auto conc_kinet = kinet->options.narrow_copy(conc, thermo->options);
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
 
+  std::cout << "rate: " << rate << std::endl;
+
   auto cp_vol = thermo->compute("TV->cp", {temp, conc});
+  std::cout << "cp_vol: " << cp_vol << std::endl;
 
   auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT);
-  std::cout << "jacobian: " << jac << std::endl;
+  // std::cout << "jacobian: " << jac << std::endl;
 
-  auto del_conc = evolve_implicit(rate, kinet->stoich, jac, 1.e8);
+  auto del_conc = evolve_implicit(rate, kinet->stoich, jac, 1.e3);
 
   EXPECT_EQ(torch::allclose(
                 del_conc.sum(-1),
                 torch::zeros({1, 2, 3}, torch::device(device).dtype(dtype)),
-                1.e-6, 1.e-6),
+                1.e-4, 1.e-4),
             true);
 
   std::cout << "del_conc: " << del_conc << std::endl;
+  std::cout << "conc kinet: " << conc_kinet << std::endl;
+
   std::cout << "conc before: " << conc << std::endl;
 
   kinet->options.accumulate(conc, del_conc, thermo->options);

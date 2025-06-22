@@ -128,9 +128,6 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
     // no reaction, skip
     if (_nreactions[i] == 0) continue;
 
-    std::cout << "i = " << i << ", first = " << first
-              << ", nreactions = " << _nreactions[i] << std::endl;
-
     other["stoich"] = stoich.narrow(1, first, _nreactions[i]);
 
     torch::Tensor rate;
@@ -145,11 +142,8 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
       temp1.requires_grad_(true);
 
       rate = rc_evaluator[i].forward(temp1, pres, conc1, other);
-      std::cout << "rate = " << rate << std::endl;
 
       rate.backward(torch::ones_like(rate));
-      std::cout << "temp grad = " << temp1.grad() << std::endl;
-      std::cout << "conc grad = " << conc1.grad() << std::endl;
 
       if (conc1.grad().defined()) {
         rc_ddC.narrow(-1, first, _nreactions[i]) = conc1.grad();
@@ -164,6 +158,7 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
       }
     } else {
       rate = rc_evaluator[i].forward(temp, pres, conc1, other);
+      rate.requires_grad_(true);
       rate.backward(torch::ones_like(rate));
 
       if (conc1.grad().defined()) {
