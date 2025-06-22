@@ -19,10 +19,10 @@
 
 namespace kintera {
 
-struct KineticRateOptions : public SpeciesThermo {
-  static KineticRateOptions from_yaml(std::string const& filename);
+struct KineticsOptions : public SpeciesThermo {
+  static KineticsOptions from_yaml(std::string const& filename);
 
-  KineticRateOptions() = default;
+  KineticsOptions() = default;
 
   std::vector<Reaction> reactions() const;
 
@@ -36,7 +36,7 @@ struct KineticRateOptions : public SpeciesThermo {
   ADD_ARG(bool, evolve_temperature) = false;
 };
 
-class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
+class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
  public:
   //! stoichiometry matrix, shape (nspecies, nreaction)
   torch::Tensor stoich;
@@ -44,12 +44,12 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
   //! rate constant evaluator
   std::vector<torch::nn::AnyModule> rc_evaluator;
 
-  //! options with which this `KineticRateImpl` was constructed
-  KineticRateOptions options;
+  //! options with which this `KineticsImpl` was constructed
+  KineticsOptions options;
 
   //! Constructor to initialize the layer
-  KineticRateImpl() = default;
-  explicit KineticRateImpl(const KineticRateOptions& options_);
+  KineticsImpl() = default;
+  explicit KineticsImpl(const KineticsOptions& options_);
   void reset() override;
 
   torch::Tensor jacobian(torch::Tensor temp, torch::Tensor conc,
@@ -87,6 +87,6 @@ class KineticRateImpl : public torch::nn::Cloneable<KineticRateImpl> {
                              int begin, int end, torch::Tensor& out) const;
 };
 
-TORCH_MODULE(KineticRate);
+TORCH_MODULE(Kinetics);
 
 }  // namespace kintera

@@ -3,11 +3,11 @@
 
 #include <kintera/thermo/eval_uhs.hpp>
 
-#include "kinetic_rate.hpp"
+#include "kinetics.hpp"
 
 namespace kintera {
 
-void KineticRateImpl::_jacobian_mass_action(
+void KineticsImpl::_jacobian_mass_action(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::optional<torch::Tensor> logrc_ddT, int begin,
     int end, torch::Tensor &out) const {

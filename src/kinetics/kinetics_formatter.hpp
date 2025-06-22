@@ -6,7 +6,7 @@
 // kintera
 #include <kintera/kintera_formatter.hpp>
 
-#include "kinetic_rate.hpp"
+#include "kinetics.hpp"
 
 template <>
 struct fmt::formatter<kintera::ArrheniusOptions> {
@@ -67,11 +67,11 @@ struct fmt::formatter<kintera::EvaporationOptions> {
 };
 
 template <>
-struct fmt::formatter<kintera::KineticRateOptions> {
+struct fmt::formatter<kintera::KineticsOptions> {
   constexpr auto parse(fmt::format_parse_context& ctx) { return ctx.begin(); }
 
   template <typename FormatContext>
-  auto format(const kintera::KineticRateOptions& p, FormatContext& ctx) const {
+  auto format(const kintera::KineticsOptions& p, FormatContext& ctx) const {
     std::ostringstream reactions;
     auto r = p.reactions();
     for (size_t i = 0; i < r.size(); ++i) {

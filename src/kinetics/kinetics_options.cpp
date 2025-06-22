@@ -2,7 +2,7 @@
 #include <yaml-cpp/yaml.h>
 
 // kintera
-#include "kinetic_rate.hpp"
+#include "kinetics.hpp"
 #include "kinetics_formatter.hpp"
 
 namespace kintera {
@@ -15,12 +15,12 @@ extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 
-KineticRateOptions KineticRateOptions::from_yaml(std::string const& filename) {
+KineticsOptions KineticsOptions::from_yaml(std::string const& filename) {
   if (!species_initialized) {
     init_species_from_yaml(filename);
   }
 
-  KineticRateOptions kinet;
+  KineticsOptions kinet;
   auto config = YAML::LoadFile(filename);
 
   if (config["reference-state"]) {
@@ -85,7 +85,7 @@ KineticRateOptions KineticRateOptions::from_yaml(std::string const& filename) {
   return kinet;
 }
 
-std::vector<Reaction> KineticRateOptions::reactions() const {
+std::vector<Reaction> KineticsOptions::reactions() const {
   std::vector<Reaction> reactions;
   reactions.reserve(arrhenius().reactions().size() +
                     coagulation().reactions().size() +

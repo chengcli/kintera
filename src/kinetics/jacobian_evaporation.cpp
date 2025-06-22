@@ -5,11 +5,11 @@
 #include <kintera/thermo/log_svp.hpp>
 #include <kintera/thermo/relative_humidity.hpp>
 
-#include "kinetic_rate.hpp"
+#include "kinetics.hpp"
 
 namespace kintera {
 
-void KineticRateImpl::_jacobian_evaporation(
+void KineticsImpl::_jacobian_evaporation(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::optional<torch::Tensor> logrc_ddT, int begin,
     int end, torch::Tensor& out) const {

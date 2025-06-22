@@ -1,5 +1,5 @@
 // kintera
-#include "kinetic_rate.hpp"
+#include "kinetics.hpp"
 
 #include <kintera/constants.h>
 
@@ -7,13 +7,13 @@
 
 namespace kintera {
 
-KineticRateImpl::KineticRateImpl(const KineticRateOptions& options_)
+KineticsImpl::KineticsImpl(const KineticsOptions& options_)
     : options(options_) {
   populate_thermo(options);
   reset();
 }
 
-void KineticRateImpl::reset() {
+void KineticsImpl::reset() {
   auto species = options.species();
   auto nspecies = species.size();
 
@@ -76,7 +76,7 @@ void KineticRateImpl::reset() {
   _nreactions.push_back(options.evaporation().reactions().size());
 }
 
-torch::Tensor KineticRateImpl::jacobian(
+torch::Tensor KineticsImpl::jacobian(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::Tensor rc_ddC,
     torch::optional<torch::Tensor> rc_ddT) const {
@@ -101,8 +101,8 @@ torch::Tensor KineticRateImpl::jacobian(
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
-KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
-                         torch::Tensor conc) {
+KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
+                      torch::Tensor conc) {
   // dimension of reaction rate constants
   auto vec1 = temp.sizes().vec();
   vec1.push_back(stoich.size(1));

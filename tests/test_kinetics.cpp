@@ -8,7 +8,7 @@
 #include <kintera/constants.h>
 
 #include <kintera/kinetics/evolve_implicit.hpp>
-#include <kintera/kinetics/kinetic_rate.hpp>
+#include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
 #include <kintera/thermo/log_svp.hpp>
 #include <kintera/thermo/relative_humidity.hpp>
@@ -20,9 +20,9 @@
 
 using namespace kintera;
 
-TEST_P(DeviceTest, kinetic_rate) {
-  auto op_kinet = KineticRateOptions::from_yaml("jupiter.yaml");
-  KineticRate kinet(op_kinet);
+TEST_P(DeviceTest, kinetics) {
+  auto op_kinet = KineticsOptions::from_yaml("jupiter.yaml");
+  Kinetics kinet(op_kinet);
   kinet->to(device, dtype);
   std::cout << fmt::format("{}", kinet->options) << std::endl;
 }
@@ -31,7 +31,7 @@ TEST_P(DeviceTest, merge) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
-  auto op_kinet = KineticRateOptions::from_yaml("jupiter.yaml");
+  auto op_kinet = KineticsOptions::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_kinet) << std::endl;
 
   populate_thermo(op_thermo);
@@ -42,8 +42,8 @@ TEST_P(DeviceTest, merge) {
 
 TEST_P(DeviceTest, forward) {
   auto op_kinet =
-      KineticRateOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
-  KineticRate kinet(op_kinet);
+      KineticsOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
+  Kinetics kinet(op_kinet);
   kinet->to(device, dtype);
 
   std::cout << fmt::format("{}", kinet->options) << std::endl;
@@ -95,8 +95,8 @@ TEST_P(DeviceTest, forward) {
 
 TEST_P(DeviceTest, evolve_implicit) {
   auto op_kinet =
-      KineticRateOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
-  KineticRate kinet(op_kinet);
+      KineticsOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
+  Kinetics kinet(op_kinet);
   kinet->to(device, dtype);
 
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
