@@ -35,6 +35,7 @@ file(GLOB src_files
   thermo/*.cpp
   math/*.cpp
   eos/*.cpp
+  units/*.cpp
   )
 
 add_library(${namel}_${buildl}

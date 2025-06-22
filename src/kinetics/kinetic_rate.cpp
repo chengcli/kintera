@@ -78,7 +78,8 @@ void KineticRateImpl::reset() {
 
 torch::Tensor KineticRateImpl::jacobian(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
-    torch::Tensor rate, torch::optional<torch::Tensor> logrc_ddT) const {
+    torch::Tensor rate, torch::Tensor rc_ddC,
+    torch::optional<torch::Tensor> rc_ddT) const {
   auto vec = temp.sizes().vec();
   vec.push_back(stoich.size(0));
   vec.push_back(stoich.size(1));
@@ -89,47 +90,37 @@ torch::Tensor KineticRateImpl::jacobian(
   auto jacobian = stoich_local * rate.unsqueeze(-1) / conc.unsqueeze(-2);
 
   // add temperature derivative if provided
-  if (logrc_ddT.has_value()) {
+  if (rc_ddT.has_value()) {
     auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
-    jacobian -= rate.unsqueeze(-1) * logrc_ddT.value().unsqueeze(-1) *
+    jacobian -= rate.unsqueeze(-1) * rc_ddT.value().unsqueeze(-1) *
                 intEng.unsqueeze(-2) / cvol.unsqueeze(-1).unsqueeze(-1);
   }
-
-  /*int nmass_action = _nreactions[0] + _nreactions[1];
-  _jacobian_mass_action(temp, conc, cvol,
-                        rate.narrow(-1, 0, nmass_action),
-                        logrc_ddT,
-                        0, nmass_action,
-                        jacobian.narrow(-2, 0, nmass_action));
-
-  int nevaporation = _nreactions[2];
-  _jacobian_evaporation(temp, conc, cvol,
-                        rate.narrow(-1, nmass_action, nevaporation),
-                        logrc_ddT,
-                        nmass_action, nmass_action + nevaporation,
-                        jacobian.narrow(-2, nmass_action, nevaporation));*/
 
   return jacobian;
 }
 
-std::pair<torch::Tensor, torch::optional<torch::Tensor>>
+std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
 KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
                          torch::Tensor conc) {
   // prepare data
   std::map<std::string, torch::Tensor> other = {};
-  other["conc"] = conc;
 
-  // batch dimensions
+  // dimension of reaction rate constants
   auto vec1 = temp.sizes().vec();
-
   vec1.push_back(stoich.size(1));
   auto result = torch::empty(vec1, temp.options());
 
-  torch::optional<torch::Tensor> logrc_ddT;
+  // dimension of rate constant derivatives
+  auto vec2 = conc.sizes().vec();
+  vec2.push_back(stoich.size(1));
+  auto rc_ddC = torch::empty(vec2, conc.options());
+
+  // optional temperature derivative
+  torch::optional<torch::Tensor> rc_ddT;
 
   // track rate constant derivative
   if (options.evolve_temperature()) {
-    logrc_ddT = torch::empty(vec1, temp.options());
+    rc_ddT = torch::empty(vec1, temp.options());
   }
 
   int first = 0;
@@ -142,43 +133,41 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
     other["stoich"] = stoich.narrow(1, first, _nreactions[i]);
 
-    torch::Tensor logr;
+    torch::Tensor rate;
+
+    vec2.back() = _nreactions[i];
+    auto conc1 = conc.unsqueeze(-1).expand(vec2);
+    conc1.requires_grad_(true);
 
     if (options.evolve_temperature()) {
       vec1.back() = _nreactions[i];
       auto temp1 = temp.unsqueeze(-1).expand(vec1);
       temp1.requires_grad_(true);
 
-      logr = rc_evaluator[i].forward(temp1, pres, other);
+      rate = rc_evaluator[i].forward(temp1, pres, conc1, other);
+      rate.backward(torch::ones_like(rate));
+
+      rc_ddC.narrow(-1, first, _nreactions[i]) = conc1.grad();
+      rc_ddT.value().narrow(-1, first, _nreactions[i]) = temp1.grad();
 
       std::cout << "first = " << first << std::endl;
-      std::cout << "logr = " << logr << std::endl;
-
-      logr.backward(torch::ones_like(logr));
-
-      logrc_ddT.value().narrow(-1, first, _nreactions[i]) = temp1.grad();
+      std::cout << "rate = " << rate << std::endl;
     } else {
-      logr = rc_evaluator[i].forward(temp, pres, other);
+      rate = rc_evaluator[i].forward(temp, pres, conc1, other);
+      rate.backward(torch::ones_like(rate));
+
+      rc_ddC.narrow(-1, first, _nreactions[i]) = conc1.grad();
     }
 
-    // mark reactants
-    auto sm = stoich.narrow(1, first, _nreactions[i]).clamp_max(0.).abs();
-
-    std::vector<int64_t> vec2(temp.dim(), 1);
-    vec2.push_back(sm.size(0));
-    vec2.push_back(sm.size(1));
-
-    // TODO(cli) Take care of zero or negative concentrations
-    // sanitize concentration
-    // logr += conc.log().unsqueeze(-2).matmul(sm.view(vec2)).squeeze(-2);
-
-    result.narrow(-1, first, _nreactions[i]) = logr.exp();
-    result.narrow(-1, first, _nreactions[i]) *=
-        conc.unsqueeze(-1).pow(sm.view(vec2)).prod(-2);
+    result.narrow(-1, first, _nreactions[i]) = rate;
     first += _nreactions[i];
   }
 
-  return std::make_pair(result, logrc_ddT);
+  // mark reactants
+  auto sm = stoich.clamp_max(0.).abs();
+  result *= conc.unsqueeze(-1).pow(sm).prod(-2);
+
+  return std::make_tuple(result, rc_ddC, rc_ddT);
 }
 
 }  // namespace kintera

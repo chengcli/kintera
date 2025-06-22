@@ -5,6 +5,7 @@
 #include <kintera/constants.h>
 
 #include <kintera/thermo/log_svp.hpp>
+#include <kintera/units/units.hpp>
 
 #include "evaporation.hpp"
 
@@ -53,11 +54,17 @@ EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
     TORCH_CHECK(rxn_node["rate-constant"],
                 "'rate-constant' is not defined in the reaction");
 
+    // default unit system is [mol, m, s]
+    UnitSystem us;
+
     auto node = rxn_node["rate-constant"];
+
+    // input unit system is [cm, s]
     if (node["diff_c"]) {
-      options.diff_c().push_back(node["diff_c"].as<double>());
+      options.diff_c().push_back(
+          us.convert_from(node["diff_c"].as<double>(), "cm^2/s"));
     } else {
-      options.diff_c().push_back(0.2);
+      options.diff_c().push_back(0.2e-4);
     }
 
     if (node["diff_T"]) {
@@ -73,15 +80,17 @@ EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
     }
 
     if (node["vm"]) {
-      options.vm().push_back(node["vm"].as<double>());
+      options.vm().push_back(
+          us.convert_from(node["vm"].as<double>(), "cm^3/mol"));
     } else {
-      options.vm().push_back(18.);
+      options.vm().push_back(18.e-6);
     }
 
     if (node["diameter"]) {
-      options.diameter().push_back(node["radius"].as<double>());
+      options.diameter().push_back(
+          us.convert_from(node["radius"].as<double>(), "cm"));
     } else {
-      options.diameter().push_back(1.);
+      options.diameter().push_back(1.e-2);
     }
 
     if (node["minT"]) {
@@ -120,25 +129,18 @@ EvaporationImpl::EvaporationImpl(EvaporationOptions const& options_)
 }
 
 void EvaporationImpl::reset() {
-  // log(cm^2/s) -> log(m^2/s)
-  log_diff_c = register_buffer(
-      "log_diff_c",
-      torch::tensor(options.diff_c(), torch::kFloat64).log() + log(1.e-4));
+  diff_c = register_buffer("diff_c",
+                           torch::tensor(options.diff_c(), torch::kFloat64));
 
   diff_T = register_buffer("diff_T",
                            torch::tensor(options.diff_T(), torch::kFloat64));
   diff_P = register_buffer("diff_P",
                            torch::tensor(options.diff_P(), torch::kFloat64));
 
-  // log(cm^3/mol) -> log(m^3/mol)
-  log_vm = register_buffer(
-      "log_vm",
-      torch::tensor(options.vm(), torch::kFloat64).log() + log(1.e-6));
+  vm = register_buffer("vm", torch::tensor(options.vm(), torch::kFloat64));
 
-  // log(cm) -> log(m)
-  log_diameter = register_buffer(
-      "log_diameter",
-      torch::tensor(options.diameter(), torch::kFloat64).log() + log(1.e-2));
+  diameter = register_buffer(
+      "diameter", torch::tensor(options.diameter(), torch::kFloat64));
 }
 
 void EvaporationImpl::pretty_print(std::ostream& os) const {
@@ -146,29 +148,31 @@ void EvaporationImpl::pretty_print(std::ostream& os) const {
 
   for (size_t i = 0; i < options.diff_c().size(); ++i) {
     os << "(" << i + 1 << ") "
-       << "diff_c =" << options.diff_c()[i] << " cm^2/s, "
+       << "diff_c =" << options.diff_c()[i] << " m^2/s, "
        << "diff_T =" << options.diff_T()[i] << ", "
        << "diff_P =" << options.diff_P()[i] << ", "
-       << "vm =" << options.vm()[i] << " cm^3/mol, "
-       << "diameter=" << options.diameter()[i] << " cm" << std::endl;
+       << "vm =" << options.vm()[i] << " m^3/mol, "
+       << "diameter=" << options.diameter()[i] << " m" << std::endl;
   }
 }
 
 torch::Tensor EvaporationImpl::forward(
-    torch::Tensor T, torch::Tensor P,
+    torch::Tensor T, torch::Tensor P, torch::Tensor C,
     std::map<std::string, torch::Tensor> const& other) {
   // expand T if not yet
-  torch::Tensor temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
+  auto temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
 
-  auto log_diff = log_diff_c + diff_T * (temp / options.Tref()).log() +
-                  diff_P * (P / options.Pref()).log().unsqueeze(-1);
+  // expand C if not yet
+  auto conc = C.dim() == temp.dim() ? C.unsqueeze(-1) : C;
 
-  auto kappa = log(12.) + log_diff + log_vm - 2. * log_diameter;
+  auto diffusivity = diff_c * (temp / options.Tref()).pow(diff_T) *
+                     (P / options.Pref()).pow(diff_P).unsqueeze(-1);
+
+  auto kappa = 12. * diffusivity * vm / (diameter * diameter);
 
   std::cout << "kappa = " << kappa << std::endl;
 
   // saturation deficit
-  auto conc = other.at("conc");
   auto stoich = other.at("stoich");
   auto sp = stoich.clamp_min(0.);
 
@@ -177,11 +181,12 @@ torch::Tensor EvaporationImpl::forward(
   std::cout << "logsvp = " << logsvp << std::endl;
 
   auto eta = torch::exp(logsvp - sp.sum(0) * (constants::Rgas * temp).log()) -
-             conc.unsqueeze(-1).pow(sp).prod(-2);
+             conc.pow(sp).prod(-2);
+
+  eta.clamp_min_(0);
 
   std::cout << "eta = " << eta << std::endl;
-
-  return torch::where(eta <= 0, torch::zeros_like(kappa), kappa + eta.log());
+  return kappa * eta;
 }
 
 }  // namespace kintera

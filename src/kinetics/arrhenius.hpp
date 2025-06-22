@@ -28,10 +28,16 @@ struct ArrheniusOptions {
                                     std::string const& other_type = "");
   virtual ~ArrheniusOptions() = default;
 
+  // reference temperature
+  ADD_ARG(double, Tref) = 300.0;
+
+  // units
+  ADD_ARG(std::string, units) = "molecule,cm,s";
+
   //! reactions
   ADD_ARG(std::vector<Reaction>, reactions) = {};
 
-  //! Pre-exponential factor. The unit system is (mol, cm, s);
+  //! Pre-exponential factor.
   //! actual units depend on the reaction order
   ADD_ARG(std::vector<double>, A) = {};
 
@@ -50,8 +56,8 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
 
 class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
  public:
-  //! log pre-exponential factor ln[mol, m, s], shape (nreaction,)
-  torch::Tensor logA;
+  //! pre-exponential factor [molecule, cm, s], shape (nreaction,)
+  torch::Tensor A;
 
   //! temperature exponent, shape (nreaction,)
   torch::Tensor b;
@@ -71,14 +77,15 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
-  //! Compute the log rate constant
+  //! Compute the rate constant
   /*!
    * \param T temperature [K], shape (...)
    * \param P pressure [pa], shape (...)
+   * \param C concentration [mol/m^3], shape (..., nspecies)
    * \param other additional parameters
-   * \return log reaction rate constant in ln(mol, m, s), (..., nreaction)
+   * \return reaction rate constant in (mol, m, s), (..., nreaction)
    */
-  torch::Tensor forward(torch::Tensor T, torch::Tensor P,
+  torch::Tensor forward(torch::Tensor T, torch::Tensor P, torch::Tensor C,
                         std::map<std::string, torch::Tensor> const& other);
 };
 TORCH_MODULE(Arrhenius);

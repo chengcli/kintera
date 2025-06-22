@@ -1,7 +1,13 @@
 // yaml
-#include "arrhenius.hpp"
-
 #include <yaml-cpp/yaml.h>
+
+// fmt
+#include <fmt/format.h>
+
+// kintera
+#include <kintera/units/units.hpp>
+
+#include "arrhenius.hpp"
 
 namespace kintera {
 
@@ -46,12 +52,27 @@ ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root,
     std::string equation = rxn_node["equation"].as<std::string>();
     options.reactions().push_back(Reaction(equation));
 
+    // calcualte sum of reactant stoichiometric coefficients
+    double sum_stoich = 0.;
+    for (const auto& [_, coeff] : options.reactions().back().reactants()) {
+      sum_stoich += coeff;
+    }
+
     TORCH_CHECK(rxn_node["rate-constant"],
                 "'rate-constant' is not defined in the reaction");
 
     auto node = rxn_node["rate-constant"];
+
+    // default unit system is [mol, m, s]
+    UnitSystem us;
+
+    // input unit system is [molecule, cm, s]
+    // [A] []^a []^b ... = molecule cm^-3 s^-1
+    // [A] = molecule^(1 - a - b - ...) cm^(-3(1 - a - b - ...)) s^-1
     if (node["A"]) {
-      options.A().push_back(node["A"].as<double>());
+      auto unit = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
+                              -3. * (1. - sum_stoich));
+      options.A().push_back(us.convert_from(node["A"].as<double>(), unit));
     } else {
       options.A().push_back(1.);
     }
@@ -84,8 +105,7 @@ ArrheniusImpl::ArrheniusImpl(ArrheniusOptions const& options_)
 }
 
 void ArrheniusImpl::reset() {
-  logA = register_buffer("logA",
-                         torch::tensor(options.A(), torch::kFloat64).log());
+  A = register_buffer("A", torch::tensor(options.A(), torch::kFloat64));
   b = register_buffer("b", torch::tensor(options.b(), torch::kFloat64));
   Ea_R =
       register_buffer("Ea_R", torch::tensor(options.Ea_R(), torch::kFloat64));
@@ -104,11 +124,11 @@ void ArrheniusImpl::pretty_print(std::ostream& os) const {
 }
 
 torch::Tensor ArrheniusImpl::forward(
-    torch::Tensor T, torch::Tensor P,
+    torch::Tensor T, torch::Tensor P, torch::Tensor C,
     std::map<std::string, torch::Tensor> const& other) {
   // expand T if not yet
-  torch::Tensor temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
-  return logA + b * temp.log() - Ea_R / temp;
+  auto temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
+  return A * (temp / options.Tref()).pow(b) * torch::exp(-Ea_R / temp);
 }
 
 }  // namespace kintera
