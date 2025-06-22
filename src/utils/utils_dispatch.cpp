@@ -34,11 +34,8 @@ void call_func2_cpu(at::TensorIterator &iter, user_func2 const *func) {
         auto arg1 = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
         // conc
         auto arg2 = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
-        for (int j = 0; j < nout; ++j) {
-          if (func[j] != nullptr) {
-            out[j] += func[j](*arg1, arg2[j]);
-          }
-        }
+        for (int j = 0; j < nout; ++j)
+          if (func[j]) out[j] += func[j](*arg1, arg2[j]);
       }
     });
   });
@@ -56,11 +53,8 @@ void call_func3_cpu(at::TensorIterator &iter, user_func3 const *func) {
         auto arg2 = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
         // conc
         auto arg3 = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
-        for (int j = 0; j < nout; ++j) {
-          if (func[j] != nullptr) {
-            out[j] += func[j](*arg1, *arg2, arg3[j]);
-          }
-        }
+        for (int j = 0; j < nout; ++j)
+          if (func[j]) out[j] += func[j](*arg1, *arg2, arg3[j]);
       }
     });
   });
