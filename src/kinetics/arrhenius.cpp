@@ -106,14 +106,9 @@ void ArrheniusImpl::pretty_print(std::ostream& os) const {
 torch::Tensor ArrheniusImpl::forward(
     torch::Tensor T, torch::Tensor P,
     std::map<std::string, torch::Tensor> const& other) {
-  // check if T is already expanded
-  if (T.sizes() == P.sizes()) {  // not yet expanded
-    return logA + b * T.unsqueeze(-1).log() - Ea_R / T.unsqueeze(-1);
-  } else {
-    TORCH_CHECK(T.size(-1) == logA.size(-1),
-                "Temperature tensor size does not match logA size");
-    return logA + b * T.log() - Ea_R / T;
-  }
+  // expand T if not yet
+  torch::Tensor temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
+  return logA + b * temp.log() - Ea_R / temp;
 }
 
 }  // namespace kintera

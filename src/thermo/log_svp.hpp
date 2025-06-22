@@ -17,10 +17,11 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
     _logsvp_ddT = op.logsvp_ddT();
   }
 
-  static torch::Tensor grad(torch::Tensor const& temp);
+  static torch::Tensor grad(torch::Tensor const& temp, bool expanded = false);
 
   static torch::Tensor forward(torch::autograd::AutogradContext* ctx,
-                               torch::Tensor const& temp);
+                               torch::Tensor const& temp,
+                               bool expanded = false);
 
   static std::vector<torch::Tensor> backward(
       torch::autograd::AutogradContext* ctx,

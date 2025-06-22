@@ -11,42 +11,61 @@ namespace kintera {
 std::vector<user_func1> LogSVPFunc::_logsvp = {};
 std::vector<user_func1> LogSVPFunc::_logsvp_ddT = {};
 
-torch::Tensor LogSVPFunc::grad(torch::Tensor const &temp) {
+torch::Tensor LogSVPFunc::grad(torch::Tensor const &temp, bool expanded) {
   auto vec = temp.sizes().vec();
-  vec.push_back(_logsvp_ddT.size());
+  torch::Tensor logsvp_ddT;
+  at::TensorIteratorConfig iter_config;
 
-  auto logsvp_ddT = torch::zeros(vec, temp.options());
-  auto iter = at::TensorIteratorConfig()
-                  .resize_outputs(false)
-                  .check_all_same_dtype(true)
-                  .declare_static_shape(logsvp_ddT.sizes(),
-                                        /*squash_dim=*/{logsvp_ddT.dim() - 1})
-                  .add_output(logsvp_ddT)
-                  .add_owned_input(temp.unsqueeze(-1))
-                  .build();
+  if (expanded) {
+    logsvp_ddT = torch::zeros(vec, temp.options());
+    iter_config.resize_outputs(false)
+        .check_all_same_dtype(true)
+        .add_output(logsvp_ddT)
+        .add_input(temp);
+  } else {
+    vec.push_back(_logsvp_ddT.size());
+    logsvp_ddT = torch::zeros(vec, temp.options());
+    iter_config.resize_outputs(false)
+        .check_all_same_dtype(true)
+        .declare_static_shape(logsvp_ddT.sizes(),
+                              /*squash_dim=*/{logsvp_ddT.dim() - 1})
+        .add_output(logsvp_ddT)
+        .add_owned_input(temp.unsqueeze(-1));
+  }
 
+  auto iter = iter_config.build();
   at::native::call_func1(logsvp_ddT.device().type(), iter, _logsvp_ddT.data());
 
   return logsvp_ddT;
 }
 
 torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext *ctx,
-                                  torch::Tensor const &temp) {
+                                  torch::Tensor const &temp, bool expanded) {
   auto vec = temp.sizes().vec();
-  vec.push_back(_logsvp.size());
+  torch::Tensor logsvp;
+  at::TensorIteratorConfig iter_config;
 
-  auto logsvp = torch::zeros(vec, temp.options());
-  auto iter = at::TensorIteratorConfig()
-                  .resize_outputs(false)
-                  .check_all_same_dtype(true)
-                  .declare_static_shape(logsvp.sizes(),
-                                        /*squash_dim=*/{logsvp.dim() - 1})
-                  .add_output(logsvp)
-                  .add_owned_input(temp.unsqueeze(-1))
-                  .build();
+  if (expanded) {
+    logsvp = torch::zeros(vec, temp.options());
+    iter_config.resize_outputs(false)
+        .check_all_same_dtype(true)
+        .add_output(logsvp)
+        .add_input(temp);
+  } else {
+    vec.push_back(_logsvp.size());
+    logsvp = torch::zeros(vec, temp.options());
+    iter_config.resize_outputs(false)
+        .check_all_same_dtype(true)
+        .declare_static_shape(logsvp.sizes(),
+                              /*squash_dim=*/{logsvp.dim() - 1})
+        .add_output(logsvp)
+        .add_owned_input(temp.unsqueeze(-1));
+  }
 
+  auto iter = iter_config.build();
   at::native::call_func1(logsvp.device().type(), iter, _logsvp.data());
 
+  ctx->saved_data["expanded"] = expanded;
   ctx->save_for_backward({temp});
   return logsvp;
 }
@@ -54,8 +73,9 @@ torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext *ctx,
 std::vector<torch::Tensor> LogSVPFunc::backward(
     torch::autograd::AutogradContext *ctx,
     std::vector<torch::Tensor> grad_outputs) {
+  auto expanded = ctx->saved_data["expanded"].toBool();
   auto saved = ctx->get_saved_variables();
-  auto logsvp_ddT = grad(/*temp=*/saved[0]);
+  auto logsvp_ddT = grad(/*temp=*/saved[0], expanded);
   return {grad_outputs[0] * logsvp_ddT};
 }
 

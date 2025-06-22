@@ -2,6 +2,10 @@
 #include <yaml-cpp/yaml.h>
 
 // kintera
+#include <kintera/constants.h>
+
+#include <kintera/thermo/log_svp.hpp>
+
 #include "evaporation.hpp"
 
 namespace kintera {
@@ -153,18 +157,29 @@ void EvaporationImpl::pretty_print(std::ostream& os) const {
 torch::Tensor EvaporationImpl::forward(
     torch::Tensor T, torch::Tensor P,
     std::map<std::string, torch::Tensor> const& other) {
-  // check if T is already expanded
-  torch::Tensor log_diff;
-  if (T.sizes() == P.sizes()) {  // not yet expanded
-    log_diff = log_diff_c + diff_T * (T / options.Tref()).log().unsqueeze(-1) +
-               diff_P * (P / options.Pref()).log().unsqueeze(-1);
-  } else {
-    log_diff = log_diff_c + diff_T * (T / options.Tref()).log() +
-               diff_P * (P / options.Pref()).log().unsqueeze(-1);
-  }
+  // expand T if not yet
+  torch::Tensor temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
 
-  // Calculate the rate constant based on the diffusivity and molar volume
-  return log(12.) + log_diff + log_vm - 2. * log_diameter;
+  auto log_diff = log_diff_c + diff_T * (temp / options.Tref()).log() +
+                  diff_P * (P / options.Pref()).log().unsqueeze(-1);
+
+  auto kappa = log(12.) + log_diff + log_vm - 2. * log_diameter;
+
+  std::cout << "kappa = " << kappa << std::endl;
+
+  // saturation deficit
+  auto conc = other.at("conc");
+  auto stoich = other.at("stoich");
+  auto sp = stoich.clamp_min(0.);
+
+  LogSVPFunc::init(options);
+  auto logsvp = LogSVPFunc::apply(temp, /*expanded=*/true);
+  std::cout << "logsvp = " << logsvp << std::endl;
+
+  auto eta = torch::exp(logsvp - sp.sum(0) * (constants::Rgas * temp).log()) -
+             conc.unsqueeze(-1).pow(sp).prod(-2);
+
+  return torch::where(eta <= 0, torch::zeros_like(kappa), kappa + eta.log());
 }
 
 }  // namespace kintera

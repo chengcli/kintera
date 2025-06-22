@@ -137,6 +137,11 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
     // no reaction, skip
     if (_nreactions[i] == 0) continue;
 
+    std::cout << "i = " << i << ", first = " << first
+              << ", nreactions = " << _nreactions[i] << std::endl;
+
+    other["stoich"] = stoich.narrow(1, first, _nreactions[i]);
+
     torch::Tensor logr;
 
     if (options.evolve_temperature()) {
@@ -145,6 +150,10 @@ KineticRateImpl::forward(torch::Tensor temp, torch::Tensor pres,
       temp1.requires_grad_(true);
 
       logr = rc_evaluator[i].forward(temp1, pres, other);
+
+      std::cout << "first = " << first << std::endl;
+      std::cout << "logr = " << logr << std::endl;
+
       logr.backward(torch::ones_like(logr));
 
       logrc_ddT.value().narrow(-1, first, _nreactions[i]) = temp1.grad();

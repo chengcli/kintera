@@ -33,9 +33,6 @@ struct EvaporationOptions : public NucleationOptions {
   // reference pressure
   ADD_ARG(double, Pref) = 1.e5;
 
-  //! reactions
-  ADD_ARG(std::vector<Reaction>, reactions) = {};
-
   //! Diffusivity [cm^2/s] at reference temperature and pressure
   ADD_ARG(std::vector<double>, diff_c) = {};
 

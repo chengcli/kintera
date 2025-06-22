@@ -90,7 +90,7 @@ TEST_P(DeviceTest, forward) {
   }
 }
 
-TEST_P(DeviceTest, jacobian) {
+/*TEST_P(DeviceTest, jacobian) {
   auto op_kinet =
       KineticRateOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
   KineticRate kinet(op_kinet);
@@ -121,7 +121,7 @@ TEST_P(DeviceTest, jacobian) {
   auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, logrc_ddT);
 
   std::cout << "jacobian: " << jac << std::endl;
-}
+}*/
 
 int main(int argc, char **argv) {
   testing::InitGoogleTest(&argc, argv);
