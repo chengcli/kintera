@@ -248,7 +248,7 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
 
   // (1) Evaluate log-svp
   LogSVPFunc::init(op.nucleation());
-  auto logsvp = LogSVPFunc::apply(temp);
+  auto logsvp = LogSVPFunc::call(temp);
   // std::cout << "logsvp = " << logsvp << std::endl;
 
   // (2) Evaluate enthalpies (..., R)

@@ -172,7 +172,7 @@ torch::Tensor EvaporationImpl::forward(
   auto stoich = other.at("stoich");
   auto sp = stoich.clamp_min(0.);
 
-  LogSVPFunc::init(options, true);
+  LogSVPFunc::init(options);
   auto logsvp = LogSVPFunc::apply(temp);
   std::cout << "logsvp = " << logsvp << std::endl;
 

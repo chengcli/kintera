@@ -12,13 +12,13 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
  public:
   static constexpr bool is_traceable = true;
 
-  static void init(NucleationOptions const& op, bool expanded = false) {
+  static void init(NucleationOptions const& op) {
     _logsvp = op.logsvp();
     _logsvp_ddT = op.logsvp_ddT();
-    _expanded = expanded;
   }
 
   static torch::Tensor grad(torch::Tensor const& temp, bool expanded = false);
+  static torch::Tensor call(torch::Tensor const& temp, bool expanded = false);
 
   static torch::Tensor forward(torch::autograd::AutogradContext* ctx,
                                torch::Tensor const& temp);
@@ -30,7 +30,6 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
  private:
   static std::vector<user_func1> _logsvp;
   static std::vector<user_func1> _logsvp_ddT;
-  static bool _expanded;
 };
 
 }  // namespace kintera
