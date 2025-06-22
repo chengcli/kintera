@@ -179,6 +179,8 @@ torch::Tensor EvaporationImpl::forward(
   auto eta = torch::exp(logsvp - sp.sum(0) * (constants::Rgas * temp).log()) -
              conc.unsqueeze(-1).pow(sp).prod(-2);
 
+  std::cout << "eta = " << eta << std::endl;
+
   return torch::where(eta <= 0, torch::zeros_like(kappa), kappa + eta.log());
 }
 
