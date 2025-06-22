@@ -11,7 +11,8 @@
 
 namespace at::native {
 
-using fn1iter = void (*)(at::TensorIterator &iter, user_func1 const *func);
+using fn1iter = void (*)(at::TensorIterator &iter, user_func1 const *func,
+                         bool);
 using fn2iter = void (*)(at::TensorIterator &iter, user_func2 const *func);
 using fn3iter = void (*)(at::TensorIterator &iter, user_func3 const *func);
 
