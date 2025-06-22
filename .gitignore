@@ -12,3 +12,6 @@ data/example.speos
 
 # mac
 .DS_Store
+
+# cache
+__pycache__

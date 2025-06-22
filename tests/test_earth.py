@@ -78,7 +78,7 @@ def test_case1():
 
     # compute relative humdity
     stoich = thermo.get_buffer("stoich")
-    rh = relative_humidity(temp, conc, stoich, thermo.options)
+    rh = relative_humidity(temp, conc, stoich, thermo.options.nucleation())
 
     print("temp = ", temp)
     print("pres = ", pres)

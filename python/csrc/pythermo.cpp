@@ -421,8 +421,7 @@ Examples:
     >> temp = torch.tensor([300.0, 310.0, 320.0])
     >> conc = torch.tensor([1.e-3, 2.e-3, 3.e-3])
     >> stoich = thermo.get_buffer("stoich")
-    >> rh = relative_humidity(temp, conc, stoich, ThermoOptions()
+    >> rh = relative_humidity(temp, conc, stoich, op.nucleation())
     )doc",
-        py::arg("temp"), py::arg("conc"), py::arg("stoich"),
-        py::arg("op") = kintera::ThermoOptions());
+        py::arg("temp"), py::arg("conc"), py::arg("stoich"), py::arg("op"));
 }
