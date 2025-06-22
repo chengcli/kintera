@@ -33,15 +33,15 @@ torch::Tensor LogSVPFunc::grad(torch::Tensor const &temp, bool expanded) {
   }
 
   auto iter = iter_config.build();
-  at::native::call_func1(logsvp_ddT.device().type(), iter, _logsvp_ddT.data(),
-                         expanded);
+  at::native::call_func1(logsvp_ddT.device().type(), iter, _logsvp_ddT.data());
 
   return logsvp_ddT;
 }
 
 torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext *ctx,
-                                  torch::Tensor const &temp, bool expanded) {
+                                  torch::Tensor const &temp) {
   auto vec = temp.sizes().vec();
+  bool expanded = temp.dim() > 3 || temp.size(-1) == _logsvp.size();
   if (!expanded) {
     vec.push_back(_logsvp.size());
   }
@@ -62,8 +62,7 @@ torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext *ctx,
   }
 
   auto iter = iter_config.build();
-  at::native::call_func1(logsvp.device().type(), iter, _logsvp.data(),
-                         expanded);
+  at::native::call_func1(logsvp.device().type(), iter, _logsvp.data());
 
   ctx->saved_data["expanded"] = expanded;
   ctx->save_for_backward({temp});
@@ -78,5 +77,7 @@ std::vector<torch::Tensor> LogSVPFunc::backward(
   auto logsvp_ddT = grad(/*temp=*/saved[0], expanded);
   return {grad_outputs[0] * logsvp_ddT};
 }
+
+bool LogSVPFunc::_expanded;
 
 }  // namespace kintera

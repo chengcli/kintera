@@ -9,8 +9,7 @@
 
 namespace kintera {
 
-void call_func1_cpu(at::TensorIterator &iter, user_func1 const *func,
-                    bool expanded) {
+void call_func1_cpu(at::TensorIterator &iter, user_func1 const *func) {
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func1_cpu", [&] {
     int nout = at::native::ensure_nonempty_size(iter.output(), -1);
     iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
@@ -19,7 +18,6 @@ void call_func1_cpu(at::TensorIterator &iter, user_func1 const *func,
         // temp
         auto arg1 = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
         for (int j = 0; j < nout; ++j)
-          // if (func[j]) out[j] += func[j](*(arg1 + expanded * j));
           if (func[j]) out[j] += func[j](*arg1);
       }
     });
