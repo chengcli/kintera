@@ -51,17 +51,8 @@ NucleationOptions NucleationOptions::from_yaml(const YAML::Node& root) {
 
     // rate constants
     auto node = rxn_node["rate-constant"];
-    if (node["minT"]) {
-      options.minT().push_back(node["minT"].as<double>());
-    } else {
-      options.minT().push_back(0.);
-    }
-
-    if (node["maxT"]) {
-      options.maxT().push_back(node["maxT"].as<double>());
-    } else {
-      options.maxT().push_back(1.e4);
-    }
+    options.minT().push_back(node["minT"].as<double>(0.);
+    options.maxT().push_back(node["maxT"].as<double>(1.e4);
 
     TORCH_CHECK(node["formula"],
                 "'formula' is not defined in the rate-constant");

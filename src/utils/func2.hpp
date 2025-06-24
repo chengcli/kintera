@@ -7,8 +7,8 @@
 using user_func2 = double (*)(double, double);
 
 inline std::unordered_map<std::string, user_func2>& get_user_func2() {
-  static std::unordered_map<std::string, user_func2> f1map;
-  return f1map;
+  static std::unordered_map<std::string, user_func2> f2map;
+  return f2map;
 }
 
 struct Func2Registrar {
