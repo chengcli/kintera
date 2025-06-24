@@ -109,53 +109,53 @@ void ThermoYImpl::pretty_print(std::ostream &os) const {
 torch::Tensor const &ThermoYImpl::compute(
     std::string ab, std::vector<torch::Tensor> const &args) {
   if (ab == "V->Y") {
-    _V.set_(*args.begin());
+    _V.set_(args[0]);
     _ivol_to_yfrac(_V, _Y);
     return _Y;
   } else if (ab == "Y->X") {
-    _Y.set_(*args.begin());
+    _Y.set_(args[0]);
     _yfrac_to_xfrac(_Y, _X);
     return _X;
   } else if (ab == "DY->V") {
-    _D.set_(*args.begin());
-    _Y.set_(*(args.begin() + 1));
+    _D.set_(args[0]);
+    _Y.set_(args[1]);
     _yfrac_to_ivol(_D, _Y, _V);
     return _V;
   } else if (ab == "PV->T") {
-    _P.set_(*args.begin());
-    _V.set_(*(args.begin() + 1));
+    _P.set_(args[0]);
+    _V.set_(args[1]);
     _pres_to_temp(_P, _V, _T);
     return _T;
   } else if (ab == "VT->cv") {
-    _V.set_(*args.begin());
-    _T.set_(*(args.begin() + 1));
+    _V.set_(args[0]);
+    _T.set_(args[1]);
     _cv_vol(_V, _T, _cv);
     return _cv;
   } else if (ab == "VT->U") {
-    _V.set_(*args.begin());
-    _T.set_(*(args.begin() + 1));
+    _V.set_(args[0]);
+    _T.set_(args[1]);
     _intEng_vol(_V, _T, _U);
     return _U;
   } else if (ab == "VU->T") {
-    _V.set_(*args.begin());
-    _U.set_(*(args.begin() + 1));
+    _V.set_(args[0]);
+    _U.set_(args[1]);
     _intEng_to_temp(_V, _U, _T);
     return _T;
   } else if (ab == "VT->P") {
-    _V.set_(*args.begin());
-    _T.set_(*(args.begin() + 1));
+    _V.set_(args[0]);
+    _T.set_(args[1]);
     _temp_to_pres(_V, _T, _P);
     return _P;
   } else if (ab == "PVT->S") {
-    _P.set_(*args.begin());
-    _V.set_(*(args.begin() + 1));
-    _T.set_(*(args.begin() + 2));
+    _P.set_(args[0]);
+    _V.set_(args[1]);
+    _T.set_(args[2]);
     _entropy_vol(_P, _V, _T, _S);
     return _S;
   } else if (ab == "TUS->F") {
-    _T.set_(*args.begin());
-    _U.set_(*(args.begin() + 1));
-    _S.set_(*(args.begin() + 2));
+    _T.set_(args[0]);
+    _U.set_(args[1]);
+    _S.set_(args[2]);
     _F.set_(_U - _T * _S);
     return _F;
   } else {

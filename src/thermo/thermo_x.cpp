@@ -99,45 +99,45 @@ void ThermoXImpl::pretty_print(std::ostream &os) const {
 torch::Tensor const &ThermoXImpl::compute(
     std::string ab, std::vector<torch::Tensor> const &args) {
   if (ab == "X->Y") {
-    _X.set_(*args.begin());
+    _X.set_(args[0]);
     _xfrac_to_yfrac(_X, _Y);
     return _Y;
   } else if (ab == "V->D") {
-    _V.set_(*args.begin());
+    _V.set_(args[0]);
     _conc_to_dens(_V, _D);
     return _D;
   } else if (ab == "TV->cp") {
-    _T.set_(*args.begin());
-    _V.set_(*(args.begin() + 1));
+    _T.set_(args[0]);
+    _V.set_(args[1]);
     _cp_vol(_T, _V, _cp);
     return _cp;
   } else if (ab == "TV->H") {
-    _T.set_(*args.begin());
-    _V.set_(*(args.begin() + 1));
+    _T.set_(args[0]);
+    _V.set_(args[1]);
     _enthalpy_vol(_T, _V, _H);
     return _H;
   } else if (ab == "TPX->V") {
-    _T.set_(*args.begin());
-    _P.set_(*(args.begin() + 1));
-    _X.set_(*(args.begin() + 2));
+    _T.set_(args[0]);
+    _P.set_(args[1]);
+    _X.set_(args[2]);
     _xfrac_to_conc(_T, _P, _X, _V);
     return _V;
   } else if (ab == "TPV->S") {
-    _T.set_(*args.begin());
-    _P.set_(*(args.begin() + 1));
-    _V.set_(*(args.begin() + 2));
+    _T.set_(args[0]);
+    _P.set_(args[1]);
+    _V.set_(args[2]);
     _entropy_vol(_T, _P, _V, _S);
     return _S;
   } else if (ab == "PXS->T") {
-    _P.set_(*args.begin());
-    _X.set_(*(args.begin() + 1));
-    _S.set_(*(args.begin() + 2));
+    _P.set_(args[0]);
+    _X.set_(args[1]);
+    _S.set_(args[2]);
     _entropy_to_temp(_P, _X, _S, _T);
     return _T;
   } else if (ab == "THS->G") {
-    _T.set_(*args.begin());
-    _H.set_(*(args.begin() + 1));
-    _S.set_(*(args.begin() + 2));
+    _T.set_(args[0]);
+    _H.set_(args[1]);
+    _S.set_(args[2]);
     _G.set_(_H - _T * _S);
     return _G;
   } else {
