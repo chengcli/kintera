@@ -1,5 +1,8 @@
 #pragma once
 
+// C/C++
+#include <sstream>
+
 // fmt
 #include <fmt/format.h>
 

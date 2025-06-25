@@ -72,9 +72,6 @@ species:
     cv_R: 9.6
     u0_R: -1.2e4
 
-vapor: [H2O, NH3, H2S]
-cloud: [H2O(l), H2O(s), NH3(l), NH3(s), NH4SH(s)]
-
 reactions:
   - equation: H2O <=> H2O(l)
     type: nucleation
