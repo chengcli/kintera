@@ -77,23 +77,9 @@ ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root,
       options.A().push_back(1.);
     }
 
-    if (node["b"]) {
-      options.b().push_back(node["b"].as<double>());
-    } else {
-      options.b().push_back(0.);
-    }
-
-    if (node["Ea_R"]) {
-      options.Ea_R().push_back(node["Ea_R"].as<double>());
-    } else {
-      options.Ea_R().push_back(1.);
-    }
-
-    if (node["E4"]) {
-      options.E4_R().push_back(node["E4"].as<double>());
-    } else {
-      options.E4_R().push_back(0.);
-    }
+    options.b().push_back(node["b"].as<double>(0.));
+    options.Ea_R().push_back(node["Ea_R"].as<double>(1.));
+    options.E4_R().push_back(node["E4"].as<double>(0.));
   }
 
   return options;

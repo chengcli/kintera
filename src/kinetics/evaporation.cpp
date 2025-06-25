@@ -67,17 +67,8 @@ EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
       options.diff_c().push_back(0.2e-4);
     }
 
-    if (node["diff_T"]) {
-      options.diff_T().push_back(node["diff_T"].as<double>());
-    } else {
-      options.diff_T().push_back(1.75);
-    }
-
-    if (node["diff_P"]) {
-      options.diff_P().push_back(node["diff_P"].as<double>());
-    } else {
-      options.diff_P().push_back(-1.);
-    }
+    options.diff_T().push_back(node["diff_T"].as<double>(1.75));
+    options.diff_P().push_back(node["diff_P"].as<double>(-1.));
 
     if (node["vm"]) {
       options.vm().push_back(
@@ -93,17 +84,8 @@ EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
       options.diameter().push_back(1.e-2);
     }
 
-    if (node["minT"]) {
-      options.minT().push_back(node["minT"].as<double>());
-    } else {
-      options.minT().push_back(0.);
-    }
-
-    if (node["maxT"]) {
-      options.maxT().push_back(node["maxT"].as<double>());
-    } else {
-      options.maxT().push_back(1.e4);
-    }
+    options.minT().push_back(node["minT"].as<double>(0.));
+    options.maxT().push_back(node["maxT"].as<double>(1.e4));
 
     TORCH_CHECK(node["formula"],
                 "'formula' is not defined in the rate-constant");
