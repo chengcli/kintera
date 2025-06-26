@@ -94,15 +94,13 @@ int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1, int n2,
                 int n3, int neq, int *max_iter) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
-    fprintf(
-        stderr,
-        "Error: n1 and n2 must be positive integers and n3 >= 0, n1 >= n2.\n");
+    printf("Error: n1 and n2 must be positive integers and n3 >= 0, n1 >= n2.\n");
     return 1;  // invalid input
   }
 
   // check if 0 <= neq <= n3
   if (neq < 0 || neq > n3) {
-    fprintf(stderr, "Error: neq must be non-negative.\n");
+    printf("Error: neq must be non-negative.\n");
     return 1;  // invalid input
   }
 
@@ -278,9 +276,8 @@ int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1, int n2,
 
   if (iter >= *max_iter) {
     *max_iter = iter;
-    fprintf(stderr,
-            "Warning: leastsq_kkt maximum number of iterations reached (%d).\n",
-            *max_iter);
+    printf("Warning: leastsq_kkt maximum number of iterations reached (%d).\n",
+           *max_iter);
     return 2;  // failure to converge
   }
 

@@ -40,8 +40,9 @@ int ludcmp(T *a, int *indx, int n) {
     for (j = 0; j < n; j++)
       if ((temp = fabs(A(i, j))) > big) big = temp;
     if (big == 0.0) {
-      fprintf(stderr, "Singular matrix in routine ludcmp");
-      exit(1);
+      printf("Singular matrix in routine ludcmp");
+      free(vv);
+      return 1;
     }
     vv[i] = 1.0 / big;
   }

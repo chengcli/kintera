@@ -61,29 +61,28 @@ int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0, T const *stoich,
                    int *max_iter) {
   // check positive temperature
   if (*temp <= 0) {
-    fprintf(stderr, "Error: Non-positive temperature.\n");
+    printf("Error: Non-positive temperature.\n");
     return 1;  // error: non-positive temperature
   }
 
   // check non-negative concentration
   for (int i = 0; i < nspecies; i++) {
     if (conc[i] < 0) {
-      fprintf(stderr, "Error: Negative concentration for species %d.\n", i);
+      printf("Error: Negative concentration for species %d.\n", i);
       return 1;  // error: negative concentration
     }
   }
 
   // check dimensions
   if (nspecies <= 0 || nreaction <= 0) {
-    fprintf(stderr,
-            "Error: nspecies and nreaction must be positive integers.\n");
+    printf("Error: nspecies and nreaction must be positive integers.\n");
     return 1;  // error: invalid dimensions
   }
 
   // check non-negative cp
   for (int i = 0; i < nspecies; i++) {
     if (cv_const[i] < 0) {
-      fprintf(stderr, "Error: Negative heat capacity for species %d.\n", i);
+      printf("Error: Negative heat capacity for species %d.\n", i);
       return 1;  // error: negative heat capacity
     }
   }
@@ -239,7 +238,7 @@ int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0, T const *stoich,
     }
 
     if (*temp <= 0.) {
-      fprintf(stderr, "Error: Non-positive temperature after adjustment.\n");
+      printf("Error: Non-positive temperature after adjustment.\n");
       err_code = 3;  // error: non-positive temperature after adjustment
       break;
     }
@@ -272,9 +271,7 @@ int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0, T const *stoich,
   free(gain_cpy);
 
   if (iter >= *max_iter) {
-    fprintf(stderr,
-            "Saturation adjustment did not converge after %d iterations.\n",
-            *max_iter);
+    printf("Saturation adjustment did not converge after %d iterations.\n", *max_iter);
     return 2;  // failure to converge
   } else {
     *max_iter = iter;
