@@ -1,5 +1,8 @@
 #pragma once
 
+// base
+#include <configure.h>
+
 namespace kintera {
 
 /*!
@@ -17,6 +20,7 @@ namespace kintera {
  * \param[in] n size of matrix
  */
 template <typename T>
+DISPATCH_MACRO
 void lubksb(T *b, T const *a, int const *indx, int n) {
   int i, ii = 0, ip, j;
   T sum;

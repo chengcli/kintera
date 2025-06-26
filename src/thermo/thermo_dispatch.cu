@@ -1,26 +1,30 @@
 // torch
 #include <ATen/Dispatch.h>
+#include <ATen/TensorIterator.h>
 #include <ATen/native/ReduceOpsUtils.h>
-#include <ATen/native/cpu/Loops.h>
-#include <torch/torch.h>
+#include <c10/cuda/CUDAGuard.h>
+
+// disort
+#include <disort/loops.cuh>
 
 // kintera
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
 #include "thermo_dispatch.hpp"
 
+
 namespace kintera {
 
-void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
+void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                              user_func1 const *logsvp_func, float logsvp_eps,
                              int max_iter) {
-  AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cpu", [&] {
+  AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cuda", [&] {
     int nspecies = at::native::ensure_nonempty_size(iter.input(2), 0);
     int nreaction = at::native::ensure_nonempty_size(iter.input(2), 1);
     auto stoich = iter.input(2).data_ptr<scalar_t>();
 
-    iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
-      for (int i = 0; i < n; i++) {
+    native::gpu_kernel<scalar_t, 5>(
+        iter, [=] GPU_LAMBDA(char* const data[5], unsigned int strides[5]) {
         auto umat = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
         auto xfrac = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
@@ -34,21 +38,21 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
   });
 }
 
-void call_equilibrate_uv_cpu(at::TensorIterator &iter,
+void call_equilibrate_uv_cuda(at::TensorIterator &iter,
                              user_func1 const *logsvp_func,
                              user_func1 const *logsvp_func_ddT,
                              user_func2 const *intEng_extra,
                              user_func2 const *intEng_extra_ddT,
                              float logsvp_eps, int max_iter) {
-  AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_uv_cpu", [&] {
+  AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_uv_cuda", [&] {
     int nspecies = at::native::ensure_nonempty_size(iter.input(1), 0);
     int nreaction = at::native::ensure_nonempty_size(iter.input(1), 1);
     auto stoich = iter.input(1).data_ptr<scalar_t>();
     auto intEng_offset = iter.input(2).data_ptr<scalar_t>();
     auto cv_const = iter.input(3).data_ptr<scalar_t>();
 
-    iter.for_each([&](char **data, const int64_t *strides, int64_t n) {
-      for (int i = 0; i < n; i++) {
+    native::gpu_kernel<scalar_t, 5>(
+        iter, [=] GPU_LAMBDA(char* const data[5], unsigned int strides[5]) {
         auto umat = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
         auto conc = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
@@ -68,12 +72,10 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter,
 
 namespace at::native {
 
-DEFINE_DISPATCH(call_equilibrate_tp);
-DEFINE_DISPATCH(call_equilibrate_uv);
+REGISTER_CUDA_DISPATCH(call_equilibrate_tp,
+                       &kintera::call_equilibrate_tp_cuda);
 
-REGISTER_ALL_CPU_DISPATCH(call_equilibrate_tp,
-                          &kintera::call_equilibrate_tp_cpu);
-REGISTER_ALL_CPU_DISPATCH(call_equilibrate_uv,
-                          &kintera::call_equilibrate_uv_cpu);
+REGISTER_CUDA_DISPATCH(call_equilibrate_uv,
+                       &kintera::call_equilibrate_uv_cuda);
 
 }  // namespace at::native

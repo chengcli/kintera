@@ -5,6 +5,9 @@
 #include <cstdio>
 #include <cstdlib>
 
+// base
+#include <configure.h>
+
 #define A(i, j) a[(i) * n + (j)]
 
 namespace kintera {
@@ -25,6 +28,7 @@ namespace kintera {
  * \param[in] n size of matrix
  */
 template <typename T>
+DISPATCH_MACRO
 int ludcmp(T *a, int *indx, int n) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;

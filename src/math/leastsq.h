@@ -4,6 +4,9 @@
 #include <cstdlib>
 #include <cstring>
 
+// base
+#include <configure.h>
+
 // math
 #include "lubksb.h"
 #include "ludcmp.h"
@@ -20,6 +23,7 @@ namespace kintera {
  * \param[in] n2 number of columns in matrix
  */
 template <typename T>
+DISPATCH_MACRO
 void leastsq(T *b, T const *a, int n1, int n2) {
   T *c = (T *)malloc(n1 * sizeof(T));
   memcpy(c, b, n1 * sizeof(T));

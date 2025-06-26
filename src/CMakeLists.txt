@@ -66,7 +66,7 @@ add_library(kintera::kintera ALIAS ${namel}_${buildl})
 if (CUDAToolkit_FOUND)
   file(GLOB cu_src_files
     *.cu
-    eos/*.cu
+    thermo/*.cu
     )
 
   add_library(${namel}_cuda_${buildl}

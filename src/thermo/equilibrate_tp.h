@@ -6,6 +6,9 @@
 #include <cstdlib>
 #include <cstring>
 
+// base
+#include <configure.h>
+
 // kintera
 #include <kintera/math/leastsq_kkt.h>
 #include <kintera/math/mmdot.h>
@@ -20,20 +23,20 @@ namespace kintera {
  * This function finds the thermodynamic equilibrium for an array
  * of species.
  *
- * \param[out] gain WS gain matrix
- * \param[in,out] xfrac array of species mole fractions, modified in place.
- * \param[in] temp equilibrium temperature in Kelvin.
- * \param[in] pres equilibrium pressure in Pascals.
- * \param[in] nspecies number of species in the system.
- * \param[in] ngas number of gas species in the system.
- * \param[in] logsvp_func user-defined function for logarithm of saturation
- * vapor pressure.
- * with respect to temperature.
- * \param[in] logsvp_eps tolerance for convergence in logarithm of saturation
- * vapor pressure.
- * \param[in,out] max_iter maximum number of iterations allowed for convergence.
+ * \param[out] gain           WS gain matrix
+ * \param[in,out]             xfrac array of species mole fractions, modified in place.
+ * \param[in] temp            equilibrium temperature in Kelvin.
+ * \param[in] pres            equilibrium pressure in Pascals.
+ * \param[in] nspecies        number of species in the system.
+ * \param[in] ngas            number of gas species in the system.
+ * \param[in] logsvp_func     user-defined function for logarithm of saturation
+ *                            vapor pressure with respect to temperature.
+ * \param[in]                 logsvp_eps tolerance for convergence in logarithm of saturation
+ *                            vapor pressure.
+ * \param[in,out] max_iter    maximum number of iterations allowed for convergence.
  */
 template <typename T>
+DISPATCH_MACRO
 int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
                    int nspecies, int nreaction, int ngas,
                    user_func1 const *logsvp_func, float logsvp_eps,
