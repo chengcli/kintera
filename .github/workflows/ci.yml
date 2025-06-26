@@ -57,7 +57,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install numpy 'torch>=2.7'
+          pip install numpy 'pyharp>=1.7.1'
 
       - name: Install NetCDF
         run: |

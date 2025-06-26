@@ -1,14 +1,21 @@
 [build-system]
-requires = ["setuptools", "wheel", "cmake<=3.30", "numpy", "ninja", "torch>=2.7.0"]
+requires = [
+  "setuptools>=61.0.0",
+  "wheel",
+  "cmake<=3.30",
+  "numpy",
+  "ninja",
+  "pyharp>=1.7.1"
+  ]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "kintera"
-version = "0.6.2"
+dynamic = ["version"]
 description = "Atmospheric Chemistry and Thermodynamics Library"
 authors = [
+  { name="Cheng Li", email="chengcli@umich.edu" },
   { name="Sihe Chen", email="sihechen@caltech.edu"},
-  { name="Cheng Li", email="chengcli@umich.edu" }
 ]
 license = { text = "LICENSE" }
 readme = "README.md"
@@ -16,6 +23,7 @@ requires-python = ">=3.9"
 dependencies = [
   "numpy",
   "pyharp>=1.6.8",
+  "cmake<=3.30",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -36,13 +44,16 @@ classifiers = [
 Homepage = "https://github.com/chengcli/kintera"
 Documentation = "https://kintera.readthedocs.io"
 
+[tool.setuptools.dynamic.version]
+attr = "pyharp.__version__"
+
 #[project.scripts]
 #fetch-kinetics= "pyharp.api.fetch_sonora:main"
 #fetch-cia-legacy = "pyharp.api.fetch_cia_legacy:main"
 
 [tool.setuptools]
 packages = ["kintera", "kintera.api"]
+include-package-data = false
 
-#[tool.setuptools.package-data]
-#"pyharp.sonora" = ["sonora2020_*.txt"]
-#"pyharp.h2_cia_legacy" = ["H2-H2-*.pt", "H2-He-*.pt"]
+[tool.setuptools.package-data]
+"kintera" = ["kintera/**/*", "lib/*.so", "lib/*.dylib"]
