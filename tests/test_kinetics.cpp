@@ -83,13 +83,10 @@ TEST_P(DeviceTest, forward) {
   std::cout << "rate: " << rate << std::endl;
   std::cout << "rc_ddC (x1e5): " << 1.e5 * rc_ddC << std::endl;
 
-  switch (rc_ddT.has_value()) {
-    case true:
-      std::cout << "rc_ddT: " << rc_ddT.value() << std::endl;
-      break;
-    case false:
-      std::cout << "rc_ddT: None" << std::endl;
-      break;
+  if (rc_ddT.has_value()) {
+    std::cout << "rc_ddT: " << rc_ddT.value() << std::endl;
+  } else {
+    std::cout << "rc_ddT: None" << std::endl;
   }
 }
 

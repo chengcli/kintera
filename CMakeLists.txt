@@ -4,20 +4,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(CUDA "Enable CUDA support" OFF)
 option(BUILD_TESTS "Build tests" ON)
 option(BUILD_EXAMPLES "Build examples" OFF)
+option(CUDA "Enable CUDA support" OFF)
 
+project(
+  kintera
+  LANGUAGES CXX C
+  DESCRIPTION "library for chemistry and equation of state")
+
+# Try to enable CUDA
 if (CUDA)
-  project(
-    kintera
-    LANGUAGES CXX C CUDA
-    DESCRIPTION "library for chemistry and equation of state")
-else()
-  project(
-    kintera
-    LANGUAGES CXX C
-    DESCRIPTION "library for chemistry and equation of state")
+  enable_language(CUDA)
 endif()
 
 # search for <Package>_ROOT
@@ -83,10 +81,14 @@ message(STATUS "Include ${CMAKE_CURRENT_SOURCE_DIR}/cmake/parameters.cmake")
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/parameters.cmake)
 
 message(STATUS "${Blue}${PROJECT_NAME}-3. Setting up system libraries ...${ColorReset}")
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pyharp.cmake)
+#include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/pyharp.cmake)
 find_package(Torch REQUIRED)
+find_package(Harp REQUIRED)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fmt.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/gtest.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/yamlpp.cmake)
 
-if (CUDA)
+if (CMAKE_CUDA_COMPILER)
   find_package(CUDAToolkit REQUIRED)
 else()
   set(CUDAToolkit_FOUND OFF)
