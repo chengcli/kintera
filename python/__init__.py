@@ -1,5 +1,6 @@
 import torch
 import pydisort
+import pyharp
 
 from .kintera import *
 
