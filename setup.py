@@ -48,10 +48,16 @@ libraries = parse_library_names(f"{current_dir}/build/lib")
 if sys.platform == "darwin":
     extra_link_args = [
         "-Wl,-rpath,@loader_path/lib",
+        "-Wl,-rpath,@loader_path/../torch/lib",
+        "-Wl,-rpath,@loader_path/../pydharp/lib",
+        "-Wl,-rpath,@loader_path/../pydisort/lib",
     ]
 else:
     extra_link_args = [
         "-Wl,-rpath,$ORIGIN/lib",
+        "-Wl,-rpath,$ORIGIN/../torch/lib",
+        "-Wl,-rpath,$ORIGIN/../pydisort/lib",
+        "-Wl,-rpath,$ORIGIN/../pyharp/lib",
     ]
 
 if torch.cuda.is_available():
