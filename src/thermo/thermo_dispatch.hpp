@@ -4,10 +4,8 @@
 #include <ATen/TensorIterator.h>
 #include <ATen/native/DispatchStub.h>
 
-
 using user_func1 = double (*)(double);
 using user_func2 = double (*)(double, double);
-
 
 namespace at::native {
 

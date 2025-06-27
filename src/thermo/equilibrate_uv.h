@@ -33,32 +33,34 @@ namespace kintera {
  * \param[in,out] conc          in:initial concentrations for each species
  *                              out: adjusted concentrations.
  * \param[in] h0                initial internal energy.
- * \param[in] stoich            reaction stoichiometric matrix, nspecies x nreaction.
+ * \param[in] stoich            reaction stoichiometric matrix, nspecies x
+ * nreaction.
  * \param[in] nspecies          number of species in the system.
  * \param[in] nreaction         number of reactions in the system.
  * \param[in] intEng_offset     offset for internal energy calculations.
  * \param[in] cv_const          const component of heat capacity.
- * \param[in] logsvp_func       user-defined functions for logarithm of saturation
- *                              vapor pressure.
+ * \param[in] logsvp_func       user-defined functions for logarithm of
+ * saturation vapor pressure.
  * \param[in] logsvp_func_ddT   user-defined functions for derivative of logsvp
  *                              with respect to temperature.
- * \param[in] intEng_R_extra    user-defined functions for internal energy calculation in addition 
- *                              to the linear term.
- * \param[in] cv_R_extra        user-defined functions for heat capacity calculation in
- *                              addition to the constant term.
- * \param[in] lnsvp_eps         tolerance for convergence in logarithm of saturation
- *                              vapor pressure.
- * \param[in,out] max_iter      maximum number of iterations allowed for convergence.
+ * \param[in] intEng_R_extra    user-defined functions for internal energy
+ * calculation in addition to the linear term.
+ * \param[in] cv_R_extra        user-defined functions for heat capacity
+ * calculation in addition to the constant term.
+ * \param[in] lnsvp_eps         tolerance for convergence in logarithm of
+ * saturation vapor pressure.
+ * \param[in,out] max_iter      maximum number of iterations allowed for
+ * convergence.
  */
 template <typename T>
-DISPATCH_MACRO
-int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0, T const *stoich,
-                   int nspecies, int nreaction, T const *intEng_offset,
-                   T const *cv_const, user_func1 const *logsvp_func,
-                   user_func1 const *logsvp_func_ddT,
-                   user_func2 const *intEng_R_extra,
-                   user_func2 const *cv_R_extra, float logsvp_eps,
-                   int *max_iter) {
+DISPATCH_MACRO int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0,
+                                  T const *stoich, int nspecies, int nreaction,
+                                  T const *intEng_offset, T const *cv_const,
+                                  user_func1 const *logsvp_func,
+                                  user_func1 const *logsvp_func_ddT,
+                                  user_func2 const *intEng_R_extra,
+                                  user_func2 const *cv_R_extra,
+                                  float logsvp_eps, int *max_iter) {
   // check positive temperature
   if (*temp <= 0) {
     printf("Error: Non-positive temperature.\n");
@@ -271,7 +273,8 @@ int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0, T const *stoich,
   free(gain_cpy);
 
   if (iter >= *max_iter) {
-    printf("Saturation adjustment did not converge after %d iterations.\n", *max_iter);
+    printf("Saturation adjustment did not converge after %d iterations.\n",
+           *max_iter);
     return 2;  // failure to converge
   } else {
     *max_iter = iter;

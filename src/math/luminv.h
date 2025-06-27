@@ -24,8 +24,7 @@ namespace kintera {
  * \param[in] n size of matrix
  */
 template <typename T>
-DISPATCH_MACRO
-void luminv(T *y, T const *a, int const *indx, int n) {
+DISPATCH_MACRO void luminv(T *y, T const *a, int const *indx, int n) {
   T *col = (T *)malloc(n * sizeof(T));
   for (int j = 0; j < n; j++) {
     for (int i = 0; i < n; i++) col[i] = 0.0;

@@ -19,9 +19,8 @@
 namespace kintera {
 
 template <typename T>
-DISPATCH_MACRO
-void populate_aug(T *aug, T const *ata, T const *c, int n2, int nact,
-                  int const *ct_indx) {
+DISPATCH_MACRO void populate_aug(T *aug, T const *ata, T const *c, int n2,
+                                 int nact, int const *ct_indx) {
   // populate A^T.A (upper left block)
   for (int i = 0; i < n2; ++i) {
     for (int j = 0; j < n2; ++j) {
@@ -52,9 +51,8 @@ void populate_aug(T *aug, T const *ata, T const *c, int n2, int nact,
 }
 
 template <typename T>
-DISPATCH_MACRO
-void populate_rhs(T *rhs, T const *atb, T const *d, int n2, int nact,
-                  int const *ct_indx) {
+DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
+                                 int nact, int const *ct_indx) {
   // populate A^T.b (upper part)
   for (int i = 0; i < n2; ++i) {
     rhs[i] = atb[i];
@@ -89,12 +87,12 @@ void populate_rhs(T *rhs, T const *atb, T const *d, int n2, int nact,
  *         2 on failure (max_iter reached without convergence).
  */
 template <typename T>
-DISPATCH_MACRO
-int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1, int n2,
-                int n3, int neq, int *max_iter) {
+DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
+                               int n2, int n3, int neq, int *max_iter) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
-    printf("Error: n1 and n2 must be positive integers and n3 >= 0, n1 >= n2.\n");
+    printf(
+        "Error: n1 and n2 must be positive integers and n3 >= 0, n1 >= n2.\n");
     return 1;  // invalid input
   }
 

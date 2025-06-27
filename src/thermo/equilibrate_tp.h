@@ -24,23 +24,24 @@ namespace kintera {
  * of species.
  *
  * \param[out] gain           WS gain matrix
- * \param[in,out]             xfrac array of species mole fractions, modified in place.
+ * \param[in,out]             xfrac array of species mole fractions, modified in
+ * place.
  * \param[in] temp            equilibrium temperature in Kelvin.
  * \param[in] pres            equilibrium pressure in Pascals.
  * \param[in] nspecies        number of species in the system.
  * \param[in] ngas            number of gas species in the system.
  * \param[in] logsvp_func     user-defined function for logarithm of saturation
  *                            vapor pressure with respect to temperature.
- * \param[in]                 logsvp_eps tolerance for convergence in logarithm of saturation
- *                            vapor pressure.
- * \param[in,out] max_iter    maximum number of iterations allowed for convergence.
+ * \param[in]                 logsvp_eps tolerance for convergence in logarithm
+ * of saturation vapor pressure.
+ * \param[in,out] max_iter    maximum number of iterations allowed for
+ * convergence.
  */
 template <typename T>
-DISPATCH_MACRO
-int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
-                   int nspecies, int nreaction, int ngas,
-                   user_func1 const *logsvp_func, float logsvp_eps,
-                   int *max_iter) {
+DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
+                                  T const *stoich, int nspecies, int nreaction,
+                                  int ngas, user_func1 const *logsvp_func,
+                                  float logsvp_eps, int *max_iter) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
     printf("Error: Non-positive temperature or pressure.\n");
@@ -58,15 +59,16 @@ int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres, T const *stoich,
   // check non-negative solid concentration
   for (int i = ngas; i < nspecies; i++) {
     if (xfrac[i] < 0) {
-      printf("Error: Negative solid concentration for species %d.\n",
-              i);
+      printf("Error: Negative solid concentration for species %d.\n", i);
       return 1;  // error: negative solid concentration
     }
   }
 
   // check dimensions
   if (nspecies <= 0 || nreaction <= 0 || ngas < 1) {
-    printf("Error: nspecies, nreaction must be positive integers and ngas >= 1.\n");
+    printf(
+        "Error: nspecies, nreaction must be positive integers and ngas >= "
+        "1.\n");
     return 1;  // error: invalid dimensions
   }
 
