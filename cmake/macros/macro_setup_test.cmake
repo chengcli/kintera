@@ -17,11 +17,23 @@ macro(setup_test namel)
             ${KINTERA_INCLUDE_DIR} ${TORCH_INCLUDE_DIR}
             ${TORCH_API_INCLUDE_DIR})
 
-  target_link_libraries(
-    ${namel}.${buildl}
-    PRIVATE ${DISORT_LIBRARY}
-            kintera::kintera kintera::vapors gtest_main
-            $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>)
+  if (APPLE)
+    target_link_libraries(
+      ${namel}.${buildl}
+      PRIVATE ${DISORT_LIBRARY}
+              kintera::vapors
+              kintera::kintera gtest_main
+              $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>)
+  else()
+    target_link_libraries(
+      ${namel}.${buildl}
+      PRIVATE ${DISORT_LIBRARY}
+              -Wl,--no-as-needed
+              kintera::vapors
+              -Wl,--as-needed
+              kintera::kintera gtest_main
+              $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>)
+  endif()
 
   add_test(NAME ${namel}.${buildl} COMMAND ${namel}.${buildl})
 endmacro()
