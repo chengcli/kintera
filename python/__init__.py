@@ -1,4 +1,5 @@
 import torch
+import pydisort
 
 from .kintera import *
 

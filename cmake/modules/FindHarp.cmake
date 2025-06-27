@@ -87,6 +87,12 @@ find_library(
 set(harp_required_vars HARP_LIBRARY HARP_INCLUDE_DIR)
 mark_as_advanced(${harp_required_vars})
 
+if (APPLE)
+  link_directories(${Python3_SITELIB}/pyharp/.dylibs)
+else()
+  link_directories(${Python3_SITELIB}/pyharp.libs)
+endif()
+
 if(HARP_LIBRARY)
   __harp_determine_version()
 endif()

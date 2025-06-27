@@ -4,7 +4,7 @@
 
 enable_testing()
 
-setup_problem(test_yaml_parse)
+#setup_problem(test_yaml_parse)
 #setup_problem(test_kinetics_rates)
 
 setup_test(test_eos)

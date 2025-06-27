@@ -22,7 +22,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
   "numpy",
-  "pyharp>=1.6.8",
+  "pyharp>=1.7.1",
   "cmake<=3.30",
 ]
 classifiers = [
@@ -45,7 +45,7 @@ Homepage = "https://github.com/chengcli/kintera"
 Documentation = "https://kintera.readthedocs.io"
 
 [tool.setuptools.dynamic.version]
-attr = "pyharp.__version__"
+attr = "kintera.__version__"
 
 #[project.scripts]
 #fetch-kinetics= "pyharp.api.fetch_sonora:main"

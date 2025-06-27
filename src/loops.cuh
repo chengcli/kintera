@@ -4,6 +4,7 @@
 #include <ATen/TensorIterator.h>
 #include <ATen/native/cuda/Loops.cuh>
 
+namespace kintera {
 namespace native {
 
 template <int Arity, typename func_t>
@@ -26,3 +27,4 @@ void gpu_kernel(at::TensorIterator& iter, const func_t& f) {
 }
 
 }  // namespace native
+}  // namespace kintera

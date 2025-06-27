@@ -19,7 +19,8 @@ macro(setup_test namel)
 
   target_link_libraries(
     ${namel}.${buildl}
-    PRIVATE kintera::kintera kintera::vapors gtest_main
+    PRIVATE ${DISORT_LIBRARY}
+            kintera::kintera kintera::vapors gtest_main
             $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>)
 
   add_test(NAME ${namel}.${buildl} COMMAND ${namel}.${buildl})
