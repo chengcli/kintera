@@ -24,8 +24,16 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     init_species_from_yaml(filename);
   }
 
-  ThermoOptions thermo;
   auto config = YAML::LoadFile(filename);
+  return ThermoOptions::from_yaml(config);
+}
+
+ThermoOptions ThermoOptions::from_yaml(YAML::Node const& config) {
+  if (!species_initialized) {
+    init_species_from_yaml(config);
+  }
+
+  ThermoOptions thermo;
 
   if (config["reference-state"]) {
     if (config["reference-state"]["Tref"])

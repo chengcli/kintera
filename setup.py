@@ -64,8 +64,8 @@ if torch.cuda.is_available():
     ext_module = cpp_extension.CUDAExtension(
         name='kintera.kintera',
         sources=glob.glob('python/csrc/*.cpp')
-        + glob.glob('src/vapors/*.cpp')
-        + glob.glob('src/**/*.cu', recursive=True),
+        + glob.glob('src/vapors/*.cpp'),
+        #+ glob.glob('src/**/*.cu', recursive=True),
         include_dirs=include_dirs,
         library_dirs=lib_dirs,
         libraries=libraries,
