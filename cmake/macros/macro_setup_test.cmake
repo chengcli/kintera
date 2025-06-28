@@ -20,19 +20,19 @@ macro(setup_test namel)
   if (APPLE)
     target_link_libraries(
       ${namel}.${buildl}
-      PRIVATE ${DISORT_LIBRARY}
-              kintera::vapors
-              kintera::kintera gtest_main
-              $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>)
+      PRIVATE kintera::vapors
+              kintera::kintera
+              $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>
+              gtest_main)
   else()
     target_link_libraries(
       ${namel}.${buildl}
-      PRIVATE ${DISORT_LIBRARY}
+      PRIVATE kintera::kintera
               -Wl,--no-as-needed
               kintera::vapors
+              $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>
               -Wl,--as-needed
-              kintera::kintera gtest_main
-              $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>)
+              gtest_main)
   endif()
 
   add_test(NAME ${namel}.${buildl} COMMAND ${namel}.${buildl})
