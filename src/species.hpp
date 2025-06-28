@@ -15,9 +15,14 @@ namespace at {
 class Tensor;
 }  // namespace at
 
+namespace YAML {
+class Node;
+}  // namespace YAML
+
 namespace kintera {
 
 void init_species_from_yaml(std::string filename);
+void init_species_from_yaml(YAML::Node const& config);
 
 struct SpeciesThermo {
   virtual ~SpeciesThermo() = default;

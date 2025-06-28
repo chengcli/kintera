@@ -28,7 +28,10 @@ bool species_initialized = false;
 
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
+  init_species_from_yaml(config);
+}
 
+void init_species_from_yaml(YAML::Node const& config) {
   // check if species are defined
   if (!config["species"]) {
     throw std::runtime_error(

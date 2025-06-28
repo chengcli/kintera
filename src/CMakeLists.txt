@@ -58,6 +58,7 @@ target_link_libraries(${namel}_${buildl}
     ${TORCH_CPU_LIBRARY}
     ${C10_LIBRARY}
     ${HARP_LIBRARY}
+    ${DISORT_LIBRARY}
     )
 
 add_library(kintera::kintera ALIAS ${namel}_${buildl})

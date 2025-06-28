@@ -24,8 +24,16 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
     init_species_from_yaml(filename);
   }
 
-  ThermoOptions thermo;
   auto config = YAML::LoadFile(filename);
+  return ThermoOptions::from_yaml(config);
+}
+
+ThermoOptions ThermoOptions::from_yaml(YAML::Node const& config) {
+  if (!species_initialized) {
+    init_species_from_yaml(config);
+  }
+
+  ThermoOptions thermo;
 
   if (config["reference-state"]) {
     if (config["reference-state"]["Tref"])
@@ -41,12 +49,11 @@ ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
   vapor_set.insert(species_names[0]);
 
   // register reactions
-  TORCH_CHECK(config["reactions"],
-              "'reactions' is not defined in the configuration file");
-
-  // add nucleation reactions
-  thermo.nucleation() = NucleationOptions::from_yaml(config["reactions"]);
-  add_to_vapor_cloud(vapor_set, cloud_set, thermo.nucleation());
+  if (config["reactions"]) {
+    // add nucleation reactions
+    thermo.nucleation() = NucleationOptions::from_yaml(config["reactions"]);
+    add_to_vapor_cloud(vapor_set, cloud_set, thermo.nucleation());
+  }
 
   // register vapors
   for (const auto& sp : vapor_set) {

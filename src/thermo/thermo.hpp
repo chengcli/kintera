@@ -20,6 +20,10 @@
 // arg
 #include <kintera/add_arg.h>
 
+namespace YAML {
+class Node;
+}  // namespace YAML
+
 namespace kintera {
 
 template <typename T>
@@ -38,6 +42,7 @@ struct ThermoOptions : public SpeciesThermo {
    * object from it.
    */
   static ThermoOptions from_yaml(std::string const& filename);
+  static ThermoOptions from_yaml(YAML::Node const& config);
   ThermoOptions() = default;
 
   std::vector<Reaction> reactions() const;

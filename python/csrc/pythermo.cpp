@@ -159,7 +159,10 @@ Examples:
     [Reaction(H2 + O2 -> H2O)]
     )doc")
 
-      .def("from_yaml", &kintera::ThermoOptions::from_yaml, R"doc(
+      .def("from_yaml",
+           py::overload_cast<std::string const &>(
+               &kintera::ThermoOptions::from_yaml),
+           R"doc(
 Create a `ThermoOptions` object from a YAML file.
 
 Args:
