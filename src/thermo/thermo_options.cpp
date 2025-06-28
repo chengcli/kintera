@@ -49,12 +49,11 @@ ThermoOptions ThermoOptions::from_yaml(YAML::Node const& config) {
   vapor_set.insert(species_names[0]);
 
   // register reactions
-  TORCH_CHECK(config["reactions"],
-              "'reactions' is not defined in the configuration file");
-
-  // add nucleation reactions
-  thermo.nucleation() = NucleationOptions::from_yaml(config["reactions"]);
-  add_to_vapor_cloud(vapor_set, cloud_set, thermo.nucleation());
+  if (config["reactions"]) {
+    // add nucleation reactions
+    thermo.nucleation() = NucleationOptions::from_yaml(config["reactions"]);
+    add_to_vapor_cloud(vapor_set, cloud_set, thermo.nucleation());
+  }
 
   // register vapors
   for (const auto& sp : vapor_set) {
