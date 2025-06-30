@@ -68,6 +68,7 @@ if (CUDAToolkit_FOUND)
   file(GLOB cu_src_files
     *.cu
     thermo/*.cu
+    utils/*.cu
     )
 
   add_library(${namel}_cuda_${buildl}
