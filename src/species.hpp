@@ -67,6 +67,12 @@ void check_dimensions(SpeciesThermo const& thermo);
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
                            SpeciesThermo const& thermo2);
 
+extern std::vector<std::string> species_names;
+extern std::vector<double> species_weights;
+extern std::vector<double> species_cref_R;
+extern std::vector<double> species_uref_R;
+extern std::vector<double> species_sref_R;
+
 }  // namespace kintera
 
 #undef ADD_ARG
