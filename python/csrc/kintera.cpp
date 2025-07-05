@@ -1,3 +1,6 @@
+// pybind11
+#include <pybind11/stl_bind.h>
+
 // torch
 #include <torch/extension.h>
 
@@ -15,10 +18,14 @@ namespace kintera {
 
 extern std::vector<std::string> species_names;
 extern std::vector<double> species_weights;
+extern std::vector<double> species_cref_R;
+extern std::vector<double> species_uref_R;
+extern std::vector<double> species_sref_R;
 
 }  // namespace kintera
 
 void bind_thermo(py::module &m);
+void bind_constants(py::module &m);
 
 PYBIND11_MODULE(kintera, m) {
   m.attr("__name__") = "kintera";
@@ -229,6 +236,7 @@ Examples:
     )doc");
 
   bind_thermo(m);
+  bind_constants(m);
 
   m.def(
       "species_names",
@@ -238,25 +246,24 @@ Examples:
       R"doc(Retrieves the list of species names)doc");
 
   m.def(
-      "set_species_names",
-      [](const std::vector<std::string> &names) {
-        kintera::species_names = names;
-        return kintera::species_names;
-      },
-      R"doc(Sets the list of species names.)doc");
-
-  m.def(
       "species_weights",
       []() -> const std::vector<double> & { return kintera::species_weights; },
-      R"doc(Retrieves the list of species molecular weights [kg/mol])doc");
+      R"doc(Retrieves the list of species weights)doc");
 
   m.def(
-      "set_species_weights",
-      [](const std::vector<double> &weights) {
-        kintera::species_weights = weights;
-        return kintera::species_weights;
-      },
-      R"doc(Sets the list of species molecular weights [kg/mol])doc");
+      "species_cref_R",
+      []() -> const std::vector<double> & { return kintera::species_cref_R; },
+      R"doc(Retrieves the specific heat ratios for the reference state)doc");
+
+  m.def(
+      "species_uref_R",
+      []() -> const std::vector<double> & { return kintera::species_uref_R; },
+      R"doc(Retrieves the internal energy for the reference state)doc");
+
+  m.def(
+      "species_sref_R",
+      []() -> const std::vector<double> & { return kintera::species_sref_R; },
+      R"doc(Retrieves the entropy for the reference state)doc");
 
   m.def(
       "set_search_paths",
