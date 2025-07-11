@@ -9,15 +9,15 @@ from pathlib import Path
 
 from .kintera import *
 
-# link cuda library if on linux system
-p = Path(__file__).parent / "lib" / "libkintera_cuda_release.so"
-if platform.system() == "Linux" and p.exists():
-    site_dir = sysconfig.get_paths()["purelib"]
+NODELETE = getattr(os, "RTLD_NODELETE", 0x1000)
+MODE = os.RTLD_NOW | os.RTLD_GLOBAL | NODELETE
 
-    lib_path = f"{site_dir}/kintera/lib/libkintera_release.so"
-    ctypes.CDLL(lib_path, mode=os.RTLD_NOW | os.RTLD_GLOBAL)
+def load_once(name):
+    lib = Path(__file__).parent / "lib" / name
+    if platform.system()=="Linux" and lib.exists():
+        ctypes.CDLL(str(lib), mode=MODE)
 
-    lib_path = f"{site_dir}/kintera/lib/libkintera_cuda_release.so"
-    ctypes.CDLL(lib_path, mode=os.RTLD_NOW | os.RTLD_GLOBAL)
+load_once("libkintera_release.so")
+load_once("libkintera_cuda_release.so")
 
 __version__ = "0.7.3"
