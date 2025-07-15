@@ -166,6 +166,10 @@ torch::Tensor const &ThermoYImpl::compute(
 torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
                                    torch::Tensor &yfrac,
                                    torch::optional<torch::Tensor> diag) {
+  if (options.reactions().size() == 0) {  // no-op
+    return torch::Tensor();
+  }
+
   auto yfrac0 = yfrac.clone();
   auto ivol = compute("DY->V", {rho, yfrac});
   auto vec = ivol.sizes().vec();
