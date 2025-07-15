@@ -34,8 +34,7 @@ KineticsOptions KineticsOptions::from_yaml(std::string const& filename) {
   std::set<std::string> cloud_set;
 
   // register reactions
-  TORCH_CHECK(config["reactions"],
-              "'reactions' is not defined in the configuration file");
+  if (!config["reactions"]) return kinet;
 
   // add arrhenius reactions
   kinet.arrhenius() = ArrheniusOptions::from_yaml(config["reactions"]);
