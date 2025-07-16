@@ -47,6 +47,8 @@ if __name__ == "__main__":
     Tbot = 310.0  # Surface temperature in Kelvin
     nspecies = len(thermo.options.species())
     dlnp = np.log(pmax / pmin) / (nlyr - 1)
+    grav = 9.8
+    dz = 100.
 
     temp = Tbot * torch.ones((ncol, nlyr))
     pres = pmax * torch.ones((ncol, nlyr))
@@ -67,7 +69,8 @@ if __name__ == "__main__":
         xfrac[:, i, :] = xfrac[:, i - 1, :]
 
         # adiabatic extrapolation
-        thermo.extrapolate_ad(temp[:, i], pres[:, i], xfrac[:, i, :], -dlnp);
+        #thermo.extrapolate_ad(temp[:, i], pres[:, i], xfrac[:, i, :], -dlnp);
+        thermo.extrapolate_ad(temp[:, i], pres[:, i], xfrac[:, i, :], grav, dz);
 
     # compute molar concentration
     conc = thermo.compute("TPX->V", [temp, pres, xfrac])
@@ -80,7 +83,7 @@ if __name__ == "__main__":
 
     # compute relative humdity
     stoich = thermo.get_buffer("stoich")
-    rh = relative_humidity(temp, conc, stoich, thermo.options)
+    rh = relative_humidity(temp, conc, stoich, thermo.options.nucleation())
 
     print("temp = ", temp)
     print("pres = ", pres)

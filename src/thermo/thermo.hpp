@@ -253,6 +253,19 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   void extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
                       torch::Tensor xfrac, double dlnp);
 
+  /*! \brief Extrapolate state TPX to a new height along an adiabat
+   * Extrapolates the state variables (temperature, pressure, and mole
+   * fractions)
+   *
+   * \param[in,out] temp Temperature tensor (K)
+   * \param[in,out] pres Pressure tensor (Pa)
+   * \param[in,out] xfrac Mole fraction tensor
+   * \param[in] grav Gravitational acceleration (m/s^2)
+   * \param[in] dz Height change (m)
+   */
+  void extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
+                      torch::Tensor xfrac, double grav, double dz);
+
   //! \brief Calculate the equilibrium state given temperature and pressure
   /*!
    * \param[in] temp temperature, K

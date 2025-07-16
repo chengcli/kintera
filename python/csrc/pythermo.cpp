@@ -378,14 +378,16 @@ Returns:
            py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("gain"),
            py::arg("conc") = py::none())
 
-      .def("extrapolate_ad", &kintera::ThermoXImpl::extrapolate_ad, R"doc(
+      .def("extrapolate_ad",
+           py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor,
+                             double>(&kintera::ThermoXImpl::extrapolate_ad),
+           R"doc(
 Extrapolate the temperature and pressure along an adiabatic path.
 
 Args:
   temp (torch.Tensor): Temperature tensor [K].
   pres (torch.Tensor): Pressure tensor [Pa].
   xfrac (torch.Tensor): Mole fraction tensor.
-  thermo (kintera.ThermoX): Thermodynamic object.
   dlnp (float): delta ln pressure
 
 Returns:
@@ -400,9 +402,40 @@ Examples:
     >> temp = torch.tensor([300.0, 310.0, 320.0])
     >> pres = torch.tensor([1.e5, 1.e6, 1.e7])
     >> xfrac = torch.tensor([0.1, 0.2, 0.3])
-    >> thermo_x.extrapolate_ad_(temp, pres, xfrac, thermo, -0.01)
+    >> thermo_x.extrapolate_ad(temp, pres, xfrac, thermo, -0.01)
     )doc",
-           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"));
+           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"))
+
+      .def(
+          "extrapolate_ad",
+          py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor, double,
+                            double>(&kintera::ThermoXImpl::extrapolate_ad),
+          R"doc(
+Extrapolate the temperature and pressure along an adiabatic path.
+
+Args:
+  temp (torch.Tensor): Temperature tensor [K].
+  pres (torch.Tensor): Pressure tensor [Pa].
+  xfrac (torch.Tensor): Mole fraction tensor.
+  grav (float): gravitational acceleration [m/s^2].
+  dz (float): delta height [m].
+
+Returns:
+  None
+
+Examples:
+  .. code-block:: python
+
+    >> from kintera import ThermoX, ThermoOptions
+    >> options = ThermoOptions().Rd(287.0).Tref(300.0).Pref(1.e5).cref_R(2.5)
+    >> thermo = ThermoX(options)
+    >> temp = torch.tensor([300.0, 310.0, 320.0])
+    >> pres = torch.tensor([1.e5, 1.e6, 1.e7])
+    >> xfrac = torch.tensor([0.1, 0.2, 0.3])
+    >> thermo_x.extrapolate_ad(temp, pres, xfrac, thermo, -0.01)
+    )doc",
+          py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("grav"),
+          py::arg("dz"));
 
   m.def("relative_humidity", &kintera::relative_humidity, R"doc(
 Calculate the relative humidity.
