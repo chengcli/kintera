@@ -22,7 +22,7 @@ def stoichiometry(line,mol):
 		else:	num,speci=1,line[i]
 		if not (speci in mol):
 			if speci!='=':
-				print 'SPECIOUS NOT FOUND IN REACTION: %s' % linecp
+				print('SPECIOUS NOT FOUND IN REACTION: %s' % linecp)
 			continue
 		imol=mol.index(speci)
 		rset.add(speci)
@@ -34,8 +34,8 @@ if __name__=='__main__':
 	fname='./kindata.titan.moses05.N15.arsl.inp'
 	infile=open(fname,'r')
 	#### READ ELEMENTAL NAME AND ATOMIC MASS
-	print 'READ ELEMENTAL NAME AND ATOMIC MASS...'
-	print '%4s%10s%10s' % ('No.','ATOM','MASS')
+	print('READ ELEMENTAL NAME AND ATOMIC MASS...')
+	print('%4s%10s%10s' % ('No.','ATOM','MASS'))
 	atom,mass=[],[]
 	line=infile.readline()
 	while not (line=='STOP\n'):
@@ -43,13 +43,13 @@ if __name__=='__main__':
 		for i in range(0,len(line),2):
 			atom.append(line[i])
 			mass.append(float(line[i+1]))
-			print '%4i%10s%10.2f' % (len(atom),atom[-1],mass[-1])
+			print('%4i%10s%10.2f' % (len(atom),atom[-1],mass[-1]))
 		line=infile.readline()
 	natom=len(atom)
 	mass=array(mass)
 	#### READ MOLECULAR NAME AND COMPOSITION
-	print 'READ MOLECULAR NAME AND COMPOSITION...'
-	print '%4s%12s' % ('No.','MOLECULE') + natom*'%4s' % tuple(atom)
+	print('READ MOLECULAR NAME AND COMPOSITION...')
+	print('%4s%12s' % ('No.','MOLECULE') + natom*'%4s' % tuple(atom))
 	mol,cps=[],[]
 	tmp=zeros(natom)
 	line=infile.readline()
@@ -61,15 +61,15 @@ if __name__=='__main__':
 				iatom=atom.index(line[i])
 				tmp[iatom]=float(line[i+2])
 			else: break
-		print '%4i%12s' % (len(mol),mol[-1]) + natom*'%4i' % tuple(tmp)
+		print('%4i%12s' % (len(mol),mol[-1]) + natom*'%4i' % tuple(tmp))
 		cps.append(tmp)
 		tmp=zeros(natom)
 		line=infile.readline()
 	nmol=len(mol)
 	cps=array(cps)
 	#### READ REACTION LIST AND REACTION RATE
-	print 'READ REACTION LIST AND REACTION RATE...'
-	print '%6s%45s%40s%40s\t%20s' % ('No.','REACTION','LOW PRESSURE RATE','HIGH PRESSURE RATE','REFERENCE')
+	print('READ REACTION LIST AND REACTION RATE...')
+	print('%6s%45s%40s%40s\t%20s' % ('No.','REACTION','LOW PRESSURE RATE','HIGH PRESSURE RATE','REFERENCE'))
 	react,stoi,rate,ref=[],[],[],[]
 	tmp1,tmp21,tmp22,tmp3='','','',''
 	it,ik,koo=1,0,zeros(33)
@@ -116,7 +116,7 @@ if __name__=='__main__':
 		rate.append((tmp21,tmp22,koo))
 		for k in range(j+1,len(line)): tmp3+=line[k]+' '
 		ref.append(tmp3)
-		print '%6i%45s%40s%40s\t%20s' % (len(react),react[-1][0],rate[-1][0],rate[-1][1],ref[-1])
+		print('%6i%45s%40s%40s\t%20s' % (len(react),react[-1][0],rate[-1][0],rate[-1][1],ref[-1]))
 		tmp1,tmp21,tmp22,tmp3='','','',''
 		it,ik,koo=1,0,zeros(33)
 		koo[6],koo[7],koo[8]=1.,1.,0.6
@@ -124,9 +124,9 @@ if __name__=='__main__':
 		line=infile.readline()
 	nreact=len(react)
 	stoi=array(stoi)
-	print 'TOTAL NUMBER OF ATOMS:%8i' % natom
-	print 'TOTAL NUMBER OF MOLECULES:%8i' % nmol
-	print 'TOTAL NUMBER OF REACTIONS:%8i' % nreact
+	print('TOTAL NUMBER OF ATOMS:%8i' % natom)
+	print('TOTAL NUMBER OF MOLECULES:%8i' % nmol)
+	print('TOTAL NUMBER OF REACTIONS:%8i' % nreact)
 	infile.close()
 	#### OUTPUT VARIABLES TO PICKLE
 	#outfile=open('./test.pk','w')
