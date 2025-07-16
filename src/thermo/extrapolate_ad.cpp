@@ -13,14 +13,19 @@ namespace kintera {
 torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
                                         torch::Tensor xfrac, torch::Tensor gain,
                                         torch::optional<torch::Tensor> conc) {
+  if (!conc.has_value()) {
+    conc = compute("TPX->V", {temp, pres, xfrac});
+  }
+
+  if (!gain.defined()) {  // no-op
+    auto cp = eval_cp_R(temp, conc.value(), options) * constants::Rgas;
+    return (cp * xfrac).sum(-1);
+  }
+
   LogSVPFunc::init(options.nucleation());
 
   auto logsvp_ddT = LogSVPFunc::grad(temp);
   auto rate_ddT = std::get<0>(torch::linalg_lstsq(gain, logsvp_ddT));
-
-  if (!conc.has_value()) {
-    conc = compute("TPX->V", {temp, pres, xfrac});
-  }
 
   auto enthalpy =
       eval_enthalpy_R(temp, conc.value(), options) * constants::Rgas;
@@ -71,7 +76,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
   auto entropy_mole0 = entropy_vol / conc.sum(-1);
 
   auto gain = forward(temp, pres, xfrac);
-  auto cp_mole = effective_cp(temp, pres, xfrac, gain);
+  auto cp_mole = effective_cp(temp, pres, xfrac, gain, conc);
   auto cp_mole0 = cp_mole.clone();
   auto mmw = (mu * xfrac).sum(-1);
 

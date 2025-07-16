@@ -48,10 +48,11 @@ void ThermoXImpl::reset() {
     options.uref_R()[i] -= options.cref_R()[i] * options.Tref();
   }
 
-  // change entropy offset to T = 0
+  // change entropy offset to T = 1, P = 1
   for (int i = 0; i < options.vapor_ids().size(); ++i) {
-    options.sref_R()[i] -=
-        (options.cref_R()[i] + 1) * log(options.Tref()) - log(options.Pref());
+    auto Tref = std::max(options.Tref(), 1.);
+    auto Pref = std::max(options.Pref(), 1.);
+    options.sref_R()[i] -= (options.cref_R()[i] + 1) * log(Tref) - log(Pref);
   }
 
   // set cloud entropy offset to 0 (not used)
@@ -148,6 +149,10 @@ torch::Tensor const &ThermoXImpl::compute(
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                                    torch::Tensor &xfrac,
                                    torch::optional<torch::Tensor> diag) {
+  if (options.reactions().size() == 0) {  // no-op
+    return torch::Tensor();
+  }
+
   auto xfrac0 = xfrac.clone();
   auto vec = xfrac.sizes().vec();
   auto reactions = options.reactions();

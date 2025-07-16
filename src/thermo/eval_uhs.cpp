@@ -230,8 +230,6 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   at::native::call_func3(entropy_R_extra.device().type(), iter,
                          op.entropy_R_extra().data());
 
-  // std::cout << "entropy_R_extra = " << entropy_R_extra << std::endl;
-
   auto sref_R = torch::tensor(op.sref_R(), temp.options());
   auto cp_gas_R = torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, ngas);
   cp_gas_R += 1;
