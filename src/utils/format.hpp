@@ -1,5 +1,8 @@
 #pragma once
 
+// C/C++
+#include <vector>
+
 // fmt
 #include <fmt/format.h>
 
