@@ -20,10 +20,7 @@ struct fmt::formatter<kintera::NucleationOptions> {
     std::stringstream ss;
     auto r = p.reactions();
     for (size_t i = 0; i < r.size(); ++i) {
-      ss << fmt::format("R{}: {}", i + 1, r[i]);
-      if (i != r.size() - 1) {
-        ss << ", ";
-      }
+      ss << fmt::format("R{}: {}", i + 1, r[i]) << ", ";
       ss << fmt::format("Tmin= {:.2f}, Tmax= {:.2f}", p.minT()[i], p.maxT()[i]);
       ss << "\n";
     }
