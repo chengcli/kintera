@@ -21,8 +21,13 @@ namespace kintera {
 
 struct KineticsOptions : public SpeciesThermo {
   static KineticsOptions from_yaml(std::string const& filename);
-
   KineticsOptions() = default;
+  void report(std::ostream& os) const {
+    os << "* Tref = " << Tref() << " K\n"
+       << "* Pref = " << Pref() << " Pa\n"
+       << "* evolve_temperature = " << (evolve_temperature() ? "true" : "false")
+       << "\n";
+  }
 
   std::vector<Reaction> reactions() const;
 

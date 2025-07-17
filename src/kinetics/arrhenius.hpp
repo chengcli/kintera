@@ -11,6 +11,7 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
+#include <kintera/kintera_formatter.hpp>
 #include <kintera/reaction.hpp>
 
 // arg
@@ -27,6 +28,15 @@ struct ArrheniusOptions {
   static ArrheniusOptions from_yaml(const YAML::Node& node,
                                     std::string const& other_type = "");
   virtual ~ArrheniusOptions() = default;
+  void report(std::ostream& os) const {
+    os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
+       << "* Tref = " << Tref() << " K\n"
+       << "* units = " << units() << "\n"
+       << "* A = " << fmt::format("{}", A()) << "\n"
+       << "* b = " << fmt::format("{}", b()) << "\n"
+       << "* Ea_R = " << fmt::format("{}", Ea_R()) << " K\n"
+       << "* E4_R = " << fmt::format("{}", E4_R()) << "\n";
+  }
 
   // reference temperature
   ADD_ARG(double, Tref) = 300.0;

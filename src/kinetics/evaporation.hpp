@@ -11,6 +11,7 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
+#include <kintera/kintera_formatter.hpp>
 #include <kintera/reaction.hpp>
 #include <kintera/thermo/nucleation.hpp>
 
@@ -26,6 +27,16 @@ namespace kintera {
 //! Options to initialize all reaction rate constants
 struct EvaporationOptions : public NucleationOptions {
   static EvaporationOptions from_yaml(const YAML::Node& node);
+  void report(std::ostream& os) const {
+    NucleationOptions::report(os);
+    os << "* Tref = " << Tref() << " K\n"
+       << "* Pref = " << Pref() << " Pa\n"
+       << "* diff_c = " << fmt::format("{}", diff_c()) << "\n"
+       << "* diff_T = " << fmt::format("{}", diff_T()) << "\n"
+       << "* diff_P = " << fmt::format("{}", diff_P()) << "\n"
+       << "* vm = " << fmt::format("{}", vm()) << "\n"
+       << "* diameter = " << fmt::format("{}", diameter()) << "\n";
+  }
 
   // reference temperature
   ADD_ARG(double, Tref) = 300.0;

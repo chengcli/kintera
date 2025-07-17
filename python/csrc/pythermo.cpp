@@ -32,7 +32,9 @@ Examples:
 
       .def("__repr__",
            [](const kintera::NucleationOptions &self) {
-             return fmt::format("NucleationOptions({})", self);
+             std::stringstream ss;
+             self.report(ss);
+             return fmt::format("NucleationOptions({})", ss.str());
            })
 
       .ADD_OPTION(std::vector<double>, kintera::NucleationOptions, minT, R"doc(
@@ -143,7 +145,9 @@ Examples:
 
       .def("__repr__",
            [](const kintera::ThermoOptions &self) {
-             return fmt::format("ThermoOptions({})", self);
+             std::stringstream ss;
+             self.report(ss);
+             return fmt::format("ThermoOptions({})", ss.str());
            })
 
       .def("reactions", &kintera::ThermoOptions::reactions, R"doc(

@@ -19,6 +19,7 @@ struct CoagulationOptions : public ArrheniusOptions {
   CoagulationOptions() = default;
   CoagulationOptions(const ArrheniusOptions& arrhenius)
       : ArrheniusOptions(arrhenius) {}
+  void report(std::ostream& os) const { ArrheniusOptions::report(os); }
 };
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,

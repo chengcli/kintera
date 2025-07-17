@@ -2,6 +2,7 @@
 
 // C/C++
 #include <initializer_list>
+#include <iomanip>
 
 // torch
 #include <torch/nn/cloneable.h>
@@ -44,6 +45,12 @@ struct ThermoOptions : public SpeciesThermo {
   static ThermoOptions from_yaml(std::string const& filename);
   static ThermoOptions from_yaml(YAML::Node const& config);
   ThermoOptions() = default;
+  void report(std::ostream& os) const {
+    os << "* Tref = " << Tref() << " K\n"
+       << "* Pref = " << Pref() << " Pa\n"
+       << "* max_iter = " << max_iter() << "\n"
+       << "* ftol = " << ftol() << "\n";
+  }
 
   std::vector<Reaction> reactions() const;
 

@@ -7,6 +7,7 @@
 #include <torch/torch.h>
 
 // kintera
+#include <kintera/kintera_formatter.hpp>
 #include <kintera/reaction.hpp>
 #include <kintera/utils/func1.hpp>
 
@@ -22,6 +23,11 @@ namespace kintera {
 struct NucleationOptions {
   static NucleationOptions from_yaml(const YAML::Node& node);
   NucleationOptions() = default;
+  void report(std::ostream& os) const {
+    os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
+       << "* minT = " << fmt::format("{}", minT()) << " K\n"
+       << "* maxT = " << fmt::format("{}", maxT()) << " K\n";
+  }
 
   ADD_ARG(std::vector<Reaction>, reactions) = {};
   ADD_ARG(std::vector<double>, minT) = {};

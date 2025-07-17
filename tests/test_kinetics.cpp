@@ -22,6 +22,8 @@ using namespace kintera;
 
 TEST_P(DeviceTest, kinetics) {
   auto op_kinet = KineticsOptions::from_yaml("jupiter.yaml");
+  std::cout << fmt::format("{}", op_kinet) << std::endl;
+
   Kinetics kinet(op_kinet);
   kinet->to(device, dtype);
   std::cout << fmt::format("{}", kinet->options) << std::endl;

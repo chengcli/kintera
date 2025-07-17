@@ -21,6 +21,8 @@ using namespace torch::indexing;
 TEST_P(DeviceTest, thermo_y) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
 
+  std::cout << fmt::format("{}", op_thermo) << std::endl;
+
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
 
