@@ -7,6 +7,9 @@
 // kintera
 #include <kintera/constants.h>
 
+#include <kintera/kinetics/coagulation.hpp>
+#include <kintera/kinetics/evaporation.hpp>
+
 #include "thermo.hpp"
 
 namespace kintera {
@@ -53,6 +56,12 @@ ThermoOptions ThermoOptions::from_yaml(YAML::Node const& config) {
     // add nucleation reactions
     thermo.nucleation() = NucleationOptions::from_yaml(config["reactions"]);
     add_to_vapor_cloud(vapor_set, cloud_set, thermo.nucleation());
+
+    auto coagulation = CoagulationOptions::from_yaml(config["reactions"]);
+    add_to_vapor_cloud(vapor_set, cloud_set, coagulation);
+
+    auto evaporation = EvaporationOptions::from_yaml(config["reactions"]);
+    add_to_vapor_cloud(vapor_set, cloud_set, evaporation);
   }
 
   // register vapors
