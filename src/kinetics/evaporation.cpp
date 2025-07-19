@@ -54,36 +54,14 @@ EvaporationOptions EvaporationOptions::from_yaml(const YAML::Node& root) {
     TORCH_CHECK(rxn_node["rate-constant"],
                 "'rate-constant' is not defined in the reaction");
 
-    // default unit system is [mol, m, s]
-    UnitSystem us;
-
     auto node = rxn_node["rate-constant"];
 
-    // input unit system is [cm, s]
-    if (node["diff_c"]) {
-      options.diff_c().push_back(
-          us.convert_from(node["diff_c"].as<double>(), "cm^2/s"));
-    } else {
-      options.diff_c().push_back(0.2e-4);
-    }
-
+    // unit system is [mol, m, s]
+    options.diff_c().push_back(node["diff_c"].as<double>(0.2e-4));
     options.diff_T().push_back(node["diff_T"].as<double>(1.75));
     options.diff_P().push_back(node["diff_P"].as<double>(-1.));
-
-    if (node["vm"]) {
-      options.vm().push_back(
-          us.convert_from(node["vm"].as<double>(), "cm^3/mol"));
-    } else {
-      options.vm().push_back(18.e-6);
-    }
-
-    if (node["diameter"]) {
-      options.diameter().push_back(
-          us.convert_from(node["radius"].as<double>(), "cm"));
-    } else {
-      options.diameter().push_back(1.e-2);
-    }
-
+    options.vm().push_back(node["vm"].as<double>(18.e-6));
+    options.diameter().push_back(node["diameter"].as<double>(1.e-2));
     options.minT().push_back(node["minT"].as<double>(0.));
     options.maxT().push_back(node["maxT"].as<double>(1.e4));
 
@@ -129,12 +107,8 @@ void EvaporationImpl::pretty_print(std::ostream& os) const {
   os << "Evaporation Rate: " << std::endl;
 
   for (size_t i = 0; i < options.diff_c().size(); ++i) {
-    os << "(" << i + 1 << ") "
-       << "diff_c =" << options.diff_c()[i] << " m^2/s, "
-       << "diff_T =" << options.diff_T()[i] << ", "
-       << "diff_P =" << options.diff_P()[i] << ", "
-       << "vm =" << options.vm()[i] << " m^3/mol, "
-       << "diameter=" << options.diameter()[i] << " m" << std::endl;
+    os << "(" << i + 1 << ") ";
+    options.report(os);
   }
 }
 

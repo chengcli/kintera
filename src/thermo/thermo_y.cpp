@@ -187,7 +187,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   }
 
   // initial guess
-  auto &temp = compute("VU->T", {ivol, intEng});
+  auto temp = compute("VU->T", {ivol, intEng});
   auto pres = compute("VT->P", {ivol, temp});
   auto conc = ivol * inv_mu;
 

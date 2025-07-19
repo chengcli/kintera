@@ -26,9 +26,6 @@ struct fmt::formatter<kintera::ArrheniusOptions> {
 
     for (size_t i = 0; i < r.size(); ++i) {
       ss << fmt::format("R{}: {}, ", i + 1, r[i]);
-      if (i != r.size() - 1) {
-        ss << ", ";
-      }
       ss << fmt::format("A= {:.2e}, b= {:.2f}, Ea_R= {:.2f}, E4_R= {:.2f}",
                         p.A()[i], p.b()[i], p.Ea_R()[i], p.E4_R()[i]);
       ss << "\n";
@@ -53,9 +50,6 @@ struct fmt::formatter<kintera::EvaporationOptions> {
 
     for (size_t i = 0; i < r.size(); ++i) {
       ss << fmt::format("R{}: {}, ", i + 1, r[i]);
-      if (i != r.size() - 1) {
-        ss << ", ";
-      }
       ss << fmt::format(
           "diff_c= {:.2f}, diff_T= {:.2f}, diff_P= {:.2f}, "
           "vm= {:.2f}, diamter= {:.2f}",
