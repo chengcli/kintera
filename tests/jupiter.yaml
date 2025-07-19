@@ -91,7 +91,7 @@ reactions:
 
   - equation: H2O(l,p) => H2O
     type: evaporation
-    rate-constant: {formula: h2o_ideal, diff_c: 0.2, diff_T: 0., diff_P: 0., vm: 18., diamater: 1.0}
+    rate-constant: {formula: h2o_ideal, diff_c: 0.2e-4, diff_T: 0., diff_P: 0., vm: 18.e-6, diameter: 1.0e-2}
 
   - equation: NH3(s) => NH3(s,p)
     type: coagulation
@@ -99,4 +99,4 @@ reactions:
 
   - equation: NH3(s,p) => NH3
     type: evaporation
-    rate-constant: {formula: nh3_ideal, diff_c: 0.2, diff_T: 0., diff_P: 0., vm: 18., diamater: 1.0}
+    rate-constant: {formula: nh3_ideal, diff_c: 0.2e-4, diff_T: 0., diff_P: 0., vm: 18.e-6, diameter: 1.0e-2}
