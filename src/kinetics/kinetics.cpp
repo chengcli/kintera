@@ -177,7 +177,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
   auto sm = stoich.clamp_max(0.).abs();
   result *= conc.unsqueeze(-1).pow(sm).prod(-2);
 
-  return std::make_tuple(result, rc_ddC, rc_ddT);
+  return std::make_tuple(result.detach(), rc_ddC, rc_ddT);
 }
 
 }  // namespace kintera
