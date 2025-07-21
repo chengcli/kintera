@@ -45,6 +45,15 @@ ThermoOptions ThermoOptions::from_yaml(YAML::Node const& config) {
       thermo.Pref(config["reference-state"]["Pref"].as<double>());
   }
 
+  if (config["dynamics"]) {
+    if (config["dynamics"]["equation-of-state"]) {
+      thermo.max_iter() =
+          config["dynamics"]["equation-of-state"]["max-iter"].as<int>(10);
+      thermo.ftol() =
+          config["dynamics"]["equation-of-state"]["ftol"].as<double>(1e-6);
+    }
+  }
+
   std::set<std::string> vapor_set;
   std::set<std::string> cloud_set;
 
