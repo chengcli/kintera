@@ -8,7 +8,7 @@
 // base
 #include <configure.h>
 
-#define A(i, j) a[(i) * n + (j)]
+#define X(i, j) x[(i) * n + (j)]
 
 namespace kintera {
 
@@ -28,7 +28,7 @@ namespace kintera {
  * \param[in] n size of matrix
  */
 template <typename T>
-DISPATCH_MACRO int ludcmp(T *a, int *indx, int n) {
+DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
   T *vv = (T *)malloc(n * sizeof(T));
@@ -37,7 +37,7 @@ DISPATCH_MACRO int ludcmp(T *a, int *indx, int n) {
   for (i = 0; i < n; i++) {
     big = 0.0;
     for (j = 0; j < n; j++)
-      if ((temp = fabs(A(i, j))) > big) big = temp;
+      if ((temp = fabs(X(i, j))) > big) big = temp;
     if (big == 0.0) {
       printf("Singular matrix in routine ludcmp");
       free(vv);
@@ -47,15 +47,15 @@ DISPATCH_MACRO int ludcmp(T *a, int *indx, int n) {
   }
   for (j = 0; j < n; j++) {
     for (i = 0; i < j; i++) {
-      sum = A(i, j);
-      for (k = 0; k < i; k++) sum -= A(i, k) * A(k, j);
-      A(i, j) = sum;
+      sum = X(i, j);
+      for (k = 0; k < i; k++) sum -= X(i, k) * X(k, j);
+      X(i, j) = sum;
     }
     big = 0.0;
     for (i = j; i < n; i++) {
-      sum = A(i, j);
-      for (k = 0; k < j; k++) sum -= A(i, k) * A(k, j);
-      A(i, j) = sum;
+      sum = X(i, j);
+      for (k = 0; k < j; k++) sum -= X(i, k) * X(k, j);
+      X(i, j) = sum;
       if ((dum = vv[i] * fabs(sum)) >= big) {
         big = dum;
         imax = i;
@@ -63,17 +63,17 @@ DISPATCH_MACRO int ludcmp(T *a, int *indx, int n) {
     }
     if (j != imax) {
       for (k = 0; k < n; k++) {
-        dum = A(imax, k);
-        A(imax, k) = A(j, k);
-        A(j, k) = dum;
+        dum = X(imax, k);
+        X(imax, k) = X(j, k);
+        X(j, k) = dum;
       }
       d = -d;
       vv[imax] = vv[j];
     }
     indx[j] = imax;
     if (j != n - 1) {
-      dum = (1.0 / A(j, j));
-      for (i = j + 1; i < n; i++) A(i, j) *= dum;
+      dum = (1.0 / X(j, j));
+      for (i = j + 1; i < n; i++) X(i, j) *= dum;
     }
   }
   free(vv);
@@ -83,4 +83,4 @@ DISPATCH_MACRO int ludcmp(T *a, int *indx, int n) {
 
 }  // namespace kintera
 
-#undef A
+#undef X
