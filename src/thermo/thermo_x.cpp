@@ -2,6 +2,7 @@
 #include <kintera/constants.h>
 
 #include <kintera/utils/check_resize.hpp>
+#include <kintera/utils/serialize.hpp>
 
 #include "eval_uhs.hpp"
 #include "thermo.hpp"
@@ -237,6 +238,17 @@ void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
 
   if (iter >= options.max_iter()) {
     TORCH_WARN("ThermoX:_entropy_to_temp: max iteration reached");
+    // get a time stamp (string) to dump diagnostic data
+    auto time_stamp = std::to_string(std::time(nullptr));
+
+    // save torch tensor data to file with time stamp
+    auto filename = "thermo_x_entropy_to_temp_" + time_stamp + ".pt";
+
+    std::map<std::string, torch::Tensor> data;
+    data["pres"] = pres;
+    data["xfrac"] = xfrac;
+    data["entropy"] = entropy;
+    save_tensors(data, filename);
   }
 }
 
@@ -265,6 +277,19 @@ void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
 
   if (iter >= options.max_iter()) {
     TORCH_WARN("ThermoX:_xfrac_to_conc: max iteration reached");
+
+    // get a time stamp (string) to dump diagnostic data
+    auto time_stamp = std::to_string(std::time(nullptr));
+
+    // save torch tensor data to file with time stamp
+    auto filename = "thermo_x_xfrac_to_conc_" + time_stamp + ".pt";
+
+    std::map<std::string, torch::Tensor> data;
+    data["temp"] = temp;
+    data["pres"] = pres;
+    data["xfrac"] = xfrac;
+
+    save_tensors(data, filename);
   }
 
   out.set_(check_resize(out, xfrac.sizes(), xfrac.options()));

@@ -2,6 +2,7 @@
 #include <kintera/constants.h>
 
 #include <kintera/utils/check_resize.hpp>
+#include <kintera/utils/serialize.hpp>
 
 #include "eval_uhs.hpp"
 #include "thermo.hpp"
@@ -319,6 +320,17 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
 
   if (iter >= options.max_iter()) {
     TORCH_WARN("ThermoYImpl::_pres_to_temp: max iterations reached");
+
+    // get a time stamp (string) to dump diagnostic data
+    auto time_stamp = std::to_string(std::time(nullptr));
+
+    // save torch tensor data to file with time stamp
+    auto filename = "thermo_y_pres_to_temp_" + time_stamp + ".pt";
+
+    std::map<std::string, torch::Tensor> data;
+    data["pres"] = pres;
+    data["ivol"] = ivol;
+    save_tensors(data, filename);
   }
 }
 
@@ -351,6 +363,17 @@ void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
 
   if (iter >= options.max_iter()) {
     TORCH_WARN("ThermoYImpl::_intEng_to_temp: max iterations reached");
+
+    // get a time stamp (string) to dump diagnostic data
+    auto time_stamp = std::to_string(std::time(nullptr));
+
+    // save torch tensor data to file with time stamp
+    auto filename = "thermo_y_intEng_to_temp_" + time_stamp + ".pt";
+
+    std::map<std::string, torch::Tensor> data;
+    data["ivol"] = ivol;
+    data["intEng"] = intEng;
+    save_tensors(data, filename);
   }
 }
 
