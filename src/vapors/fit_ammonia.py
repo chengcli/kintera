@@ -14,5 +14,5 @@ print('cpl = %.2f kJ/kg' % a)
 
 hfl = data[:,3]
 a, b, r, p, e = linregress(temp, hfv - hfl)
-print('delta_cp = %.2f kJ/kg' % -a
+print('delta_cp = %.2f kJ/kg' % a)
 print('mu = %.2f kJ/kg' % b)
