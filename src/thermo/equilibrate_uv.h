@@ -96,6 +96,7 @@ DISPATCH_MACRO int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0,
 
   // weight matrix
   T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+  memset(weight, 0, nreaction * nspecies * sizeof(T));
 
   // right-hand-side vector
   T *rhs = (T *)malloc(nreaction * sizeof(T));
@@ -153,7 +154,7 @@ DISPATCH_MACRO int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0,
 
       // active set condition variables
       for (int i = 0; i < nspecies; i++) {
-        if (stoich[i * nreaction + j] < 0) {  // reactant
+        if ((stoich[i * nreaction + j] < 0) && (conc[i] > 0.)) {  // reactant
           log_conc_sum += (-stoich[i * nreaction + j]) * log(conc[i]);
         } else if (stoich[i * nreaction + j] > 0) {  // product
           prod *= conc[i];
@@ -166,7 +167,7 @@ DISPATCH_MACRO int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0,
         for (int i = 0; i < nspecies; i++) {
           weight[first * nspecies + i] =
               logsvp_ddT[j] * intEng[i] / heat_capacity;
-          if (stoich[i * nreaction + j] < 0) {
+          if ((stoich[i * nreaction + j] < 0) && (conc[i] > 0.)) {
             weight[first * nspecies + i] +=
                 (-stoich[i * nreaction + j]) / conc[i];
           }

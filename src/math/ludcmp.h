@@ -33,6 +33,8 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
   T big, dum, sum, temp;
   T *vv = (T *)malloc(n * sizeof(T));
 
+  for (i = 0; i < n; i++) indx[i] = i;
+
   d = 1;
   for (i = 0; i < n; i++) {
     big = 0.0;

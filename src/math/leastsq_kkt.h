@@ -164,6 +164,8 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 
     // solve the KKT system
     ludcmp(aug, lu_indx, n2 + nactive);
+    for (int i = 0; i < n2 + nactive; ++i)
+      assert(lu_indx[i] >= 0 && lu_indx[i] < n2 + nactive);
     lubksb(rhs, aug, lu_indx, n2 + nactive);
 
     // evaluate the inactive constraints
