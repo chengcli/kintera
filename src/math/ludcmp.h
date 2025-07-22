@@ -52,6 +52,7 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
       X(i, j) = sum;
     }
     big = 0.0;
+    imax = j;
     for (i = j; i < n; i++) {
       sum = X(i, j);
       for (k = 0; k < j; k++) sum -= X(i, k) * X(k, j);
