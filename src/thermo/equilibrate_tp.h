@@ -80,6 +80,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
 
   // right-hand-side vector
   T *rhs = (T *)malloc(nreaction * sizeof(T));
+  memset(rhs, 0, nreaction * sizeof(T));
 
   // active set
   int *reaction_set = (int *)malloc(nreaction * sizeof(int));
