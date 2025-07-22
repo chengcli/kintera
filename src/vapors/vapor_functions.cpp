@@ -40,3 +40,22 @@ VAPOR_FUNCTION(nh3_h2s_lewis, T) {
 }
 
 VAPOR_FUNCTION(nh3_h2s_lewis_ddT, T) { return 4705. * log(10.) / (T * T); }
+
+// H2S vapor function
+// T3: 187.63, P3: 23300., beta: 11.89, delta: 5.04, minT: 100.
+// double check for solid phase later
+VAPOR_FUNCTION(h2s_ideal, T) {
+  double betal = 11.89, gammal = 5.04, betas = 11.89, gammas = 5.04,
+         tr = 187.63, pr = 23300.0;
+  return (T > tr ? logsvp_ideal(T / tr, betal, gammal)
+                 : logsvp_ideal(T / tr, betas, gammas)) +
+         log(pr);
+}
+
+VAPOR_FUNCTION(h2s_ideal_ddT, T) {
+  double betal = 11.89, gammal = 5.04, betas = 11.89, gammas = 5.04,
+         tr = 187.63;
+  return (T > tr ? logsvp_ideal_ddT(T / tr, betal, gammal)
+                 : logsvp_ideal_ddT(T / tr, betas, gammas)) /
+         tr;
+}
