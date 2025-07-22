@@ -41,7 +41,7 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
     for (j = 0; j < n; j++)
       if ((temp = fabs(X(i, j))) > big) big = temp;
     if (big == 0.0) {
-      printf("Singular matrix in routine ludcmp");
+      // printf("Singular matrix in routine ludcmp\n");
       free(vv);
       return 1;
     }

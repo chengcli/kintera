@@ -275,9 +275,8 @@ DISPATCH_MACRO int equilibrate_uv(T *gain, T *diag, T *temp, T *conc, T h0,
   free(gain_cpy);
 
   if (iter >= *max_iter) {
-    printf("Saturation adjustment did not converge after %d iterations.\n",
-           *max_iter);
-    return 2;  // failure to converge
+    printf("equilibrate_uv did not converge after %d iterations.\n", *max_iter);
+    return 2 * 10 + err_code;  // failure to converge
   } else {
     *max_iter = iter;
     return err_code;  // success or KKT error
