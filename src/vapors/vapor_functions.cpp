@@ -59,3 +59,65 @@ VAPOR_FUNCTION(h2s_ideal_ddT, T) {
                  : logsvp_ideal_ddT(T / tr, betas, gammas)) /
          tr;
 }
+
+VAPOR_FUNCTION(h2s_antoine, T) {
+  if (T < 212.8) {
+    return logsvp_antoine(T, 4.43681, 829.439, 25.412);
+  } else {
+    return logsvp_antoine(T, 4.52887, 958.587, 0.539);
+  }
+}
+
+VAPOR_FUNCTION(h2s_antoine_ddT, T) {
+  if (T < 212.8) {
+    return logsvp_antoine_ddT(T, 829.439, 25.412);
+  } else {
+    return logsvp_antoine_ddT(T, 958.587, 0.539);
+  }
+}
+
+VAPOR_FUNCTION(ch4_ideal, T) {
+  double betal = 10.15, gammal = 2.1, betas = 10.41, gammas = 0.9, tr = 90.67,
+         pr = 11690.;
+
+  return (T > tr ? logsvp_ideal(T / tr, betal, gammal)
+                 : logsvp_ideal(T / tr, betas, gammas)) +
+         log(pr);
+}
+
+VAPOR_FUNCTION(ch4_ideal_ddT, T) {
+  double betal = 10.15, gammal = 2.1, betas = 10.41, gammas = 0.9, tr = 90.67,
+         pr = 11690.;
+
+  return (T > tr ? logsvp_ideal_ddT(T / tr, betal, gammal)
+                 : logsvp_ideal_ddT(T / tr, betas, gammas)) /
+         tr;
+}
+
+VAPOR_FUNCTION(so2_antoine, T) {
+  double A = 3.48586;
+  double B = 668.225;
+  double C = -72.252;
+  return logsvp_antoine(T, A, B, C);
+}
+
+VAPOR_FUNCTION(so2_antoine_ddT, T) {
+  double A = 3.48586;
+  double B = 668.225;
+  double C = -72.252;
+  return logsvp_antoine_ddT(T, B, C);
+}
+
+VAPOR_FUNCTION(co2_antoine, T) {
+  double A = 6.81228;
+  double B = 1301.679;
+  double C = -34.94;
+  return logsvp_antoine(T, A, B, C);
+}
+
+VAPOR_FUNCTION(co2_antoine_ddT, T) {
+  double A = 6.81228;
+  double B = 1301.679;
+  double C = -34.94;
+  return logsvp_antoine_ddT(T, B, C);
+}
