@@ -45,8 +45,6 @@ else:
 nc_home = os.environ.get("NC_HOME")
 lib_dirs.append(f"{nc_home}/lib")
 
-print(lib_dirs)
-
 libraries = parse_library_names(f"{current_dir}/build/lib")
 
 if sys.platform == "darwin":
