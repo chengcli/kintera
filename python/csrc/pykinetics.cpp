@@ -5,6 +5,7 @@
 #include <pybind11/stl.h>
 
 // kintera
+#include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
 

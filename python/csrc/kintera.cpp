@@ -5,8 +5,9 @@
 #include <torch/extension.h>
 
 // kintera
+#include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kintera_formatter.hpp>
-#include <kintera/thermo/thermo.hpp>
+#include <kintera/species.hpp>
 #include <kintera/utils/find_resource.hpp>
 
 // python
@@ -398,4 +399,19 @@ Example:
     >>> print(path)  # /path/to/resource/files/example.txt
       )doc",
         py::arg("filename"));
+
+  m.def("evolve_implicit", &kintera::evolve_implicit,
+        R"doc(
+Evolve the kinetics model via implicit integration.
+
+Args:
+  rate (torch.Tensor): The reaction rates.
+  stoich (torch.Tensor): The stoichiometric matrix.
+  jacobian (torch.Tensor): The Jacobian matrix.
+  dt (float): The time step for the evolution.
+
+Returns:
+  torch.Tensor: The concentration differences
+  )doc",
+        py::arg("rate"), py::arg("stoich"), py::arg("jacobian"), py::arg("dt"));
 }
