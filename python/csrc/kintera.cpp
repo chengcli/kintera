@@ -26,6 +26,7 @@ extern std::vector<double> species_sref_R;
 
 void bind_thermo(py::module &m);
 void bind_constants(py::module &m);
+void bind_kinetics(py::module &m);
 
 PYBIND11_MODULE(kintera, m) {
   m.attr("__name__") = "kintera";
@@ -62,6 +63,9 @@ Examples:
     >> op.species()
     ['H2', 'O2', 'N2', 'Ar']
       )doc")
+
+      .def("narrow_copy", &kintera::SpeciesThermo::narrow_copy, R"()")
+      .def("accumulate", &kintera::SpeciesThermo::accumulate, R"()")
 
       .ADD_OPTION(std::vector<int>, kintera::SpeciesThermo, vapor_ids, R"doc(
 Set or get the vapor species IDs.
@@ -237,6 +241,7 @@ Examples:
 
   bind_thermo(m);
   bind_constants(m);
+  bind_kinetics(m);
 
   m.def(
       "species_names",
