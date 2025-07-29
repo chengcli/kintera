@@ -179,12 +179,12 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .add_output(xfrac)
                   .add_owned_input(temp.unsqueeze(-1))
                   .add_owned_input(pres.unsqueeze(-1))
-                  .add_owned_input(stoich)
                   .build();
 
   // call the equilibrium solver
   at::native::call_equilibrate_tp(
       xfrac.device().type(), iter, options.vapor_ids().size(),
+      stoich,
       options.nucleation().logsvp().data(), options.ftol(), options.max_iter());
 
   vec[xfrac.dim() - 1] = reactions.size();

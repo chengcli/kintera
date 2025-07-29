@@ -10,10 +10,14 @@ using user_func2 = double (*)(double, double);
 namespace at::native {
 
 using equilibrate_tp_fn = void (*)(at::TensorIterator &iter, int ngas,
+                                   at::Tensor const &stoich,
                                    user_func1 const *logsvp_func,
                                    float logsvp_eps, int max_iter);
 
 using equilibrate_uv_fn = void (*)(at::TensorIterator &iter,
+                                   at::Tensor const &stoich,
+                                   at::Tensor const &intEng_offset,
+                                   at::Tensor const &cv_const,
                                    user_func1 const *logsvp_func,
                                    user_func1 const *logsvp_func_ddT,
                                    user_func2 const *intEng_extra,
