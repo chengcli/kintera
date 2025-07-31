@@ -113,7 +113,8 @@ TEST_P(DeviceTest, thermo_x) {
 
   //////////// Testing PVS->T conversion //////////
   thermo->forward(temp, pres, xfrac);
-  auto entropy2 = thermo->compute("TPV->S", {temp, pres, conc});
+  auto conc2 = thermo->compute("TPX->V", {temp, pres, xfrac});
+  auto entropy2 = thermo->compute("TPV->S", {temp, pres, conc2});
   auto temp2 = thermo->compute("PXS->T", {pres, xfrac, entropy2});
   EXPECT_EQ(torch::allclose(temp, temp2, /*rtol=*/1e-4, /*atol=*/1e-4), true);
 }
@@ -242,9 +243,9 @@ TEST_P(DeviceTest, equilibrate_uv) {
 
   std::cout << "yfrac after = " << yfrac.index({Slice(), 0, 0, 0}) << std::endl;
 
-  auto ivol2 = thermo_y->named_buffers()["V"];
-  auto temp2 = thermo_y->named_buffers()["T"];
-  auto pres2 = thermo_y->compute("VT->P", {ivol, temp});
+  auto ivol2 = thermo_y->compute("DY->V", {rho, yfrac});
+  auto temp2 = thermo_y->compute("VU->T", {ivol2, intEng});
+  auto pres2 = thermo_y->compute("VT->P", {ivol2, temp2});
   auto intEng2 = thermo_y->compute("VT->U", {ivol2, temp2});
 
   std::cout << "pres after = " << pres2 << std::endl;

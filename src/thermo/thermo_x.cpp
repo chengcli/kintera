@@ -80,68 +80,73 @@ void ThermoXImpl::reset() {
       }
     }
   }
-
-  // populate buffers
-  _T = register_buffer("T", torch::empty({0}, torch::kFloat64));
-  _P = register_buffer("P", torch::empty({0}, torch::kFloat64));
-  _X = register_buffer("X", torch::empty({0}, torch::kFloat64));
-  _Y = register_buffer("Y", torch::empty({0}, torch::kFloat64));
-  _V = register_buffer("V", torch::empty({0}, torch::kFloat64));
-  _D = register_buffer("D", torch::empty({0}, torch::kFloat64));
-  _H = register_buffer("H", torch::empty({0}, torch::kFloat64));
-  _S = register_buffer("S", torch::empty({0}, torch::kFloat64));
-  _G = register_buffer("G", torch::empty({0}, torch::kFloat64));
-  _cp = register_buffer("cp", torch::empty({0}, torch::kFloat64));
 }
 
 void ThermoXImpl::pretty_print(std::ostream &os) const {
   os << fmt::format("ThermoX({})", options) << std::endl;
 }
 
-torch::Tensor const &ThermoXImpl::compute(
-    std::string ab, std::vector<torch::Tensor> const &args) {
+torch::Tensor ThermoXImpl::compute(std::string ab,
+                                   std::vector<torch::Tensor> const &args) {
   if (ab == "X->Y") {
-    _X.set_(args[0]);
-    _xfrac_to_yfrac(_X, _Y);
-    return _Y;
+    auto X = args[0];
+    int ny = X.size(-1) - 1;
+    TORCH_CHECK(
+        ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
+        "mass fraction size mismatch");
+
+    auto vec = X.sizes().vec();
+    for (int i = 0; i < vec.size() - 1; ++i) {
+      vec[i + 1] = X.size(i);
+    }
+    vec[0] = ny;
+
+    auto Y = torch::empty(vec, X.options());
+    _xfrac_to_yfrac(X, Y);
+    return Y;
   } else if (ab == "V->D") {
-    _V.set_(args[0]);
-    _conc_to_dens(_V, _D);
-    return _D;
+    auto V = args[0];
+    auto D = torch::empty_like(V.select(-1, 0));
+    _conc_to_dens(V, D);
+    return D;
   } else if (ab == "TV->cp") {
-    _T.set_(args[0]);
-    _V.set_(args[1]);
-    _cp_vol(_T, _V, _cp);
-    return _cp;
+    auto T = args[0];
+    auto V = args[1];
+    auto cp = torch::empty_like(T);
+    _cp_vol(T, V, cp);
+    return cp;
   } else if (ab == "TV->H") {
-    _T.set_(args[0]);
-    _V.set_(args[1]);
-    _enthalpy_vol(_T, _V, _H);
-    return _H;
+    auto T = args[0];
+    auto V = args[1];
+    auto H = torch::empty_like(T);
+    _enthalpy_vol(T, V, H);
+    return H;
   } else if (ab == "TPX->V") {
-    _T.set_(args[0]);
-    _P.set_(args[1]);
-    _X.set_(args[2]);
-    _xfrac_to_conc(_T, _P, _X, _V);
-    return _V;
+    auto T = args[0];
+    auto P = args[1];
+    auto X = args[2];
+    auto V = torch::empty_like(X);
+    _xfrac_to_conc(T, P, X, V);
+    return V;
   } else if (ab == "TPV->S") {
-    _T.set_(args[0]);
-    _P.set_(args[1]);
-    _V.set_(args[2]);
-    _entropy_vol(_T, _P, _V, _S);
-    return _S;
+    auto T = args[0];
+    auto P = args[1];
+    auto V = args[2];
+    auto S = torch::empty_like(T);
+    _entropy_vol(T, P, V, S);
+    return S;
   } else if (ab == "PXS->T") {
-    _P.set_(args[0]);
-    _X.set_(args[1]);
-    _S.set_(args[2]);
-    _entropy_to_temp(_P, _X, _S, _T);
-    return _T;
+    auto P = args[0];
+    auto X = args[1];
+    auto S = args[2];
+    auto T = options.Tref() * torch::ones_like(P);
+    _entropy_to_temp(P, X, S, T);
+    return T;
   } else if (ab == "THS->G") {
-    _T.set_(args[0]);
-    _H.set_(args[1]);
-    _S.set_(args[2]);
-    _G.set_(_H - _T * _S);
-    return _G;
+    auto T = args[0];
+    auto H = args[1];
+    auto S = args[2];
+    return H - T * S;
   } else {
     TORCH_CHECK(false, "Unknown abbreviation: ", ab);
   }
@@ -201,15 +206,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
 void ThermoXImpl::_xfrac_to_yfrac(torch::Tensor xfrac,
                                   torch::Tensor &out) const {
   int ny = xfrac.size(-1) - 1;
-
   auto vec = xfrac.sizes().vec();
-  for (int i = 0; i < vec.size() - 1; ++i) {
-    vec[i + 1] = xfrac.size(i);
-  }
-  vec[0] = ny;
-
-  out.set_(check_resize(out, vec, xfrac.options()));
-
   // (..., ny + 1) -> (ny, ...)
   int ndim = xfrac.dim();
   for (int i = 0; i < ndim - 1; ++i) {
@@ -223,12 +220,6 @@ void ThermoXImpl::_xfrac_to_yfrac(torch::Tensor xfrac,
 
 void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
                                    torch::Tensor entropy, torch::Tensor &out) {
-  // check if cached temperature is available
-  if (out.sizes() != pres.sizes() || out.device() != pres.device() ||
-      out.dtype() != pres.dtype()) {
-    out.set_(options.Tref() * torch::ones_like(pres));
-  }
-
   int iter = 0;
   while (iter++ < options.max_iter()) {
     auto conc = compute("TPX->V", {out, pres, xfrac});
@@ -299,8 +290,6 @@ void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
 
     save_tensors(data, filename);
   }
-
-  out.set_(check_resize(out, xfrac.sizes(), xfrac.options()));
 
   out.narrow(-1, 0, ngas) = conc_gas;
   out.narrow(-1, ngas, ncloud) = conc_gas.select(-1, 0).unsqueeze(-1) *

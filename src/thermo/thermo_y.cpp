@@ -90,76 +90,104 @@ void ThermoYImpl::reset() {
       }
     }
   }
-
-  // populate buffers
-  _D = register_buffer("D", torch::empty({0}, torch::kFloat64));
-  _P = register_buffer("P", torch::empty({0}, torch::kFloat64));
-  _Y = register_buffer("Y", torch::empty({0}, torch::kFloat64));
-  _X = register_buffer("X", torch::empty({0}, torch::kFloat64));
-  _V = register_buffer("V", torch::empty({0}, torch::kFloat64));
-  _T = register_buffer("T", torch::empty({0}, torch::kFloat64));
-  _U = register_buffer("U", torch::empty({0}, torch::kFloat64));
-  _S = register_buffer("S", torch::empty({0}, torch::kFloat64));
-  _F = register_buffer("F", torch::empty({0}, torch::kFloat64));
-  _cv = register_buffer("cv", torch::empty({0}, torch::kFloat64));
 }
 
 void ThermoYImpl::pretty_print(std::ostream &os) const {
   os << fmt::format("ThermoY({})", options) << std::endl;
 }
 
-torch::Tensor const &ThermoYImpl::compute(
-    std::string ab, std::vector<torch::Tensor> const &args) {
+torch::Tensor ThermoYImpl::compute(std::string ab,
+                                   std::vector<torch::Tensor> const &args) {
   if (ab == "V->Y") {
-    _V.set_(args[0]);
-    _ivol_to_yfrac(_V, _Y);
-    return _Y;
+    auto V = args[0];
+    int ny = V.size(-1) - 1;
+    TORCH_CHECK(
+        ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
+        "mass fraction size mismatch");
+
+    auto vec = V.sizes().vec();
+    for (int i = 0; i < vec.size() - 1; ++i) {
+      vec[i + 1] = V.size(i);
+    }
+    vec[0] = ny;
+
+    auto Y = torch::empty(vec, V.options());
+    _ivol_to_yfrac(V, Y);
+    return Y;
   } else if (ab == "Y->X") {
-    _Y.set_(args[0]);
-    _yfrac_to_xfrac(_Y, _X);
-    return _X;
+    auto Y = args[0];
+    int ny = Y.size(0);
+    TORCH_CHECK(
+        ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
+        "mass fraction size mismatch");
+
+    auto vec = Y.sizes().vec();
+    for (int i = 0; i < vec.size() - 1; ++i) {
+      vec[i] = Y.size(i + 1);
+    }
+    vec.back() = ny + 1;
+
+    auto X = torch::empty(vec, Y.options());
+    _yfrac_to_xfrac(Y, X);
+    return X;
   } else if (ab == "DY->V") {
-    _D.set_(args[0]);
-    _Y.set_(args[1]);
-    _yfrac_to_ivol(_D, _Y, _V);
-    return _V;
+    auto D = args[0];
+    auto Y = args[1];
+
+    int ny = Y.size(0);
+    TORCH_CHECK(
+        ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
+        "mass fraction size mismatch");
+
+    auto vec = Y.sizes().vec();
+    vec.erase(vec.begin());
+    vec.push_back(1 + ny);
+
+    auto V = torch::empty(vec, Y.options());
+    _yfrac_to_ivol(D, Y, V);
+    return V;
   } else if (ab == "PV->T") {
-    _P.set_(args[0]);
-    _V.set_(args[1]);
-    _pres_to_temp(_P, _V, _T);
-    return _T;
+    auto P = args[0];
+    auto V = args[1];
+    auto T = torch::empty_like(P);
+    _pres_to_temp(P, V, T);
+    return T;
   } else if (ab == "VT->cv") {
-    _V.set_(args[0]);
-    _T.set_(args[1]);
-    _cv_vol(_V, _T, _cv);
-    return _cv;
+    auto V = args[0];
+    auto T = args[1];
+    auto cv = torch::empty_like(T);
+    _cv_vol(V, T, cv);
+    return cv;
   } else if (ab == "VT->U") {
-    _V.set_(args[0]);
-    _T.set_(args[1]);
-    _intEng_vol(_V, _T, _U);
-    return _U;
+    auto V = args[0];
+    auto T = args[1];
+    auto U = torch::empty_like(T);
+    _intEng_vol(V, T, U);
+    return U;
   } else if (ab == "VU->T") {
-    _V.set_(args[0]);
-    _U.set_(args[1]);
-    _intEng_to_temp(_V, _U, _T);
-    return _T;
+    auto V = args[0];
+    auto U = args[1];
+    auto T = torch::empty_like(U);
+    _intEng_to_temp(V, U, T);
+    return T;
   } else if (ab == "VT->P") {
-    _V.set_(args[0]);
-    _T.set_(args[1]);
-    _temp_to_pres(_V, _T, _P);
-    return _P;
+    auto V = args[0];
+    auto T = args[1];
+    auto P = torch::empty_like(T);
+    _temp_to_pres(V, T, P);
+    return P;
   } else if (ab == "PVT->S") {
-    _P.set_(args[0]);
-    _V.set_(args[1]);
-    _T.set_(args[2]);
-    _entropy_vol(_P, _V, _T, _S);
-    return _S;
+    auto P = args[0];
+    auto V = args[1];
+    auto T = args[2];
+    auto S = torch::empty_like(T);
+    _entropy_vol(P, V, T, S);
+    return S;
   } else if (ab == "TUS->F") {
-    _T.set_(args[0]);
-    _U.set_(args[1]);
-    _S.set_(args[2]);
-    _F.set_(_U - _T * _S);
-    return _F;
+    auto T = args[0];
+    auto U = args[1];
+    auto S = args[2];
+    return U - T * S;
   } else {
     TORCH_CHECK(false, "Unknown abbreviation: ", ab);
   }
@@ -231,17 +259,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
 void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor &out) const {
   int ny = ivol.size(-1) - 1;
-  TORCH_CHECK(ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
-              "mass fraction size mismatch");
-
   auto vec = ivol.sizes().vec();
-  for (int i = 0; i < vec.size() - 1; ++i) {
-    vec[i + 1] = ivol.size(i);
-  }
-  vec[0] = ny;
-
-  out.set_(check_resize(out, vec, ivol.options()));
-
   // (..., ny + 1) -> (ny, ...)
   int ndim = ivol.dim();
   for (int i = 0; i < ndim - 1; ++i) {
@@ -255,17 +273,7 @@ void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor &out) const {
 void ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac,
                                   torch::Tensor &out) const {
   int ny = yfrac.size(0);
-  TORCH_CHECK(ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
-              "mass fraction size mismatch");
-
   auto vec = yfrac.sizes().vec();
-  for (int i = 0; i < vec.size() - 1; ++i) {
-    vec[i] = yfrac.size(i + 1);
-  }
-  vec.back() = ny + 1;
-
-  out.set_(check_resize(out, vec, yfrac.options()));
-
   // (ny, ...) -> (..., ny + 1)
   int ndim = yfrac.dim();
   for (int i = 0; i < ndim - 1; ++i) {
@@ -284,15 +292,7 @@ void ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac,
 void ThermoYImpl::_yfrac_to_ivol(torch::Tensor rho, torch::Tensor yfrac,
                                  torch::Tensor &out) const {
   int ny = yfrac.size(0);
-  TORCH_CHECK(ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
-              "mass fraction size mismatch");
-
   auto vec = yfrac.sizes().vec();
-  vec.erase(vec.begin());
-  vec.push_back(1 + ny);
-
-  out.set_(check_resize(out, vec, yfrac.options()));
-
   // (ny, ...) -> (..., ny + 1)
   int ndim = yfrac.dim();
   for (int i = 0; i < ndim - 1; ++i) {

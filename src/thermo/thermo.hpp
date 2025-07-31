@@ -89,8 +89,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   void pretty_print(std::ostream& os) const override;
 
   //! \brief perform conversions
-  torch::Tensor const& compute(std::string ab,
-                               std::vector<torch::Tensor> const& args);
+  torch::Tensor compute(std::string ab, std::vector<torch::Tensor> const& args);
 
   //! \brief Perform saturation adjustment
   /*!
@@ -231,8 +230,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param args arguments to the conversion function
    * \return result of the conversion
    */
-  torch::Tensor const& compute(std::string ab,
-                               std::vector<torch::Tensor> const& args);
+  torch::Tensor compute(std::string ab, std::vector<torch::Tensor> const& args);
 
   //! \brief Calculate effective heat capacity at constant pressure
   /*!
@@ -291,9 +289,6 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:
-  //! cache
-  torch::Tensor _T, _P, _X, _Y, _V, _D, _H, _S, _G, _cp;
-
   //! \brief Calculate mass fraction from mole fraction
   /*!
    * \param[in] xfrac mole fraction, (..., 1 + ny)
