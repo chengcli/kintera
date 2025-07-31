@@ -149,6 +149,7 @@ torch::Tensor const &ThermoXImpl::compute(
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                                    torch::Tensor &xfrac,
+                                   torch::optional<torch::Tensor> mask,
                                    torch::optional<torch::Tensor> diag) {
   if (options.reactions().size() == 0) {  // no-op
     return torch::Tensor();
@@ -168,6 +169,11 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
     diag = torch::empty(vec, xfrac.options());
   }
 
+  auto mask_value = torch::zeros_like(temp);
+  if (mask.has_value()) {
+    mask_value = torch::where(mask.value(), 1., 0.);
+  }
+
   // prepare data
   auto iter = at::TensorIteratorConfig()
                   .resize_outputs(false)
@@ -179,12 +185,12 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .add_output(xfrac)
                   .add_owned_input(temp.unsqueeze(-1))
                   .add_owned_input(pres.unsqueeze(-1))
+                  .add_owned_input(mask_value.unsqueeze(-1))
                   .build();
 
   // call the equilibrium solver
   at::native::call_equilibrate_tp(
-      xfrac.device().type(), iter, options.vapor_ids().size(),
-      stoich,
+      xfrac.device().type(), iter, options.vapor_ids().size(), stoich,
       options.nucleation().logsvp().data(), options.ftol(), options.max_iter());
 
   vec[xfrac.dim() - 1] = reactions.size();
@@ -261,8 +267,10 @@ void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
   auto xgas = xfrac.narrow(-1, 0, ngas).sum(-1, /*keepdim=*/true);
   auto ideal_gas_conc = xfrac.narrow(-1, 0, ngas) * pres.unsqueeze(-1) /
                         (temp.unsqueeze(-1) * constants::Rgas * xgas);
+  ideal_gas_conc.clamp_min_(options.gas_floor());
 
   auto conc_gas = ideal_gas_conc.clone();
+
   int iter = 0;
   while (iter++ < options.max_iter()) {
     auto cz = eval_czh(temp, conc_gas, options);

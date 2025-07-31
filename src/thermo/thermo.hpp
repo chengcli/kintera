@@ -61,6 +61,7 @@ struct ThermoOptions : public SpeciesThermo {
 
   ADD_ARG(int, max_iter) = 10;
   ADD_ARG(double, ftol) = 1e-6;
+  ADD_ARG(double, gas_floor) = 1.e-20;
 };
 
 //! Mass Thermodynamics
@@ -102,11 +103,13 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * \param[in] rho density
    * \param[in] intEng total internal energy [J/m^3]
    * \param[in,out] yfrac mass fraction, (ny, ...)
-   * \param[out] optional diagnostic output, (..., ndiag)
+   * \param[in] mask optional mask tensor, (..., 1 + ny)
+   * \param[out] diag optional diagnostic output, (..., ndiag)
    * \return gain matrix, (..., nreaction, nreaction)
    */
   torch::Tensor forward(torch::Tensor rho, torch::Tensor intEng,
                         torch::Tensor& yfrac,
+                        torch::optional<torch::Tensor> mask = torch::nullopt,
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:
@@ -278,11 +281,13 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param[in] temp temperature, K
    * \param[in] pres pressure, Pa
    * \param[in,out] xfrac mole fraction, (..., 1 + ny)
+   * \param[in] mask optional mask tensor, (..., 1 + ny)
    * \param[out] diag optional diagnostic output, (..., ndiag)
    * \return gain matrix, (..., nreaction, nreaction)
    */
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
                         torch::Tensor& xfrac,
+                        torch::optional<torch::Tensor> mask = torch::nullopt,
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:

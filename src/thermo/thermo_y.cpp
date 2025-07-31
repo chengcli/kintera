@@ -167,6 +167,7 @@ torch::Tensor const &ThermoYImpl::compute(
 
 torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
                                    torch::Tensor &yfrac,
+                                   torch::optional<torch::Tensor> mask,
                                    torch::optional<torch::Tensor> diag) {
   if (options.reactions().size() == 0) {  // no-op
     return torch::Tensor();
@@ -192,6 +193,11 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   auto pres = compute("VT->P", {ivol, temp});
   auto conc = ivol * inv_mu;
 
+  auto mask_value = torch::zeros_like(temp);
+  if (mask.has_value()) {
+    mask_value = torch::where(mask.value(), 1., 0.);
+  }
+
   // prepare data
   auto iter =
       at::TensorIteratorConfig()
@@ -203,13 +209,13 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .add_output(conc)
           .add_owned_output(temp.unsqueeze(-1))
           .add_owned_input(intEng.unsqueeze(-1))
+          .add_owned_input(mask_value.unsqueeze(-1))
           .build();
 
   // call the equilibrium solver
   at::native::call_equilibrate_uv(
-      conc.device().type(), iter, 
-      stoich, 
-      u0 / inv_mu, // J/kg -> J/mol*/
+      conc.device().type(), iter, stoich,
+      u0 / inv_mu,   // J/kg -> J/mol*/
       cv0 / inv_mu,  // J/(kg K) -> J/(mol K)*/
       options.nucleation().logsvp().data(),
       options.nucleation().logsvp_ddT().data(), options.intEng_R_extra().data(),
@@ -303,7 +309,8 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
   int ngas = options.vapor_ids().size();
 
   // kg/m^3 -> mol/m^3
-  auto conc_gas = (ivol * inv_mu).narrow(-1, 0, ngas);
+  auto conc_gas =
+      (ivol * inv_mu).narrow(-1, 0, ngas).clamp_min(options.gas_floor());
 
   out.set_(pres / (conc_gas.sum(-1) * constants::Rgas));
   int iter = 0;

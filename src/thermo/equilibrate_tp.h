@@ -39,9 +39,13 @@ namespace kintera {
  */
 template <typename T>
 DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
-                                  T const *stoich, int nspecies, int nreaction,
-                                  int ngas, user_func1 const *logsvp_func,
+                                  T mask, T const *stoich, int nspecies,
+                                  int nreaction, int ngas,
+                                  user_func1 const *logsvp_func,
                                   float logsvp_eps, int *max_iter) {
+  // check mask
+  if (mask > 0) return 0;
+
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
     printf("Error: Non-positive temperature or pressure.\n");

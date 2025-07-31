@@ -1,5 +1,6 @@
 // torch
 #include <ATen/Dispatch.h>
+#include <ATen/Parallel.h>
 #include <ATen/native/ReduceOpsUtils.h>
 #include <ATen/native/cpu/Loops.h>
 
@@ -11,7 +12,7 @@
 namespace kintera {
 
 void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
-                             at::Tensor const& stoich,
+                             at::Tensor const &stoich,
                              user_func1 const *logsvp_func, float logsvp_eps,
                              int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
@@ -25,14 +26,15 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
     iter.for_each(
         [&](char **data, const int64_t *strides, int64_t n) {
           for (int i = 0; i < n; i++) {
-            auto umat = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
+            auto gain = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
             auto diag = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
             auto xfrac = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
             auto temp = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
             auto pres = reinterpret_cast<scalar_t *>(data[4] + i * strides[4]);
+            auto mask = reinterpret_cast<scalar_t *>(data[5] + i * strides[5]);
             int max_iter_i = max_iter;
-            equilibrate_tp(umat, diag, xfrac, *temp, *pres, stoich_ptr, nspecies,
-                           nreaction, ngas, logsvp_func, logsvp_eps,
+            equilibrate_tp(gain, diag, xfrac, *temp, *pres, *mask, stoich_ptr,
+                           nspecies, nreaction, ngas, logsvp_func, logsvp_eps,
                            &max_iter_i);
           }
         },
@@ -40,10 +42,9 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
   });
 }
 
-void call_equilibrate_uv_cpu(at::TensorIterator &iter,
-                             at::Tensor const& stoich,
-                             at::Tensor const& intEng_offset,
-                             at::Tensor const& cv_const,
+void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
+                             at::Tensor const &intEng_offset,
+                             at::Tensor const &cv_const,
                              user_func1 const *logsvp_func,
                              user_func1 const *logsvp_func_ddT,
                              user_func2 const *intEng_extra,
@@ -62,17 +63,19 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter,
     iter.for_each(
         [&](char **data, const int64_t *strides, int64_t n) {
           for (int i = 0; i < n; i++) {
-            auto umat = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
+            auto gain = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
             auto diag = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
             auto conc = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
             auto temp = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
             auto intEng =
                 reinterpret_cast<scalar_t *>(data[4] + i * strides[4]);
+            auto mask = reinterpret_cast<scalar_t *>(data[5] + i * strides[5]);
+
             int max_iter_i = max_iter;
-            equilibrate_uv(umat, diag, temp, conc, *intEng, stoich_ptr, nspecies,
-                           nreaction, intEng_offset_ptr, cv_const_ptr, logsvp_func,
-                           logsvp_func_ddT, intEng_extra, intEng_extra_ddT,
-                           logsvp_eps, &max_iter_i);
+            equilibrate_uv(gain, diag, temp, conc, *intEng, *mask, stoich_ptr,
+                           nspecies, nreaction, intEng_offset_ptr, cv_const_ptr,
+                           logsvp_func, logsvp_func_ddT, intEng_extra,
+                           intEng_extra_ddT, logsvp_eps, &max_iter_i);
           }
         },
         grain_size);
