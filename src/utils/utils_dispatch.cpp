@@ -13,7 +13,8 @@ namespace kintera {
 void call_func1_cpu(at::TensorIterator &iter, 
                     std::vector<std::string> const& funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto func_ptrs = get_host_func1(funcs).data();
+  auto f1 = get_host_func1(funcs);
+  auto f1_ptrs = f1.data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func1_cpu", [&] {
     int nout = at::native::ensure_nonempty_size(iter.output(), -1);
@@ -24,7 +25,7 @@ void call_func1_cpu(at::TensorIterator &iter,
             // temp
             auto arg1 = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
             for (int j = 0; j < nout; ++j)
-              if (func_ptrs[j]) out[j] += func_ptrs[j](*arg1);
+              if (f1_ptrs[j]) out[j] += f1_ptrs[j](*arg1);
           }
         },
         grain_size);

@@ -20,7 +20,8 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
                              std::vector<std::string> const &logsvp_func,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto logsvp_ptrs = get_host_func1(logsvp_func).data();
+  auto f1 = get_host_func1(logsvp_func);
+  auto logsvp_ptrs = f1.data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
@@ -55,13 +56,15 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
                              user_func2 const *intEng_extra_ddT,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto logsvp_ptrs = get_host_func1(logsvp_func).data();
+  auto f1 = get_host_func1(logsvp_func);
+  auto logsvp_ptrs = f1.data();
 
   // transform the name of logsvp_func by appending "_ddT"
   std::vector<std::string> logsvp_func_ddT = logsvp_func;
   for (auto &name : logsvp_func_ddT) name += "_ddT";
 
-  auto logsvp_ddT_ptrs = get_host_func1(logsvp_func_ddT).data();
+  auto f2 = get_host_func1(logsvp_func_ddT);
+  auto logsvp_ddT_ptrs = f2.data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_uv_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
