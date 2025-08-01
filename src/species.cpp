@@ -127,27 +127,23 @@ void populate_thermo(SpeciesThermo& thermo) {
 
   // populate higher-order thermodynamic functions
   while (thermo.intEng_R_extra().size() < nspecies) {
-    thermo.intEng_R_extra().push_back(nullptr);
+    thermo.intEng_R_extra().push_back("");
   }
 
   while (thermo.entropy_R_extra().size() < nspecies) {
-    thermo.entropy_R_extra().push_back(nullptr);
-  }
-
-  while (thermo.cv_R_extra().size() < nspecies) {
-    thermo.cv_R_extra().push_back(nullptr);
+    thermo.entropy_R_extra().push_back("");
   }
 
   while (thermo.cp_R_extra().size() < nspecies) {
-    thermo.cp_R_extra().push_back(nullptr);
+    thermo.cp_R_extra().push_back("");
   }
 
   while (thermo.czh().size() < nspecies) {
-    thermo.czh().push_back(nullptr);
+    thermo.czh().push_back("");
   }
 
   while (thermo.czh_ddC().size() < nspecies) {
-    thermo.czh_ddC().push_back(nullptr);
+    thermo.czh_ddC().push_back("");
   }
 }
 
@@ -170,11 +166,6 @@ void check_dimensions(SpeciesThermo const& thermo) {
       thermo.intEng_R_extra().size() == nspecies,
       "Missing non-ideal internal energies. Please call `populate_thermo` "
       "to fill in the missing data.");
-
-  TORCH_CHECK(
-      thermo.cv_R_extra().size() == nspecies,
-      "Missing non-ideal heat capacities at constant volume. Please call "
-      "`populate_thermo` to fill in the missing data.");
 
   TORCH_CHECK(
       thermo.cp_R_extra().size() == nspecies,
@@ -211,7 +202,6 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   auto& uref_R = merged.uref_R();
   auto& sref_R = merged.sref_R();
   auto& intEng_R_extra = merged.intEng_R_extra();
-  auto& cv_R_extra = merged.cv_R_extra();
   auto& cp_R_extra = merged.cp_R_extra();
   auto& entropy_R_extra = merged.entropy_R_extra();
   auto& czh = merged.czh();
@@ -232,9 +222,6 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
 
   intEng_R_extra = merge_vectors(thermo1.intEng_R_extra(),
                                  thermo2.intEng_R_extra(), nvapor1, nvapor2);
-
-  cv_R_extra = merge_vectors(thermo1.cv_R_extra(), thermo2.cv_R_extra(),
-                             nvapor1, nvapor2);
 
   cp_R_extra = merge_vectors(thermo1.cp_R_extra(), thermo2.cp_R_extra(),
                              nvapor1, nvapor2);
@@ -258,7 +245,6 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
       uref_R.erase(uref_R.begin() + first);
       sref_R.erase(sref_R.begin() + first);
       intEng_R_extra.erase(intEng_R_extra.begin() + first);
-      cv_R_extra.erase(cv_R_extra.begin() + first);
       cp_R_extra.erase(cp_R_extra.begin() + first);
       entropy_R_extra.erase(entropy_R_extra.begin() + first);
       czh.erase(czh.begin() + first);
@@ -290,7 +276,6 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
       uref_R.erase(uref_R.begin() + nvapor + first);
       sref_R.erase(sref_R.begin() + nvapor + first);
       intEng_R_extra.erase(intEng_R_extra.begin() + nvapor + first);
-      cv_R_extra.erase(cv_R_extra.begin() + nvapor + first);
       cp_R_extra.erase(cp_R_extra.begin() + nvapor + first);
       entropy_R_extra.erase(entropy_R_extra.begin() + nvapor + first);
       czh.erase(czh.begin() + nvapor + first);
@@ -322,7 +307,6 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   sref_R = sort_vectors(sref_R, sorted);
 
   intEng_R_extra = sort_vectors(intEng_R_extra, sorted);
-  cv_R_extra = sort_vectors(cv_R_extra, sorted);
   cp_R_extra = sort_vectors(cp_R_extra, sorted);
   entropy_R_extra = sort_vectors(entropy_R_extra, sorted);
 

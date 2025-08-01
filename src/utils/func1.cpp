@@ -16,10 +16,14 @@ std::vector<user_func1>& Func1Registrar::host_func_list() {
 
 user_func1 Func1Registrar::get_host_func(const std::string& name) {
   int id = get_id(name);
+  if (id == -1) return nullptr;
+
   return host_func_list()[id];
 }
 
 int Func1Registrar::get_id(const std::string& name) {
+  if (name.empty()) return -1;
+
   if (id_map().find(name) == id_map().end()) {
     throw std::runtime_error("Function " + name + " not registered.");
   }

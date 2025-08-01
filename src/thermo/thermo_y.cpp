@@ -245,8 +245,8 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
       conc.device().type(), iter, stoich,
       u0 / inv_mu,   // J/kg -> J/mol*/
       cv0 / inv_mu,  // J/(kg K) -> J/(mol K)*/
-      options.nucleation().logsvp(), options.intEng_R_extra().data(),
-      options.cv_R_extra().data(), options.ftol(), options.max_iter());
+      options.nucleation().logsvp(), options.intEng_R_extra(),
+      options.ftol(), options.max_iter());
 
   ivol = conc / inv_mu;
   yfrac = compute("V->Y", {ivol});

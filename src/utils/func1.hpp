@@ -1,7 +1,6 @@
 #pragma once
 
 // C/C++
-#include <iostream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -12,7 +11,6 @@ class Func1Registrar {
  public:
   Func1Registrar(const std::string& name, user_func1 func) {
     int id = static_cast<int>(host_func_list().size());
-    std::cout << "id = " << id << " for function '" << name << "'" << std::endl;
     id_map()[name] = id;
     host_func_list().push_back(func);
   }

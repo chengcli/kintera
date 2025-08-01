@@ -12,8 +12,8 @@
 namespace at::native {
 
 using fn1iter = void (*)(at::TensorIterator &iter, std::vector<std::string> const &funcs);
-using fn2iter = void (*)(at::TensorIterator &iter, user_func2 const *func);
-using fn3iter = void (*)(at::TensorIterator &iter, user_func3 const *func);
+using fn2iter = void (*)(at::TensorIterator &iter, std::vector<std::string> const &funcs);
+using fn3iter = void (*)(at::TensorIterator &iter, std::vector<std::string> const &funcs);
 
 DECLARE_DISPATCH(fn1iter, call_func1);
 DECLARE_DISPATCH(fn2iter, call_func2);

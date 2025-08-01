@@ -9,6 +9,7 @@
 
 // kintera
 #include <kintera/utils/func1.hpp>
+#include <kintera/utils/func2.hpp>
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
 #include "thermo_dispatch.hpp"
@@ -20,6 +21,7 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
                              std::vector<std::string> const &logsvp_func,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
+
   auto f1 = get_host_func1(logsvp_func);
   auto logsvp_ptrs = f1.data();
 
@@ -52,19 +54,35 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
                              at::Tensor const &intEng_offset,
                              at::Tensor const &cv_const,
                              std::vector<std::string> const &logsvp_func,
-                             user_func2 const *intEng_extra,
-                             user_func2 const *intEng_extra_ddT,
+                             std::vector<std::string> const &intEng_extra_func,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto f1 = get_host_func1(logsvp_func);
-  auto logsvp_ptrs = f1.data();
+
+  /////  (1) Get svp functions   /////
+  auto f1a = get_host_func1(logsvp_func);
+  auto logsvp_ptrs = f1a.data();
 
   // transform the name of logsvp_func by appending "_ddT"
-  std::vector<std::string> logsvp_func_ddT = logsvp_func;
-  for (auto &name : logsvp_func_ddT) name += "_ddT";
+  auto logsvp_ddT_func = logsvp_func;
+  for (auto &name : logsvp_ddT_func) name += "_ddT";
 
-  auto f2 = get_host_func1(logsvp_func_ddT);
-  auto logsvp_ddT_ptrs = f2.data();
+  auto f1b = get_host_func1(logsvp_ddT_func);
+  auto logsvp_ddT_ptrs = f1b.data();
+
+  /////  (2) Get intEng_extra functions   /////
+  auto f2a = get_host_func2(intEng_extra_func);
+  auto intEng_extra_ptrs = f2a.data();
+
+  // transform the name of intEng_extra_func by appending "_ddT"
+  auto intEng_extra_ddT_func = intEng_extra_func;
+  for (auto &name : intEng_extra_ddT_func) {
+    if (!name.empty()) name += "_ddT";
+  }
+
+  auto f2b = get_host_func2(intEng_extra_ddT_func);
+  auto intEng_extra_ddT_ptrs = f2b.data();
+
+  /////  (3) Launch kernel calculation    /////
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_uv_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
@@ -88,8 +106,8 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
             int max_iter_i = max_iter;
             equilibrate_uv(gain, diag, temp, conc, *intEng, *mask, stoich_ptr,
                            nspecies, nreaction, intEng_offset_ptr, cv_const_ptr,
-                           logsvp_ptrs, logsvp_ddT_ptrs, intEng_extra,
-                           intEng_extra_ddT, logsvp_eps, &max_iter_i);
+                           logsvp_ptrs, logsvp_ddT_ptrs, intEng_extra_ptrs,
+                           intEng_extra_ddT_ptrs, logsvp_eps, &max_iter_i);
           }
         },
         grain_size);
