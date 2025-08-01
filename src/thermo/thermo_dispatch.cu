@@ -18,6 +18,7 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                               std::vector<std::string> const &logsvp_func,
                               double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
+
   auto f1 = get_device_func1(logsvp_func);
   auto logsvp_ptrs = f1.data().get();
 
@@ -53,6 +54,7 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
                              user_func2 const *intEng_extra_ddT,
                              double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
+
   auto f1 = get_device_func1(logsvp_func);
   auto logsvp_ptrs = f1.data().get();
 

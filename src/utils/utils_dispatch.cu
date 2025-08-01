@@ -5,6 +5,7 @@
 #include <c10/cuda/CUDAGuard.h>
 
 // kintera
+#include <kintera/utils/func1.hpp>
 #include <kintera/loops.cuh>
 #include "utils_dispatch.hpp"
 
@@ -15,8 +16,23 @@ namespace kintera {
 void call_func1_cuda(at::TensorIterator &iter, std::vector<std::string> const& funcs) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
+  auto f1 = get_device_func1(funcs);
+  auto f1_ptrs = f1.data().get();
+
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func1_cuda", [&] {
-      // do nothing
+    int nout = at::native::ensure_nonempty_size(iter.output(), -1);
+
+    native::gpu_kernel<2>(
+        iter, [=] GPU_LAMBDA (char* const data[2], unsigned int strides[2]) {
+          auto out = reinterpret_cast<scalar_t*>(data[0] + strides[0]);
+          // temp 
+          auto arg1 = reinterpret_cast<scalar_t*>(data[1] + strides[1]);
+
+          for (int j = 0; j < nout; ++j) {
+            if (f1_ptrs[j]) out[j] += f1_ptrs[j](*arg1);
+          }
+        });
+
   });
 }
 
