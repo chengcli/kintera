@@ -92,39 +92,6 @@ Examples:
     >> nucleation = NucleationOptions().reactions([reaction])
     >> print(nucleation.reactions())
     [Reaction(H2O + CO2 -> H2CO3)]
-    )doc")
-
-      .def(
-          "set_logsvp",
-          [](kintera::NucleationOptions &self,
-             std::vector<std::string> const &formula) {
-            for (auto f : formula) {
-              if (get_user_func1().find(f) == get_user_func1().end()) {
-                throw std::runtime_error(
-                    fmt::format("Cannot find formula '{}'", f));
-              }
-
-              self.logsvp().push_back(get_user_func1()[f]);
-
-              if (get_user_func1().find(f + "_ddT") == get_user_func1().end()) {
-                throw std::runtime_error(
-                    fmt::format("Cannot find formula '{}'", f));
-              }
-
-              self.logsvp_ddT().push_back(get_user_func1()[f + "_ddT"]);
-            }
-          },
-          R"doc(
-Set the log vapor saturation pressure and its derivative with respect to temperature for the nucleation reactions.
-
-Args:
-  formula (list[str]): List of chemical formulas for which to set the log vapor saturation pressure and its derivative.
-
-Examples:
-  .. code-block:: python
-
-    >> from kintera import NucleationOptions
-    >> nucleation = NucleationOptions().set_logsvp(["h2o_ideal", "co2_ideal"])
     )doc");
 
   auto pyThermoOptions =
