@@ -23,7 +23,7 @@ void call_func1_cuda(at::TensorIterator &iter, std::vector<std::string> const& f
     native::gpu_kernel<2>(
         iter, [=] GPU_LAMBDA (char* const data[2], unsigned int strides[2]) {
           auto out = reinterpret_cast<scalar_t*>(data[0] + strides[0]);
-          // temp 
+          // temp
           auto arg1 = reinterpret_cast<scalar_t*>(data[1] + strides[1]);
 
           for (int j = 0; j < nout; ++j) {

@@ -15,7 +15,7 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
   static void init(NucleationOptions const& op) {
     _logsvp = op.logsvp();
     _logsvp_ddT = _logsvp;
-    for (auto &name: _logsvp_ddT) name += "_ddT";
+    for (auto& name : _logsvp_ddT) name += "_ddT";
   }
 
   //! \brief Computes the gradient of logarithm of the saturation vapor pressure

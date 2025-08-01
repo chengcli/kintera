@@ -9,7 +9,8 @@
 
 namespace kintera {
 
-void call_func1_cpu(at::TensorIterator &iter, std::vector<std::string> const& funcs) {
+void call_func1_cpu(at::TensorIterator &iter,
+                    std::vector<std::string> const &funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
   auto f1 = get_host_func1(funcs);
   auto f1_ptrs = f1.data();
@@ -30,7 +31,8 @@ void call_func1_cpu(at::TensorIterator &iter, std::vector<std::string> const& fu
   });
 }
 
-void call_func2_cpu(at::TensorIterator &iter, std::vector<std::string> const& funcs) {
+void call_func2_cpu(at::TensorIterator &iter,
+                    std::vector<std::string> const &funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
   auto f2 = get_host_func2(funcs);
   auto f2_ptrs = f2.data();
@@ -53,7 +55,8 @@ void call_func2_cpu(at::TensorIterator &iter, std::vector<std::string> const& fu
   });
 }
 
-void call_func3_cpu(at::TensorIterator &iter, std::vector<std::string> const& funcs) {
+void call_func3_cpu(at::TensorIterator &iter,
+                    std::vector<std::string> const &funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
   auto f3 = get_host_func3(funcs);
   auto f3_ptrs = f3.data();

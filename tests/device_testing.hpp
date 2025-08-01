@@ -45,8 +45,7 @@ INSTANTIATE_TEST_SUITE_P(
                     Parameters{torch::kCPU, torch::kFloat64},
                     // Parameters{torch::kMPS, torch::kFloat32},
                     Parameters{torch::kCUDA, torch::kFloat32},
-                    Parameters{torch::kCUDA, torch::kFloat64}
-                    ),
+                    Parameters{torch::kCUDA, torch::kFloat64}),
     [](const testing::TestParamInfo<DeviceTest::ParamType>& info) {
       std::string name = torch::Device(info.param.device_type).str();
       name += "_";

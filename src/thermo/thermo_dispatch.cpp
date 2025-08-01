@@ -10,6 +10,7 @@
 // kintera
 #include <kintera/utils/func1.hpp>
 #include <kintera/utils/func2.hpp>
+
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
 #include "thermo_dispatch.hpp"

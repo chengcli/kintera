@@ -27,7 +27,7 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
 
   // call the evaluation function
   auto cv_R_extra_func = op.intEng_R_extra();
-  for (auto &name : cv_R_extra_func) {
+  for (auto& name : cv_R_extra_func) {
     if (!name.empty()) name += "_ddT";
   }
 
@@ -121,7 +121,8 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  at::native::call_func2(intEng_R_extra.device().type(), iter, op.intEng_R_extra());
+  at::native::call_func2(intEng_R_extra.device().type(), iter,
+                         op.intEng_R_extra());
 
   auto cref_R = torch::tensor(op.cref_R(), temp.options());
   auto uref_R = torch::tensor(op.uref_R(), temp.options());
@@ -168,7 +169,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                   .build();
 
   // call the evaluation function
-  at::native::call_func3(entropy_R_extra.device().type(), iter, op.entropy_R_extra());
+  at::native::call_func3(entropy_R_extra.device().type(), iter,
+                         op.entropy_R_extra());
 
   // std::cout << "entropy_R_extra = " << entropy_R_extra << std::endl;
 
@@ -228,7 +230,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                   .build();
 
   // call the evaluation function
-  at::native::call_func3(entropy_R_extra.device().type(), iter, op.entropy_R_extra());
+  at::native::call_func3(entropy_R_extra.device().type(), iter,
+                         op.entropy_R_extra());
 
   auto sref_R = torch::tensor(op.sref_R(), temp.options());
   auto cp_gas_R = torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, ngas);

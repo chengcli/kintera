@@ -20,8 +20,7 @@ class Func1Registrar {
 
   static std::vector<std::string> list_names() {
     std::vector<std::string> names;
-    for (const auto& kv : id_map())
-      names.push_back(kv.first);
+    for (const auto& kv : id_map()) names.push_back(kv.first);
     return names;
   }
 
@@ -30,8 +29,7 @@ class Func1Registrar {
   static std::vector<user_func1>& host_func_list();
 };
 
-std::vector<user_func1> get_host_func1(
-    std::vector<std::string> const& names);
+std::vector<user_func1> get_host_func1(std::vector<std::string> const& names);
 
 #ifdef __CUDACC__
 #include <thrust/device_vector.h>
