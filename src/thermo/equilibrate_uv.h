@@ -34,23 +34,23 @@ namespace kintera {
  *                              out: adjusted concentrations.
  * \param[in] h0                initial internal energy.
  * \param[in] stoich            reaction stoichiometric matrix, nspecies x
- * nreaction.
+ *                              nreaction.
  * \param[in] nspecies          number of species in the system.
  * \param[in] nreaction         number of reactions in the system.
  * \param[in] intEng_offset     offset for internal energy calculations.
  * \param[in] cv_const          const component of heat capacity.
  * \param[in] logsvp_func       user-defined functions for logarithm of
- * saturation vapor pressure.
+ *                              saturation vapor pressure.
  * \param[in] logsvp_func_ddT   user-defined functions for derivative of logsvp
  *                              with respect to temperature.
  * \param[in] intEng_R_extra    user-defined functions for internal energy
- * calculation in addition to the linear term.
+ *                              calculation in addition to the linear term.
  * \param[in] cv_R_extra        user-defined functions for heat capacity
- * calculation in addition to the constant term.
+ *                              calculation in addition to the constant term.
  * \param[in] lnsvp_eps         tolerance for convergence in logarithm of
- * saturation vapor pressure.
+ *                              saturation vapor pressure.
  * \param[in,out] max_iter      maximum number of iterations allowed for
- * convergence.
+ *                              convergence.
  */
 template <typename T>
 DISPATCH_MACRO int equilibrate_uv(
