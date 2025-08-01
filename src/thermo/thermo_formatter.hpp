@@ -18,12 +18,8 @@ struct fmt::formatter<kintera::NucleationOptions> {
   template <typename FormatContext>
   auto format(const kintera::NucleationOptions& p, FormatContext& ctx) const {
     std::stringstream ss;
-    auto r = p.reactions();
-    for (size_t i = 0; i < r.size(); ++i) {
-      ss << fmt::format("R{}: {}", i + 1, r[i]) << ", ";
-      ss << fmt::format("Tmin= {:.2f}, Tmax= {:.2f}", p.minT()[i], p.maxT()[i]);
-      ss << "\n";
-    }
+    ss << "Nucleation options:\n";
+    p.report(ss);
 
     return fmt::format_to(ctx.out(), "{}", ss.str());
   }

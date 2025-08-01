@@ -14,7 +14,8 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
 
   static void init(NucleationOptions const& op) {
     _logsvp = op.logsvp();
-    _logsvp_ddT = op.logsvp_ddT();
+    _logsvp_ddT = _logsvp;
+    for (auto &name: _logsvp_ddT) name += "_ddT";
   }
 
   //! \brief Computes the gradient of logarithm of the saturation vapor pressure
@@ -71,8 +72,8 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
       std::vector<torch::Tensor> grad_outputs);
 
  private:
-  static std::vector<user_func1> _logsvp;
-  static std::vector<user_func1> _logsvp_ddT;
+  static std::vector<std::string> _logsvp;
+  static std::vector<std::string> _logsvp_ddT;
 };
 
 }  // namespace kintera

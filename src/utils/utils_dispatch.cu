@@ -1,29 +1,36 @@
 // torch
 #include <ATen/Dispatch.h>
+#include <ATen/TensorIterator.h>
 #include <ATen/native/ReduceOpsUtils.h>
-#include <ATen/native/cpu/Loops.h>
-#include <torch/torch.h>
+#include <c10/cuda/CUDAGuard.h>
 
 // kintera
+#include <kintera/loops.cuh>
 #include "utils_dispatch.hpp"
 
 namespace kintera {
 
 // TODO(cli): Implmenet these functions
 
-void call_func1_cuda(at::TensorIterator &iter, user_func1 const *func) {
+void call_func1_cuda(at::TensorIterator &iter, std::vector<std::string> const& funcs) {
+  at::cuda::CUDAGuard device_guard(iter.device());
+
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func1_cuda", [&] {
       // do nothing
   });
 }
 
 void call_func2_cuda(at::TensorIterator &iter, user_func2 const *func) {
+  at::cuda::CUDAGuard device_guard(iter.device());
+
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func2_cuda", [&] {
       // do nothing
   });
 }
 
 void call_func3_cuda(at::TensorIterator &iter, user_func3 const *func) {
+  at::cuda::CUDAGuard device_guard(iter.device());
+
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func3_cuda", [&] {
       // do nothing
   });

@@ -1,3 +1,6 @@
+// C/C++
+#include <algorithm>
+
 // torch
 #include <ATen/Dispatch.h>
 #include <ATen/Parallel.h>
@@ -5,6 +8,7 @@
 #include <ATen/native/cpu/Loops.h>
 
 // kintera
+#include <kintera/utils/func1.hpp>
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
 #include "thermo_dispatch.hpp"
@@ -13,9 +17,10 @@ namespace kintera {
 
 void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
                              at::Tensor const &stoich,
-                             user_func1 const *logsvp_func, float logsvp_eps,
-                             int max_iter) {
+                             std::vector<std::string> const &logsvp_func,
+                             double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
+  auto logsvp_ptrs = get_host_func1(logsvp_func).data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
@@ -34,7 +39,7 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
             auto mask = reinterpret_cast<scalar_t *>(data[5] + i * strides[5]);
             int max_iter_i = max_iter;
             equilibrate_tp(gain, diag, xfrac, *temp, *pres, *mask, stoich_ptr,
-                           nspecies, nreaction, ngas, logsvp_func, logsvp_eps,
+                           nspecies, nreaction, ngas, logsvp_ptrs, logsvp_eps,
                            &max_iter_i);
           }
         },
@@ -45,12 +50,18 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
 void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
                              at::Tensor const &intEng_offset,
                              at::Tensor const &cv_const,
-                             user_func1 const *logsvp_func,
-                             user_func1 const *logsvp_func_ddT,
+                             std::vector<std::string> const &logsvp_func,
                              user_func2 const *intEng_extra,
                              user_func2 const *intEng_extra_ddT,
-                             float logsvp_eps, int max_iter) {
+                             double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
+  auto logsvp_ptrs = get_host_func1(logsvp_func).data();
+
+  // transform the name of logsvp_func by appending "_ddT"
+  std::vector<std::string> logsvp_func_ddT = logsvp_func;
+  for (auto &name : logsvp_func_ddT) name += "_ddT";
+
+  auto logsvp_ddT_ptrs = get_host_func1(logsvp_func_ddT).data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_uv_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
@@ -74,7 +85,7 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
             int max_iter_i = max_iter;
             equilibrate_uv(gain, diag, temp, conc, *intEng, *mask, stoich_ptr,
                            nspecies, nreaction, intEng_offset_ptr, cv_const_ptr,
-                           logsvp_func, logsvp_func_ddT, intEng_extra,
+                           logsvp_ptrs, logsvp_ddT_ptrs, intEng_extra,
                            intEng_extra_ddT, logsvp_eps, &max_iter_i);
           }
         },

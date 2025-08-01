@@ -5,6 +5,7 @@
 #include <c10/cuda/CUDAGuard.h>
 
 // kintera
+#include <kintera/utils/func1.hpp>
 #include <kintera/loops.cuh>
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
@@ -13,9 +14,12 @@
 namespace kintera {
 
 void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
-                             at::Tensor const& stoich,
-                             user_func1 const *logsvp_func, float logsvp_eps,
-                             int max_iter) {
+                              at::Tensor const& stoich,
+                              std::vector<std::string> const &logsvp_func,
+                              double logsvp_eps, int max_iter) {
+  at::cuda::CUDAGuard device_guard(iter.device());
+  auto logsvp_ptrs = get_device_func1(logsvp_func).data().get();
+
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cuda", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
     int nreaction = at::native::ensure_nonempty_size(stoich, 1);
@@ -33,7 +37,8 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
         int max_iter_i = max_iter;
         equilibrate_tp(gain, diag, xfrac, *temp, *pres, *mask,
                        stoich_ptr, nspecies,
-                       nreaction, ngas, logsvp_func, logsvp_eps, &max_iter_i);
+                       nreaction, ngas, logsvp_ptrs,
+                       logsvp_eps, &max_iter_i);
       });
   });
 }
@@ -42,11 +47,19 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
                              at::Tensor const& stoich,
                              at::Tensor const& intEng_offset,
                              at::Tensor const& cv_const,
-                             user_func1 const *logsvp_func,
-                             user_func1 const *logsvp_func_ddT,
+                             std::vector<std::string> const &logsvp_func,
                              user_func2 const *intEng_extra,
                              user_func2 const *intEng_extra_ddT,
-                             float logsvp_eps, int max_iter) {
+                             double logsvp_eps, int max_iter) {
+  at::cuda::CUDAGuard device_guard(iter.device());
+  auto logsvp_ptrs = get_device_func1(logsvp_func).data().get();
+
+  // transform the name of logsvp_func by appending "_ddT"
+  std::vector<std::string> logsvp_func_ddT = logsvp_func;
+  for (auto &name : logsvp_func_ddT) name += "_ddT";
+
+  auto logsvp_ddT_ptrs = get_device_func1(logsvp_func_ddT).data().get();
+
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_uv_cuda", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
     int nreaction = at::native::ensure_nonempty_size(stoich, 1);
@@ -66,8 +79,9 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
         int max_iter_i = max_iter;
         equilibrate_uv(gain, diag, temp, conc, *intEng, *mask,
                        stoich_ptr, nspecies,
-                       nreaction, intEng_offset_ptr, cv_const_ptr, logsvp_func,
-                       logsvp_func_ddT, intEng_extra, intEng_extra_ddT,
+                       nreaction, intEng_offset_ptr, cv_const_ptr,
+                       logsvp_ptrs, logsvp_ddT_ptrs,
+                       intEng_extra, intEng_extra_ddT,
                        logsvp_eps, &max_iter_i);
       });
   });

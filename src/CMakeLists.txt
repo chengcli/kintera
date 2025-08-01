@@ -7,7 +7,6 @@
 #
 #   KINTERA_INCLUDE_DIR
 #   kintera::kintera
-#   kintera::vapors
 #   kintera::kintera_cu
 #
 # Normal usage would be:
@@ -36,7 +35,6 @@ file(GLOB src_files
   kinetics/*.cpp
   thermo/*.cpp
   math/*.cpp
-  eos/*.cpp
   units/*.cpp
   )
 
@@ -87,6 +85,7 @@ if (CUDAToolkit_FOUND)
       CUDA::cudart_static
       ${TORCH_CUDA_LIBRARY}
       ${C10_CUDA_LIBRARY}
+      kintera::vapors
       )
 
   add_library(kintera::kintera_cu ALIAS ${namel}_cuda_${buildl})

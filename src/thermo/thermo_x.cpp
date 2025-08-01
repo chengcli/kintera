@@ -196,7 +196,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
   // call the equilibrium solver
   at::native::call_equilibrate_tp(
       xfrac.device().type(), iter, options.vapor_ids().size(), stoich,
-      options.nucleation().logsvp().data(), options.ftol(), options.max_iter());
+      options.nucleation().logsvp(), options.ftol(), options.max_iter());
 
   vec[xfrac.dim() - 1] = reactions.size();
   vec.push_back(reactions.size());

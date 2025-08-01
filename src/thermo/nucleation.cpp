@@ -43,7 +43,7 @@ NucleationOptions NucleationOptions::from_yaml(const YAML::Node& root) {
     TORCH_CHECK(rxn_node["equation"],
                 "'equation' is not defined in the reaction");
 
-    std::string equation = rxn_node["equation"].as<std::string>();
+    auto equation = rxn_node["equation"].as<std::string>();
     options.reactions().push_back(Reaction(equation));
 
     TORCH_CHECK(rxn_node["rate-constant"],
@@ -57,16 +57,7 @@ NucleationOptions NucleationOptions::from_yaml(const YAML::Node& root) {
     TORCH_CHECK(node["formula"],
                 "'formula' is not defined in the rate-constant");
 
-    auto formula = node["formula"].as<std::string>();
-
-    TORCH_CHECK(get_user_func1().find(formula) != get_user_func1().end(),
-                "Formula '", formula, "' is not defined in the user functions");
-    options.logsvp().push_back(get_user_func1()[formula]);
-
-    TORCH_CHECK(
-        get_user_func1().find(formula + "_ddT") != get_user_func1().end(),
-        "Formula '", formula, "' is not defined in the user functions");
-    options.logsvp_ddT().push_back(get_user_func1()[formula + "_ddT"]);
+    options.logsvp().push_back(node["formula"].as<std::string>());
   }
 
   return options;

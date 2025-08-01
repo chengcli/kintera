@@ -26,14 +26,14 @@ struct NucleationOptions {
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* minT = " << fmt::format("{}", minT()) << " K\n"
-       << "* maxT = " << fmt::format("{}", maxT()) << " K\n";
+       << "* maxT = " << fmt::format("{}", maxT()) << " K\n"
+       << "* logsvp = " << fmt::format("{}", logsvp()) << "\n";
   }
 
   ADD_ARG(std::vector<Reaction>, reactions) = {};
   ADD_ARG(std::vector<double>, minT) = {};
   ADD_ARG(std::vector<double>, maxT) = {};
-  ADD_ARG(std::vector<user_func1>, logsvp) = {};
-  ADD_ARG(std::vector<user_func1>, logsvp_ddT) = {};
+  ADD_ARG(std::vector<std::string>, logsvp) = {};
 };
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,

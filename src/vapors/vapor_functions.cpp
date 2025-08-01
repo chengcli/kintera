@@ -1,3 +1,8 @@
+//////////////////////////////////////////////////////////////////////////
+/// MAKE SURE THAT YOU RUN gen_func1_table.py AFTER CHANGING THIS FILE ///
+/// TO UPDATE THE FUNCTION TABLE ON CUDA DEVICE                        ///
+//////////////////////////////////////////////////////////////////////////
+
 // kintera
 #include "vapor_functions.hpp"
 
@@ -27,8 +32,7 @@ VAPOR_FUNCTION(nh3_ideal, T) {
 }
 
 VAPOR_FUNCTION(nh3_ideal_ddT, T) {
-  double betal = 20.08, gammal = 5.62, betas = 20.64, gammas = 1.43, tr = 195.4,
-         pr = 6060.;
+  double betal = 20.08, gammal = 5.62, betas = 20.64, gammas = 1.43, tr = 195.4;
 
   return (T > tr ? logsvp_ideal_ddT(T / tr, betal, gammal)
                  : logsvp_ideal_ddT(T / tr, betas, gammas)) /
@@ -86,8 +90,7 @@ VAPOR_FUNCTION(ch4_ideal, T) {
 }
 
 VAPOR_FUNCTION(ch4_ideal_ddT, T) {
-  double betal = 10.15, gammal = 2.1, betas = 10.41, gammas = 0.9, tr = 90.67,
-         pr = 11690.;
+  double betal = 10.15, gammal = 2.1, betas = 10.41, gammas = 0.9, tr = 90.67;
 
   return (T > tr ? logsvp_ideal_ddT(T / tr, betal, gammal)
                  : logsvp_ideal_ddT(T / tr, betas, gammas)) /
@@ -102,7 +105,6 @@ VAPOR_FUNCTION(so2_antoine, T) {
 }
 
 VAPOR_FUNCTION(so2_antoine_ddT, T) {
-  double A = 3.48586;
   double B = 668.225;
   double C = -72.252;
   return logsvp_antoine_ddT(T, B, C);
@@ -116,7 +118,6 @@ VAPOR_FUNCTION(co2_antoine, T) {
 }
 
 VAPOR_FUNCTION(co2_antoine_ddT, T) {
-  double A = 6.81228;
   double B = 1301.679;
   double C = -34.94;
   return logsvp_antoine_ddT(T, B, C);

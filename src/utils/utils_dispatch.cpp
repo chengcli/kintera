@@ -5,12 +5,15 @@
 #include <torch/torch.h>
 
 // kintera
+#include <kintera/utils/func1.hpp>
 #include "utils_dispatch.hpp"
 
 namespace kintera {
 
-void call_func1_cpu(at::TensorIterator &iter, user_func1 const *func) {
+void call_func1_cpu(at::TensorIterator &iter, 
+                    std::vector<std::string> const& funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
+  auto func_ptrs = get_host_func1(funcs).data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func1_cpu", [&] {
     int nout = at::native::ensure_nonempty_size(iter.output(), -1);
@@ -21,7 +24,7 @@ void call_func1_cpu(at::TensorIterator &iter, user_func1 const *func) {
             // temp
             auto arg1 = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
             for (int j = 0; j < nout; ++j)
-              if (func[j]) out[j] += func[j](*arg1);
+              if (func_ptrs[j]) out[j] += func_ptrs[j](*arg1);
           }
         },
         grain_size);

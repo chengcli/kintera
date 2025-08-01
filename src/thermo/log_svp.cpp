@@ -8,8 +8,8 @@
 
 namespace kintera {
 
-std::vector<user_func1> LogSVPFunc::_logsvp = {};
-std::vector<user_func1> LogSVPFunc::_logsvp_ddT = {};
+std::vector<std::string> LogSVPFunc::_logsvp = {};
+std::vector<std::string> LogSVPFunc::_logsvp_ddT = {};
 
 torch::Tensor LogSVPFunc::grad(torch::Tensor const &temp, bool expanded) {
   auto vec = temp.sizes().vec();
@@ -33,7 +33,7 @@ torch::Tensor LogSVPFunc::grad(torch::Tensor const &temp, bool expanded) {
   }
 
   auto iter = iter_config.build();
-  at::native::call_func1(logsvp_ddT.device().type(), iter, _logsvp_ddT.data());
+  at::native::call_func1(logsvp_ddT.device().type(), iter, _logsvp_ddT);
 
   return logsvp_ddT;
 }
@@ -60,7 +60,7 @@ torch::Tensor LogSVPFunc::call(torch::Tensor const &temp, bool expanded) {
   }
 
   auto iter = iter_config.build();
-  at::native::call_func1(logsvp.device().type(), iter, _logsvp.data());
+  at::native::call_func1(logsvp.device().type(), iter, _logsvp);
 
   return logsvp;
 }

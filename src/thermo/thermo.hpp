@@ -112,9 +112,6 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:
-  //! cache
-  torch::Tensor _D, _P, _Y, _X, _V, _T, _U, _S, _F, _cv;
-
   //! \brief specific volume (m^3/kg) to mass fraction
   /*
    * \param[in] ivol inverse specific volume, kg/m^3, (..., 1 + ny)
