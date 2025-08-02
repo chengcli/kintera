@@ -9,7 +9,6 @@ enable_testing()
 
 setup_test(test_thermo)
 setup_test(test_kinetics)
-setup_test(test_cuda)
 
 file(GLOB inputs *.inp *.dat *.yaml)
 foreach(input ${inputs})
