@@ -25,7 +25,7 @@ namespace kintera {
  *
  * \param[out] gain           WS gain matrix
  * \param[in,out]             xfrac array of species mole fractions, modified in
- * place.
+ *                            place.
  * \param[in] temp            equilibrium temperature in Kelvin.
  * \param[in] pres            equilibrium pressure in Pascals.
  * \param[in] nspecies        number of species in the system.
@@ -33,9 +33,9 @@ namespace kintera {
  * \param[in] logsvp_func     user-defined function for logarithm of saturation
  *                            vapor pressure with respect to temperature.
  * \param[in]                 logsvp_eps tolerance for convergence in logarithm
- * of saturation vapor pressure.
+ *                            of saturation vapor pressure.
  * \param[in,out] max_iter    maximum number of iterations allowed for
- * convergence.
+ *                            convergence.
  */
 template <typename T>
 DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
