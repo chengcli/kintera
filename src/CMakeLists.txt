@@ -57,6 +57,7 @@ target_link_libraries(${namel}_${buildl}
     ${C10_LIBRARY}
     ${HARP_LIBRARY}
     ${DISORT_LIBRARY}
+    kintera::vapors
     )
 
 add_library(kintera::kintera ALIAS ${namel}_${buildl})

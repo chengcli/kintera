@@ -21,7 +21,7 @@ def setup_earth_thermo():
     nucleation.reactions([Reaction("H2O <=> H2O(l)")])
     nucleation.minT([200.0])
     nucleation.maxT([400.0])
-    nucleation.set_logsvp(["h2o_ideal"])
+    nucleation.logsvp(["h2o_ideal"])
 
     op = ThermoOptions().max_iter(15).ftol(1.e-8)
     op.vapor_ids([0, 1])

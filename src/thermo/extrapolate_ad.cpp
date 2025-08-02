@@ -31,7 +31,7 @@ torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
   if (gain.device().is_cpu()) {
     rate_ddT = std::get<0>(torch::linalg_lstsq(gain, logsvp_ddT));
   } else {
-    auto pinv = torch::linalg_pinv(gain, /*atol=*/1e-6, /*rtol=*/1e-6);
+    auto pinv = torch::linalg_pinv(gain, /*atol=*/1e-6);
     rate_ddT = pinv.matmul(logsvp_ddT.unsqueeze(-1)).squeeze(-1);
   }
 

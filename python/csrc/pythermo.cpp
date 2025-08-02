@@ -73,6 +73,25 @@ Examples:
     [300.0]
     )doc")
 
+      .ADD_OPTION(std::vector<std::string>, kintera::NucleationOptions, logsvp,
+                  R"doc(
+Set or get the log of saturation vapor function for the nucleation reaction.
+
+Args:
+  value (list[str]): list of log saturation vapor pressure functions.
+
+Returns:
+  Nucleation | list[str]: class object if argument is not empty, otherwise sets the value
+
+Examples:
+  .. code-block:: python
+
+    >> from kintera import NucleationOptions
+    >> nucleation = NucleationOptions().logsvp(["h2o_ideal"])
+    >> print(nucleation.logsvp())
+    ["h2o_ideal"]
+    )doc")
+
       .ADD_OPTION(std::vector<kintera::Reaction>, kintera::NucleationOptions,
                   reactions,
                   R"doc(
