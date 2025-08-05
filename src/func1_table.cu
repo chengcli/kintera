@@ -23,6 +23,7 @@ DISPATCH_MACRO extern double co2_antoine(double);
 DISPATCH_MACRO extern double co2_antoine_ddT(double);
 
 __device__ user_func1 func1_table[] = {
+    nullptr,
     h2o_ideal,
     h2o_ideal_ddT,
     nh3_ideal,

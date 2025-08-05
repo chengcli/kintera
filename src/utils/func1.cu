@@ -10,25 +10,32 @@ extern __device__ __constant__ user_func1* func1_table_device_ptr;
 thrust::device_vector<user_func1> get_device_func1(
     std::vector<std::string> const& names)
 {
-  // Get full device function table
+  // (1) Get full device function table
   user_func1* d_full_table = nullptr;
   cudaMemcpyFromSymbol(&d_full_table, func1_table_device_ptr, sizeof(user_func1*));
 
-  // Create thrust host vector for selected function pointers
-  thrust::host_vector<user_func1> h_ptrs(names.size());
+  // (2) Build a host‐side index list
+  std::vector<int> h_idx(names.size());
 
   for (size_t i = 0; i < names.size(); ++i) {
-    int idx = Func1Registrar::get_id(names[i]);
-
-    if (idx == -1) {  // null-op
-      h_ptrs[i] = nullptr;
-      continue;
-    }
-
-    // Copy individual device function pointer to host
-    cudaMemcpy(&h_ptrs[i], d_full_table + idx, sizeof(user_func1), cudaMemcpyDeviceToHost);
+    int id = Func1Registrar::get_id(names[i]);
+    h_idx[i] = (id < 0 ? 0 : id + 1);
   }
 
-  // Copy to thrust device vector
-  return thrust::device_vector<user_func1>(h_ptrs);
+  // (3) Copy indices to device
+  thrust::device_vector<int> d_idx = h_idx;
+
+  // (4) Wrap the raw table pointer
+  thrust::device_ptr<user_func1> full_ptr(d_full_table);
+
+  // (5) Allocate your result and do one gather
+  thrust::device_vector<user_func1> result(names.size());
+  thrust::gather(
+    d_idx.begin(),           // where to read your indices
+    d_idx.end(),
+    full_ptr,                // base array to gather from
+    result.begin()           // write results here
+  );
+
+  return result;
 }

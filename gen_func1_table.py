@@ -16,6 +16,7 @@ using user_func1 = double (*)(double);
 {declarations}
 
 __device__ user_func1 func1_table[] = {{
+    nullptr,
 {pointers}
 }};
 
