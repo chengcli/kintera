@@ -1,6 +1,6 @@
 // thrust
 #include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
+#include <thrust/gather.h>
 
 // kintera
 #include "func1.hpp"

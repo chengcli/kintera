@@ -1,5 +1,8 @@
 #pragma once
 
+// C/C++
+#include <cstddef>
+
 // NetCDF output (NETCDFOUTPUT or NO_NETCDFOUTPUT)
 #define @NETCDF_OPTION@
 
@@ -12,5 +15,6 @@
   #define DISPATCH_MACRO
 #endif
 
+constexpr size_t KINTERA_CUDA_HEAP_SIZE = 256 * 1024 * 1024; // 256 MB
 constexpr char KINTERA_ROOT_DIR[] = "@CMAKE_CURRENT_SOURCE_DIR@";
 constexpr char HARP_ROOT_DIR[] = "@HARP_INCLUDE_DIR@";

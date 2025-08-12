@@ -20,6 +20,9 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                               double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
+  size_t heap_bytes = KINTERA_CUDA_HEAP_SIZE;
+  cudaError_t err = cudaDeviceSetLimit(cudaLimitMallocHeapSize, heap_bytes);
+
   auto f1 = get_device_func1(logsvp_func);
   auto logsvp_ptrs = f1.data().get();
 

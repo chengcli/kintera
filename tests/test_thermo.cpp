@@ -215,6 +215,34 @@ TEST_P(DeviceTest, equilibrate_tp) {
             true);
 }
 
+TEST_P(DeviceTest, equilibrate_tp_large) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(15);
+
+  ThermoX thermo_x(op_thermo);
+  thermo_x->to(device, dtype);
+
+  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
+  auto xfrac =
+      torch::zeros({100, 200, 200, 1 + ny}, torch::device(device).dtype(dtype));
+
+  for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
+  xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
+
+  auto temp =
+      200.0 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+  auto pres = 1.e5 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+
+  std::cout << "xfrac before = " << xfrac[0][0][0] << std::endl;
+  thermo_x->forward(temp, pres, xfrac);
+  std::cout << "xfrac after = " << xfrac[0][0][0] << std::endl;
+
+  EXPECT_EQ(torch::allclose(
+                xfrac.sum(-1),
+                torch::ones({100, 200, 200}, torch::device(device).dtype(dtype)),
+                /*rtol=*/1e-4, /*atol=*/1e-4),
+            true);
+}
+
 TEST_P(DeviceTest, equilibrate_uv) {
   auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
 
@@ -251,6 +279,34 @@ TEST_P(DeviceTest, equilibrate_uv) {
   std::cout << "pres after = " << pres2 << std::endl;
   std::cout << "temp after = " << temp2 << std::endl;
   std::cout << "intEng after = " << intEng2 << std::endl;
+
+  EXPECT_EQ(torch::allclose(intEng, intEng2, 1e-4, 1e-4), true);
+}
+
+TEST_P(DeviceTest, equilibrate_uv_large) {
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+
+  ThermoY thermo_y(op_thermo);
+  thermo_y->to(device, dtype);
+
+  int ny = thermo_y->options.vapor_ids().size() +
+           thermo_y->options.cloud_ids().size() - 1;
+  auto yfrac = torch::zeros({ny, 100, 200, 200}, torch::device(device).dtype(dtype));
+  for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
+
+  auto rho = 0.1 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+  auto pres = 1.e5 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+
+  auto ivol = thermo_y->compute("DY->V", {rho, yfrac});
+  auto temp = thermo_y->compute("PV->T", {pres, ivol});
+  auto intEng = thermo_y->compute("VT->U", {ivol, temp});
+
+  thermo_y->forward(rho, intEng, yfrac);
+
+  auto ivol2 = thermo_y->compute("DY->V", {rho, yfrac});
+  auto temp2 = thermo_y->compute("VU->T", {ivol2, intEng});
+  auto pres2 = thermo_y->compute("VT->P", {ivol2, temp2});
+  auto intEng2 = thermo_y->compute("VT->U", {ivol2, temp2});
 
   EXPECT_EQ(torch::allclose(intEng, intEng2, 1e-4, 1e-4), true);
 }
