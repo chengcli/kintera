@@ -230,16 +230,17 @@ TEST_P(DeviceTest, equilibrate_tp_large) {
 
   auto temp =
       200.0 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
-  auto pres = 1.e5 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+  auto pres =
+      1.e5 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
 
   std::cout << "xfrac before = " << xfrac[0][0][0] << std::endl;
   thermo_x->forward(temp, pres, xfrac);
   std::cout << "xfrac after = " << xfrac[0][0][0] << std::endl;
 
-  EXPECT_EQ(torch::allclose(
-                xfrac.sum(-1),
-                torch::ones({100, 200, 200}, torch::device(device).dtype(dtype)),
-                /*rtol=*/1e-4, /*atol=*/1e-4),
+  EXPECT_EQ(torch::allclose(xfrac.sum(-1),
+                            torch::ones({100, 200, 200},
+                                        torch::device(device).dtype(dtype)),
+                            /*rtol=*/1e-4, /*atol=*/1e-4),
             true);
 }
 
@@ -291,11 +292,14 @@ TEST_P(DeviceTest, equilibrate_uv_large) {
 
   int ny = thermo_y->options.vapor_ids().size() +
            thermo_y->options.cloud_ids().size() - 1;
-  auto yfrac = torch::zeros({ny, 100, 200, 200}, torch::device(device).dtype(dtype));
+  auto yfrac =
+      torch::zeros({ny, 100, 200, 200}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
-  auto rho = 0.1 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
-  auto pres = 1.e5 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+  auto rho =
+      0.1 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+  auto pres =
+      1.e5 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
 
   auto ivol = thermo_y->compute("DY->V", {rho, yfrac});
   auto temp = thermo_y->compute("PV->T", {pres, ivol});
