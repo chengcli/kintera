@@ -12,8 +12,9 @@ extern char pathsep;
 /*!
  * \ingroup resource
  *
- * \param s        Input string
- * \returns a copy of the string, stripped of all non- printing characters.
+ * \param s         Input string
+ * \returns a       copy of the string, stripped of all non-printing
+ *                  characters.
  */
 std::string stripnonprint(std::string const& s);
 
@@ -22,7 +23,7 @@ std::string stripnonprint(std::string const& s);
  * \ingroup resource
  *
  * \param dirs  Vector of strings containing the directories to be serialized
- * \return  pointer to string containing the serialized directories
+ * \return      pointer to string containing the serialized directories
  *
  */
 char* serialize_search_paths(std::vector<std::string> const& dirs);
@@ -31,8 +32,8 @@ char* serialize_search_paths(std::vector<std::string> const& dirs);
 /*!
  * \ingroup resource
  *
- * \param p Pointer to string containing the serialized directories
- * \return  Vector of strings containing the deserialized directories
+ * \param p     Pointer to string containing the serialized directories
+ * \return      Vector of strings containing the deserialized directories
  *
  */
 std::vector<std::string> deserialize_search_paths(char const* p);

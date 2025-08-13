@@ -26,5 +26,37 @@ void gpu_kernel(at::TensorIterator& iter, const func_t& f) {
     });
 }
 
+template <typename scalar_t, int Arity, typename func_t>
+void pool_kernel(at::TensorIterator& iter, int dim, int buffers,
+                 const func_t& f) {
+  TORCH_CHECK(iter.ninputs() + iter.noutputs() == Arity);
+
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+  std::array<char*, Arity> data;
+  for (int i = 0; i < Arity; i++) {
+    data[i] = (char*)iter.data_ptr(i);
+  }
+
+  auto offset_calc = ::make_offset_calculator<Arity>(iter);
+  int64_t numel = iter.input().numel();
+
+  void *poolPtr = allocatePools(n);
+
+  at::native::launch_legacy_kernel<128, 1>(numel,
+      [=] __device__(int idx) {
+      poolinit(poolPtr, idx);
+      auto offsets = offset_calc.get(idx);
+      f(data.data(), offsets.data());
+    });
+
+  C10_CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  freePools(poolPtr);
+
+  // Check for launch errors
+  C10_CUDA_CHECK(cudaGetLastError());
+}
+
 }  // namespace native
 }  // namespace kintera
