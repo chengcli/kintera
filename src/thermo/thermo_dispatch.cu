@@ -29,6 +29,8 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cuda", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
     int nreaction = at::native::ensure_nonempty_size(stoich, 1);
+    printf("nspecies: %d, nreaction: %d, ngas: %d\n",
+           nspecies, nreaction, ngas);
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
 

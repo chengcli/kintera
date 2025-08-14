@@ -26,7 +26,7 @@ void gpu_kernel(at::TensorIterator& iter, const func_t& f) {
     });
 }
 
-template <typename scalar_t, int Arity, typename func_t>
+/*template <typename scalar_t, int Arity, typename func_t>
 void pool_kernel(at::TensorIterator& iter, int dim, int buffers,
                  const func_t& f) {
   TORCH_CHECK(iter.ninputs() + iter.noutputs() == Arity);
@@ -56,7 +56,7 @@ void pool_kernel(at::TensorIterator& iter, int dim, int buffers,
 
   // Check for launch errors
   C10_CUDA_CHECK(cudaGetLastError());
-}
+}*/
 
 }  // namespace native
 }  // namespace kintera

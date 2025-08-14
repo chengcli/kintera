@@ -31,7 +31,8 @@ template <typename T>
 DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
-  T *vv = (T *)malloc(n * sizeof(T));
+  // T *vv = (T *)malloc(n * sizeof(T));
+  T vv[3 + 9];
 
   for (i = 0; i < n; i++) indx[i] = i;
 
@@ -42,7 +43,7 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
       if ((temp = fabs(X(i, j))) > big) big = temp;
     if (big == 0.0) {
       // printf("Singular matrix in routine ludcmp\n");
-      free(vv);
+      // free(vv);
       return 1;
     }
     vv[i] = 1.0 / big;
@@ -79,7 +80,7 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
       for (i = j + 1; i < n; i++) X(i, j) *= dum;
     }
   }
-  free(vv);
+  // free(vv);
 
   return d;
 }
