@@ -88,7 +88,7 @@ find_package(Harp REQUIRED)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fmt.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/gtest.cmake)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/yamlpp.cmake)
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/memorypool.cmake)
+#include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/memorypool.cmake)
 
 if (CMAKE_CUDA_COMPILER)
   find_package(CUDAToolkit REQUIRED)

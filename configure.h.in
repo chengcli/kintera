@@ -9,12 +9,29 @@
 // PNetCDF output (PNETCDFOUTPUT or NO_PNETCDFOUTPUT)
 #define @PNETCDF_OPTION@
 
+// Memory pool usage (USE_MEMORY_POOL or NO_USE_MEMORY_POOL)
+#define @MEMORY_POOL_OPTION@
+
 #ifdef __CUDACC__
-  #define DISPATCH_MACRO __host__ __device__
+  #define DISPATCH_MACRO    __device__
+  #ifdef USE_MEMORY_POOL
+    #define smalloc(size)   poolmalloc(size)
+    #define sfree(ptr)      poolfree(ptr)
+
+    #include <kintera/mempool/poolalloc.cuh>
+  #else
+    #define smalloc(size)     malloc(size)
+    #define sfree(ptr)        free(ptr)
+    constexpr size_t KINTERA_CUDA_HEAP_SIZE = 256 * 1024 * 1024; // 256 MB
+  #endif
 #else
   #define DISPATCH_MACRO
+  #define smalloc(size)     malloc(size)
+  #define sfree(ptr)        free(ptr)
 #endif
 
-constexpr size_t KINTERA_CUDA_HEAP_SIZE = 256 * 1024 * 1024; // 256 MB
+constexpr size_t GPU_MEM_POOL_SIZE = 1024;
+constexpr size_t MEM_MAX_BLOCKS = 128;
+
 constexpr char KINTERA_ROOT_DIR[] = "@CMAKE_CURRENT_SOURCE_DIR@";
 constexpr char HARP_ROOT_DIR[] = "@HARP_INCLUDE_DIR@";

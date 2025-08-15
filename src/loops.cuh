@@ -4,6 +4,9 @@
 #include <ATen/TensorIterator.h>
 #include <ATen/native/cuda/Loops.cuh>
 
+// mempool
+#include <kintera/mempool/poolalloc.cuh>
+
 namespace kintera {
 namespace native {
 
@@ -26,12 +29,9 @@ void gpu_kernel(at::TensorIterator& iter, const func_t& f) {
     });
 }
 
-template <typename scalar_t, int Arity, typename func_t>
-void pool_kernel(at::TensorIterator& iter, int dim, int buffers,
-                 const func_t& f) {
+template <int Arity, typename func_t>
+void pool_kernel(at::TensorIterator& iter, const func_t& f) {
   TORCH_CHECK(iter.ninputs() + iter.noutputs() == Arity);
-
-  auto stream = at::cuda::getCurrentCUDAStream();
 
   std::array<char*, Arity> data;
   for (int i = 0; i < Arity; i++) {
@@ -39,9 +39,9 @@ void pool_kernel(at::TensorIterator& iter, int dim, int buffers,
   }
 
   auto offset_calc = ::make_offset_calculator<Arity>(iter);
-  int64_t numel = iter.input().numel();
+  int64_t numel = iter.numel();
 
-  void *poolPtr = allocatePools(n);
+  void *poolPtr = allocatePools(numel);
 
   at::native::launch_legacy_kernel<128, 1>(numel,
       [=] __device__(int idx) {
@@ -49,13 +49,12 @@ void pool_kernel(at::TensorIterator& iter, int dim, int buffers,
       auto offsets = offset_calc.get(idx);
       f(data.data(), offsets.data());
     });
+  printf("kernel launched with %d threads\n", numel);
 
-  C10_CUDA_CHECK(cudaStreamSynchronize(stream));
+  cudaDeviceSynchronize();
 
   freePools(poolPtr);
-
-  // Check for launch errors
-  C10_CUDA_CHECK(cudaGetLastError());
+  printf("kernel finished\n");
 }
 
 }  // namespace native

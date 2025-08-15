@@ -68,6 +68,7 @@ if (CUDAToolkit_FOUND)
     *.cu
     thermo/*.cu
     utils/*.cu
+    mempool/*.cu
     )
 
   add_library(${namel}_cuda_${buildl}
