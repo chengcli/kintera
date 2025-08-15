@@ -90,21 +90,21 @@ DISPATCH_MACRO int equilibrate_uv(
     }
   }
 
-  T *intEng = (T *)malloc(nspecies * sizeof(T));
-  T *intEng_ddT = (T *)malloc(nspecies * sizeof(T));
-  T *logsvp = (T *)malloc(nreaction * sizeof(T));
-  T *logsvp_ddT = (T *)malloc(nreaction * sizeof(T));
+  T *intEng = (T *)smalloc(nspecies * sizeof(T));
+  T *intEng_ddT = (T *)smalloc(nspecies * sizeof(T));
+  T *logsvp = (T *)smalloc(nreaction * sizeof(T));
+  T *logsvp_ddT = (T *)smalloc(nreaction * sizeof(T));
 
   // weight matrix
-  T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+  T *weight = (T *)smalloc(nreaction * nspecies * sizeof(T));
   memset(weight, 0, nreaction * nspecies * sizeof(T));
 
   // right-hand-side vector
-  T *rhs = (T *)malloc(nreaction * sizeof(T));
+  T *rhs = (T *)smalloc(nreaction * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
 
   // active set
-  int *reaction_set = (int *)malloc(nreaction * sizeof(int));
+  int *reaction_set = (int *)smalloc(nreaction * sizeof(int));
   for (int i = 0; i < nreaction; i++) {
     reaction_set[i] = i;
   }
@@ -122,7 +122,7 @@ DISPATCH_MACRO int equilibrate_uv(
   }
 
   // active stoichiometric matrix
-  T *stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
+  T *stoich_active = (T *)smalloc(nspecies * nreaction * sizeof(T));
 
   int iter = 0;
   int err_code = 0;
@@ -250,7 +250,7 @@ DISPATCH_MACRO int equilibrate_uv(
   }
 
   // restore the reaction order of gain
-  T *gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+  T *gain_cpy = (T *)smalloc(nreaction * nreaction * sizeof(T));
   memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
@@ -265,15 +265,15 @@ DISPATCH_MACRO int equilibrate_uv(
   // save number of iterations to diag
   diag[0] = iter;
 
-  free(intEng);
-  free(intEng_ddT);
-  free(logsvp);
-  free(logsvp_ddT);
-  free(weight);
-  free(rhs);
-  free(reaction_set);
-  free(stoich_active);
-  free(gain_cpy);
+  sfree(intEng);
+  sfree(intEng_ddT);
+  sfree(logsvp);
+  sfree(logsvp_ddT);
+  sfree(weight);
+  sfree(rhs);
+  sfree(reaction_set);
+  sfree(stoich_active);
+  sfree(gain_cpy);
 
   if (iter >= *max_iter) {
     printf("equilibrate_uv did not converge after %d iterations.\n", *max_iter);

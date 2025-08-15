@@ -4,6 +4,9 @@
 #include <ATen/native/ReduceOpsUtils.h>
 #include <c10/cuda/CUDAGuard.h>
 
+// base
+#include <configure.h>
+
 // kintera
 #include <kintera/utils/func1.hpp>
 #include <kintera/utils/func2.hpp>
@@ -20,8 +23,9 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                               double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  size_t heap_bytes = KINTERA_CUDA_HEAP_SIZE;
-  cudaError_t err = cudaDeviceSetLimit(cudaLimitMallocHeapSize, heap_bytes);
+#ifndef USE_MEMORY_POOL
+  cudaDeviceSetLimit(cudaLimitMallocHeapSize, KINTERA_CUDA_HEAP_SIZE);
+#endif
 
   auto f1 = get_device_func1(logsvp_func);
   auto logsvp_ptrs = f1.data().get();
@@ -32,7 +36,7 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
 
-    native::gpu_kernel<6>(
+    native::pool_kernel<6>(
         iter, [=] __device__ (char* const data[6], unsigned int strides[6]) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
@@ -57,6 +61,10 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
                              std::vector<std::string> const &intEng_extra_func,
                              double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
+
+#ifndef USE_MEMORY_POOL
+  cudaDeviceSetLimit(cudaLimitMallocHeapSize, KINTERA_CUDA_HEAP_SIZE);
+#endif
 
   /////  (1) Get svp functions   /////
   auto f1a = get_device_func1(logsvp_func);
@@ -90,7 +98,7 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
     auto intEng_offset_ptr = intEng_offset.data_ptr<scalar_t>();
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
 
-    native::gpu_kernel<6>(
+    native::pool_kernel<6>(
         iter, [=] __device__ (char* const data[6], unsigned int strides[6]) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);

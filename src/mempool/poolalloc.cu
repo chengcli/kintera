@@ -277,7 +277,7 @@ __device__ void *poolmalloc(unsigned long size) {
     //unsigned int threadInd = blockIdx.x * blockDim.x + threadIdx.x;
     // global thread id
     unsigned int threadInd = getThreadIndex();
-    
+
     BlockHeader *&freeList = g_memoryPools[threadInd].freeList;
     BlockHeader *&usedList = g_memoryPools[threadInd].usedList;
 
@@ -390,7 +390,7 @@ __device__ void poolfree(void *ptr) {
 
         assert(debugListSize(usedList) == initUsedListSize - 1);
     }
-    
+
     BlockHeader *forwardsBlockHeader = getNextBlockHeader(newFreeHeader, threadInd);
     bool canCoalesceBackwards = false;
     if (forwardsBlockHeader == NULL) {
@@ -400,7 +400,7 @@ __device__ void poolfree(void *ptr) {
     } else {
         canCoalesceBackwards = false;
     }
-    
+
     if (canCoalesceBackwards) {
         // coalesce backwards
         listRemove(&freeList, forwardsBlockHeader);

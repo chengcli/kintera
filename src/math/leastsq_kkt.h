@@ -104,19 +104,19 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 
   // Allocate memory for the augmented matrix and right-hand side vector
   int size = n2 + n3;
-  T *aug = (T *)malloc(size * size * sizeof(T));
-  T *ata = (T *)malloc(n2 * n2 * sizeof(T));
-  T *atb = (T *)malloc(size * sizeof(T));
-  T *rhs = (T *)malloc(size * sizeof(T));
+  T *aug = (T *)smalloc(size * size * sizeof(T));
+  T *ata = (T *)smalloc(n2 * n2 * sizeof(T));
+  T *atb = (T *)smalloc(size * sizeof(T));
+  T *rhs = (T *)smalloc(size * sizeof(T));
 
   // evaluation of constraints
-  T *eval = (T *)malloc(n3 * sizeof(T));
+  T *eval = (T *)smalloc(n3 * sizeof(T));
 
   // index for the active set
-  int *ct_indx = (int *)malloc(n3 * sizeof(int));
+  int *ct_indx = (int *)smalloc(n3 * sizeof(int));
 
   // index array for the LU decomposition
-  int *lu_indx = (int *)malloc(size * sizeof(int));
+  int *lu_indx = (int *)smalloc(size * sizeof(int));
 
   // populate A^T.A
   for (int i = 0; i < n2; ++i) {
@@ -266,13 +266,13 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     b[i] = rhs[i];
   }
 
-  free(aug);
-  free(ata);
-  free(atb);
-  free(rhs);
-  free(eval);
-  free(ct_indx);
-  free(lu_indx);
+  sfree(aug);
+  sfree(ata);
+  sfree(atb);
+  sfree(rhs);
+  sfree(eval);
+  sfree(ct_indx);
+  sfree(lu_indx);
 
   if (iter >= *max_iter) {
     *max_iter = iter;

@@ -76,30 +76,30 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     return 1;  // error: invalid dimensions
   }
 
-  T *logsvp = (T *)malloc(nreaction * sizeof(T));
+  T *logsvp = (T *)smalloc(nreaction * sizeof(T));
 
   // weight matrix
-  T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+  T *weight = (T *)smalloc(nreaction * nspecies * sizeof(T));
   memset(weight, 0, nreaction * nspecies * sizeof(T));
 
   // right-hand-side vector
-  T *rhs = (T *)malloc(nreaction * sizeof(T));
+  T *rhs = (T *)smalloc(nreaction * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
 
   // active set
-  int *reaction_set = (int *)malloc(nreaction * sizeof(int));
+  int *reaction_set = (int *)smalloc(nreaction * sizeof(int));
   for (int i = 0; i < nreaction; i++) {
     reaction_set[i] = i;
   }
 
   // active stoichiometric matrix
-  T *stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
+  T *stoich_active = (T *)smalloc(nspecies * nreaction * sizeof(T));
 
   // sum of reactant stoichiometric coefficients
-  T *stoich_sum = (T *)malloc(nreaction * sizeof(T));
+  T *stoich_sum = (T *)smalloc(nreaction * sizeof(T));
 
   // copy of xfrac
-  T *xfrac0 = (T *)malloc(nspecies * sizeof(T));
+  T *xfrac0 = (T *)smalloc(nspecies * sizeof(T));
 
   // evaluate log vapor saturation pressure and its derivative
   for (int j = 0; j < nreaction; j++) {
@@ -275,7 +275,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
       stoich_active[i * nactive + k] = stoich[i * nreaction + j];
     }
 
-  T *gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+  T *gain_cpy = (T *)smalloc(nreaction * nreaction * sizeof(T));
   mmdot(gain_cpy, weight, stoich_active, nactive, nspecies, nactive);
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
@@ -290,17 +290,17 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   // save number of iterations to diag
   diag[0] = iter;
 
-  free(logsvp);
-  free(rhs);
-  free(weight);
-  free(reaction_set);
-  free(stoich_active);
-  free(stoich_sum);
-  free(xfrac0);
-  free(gain_cpy);
+  sfree(logsvp);
+  sfree(rhs);
+  sfree(weight);
+  sfree(reaction_set);
+  sfree(stoich_active);
+  sfree(stoich_sum);
+  sfree(xfrac0);
+  sfree(gain_cpy);
 
   if (iter >= *max_iter) {
-    printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);
+    //printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);
     return 2 * 10 + kkt_err;  // failure to converge
   } else {
     *max_iter = iter;
