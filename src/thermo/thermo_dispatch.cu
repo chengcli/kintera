@@ -33,7 +33,7 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
 
     native::gpu_kernel<6>(
-        iter, [=] GPU_LAMBDA(char* const data[6], unsigned int strides[6]) {
+        iter, [=] __device__ (char* const data[6], unsigned int strides[6]) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto xfrac = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
@@ -91,7 +91,7 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
 
     native::gpu_kernel<6>(
-        iter, [=] GPU_LAMBDA(char* const data[6], unsigned int strides[6]) {
+        iter, [=] __device__ (char* const data[6], unsigned int strides[6]) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto conc = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
