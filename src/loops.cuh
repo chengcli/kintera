@@ -57,18 +57,42 @@ void gpu_mem_kernel(at::TensorIterator& iter, int work_size, const func_t& f) {
   auto stream = at::cuda::getCurrentCUDAStream();
   size_t shared = block.x * work_size;
 
-  std::cout << "block = " << block.x
-            << ", grid = " << grid.x
-            << ", shared = " << shared
-            << ", work_size = " << work_size
-            << std::endl;
+  // set attribute to allow max dynamic shared memory
+  int device;
+  cudaGetDevice(&device);
+  cudaDeviceProp prop;
+  cudaGetDeviceProperties(&prop, device);
 
-  element_kernel<<<grid, block, shared, stream>>>(numel,
-      [=] __device__(int idx, char* smem) {
+  // query max allowed per-block shared memory
+  int max_dynamic_smem = prop.sharedMemPerBlockOptin;
+  //printf("max_dynamic_smem = %d\n", max_dynamic_smem);
+
+  auto device_lambda = [=] __device__(int idx, char* smem) {
       auto offsets = offset_calc.get(idx);
       int tid = threadIdx.x;
       f(data.data(), offsets.data(), smem + tid * work_size);
-    });
+    };
+
+  // request the full size
+  auto kernelPtr = element_kernel<decltype(device_lambda)>;
+  cudaFuncSetAttribute(
+      kernelPtr,
+      cudaFuncAttributeMaxDynamicSharedMemorySize,
+      max_dynamic_smem);
+
+  if (shared > (size_t)max_dynamic_smem) {
+    TORCH_CHECK(false, "Requested shared memory (", shared,
+                " bytes) exceeds device maximum (",
+                max_dynamic_smem, " bytes).");
+  }
+
+  /*std::cout << "block = " << block.x
+            << ", grid = " << grid.x
+            << ", shared = " << shared
+            << ", work_size = " << work_size
+            << std::endl;*/
+
+  element_kernel<<<grid, block, shared, stream>>>(numel, device_lambda);
 
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
