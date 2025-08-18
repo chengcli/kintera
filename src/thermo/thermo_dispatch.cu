@@ -20,9 +20,6 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                               double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  size_t heap_bytes = KINTERA_CUDA_HEAP_SIZE;
-  cudaError_t err = cudaDeviceSetLimit(cudaLimitMallocHeapSize, heap_bytes);
-
   auto f1 = get_device_func1(logsvp_func);
   auto logsvp_ptrs = f1.data().get();
 
@@ -32,15 +29,18 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
 
-    native::gpu_kernel<7>(
-        iter, [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7]) {
+    int mem_size = equilibrate_tp_space<scalar_t>(nspecies, nreaction);
+    std::cout << "mem size (bytes) = " << mem_size << std::endl;
+
+    native::gpu_mem_kernel<12, 6>(
+        iter, mem_size, [=] GPU_LAMBDA(
+          char* const data[6], unsigned int strides[6], char* work) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto xfrac = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
         auto temp = reinterpret_cast<scalar_t *>(data[3] + strides[3]);
         auto pres = reinterpret_cast<scalar_t *>(data[4] + strides[4]);
         auto mask = reinterpret_cast<scalar_t *>(data[5] + strides[5]);
-        auto work = reinterpret_cast<char*>(data[6] + strides[6]);
         int max_iter_i = max_iter;
         equilibrate_tp(gain, diag, xfrac, *temp, *pres, *mask,
                        stoich_ptr, nspecies,

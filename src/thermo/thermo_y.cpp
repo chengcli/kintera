@@ -1,6 +1,5 @@
 // kintera
 #include <kintera/constants.h>
-#include <kintera/utils/alloc.h>
 
 #include <kintera/utils/check_resize.hpp>
 #include <kintera/utils/serialize.hpp>
@@ -216,10 +215,6 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   if (!diag.has_value()) {
     diag = torch::zeros(vec, ivol.options());
   }
-
-  // work array
-  int nspecies = stoich.size(0);
-  int nreaction = stoich.size(1);
 
   // initial guess
   auto temp = compute("VU->T", {ivol, intEng});
