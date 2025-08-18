@@ -1,5 +1,6 @@
 // kintera
 #include <kintera/constants.h>
+#include <kintera/utils/alloc.h>
 
 #include <kintera/utils/check_resize.hpp>
 #include <kintera/utils/serialize.hpp>
@@ -179,6 +180,22 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
     mask_value = torch::where(mask.value(), 1., 0.);
   }
 
+  // work array
+  int nspecies = stoich.size(0);
+  int nreaction = stoich.size(1);
+
+  int work_size = 0;
+  AT_DISPATCH_FLOATING_TYPES(xfrac.scalar_type(), "get_tp_work_size", [&] {
+    work_size = equilibrate_tp_space<scalar_t>(nspecies, nreaction);
+  });
+  std::cout << "work size (bytes) = " << work_size << std::endl;
+  std::cout << "element size (bytes) = " << xfrac.element_size() << std::endl;
+  work_size /= xfrac.element_size();
+  vec[xfrac.dim() - 1] = work_size + 1;
+
+  auto work = torch::empty(vec, xfrac.options());
+  std::cout << "works sizes = " << work.sizes() << std::endl;
+
   // prepare data
   auto iter = at::TensorIteratorConfig()
                   .resize_outputs(false)
@@ -191,6 +208,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .add_owned_input(temp.unsqueeze(-1))
                   .add_owned_input(pres.unsqueeze(-1))
                   .add_owned_input(mask_value.unsqueeze(-1))
+                  .add_owned_input(work)
                   .build();
 
   // call the equilibrium solver

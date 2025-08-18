@@ -58,7 +58,7 @@ DISPATCH_MACRO int equilibrate_uv(
     int nspecies, int nreaction, T const *intEng_offset, T const *cv_const,
     user_func1 const *logsvp_func, user_func1 const *logsvp_func_ddT,
     user_func2 const *intEng_R_extra, user_func2 const *cv_R_extra,
-    float logsvp_eps, int *max_iter) {
+    float logsvp_eps, int *max_iter, char *work = nullptr) {
   // check mask
   if (mask > 0) return 0;
 
@@ -90,21 +90,45 @@ DISPATCH_MACRO int equilibrate_uv(
     }
   }
 
-  T *intEng = (T *)malloc(nspecies * sizeof(T));
-  T *intEng_ddT = (T *)malloc(nspecies * sizeof(T));
-  T *logsvp = (T *)malloc(nreaction * sizeof(T));
-  T *logsvp_ddT = (T *)malloc(nreaction * sizeof(T));
+  T *intEng, *intEng_ddT, *logsvp, *logsvp_ddT, *weight, *rhs;
+  T *stoich_active;
+  T *gain_cpy;
+  int *reaction_set;
 
-  // weight matrix
-  T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+  if (work == nullptr) {
+    intEng = (T *)malloc(nspecies * sizeof(T));
+    intEng_ddT = (T *)malloc(nspecies * sizeof(T));
+    logsvp = (T *)malloc(nreaction * sizeof(T));
+    logsvp_ddT = (T *)malloc(nreaction * sizeof(T));
+
+    // weight matrix
+    weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+
+    // right-hand-side vector
+    rhs = (T *)malloc(nreaction * sizeof(T));
+
+    // active stoichiometric matrix
+    stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
+
+    // gain matrix copy
+    gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+
+    // active set
+    reaction_set = (int *)malloc(nreaction * sizeof(int));
+  } else {
+    intEng = alloc_from<T>(work, nspecies);
+    intEng_ddT = alloc_from<T>(work, nspecies);
+    logsvp = alloc_from<T>(work, nreaction);
+    logsvp_ddT = alloc_from<T>(work, nreaction);
+    weight = alloc_from<T>(work, nreaction * nspecies);
+    rhs = alloc_from<T>(work, nreaction);
+    stoich_active = alloc_from<T>(work, nspecies * nreaction);
+    gain_cpy = alloc_from<T>(work, nreaction * nreaction);
+    reaction_set = alloc_from<int>(work, nreaction);
+  }
+
   memset(weight, 0, nreaction * nspecies * sizeof(T));
-
-  // right-hand-side vector
-  T *rhs = (T *)malloc(nreaction * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
-
-  // active set
-  int *reaction_set = (int *)malloc(nreaction * sizeof(int));
   for (int i = 0; i < nreaction; i++) {
     reaction_set[i] = i;
   }
@@ -120,9 +144,6 @@ DISPATCH_MACRO int equilibrate_uv(
       intEng_ddT[i] += cv_R_extra[i](*temp, conc[i]) * constants::Rgas;
     }
   }
-
-  // active stoichiometric matrix
-  T *stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
 
   int iter = 0;
   int err_code = 0;
@@ -250,7 +271,6 @@ DISPATCH_MACRO int equilibrate_uv(
   }
 
   // restore the reaction order of gain
-  T *gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
   memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
@@ -265,15 +285,17 @@ DISPATCH_MACRO int equilibrate_uv(
   // save number of iterations to diag
   diag[0] = iter;
 
-  free(intEng);
-  free(intEng_ddT);
-  free(logsvp);
-  free(logsvp_ddT);
-  free(weight);
-  free(rhs);
-  free(reaction_set);
-  free(stoich_active);
-  free(gain_cpy);
+  if (work == nullptr) {
+    free(intEng);
+    free(intEng_ddT);
+    free(logsvp);
+    free(logsvp_ddT);
+    free(weight);
+    free(rhs);
+    free(reaction_set);
+    free(stoich_active);
+    free(gain_cpy);
+  }
 
   if (iter >= *max_iter) {
     printf("equilibrate_uv did not converge after %d iterations.\n", *max_iter);

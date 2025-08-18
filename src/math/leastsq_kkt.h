@@ -72,23 +72,28 @@ DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
  * constraint matrix `C` are treated as equality constraints, while the
  * remaining rows are treated as inequality constraints.
  *
- * \param[in,out] b[0..n1-1] right-hand-side vector and output. Input dimension
- * is n1, output dimension is n2, requiring n1 >= n2
- * \param[in] a[0..n1*n2-1] row-major input matrix, A
- * \param[in] c[0..n3*n2-1] row-major constraint matrix, C
- * \param[in] d[0..n3-1] right-hand-side constraint vector, d
- * \param[in] n1 number of rows in matrix A
- * \param[in] n2 number of columns in matrix A
- * \param[in] n3 number of rows in matrix C
- * \param[in] neq number of equality constraints, 0 <= neq <= n3
- * \param[in,out] max_iter in: maximum number of iterations to perform, out:
- * number of iterations actually performed
+ * \param[in,out] b[0..n1-1]    right-hand-side vector and output. Input
+ *                              dimension is n1, output dimension is n2,
+ * requiring n1 >= n2
+ * \param[in] a[0..n1*n2-1]     row-major input matrix, A
+ * \param[in] c[0..n3*n2-1]     row-major constraint matrix, C
+ * \param[in] d[0..n3-1]        right-hand-side constraint vector, d
+ * \param[in] n1                number of rows in matrix A
+ * \param[in] n2                number of columns in matrix A
+ * \param[in] n3                number of rows in matrix C
+ * \param[in] neq               number of equality constraints, 0 <= neq <= n3
+ * \param[in,out] max_iter      in: maximum number of iterations to perform,
+ *                              out: number of iterations actually performed
+ * \param[in] work              workspace if not null, otherwise allocated
+ *                              internally.
+ *
  * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
  *         2 on failure (max_iter reached without convergence).
  */
 template <typename T>
 DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
-                               int n2, int n3, int neq, int *max_iter) {
+                               int n2, int n3, int neq, int *max_iter,
+                               char *work = nullptr) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
     printf(
@@ -104,19 +109,32 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 
   // Allocate memory for the augmented matrix and right-hand side vector
   int size = n2 + n3;
-  T *aug = (T *)malloc(size * size * sizeof(T));
-  T *ata = (T *)malloc(n2 * n2 * sizeof(T));
-  T *atb = (T *)malloc(size * sizeof(T));
-  T *rhs = (T *)malloc(size * sizeof(T));
+  T *aug, *ata, *atb, *rhs, *eval;
+  int *ct_indx, *lu_indx;
 
-  // evaluation of constraints
-  T *eval = (T *)malloc(n3 * sizeof(T));
+  if (work == nullptr) {
+    aug = (T *)malloc(size * size * sizeof(T));
+    ata = (T *)malloc(n2 * n2 * sizeof(T));
+    atb = (T *)malloc(size * sizeof(T));
+    rhs = (T *)malloc(size * sizeof(T));
 
-  // index for the active set
-  int *ct_indx = (int *)malloc(n3 * sizeof(int));
+    // evaluation of constraints
+    eval = (T *)malloc(n3 * sizeof(T));
 
-  // index array for the LU decomposition
-  int *lu_indx = (int *)malloc(size * sizeof(int));
+    // index for the active set
+    ct_indx = (int *)malloc(n3 * sizeof(int));
+
+    // index array for the LU decomposition
+    lu_indx = (int *)malloc(size * sizeof(int));
+  } else {
+    aug = alloc_from<T>(work, size * size);
+    ata = alloc_from<T>(work, n2 * n2);
+    atb = alloc_from<T>(work, size);
+    rhs = alloc_from<T>(work, size);
+    eval = alloc_from<T>(work, n3);
+    ct_indx = alloc_from<int>(work, n3);
+    lu_indx = alloc_from<int>(work, size);
+  }
 
   // populate A^T.A
   for (int i = 0; i < n2; ++i) {
@@ -163,7 +181,8 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     populate_rhs(rhs, atb, d, n2, nactive, ct_indx);
 
     // solve the KKT system
-    ludcmp(aug, lu_indx, n2 + nactive);
+    ludcmp(aug, lu_indx, n2 + nactive, work);
+
     for (int i = 0; i < n2 + nactive; ++i)
       assert(lu_indx[i] >= 0 && lu_indx[i] < n2 + nactive);
     lubksb(rhs, aug, lu_indx, n2 + nactive);
@@ -266,13 +285,15 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     b[i] = rhs[i];
   }
 
-  free(aug);
-  free(ata);
-  free(atb);
-  free(rhs);
-  free(eval);
-  free(ct_indx);
-  free(lu_indx);
+  if (work == nullptr) {
+    free(aug);
+    free(ata);
+    free(atb);
+    free(rhs);
+    free(eval);
+    free(ct_indx);
+    free(lu_indx);
+  }
 
   if (iter >= *max_iter) {
     *max_iter = iter;

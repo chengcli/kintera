@@ -32,17 +32,20 @@ namespace kintera {
  * \param[in] ngas            number of gas species in the system.
  * \param[in] logsvp_func     user-defined function for logarithm of saturation
  *                            vapor pressure with respect to temperature.
- * \param[in]                 logsvp_eps tolerance for convergence in logarithm
+ * \param[in] logsvp_eps      tolerance for convergence in logarithm
  *                            of saturation vapor pressure.
  * \param[in,out] max_iter    maximum number of iterations allowed for
  *                            convergence.
+ * \param[in] work            workspace if not null, otherwise allocated
+ * internally.
  */
 template <typename T>
 DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
                                   T mask, T const *stoich, int nspecies,
                                   int nreaction, int ngas,
                                   user_func1 const *logsvp_func,
-                                  float logsvp_eps, int *max_iter) {
+                                  float logsvp_eps, int *max_iter,
+                                  char *work = nullptr) {
   // check mask
   if (mask > 0) return 0;
 
@@ -76,30 +79,68 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     return 1;  // error: invalid dimensions
   }
 
-  T *logsvp = (T *)malloc(nreaction * sizeof(T));
+  T *logsvp, *weight, *rhs;
+  T *stoich_active, *stoich_sum, *xfrac0;
+  T *gain_cpy;
+  int *reaction_set;
 
-  // weight matrix
-  T *weight = (T *)malloc(nreaction * nspecies * sizeof(T));
-  memset(weight, 0, nreaction * nspecies * sizeof(T));
+  if (work == nullptr) {
+    logsvp = (T *)malloc(nreaction * sizeof(T));
 
-  // right-hand-side vector
-  T *rhs = (T *)malloc(nreaction * sizeof(T));
-  memset(rhs, 0, nreaction * sizeof(T));
+    // weight matrix
+    weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+    memset(weight, 0, nreaction * nspecies * sizeof(T));
 
-  // active set
-  int *reaction_set = (int *)malloc(nreaction * sizeof(int));
-  for (int i = 0; i < nreaction; i++) {
-    reaction_set[i] = i;
+    // right-hand-side vector
+    rhs = (T *)malloc(nreaction * sizeof(T));
+    memset(rhs, 0, nreaction * sizeof(T));
+
+    // active set
+    reaction_set = (int *)malloc(nreaction * sizeof(int));
+    for (int i = 0; i < nreaction; i++) {
+      reaction_set[i] = i;
+    }
+
+    // active stoichiometric matrix
+    stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
+
+    // sum of reactant stoichiometric coefficients
+    stoich_sum = (T *)malloc(nreaction * sizeof(T));
+
+    // copy of xfrac
+    xfrac0 = (T *)malloc(nspecies * sizeof(T));
+
+    // gain matrix copy
+    gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+  } else {
+    logsvp = alloc_from<T>(work, nreaction);
+
+    // weight matrix
+    weight = alloc_from<T>(work, nreaction * nspecies);
+    memset(weight, 0, nreaction * nspecies * sizeof(T));
+
+    // right-hand-side vector
+    rhs = alloc_from<T>(work, nreaction);
+    memset(rhs, 0, nreaction * sizeof(T));
+
+    // active stoichiometric matrix
+    stoich_active = alloc_from<T>(work, nspecies * nreaction);
+
+    // sum of reactant stoichiometric coefficients
+    stoich_sum = alloc_from<T>(work, nreaction);
+
+    // copy of xfrac
+    xfrac0 = alloc_from<T>(work, nspecies);
+
+    // gain matrix copy
+    gain_cpy = alloc_from<T>(work, nreaction * nreaction);
+
+    // active set
+    reaction_set = alloc_from<int>(work, nreaction);
+    for (int i = 0; i < nreaction; i++) {
+      reaction_set[i] = i;
+    }
   }
-
-  // active stoichiometric matrix
-  T *stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
-
-  // sum of reactant stoichiometric coefficients
-  T *stoich_sum = (T *)malloc(nreaction * sizeof(T));
-
-  // copy of xfrac
-  T *xfrac0 = (T *)malloc(nspecies * sizeof(T));
 
   // evaluate log vapor saturation pressure and its derivative
   for (int j = 0; j < nreaction; j++) {
@@ -192,7 +233,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
     kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, nactive, nactive,
-                          nspecies, 0, &max_kkt_iter);
+                          nspecies, 0, &max_kkt_iter, work);
     if (kkt_err != 0) break;
 
     /* print rate
@@ -275,7 +316,6 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
       stoich_active[i * nactive + k] = stoich[i * nreaction + j];
     }
 
-  T *gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
   mmdot(gain_cpy, weight, stoich_active, nactive, nspecies, nactive);
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
@@ -290,14 +330,16 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   // save number of iterations to diag
   diag[0] = iter;
 
-  free(logsvp);
-  free(rhs);
-  free(weight);
-  free(reaction_set);
-  free(stoich_active);
-  free(stoich_sum);
-  free(xfrac0);
-  free(gain_cpy);
+  if (work == nullptr) {
+    free(logsvp);
+    free(rhs);
+    free(weight);
+    free(reaction_set);
+    free(stoich_active);
+    free(stoich_sum);
+    free(xfrac0);
+    free(gain_cpy);
+  }
 
   if (iter >= *max_iter) {
     printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);

@@ -8,6 +8,9 @@
 // base
 #include <configure.h>
 
+// kintera
+#include <kintera/utils/alloc.h>
+
 #define X(i, j) x[(i) * n + (j)]
 
 namespace kintera {
@@ -21,17 +24,28 @@ namespace kintera {
  * equationsor invert a matrix. Adapted from Numerical Recipes in C, 2nd Ed.,
  * p. 46.
  *
- * \param[in,out] a[0..n*n-1] row-major input matrix, output LU decomposition
- * \param[out] indx[0..n-1] vector that records the row permutation effected by
- * the partial pivoting. Outputs as +/- 1 depending on whether the number of row
- * interchanges was even or odd, respectively.
- * \param[in] n size of matrix
+ * \param[in,out] a[0..n*n-1]   row-major input matrix, output LU decomposition
+ * \param[out] indx[0..n-1]     vector that records the row permutation effected
+ *                              by the partial pivoting. Outputs as +/- 1
+ * depending on whether the number of row interchanges was even or odd,
+ *                              respectively.
+ * \param[in] n                 size of matrix
+ * \param[in] work              workspace if not null, otherwise allocated
+ * internally
  */
 template <typename T>
-DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
+DISPATCH_MACRO int ludcmp(T *x, int *indx, int n, char *work = nullptr) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
-  T *vv = (T *)malloc(n * sizeof(T));
+  T *vv;
+
+  if (work == nullptr) {
+    // allocate workspace
+    vv = (T *)malloc(n * sizeof(T));
+  } else {
+    // use user-provided workspace
+    vv = alloc_from<T>(work, n);
+  }
 
   for (i = 0; i < n; i++) indx[i] = i;
 
@@ -42,7 +56,7 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
       if ((temp = fabs(X(i, j))) > big) big = temp;
     if (big == 0.0) {
       // printf("Singular matrix in routine ludcmp\n");
-      free(vv);
+      if (work == nullptr) free(vv);
       return 1;
     }
     vv[i] = 1.0 / big;
@@ -79,7 +93,7 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n) {
       for (i = j + 1; i < n; i++) X(i, j) *= dum;
     }
   }
-  free(vv);
+  if (work == nullptr) free(vv);
 
   return d;
 }

@@ -32,19 +32,20 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
 
-    native::gpu_kernel<6>(
-        iter, [=] GPU_LAMBDA(char* const data[6], unsigned int strides[6]) {
+    native::gpu_kernel<7>(
+        iter, [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7]) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto xfrac = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
         auto temp = reinterpret_cast<scalar_t *>(data[3] + strides[3]);
         auto pres = reinterpret_cast<scalar_t *>(data[4] + strides[4]);
         auto mask = reinterpret_cast<scalar_t *>(data[5] + strides[5]);
+        auto work = reinterpret_cast<char*>(data[6] + strides[6]);
         int max_iter_i = max_iter;
         equilibrate_tp(gain, diag, xfrac, *temp, *pres, *mask,
                        stoich_ptr, nspecies,
                        nreaction, ngas, logsvp_ptrs,
-                       logsvp_eps, &max_iter_i);
+                       logsvp_eps, &max_iter_i, work);
       });
   });
 }
@@ -90,21 +91,22 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
     auto intEng_offset_ptr = intEng_offset.data_ptr<scalar_t>();
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
 
-    native::gpu_kernel<6>(
-        iter, [=] GPU_LAMBDA(char* const data[6], unsigned int strides[6]) {
+    native::gpu_kernel<7>(
+        iter, [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7]) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto conc = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
         auto temp = reinterpret_cast<scalar_t *>(data[3] + strides[3]);
         auto intEng = reinterpret_cast<scalar_t *>(data[4] + strides[4]);
         auto mask = reinterpret_cast<scalar_t *>(data[5] + strides[5]);
+        auto work = reinterpret_cast<char*>(data[6] + strides[6]);
         int max_iter_i = max_iter;
         equilibrate_uv(gain, diag, temp, conc, *intEng, *mask,
                        stoich_ptr, nspecies,
                        nreaction, intEng_offset_ptr, cv_const_ptr,
                        logsvp_ptrs, logsvp_ddT_ptrs,
                        intEng_extra_ptrs, intEng_extra_ddT_ptrs,
-                       logsvp_eps, &max_iter_i);
+                       logsvp_eps, &max_iter_i, work);
       });
   });
 }
