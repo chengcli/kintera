@@ -221,18 +221,6 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   int nspecies = stoich.size(0);
   int nreaction = stoich.size(1);
 
-  int work_size = 0;
-  AT_DISPATCH_FLOATING_TYPES(ivol.scalar_type(), "get_uv_work_size", [&] {
-    work_size = equilibrate_uv_space<scalar_t>(nspecies, nreaction);
-  });
-  std::cout << "work size (bytes) = " << work_size << std::endl;
-  std::cout << "element size (bytes) = " << ivol.element_size() << std::endl;
-  work_size /= ivol.element_size();
-  vec[ivol.dim() - 1] = work_size + 1;
-
-  auto work = torch::empty(vec, ivol.options());
-  std::cout << "works sizes = " << work.sizes() << std::endl;
-
   // initial guess
   auto temp = compute("VU->T", {ivol, intEng});
   auto pres = compute("VT->P", {ivol, temp});
@@ -255,7 +243,6 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .add_owned_output(temp.unsqueeze(-1))
           .add_owned_input(intEng.unsqueeze(-1))
           .add_owned_input(mask_value.unsqueeze(-1))
-          .add_owned_input(work)
           .build();
 
   // call the equilibrium solver

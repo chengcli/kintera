@@ -91,15 +91,18 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
     auto intEng_offset_ptr = intEng_offset.data_ptr<scalar_t>();
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
 
-    native::gpu_kernel<7>(
-        iter, [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7]) {
+    int mem_size = equilibrate_uv_space<scalar_t>(nspecies, nreaction);
+    std::cout << "mem size (bytes) = " << mem_size << std::endl;
+
+    native::gpu_mem_kernel<12, 6>(
+        iter, mem_size, [=] GPU_LAMBDA(
+          char* const data[6], unsigned int strides[6], char* work) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto conc = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
         auto temp = reinterpret_cast<scalar_t *>(data[3] + strides[3]);
         auto intEng = reinterpret_cast<scalar_t *>(data[4] + strides[4]);
         auto mask = reinterpret_cast<scalar_t *>(data[5] + strides[5]);
-        auto work = reinterpret_cast<char*>(data[6] + strides[6]);
         int max_iter_i = max_iter;
         equilibrate_uv(gain, diag, temp, conc, *intEng, *mask,
                        stoich_ptr, nspecies,
