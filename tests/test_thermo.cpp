@@ -216,7 +216,7 @@ TEST_P(DeviceTest, equilibrate_tp) {
 }
 
 TEST_P(DeviceTest, equilibrate_tp_large) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(15);
+  auto op_thermo = ThermoOptions::from_yaml("earth.yaml").max_iter(15);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);

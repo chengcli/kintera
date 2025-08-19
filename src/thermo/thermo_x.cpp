@@ -154,7 +154,6 @@ torch::Tensor ThermoXImpl::compute(std::string ab,
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                                    torch::Tensor &xfrac,
-                                   torch::optional<torch::Tensor> mask,
                                    torch::optional<torch::Tensor> diag) {
   if (options.reactions().size() == 0) {  // no-op
     return torch::Tensor();
@@ -174,11 +173,6 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
     diag = torch::empty(vec, xfrac.options());
   }
 
-  auto mask_value = torch::zeros_like(temp);
-  if (mask.has_value()) {
-    mask_value = torch::where(mask.value(), 1., 0.);
-  }
-
   // prepare data
   auto iter = at::TensorIteratorConfig()
                   .resize_outputs(false)
@@ -190,7 +184,6 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .add_output(xfrac)
                   .add_owned_input(temp.unsqueeze(-1))
                   .add_owned_input(pres.unsqueeze(-1))
-                  .add_owned_input(mask_value.unsqueeze(-1))
                   .build();
 
   // call the equilibrium solver

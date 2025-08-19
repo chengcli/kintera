@@ -282,7 +282,7 @@ Examples:
     >> dyfrac = thermo_y.forward(rho, intEng, yfrac)
     )doc",
                      py::arg("rho"), py::arg("intEng"), py::arg("yfrac"),
-                     py::arg("mask") = py::none(), py::arg("diag") = py::none())
+                     py::arg("diag") = py::none())
 
       .def("compute", &kintera::ThermoYImpl::compute, R"doc(
 Compute the transformation.
@@ -329,7 +329,7 @@ Examples:
     >> dxfrac = thermo_x.forward(temp, pres, xfrac)
     )doc",
                      py::arg("temp"), py::arg("pres"), py::arg("xfrac"),
-                     py::arg("mask") = py::none(), py::arg("diag") = py::none())
+                     py::arg("diag") = py::none())
 
       .def("compute", &kintera::ThermoXImpl::compute, R"doc(
 Compute the transformation.

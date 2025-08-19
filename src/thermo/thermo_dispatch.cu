@@ -32,17 +32,16 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
     int mem_size = equilibrate_tp_space<scalar_t>(nspecies, nreaction);
     //std::cout << "mem size (bytes) = " << mem_size << std::endl;
 
-    native::gpu_mem_kernel<32, 6>(
+    native::gpu_mem_kernel<32, 5>(
         iter, mem_size, [=] GPU_LAMBDA(
-          char* const data[6], unsigned int strides[6], char* work) {
+          char* const data[5], unsigned int strides[5], char* work) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto xfrac = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
         auto temp = reinterpret_cast<scalar_t *>(data[3] + strides[3]);
         auto pres = reinterpret_cast<scalar_t *>(data[4] + strides[4]);
-        auto mask = reinterpret_cast<scalar_t *>(data[5] + strides[5]);
         int max_iter_i = max_iter;
-        equilibrate_tp(gain, diag, xfrac, *temp, *pres, *mask,
+        equilibrate_tp(gain, diag, xfrac, *temp, *pres,
                        stoich_ptr, nspecies,
                        nreaction, ngas, logsvp_ptrs,
                        logsvp_eps, &max_iter_i, work);
@@ -94,17 +93,16 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
     int mem_size = equilibrate_uv_space<scalar_t>(nspecies, nreaction);
     //std::cout << "mem size (bytes) = " << mem_size << std::endl;
 
-    native::gpu_mem_kernel<32, 6>(
+    native::gpu_mem_kernel<32, 5>(
         iter, mem_size, [=] GPU_LAMBDA(
-          char* const data[6], unsigned int strides[6], char* work) {
+          char* const data[5], unsigned int strides[5], char* work) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto conc = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
         auto temp = reinterpret_cast<scalar_t *>(data[3] + strides[3]);
         auto intEng = reinterpret_cast<scalar_t *>(data[4] + strides[4]);
-        auto mask = reinterpret_cast<scalar_t *>(data[5] + strides[5]);
         int max_iter_i = max_iter;
-        equilibrate_uv(gain, diag, temp, conc, *intEng, *mask,
+        equilibrate_uv(gain, diag, temp, conc, *intEng,
                        stoich_ptr, nspecies,
                        nreaction, intEng_offset_ptr, cv_const_ptr,
                        logsvp_ptrs, logsvp_ddT_ptrs,

@@ -195,7 +195,6 @@ torch::Tensor ThermoYImpl::compute(std::string ab,
 
 torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
                                    torch::Tensor &yfrac,
-                                   torch::optional<torch::Tensor> mask,
                                    torch::optional<torch::Tensor> diag) {
   if (options.reactions().size() == 0) {  // no-op
     return torch::Tensor();
@@ -221,11 +220,6 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   auto pres = compute("VT->P", {ivol, temp});
   auto conc = ivol * inv_mu;
 
-  auto mask_value = torch::zeros_like(temp);
-  if (mask.has_value()) {
-    mask_value = torch::where(mask.value(), 1., 0.);
-  }
-
   // prepare data
   auto iter =
       at::TensorIteratorConfig()
@@ -237,7 +231,6 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .add_output(conc)
           .add_owned_output(temp.unsqueeze(-1))
           .add_owned_input(intEng.unsqueeze(-1))
-          .add_owned_input(mask_value.unsqueeze(-1))
           .build();
 
   // call the equilibrium solver
