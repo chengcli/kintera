@@ -65,7 +65,6 @@ size_t equilibrate_tp_space(int nspecies, int nreaction) {
   bump(alignof(T), nreaction * sizeof(T));              // stoich_sum
   bump(alignof(T), nspecies * sizeof(T));               // xfrac0
   bump(alignof(T), nreaction * nreaction * sizeof(T));  // gain_cpy
-  bump(alignof(int), nreaction * sizeof(int));          // reaction_set
   return bytes + leastsq_kkt_space<T>(nreaction, nspecies);
 }
 
@@ -83,7 +82,6 @@ size_t equilibrate_uv_space(int nspecies, int nreaction) {
   bump(alignof(T), nreaction * sizeof(T));              // rhs
   bump(alignof(T), nspecies * nreaction * sizeof(T));   // stoich_active
   bump(alignof(T), nreaction * nreaction * sizeof(T));  // gain_cpy
-  bump(alignof(int), nreaction * sizeof(int));          // reaction_set
   return bytes + leastsq_kkt_space<T>(nreaction, nspecies);
 }
 

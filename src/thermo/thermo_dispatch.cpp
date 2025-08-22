@@ -40,10 +40,13 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
             auto xfrac = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
             auto temp = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
             auto pres = reinterpret_cast<scalar_t *>(data[4] + i * strides[4]);
+            auto reaction_set =
+                reinterpret_cast<int *>(data[5] + i * strides[5]);
+            auto nactive = reinterpret_cast<int *>(data[6] + i * strides[6]);
             int max_iter_i = max_iter;
             equilibrate_tp(gain, diag, xfrac, *temp, *pres, stoich_ptr,
                            nspecies, nreaction, ngas, logsvp_ptrs, logsvp_eps,
-                           &max_iter_i);
+                           &max_iter_i, reaction_set, nactive);
           }
         },
         grain_size);
@@ -101,12 +104,16 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
             auto temp = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
             auto intEng =
                 reinterpret_cast<scalar_t *>(data[4] + i * strides[4]);
+            auto reaction_set =
+                reinterpret_cast<int *>(data[5] + i * strides[5]);
+            auto nactive = reinterpret_cast<int *>(data[6] + i * strides[6]);
 
             int max_iter_i = max_iter;
             equilibrate_uv(gain, diag, temp, conc, *intEng, stoich_ptr,
                            nspecies, nreaction, intEng_offset_ptr, cv_const_ptr,
                            logsvp_ptrs, logsvp_ddT_ptrs, intEng_extra_ptrs,
-                           intEng_extra_ddT_ptrs, logsvp_eps, &max_iter_i);
+                           intEng_extra_ddT_ptrs, logsvp_eps, &max_iter_i,
+                           reaction_set, nactive);
           }
         },
         grain_size);

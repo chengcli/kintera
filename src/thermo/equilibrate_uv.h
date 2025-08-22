@@ -49,6 +49,8 @@ namespace kintera {
  *                              calculation in addition to the constant term.
  * \param[in] lnsvp_eps         tolerance for convergence in logarithm of
  *                              saturation vapor pressure.
+ * \param[in] reaction_set      active set of reactions, modified in place.
+ * \param[in] nactive           number of active reactions, modified in place.
  * \param[in,out] max_iter      maximum number of iterations allowed for
  *                              convergence.
  */
@@ -58,7 +60,8 @@ DISPATCH_MACRO int equilibrate_uv(
     int nreaction, T const *intEng_offset, T const *cv_const,
     user_func1 const *logsvp_func, user_func1 const *logsvp_func_ddT,
     user_func2 const *intEng_R_extra, user_func2 const *cv_R_extra,
-    float logsvp_eps, int *max_iter, char *work = nullptr) {
+    float logsvp_eps, int *max_iter, int *reaction_set, int *nactive,
+    char *work = nullptr) {
   // check positive temperature
   if (*temp <= 0) {
     printf("Error: Non-positive temperature.\n");
@@ -90,7 +93,6 @@ DISPATCH_MACRO int equilibrate_uv(
   T *intEng, *intEng_ddT, *logsvp, *logsvp_ddT, *weight, *rhs;
   T *stoich_active;
   T *gain_cpy;
-  int *reaction_set;
 
   if (work == nullptr) {
     intEng = (T *)malloc(nspecies * sizeof(T));
@@ -109,9 +111,6 @@ DISPATCH_MACRO int equilibrate_uv(
 
     // gain matrix copy
     gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
-
-    // active set
-    reaction_set = (int *)malloc(nreaction * sizeof(int));
   } else {
     intEng = alloc_from<T>(work, nspecies);
     intEng_ddT = alloc_from<T>(work, nspecies);
@@ -121,14 +120,10 @@ DISPATCH_MACRO int equilibrate_uv(
     rhs = alloc_from<T>(work, nreaction);
     stoich_active = alloc_from<T>(work, nspecies * nreaction);
     gain_cpy = alloc_from<T>(work, nreaction * nreaction);
-    reaction_set = alloc_from<int>(work, nreaction);
   }
 
   memset(weight, 0, nreaction * nspecies * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
-  for (int i = 0; i < nreaction; i++) {
-    reaction_set[i] = i;
-  }
 
   // evaluate internal energy and its derivative (cv)
   for (int i = 0; i < nspecies; i++) {
@@ -144,7 +139,6 @@ DISPATCH_MACRO int equilibrate_uv(
 
   int iter = 0;
   int err_code = 0;
-  int nactive = 0;
   while (iter++ < *max_iter) {
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
@@ -208,31 +202,31 @@ DISPATCH_MACRO int equilibrate_uv(
     }
 
     // form active stoichiometric and constraint matrix
-    nactive = first;
+    (*nactive) = first;
     for (int i = 0; i < nspecies; i++)
-      for (int k = 0; k < nactive; k++) {
+      for (int k = 0; k < (*nactive); k++) {
         int j = reaction_set[k];
-        stoich_active[i * nactive + k] = stoich[i * nreaction + j];
+        stoich_active[i * (*nactive) + k] = stoich[i * nreaction + j];
       }
 
-    mmdot(gain, weight, stoich_active, nactive, nspecies, nactive);
+    mmdot(gain, weight, stoich_active, *nactive, nspecies, *nactive);
 
     for (int i = 0; i < nspecies; i++)
-      for (int k = 0; k < nactive; k++) {
-        stoich_active[i * nactive + k] *= -1;
+      for (int k = 0; k < (*nactive); k++) {
+        stoich_active[i * (*nactive) + k] *= -1;
       }
     // note that stoich_active is negated
 
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
-    err_code = leastsq_kkt(rhs, gain, stoich_active, conc, nactive, nactive,
+    err_code = leastsq_kkt(rhs, gain, stoich_active, conc, *nactive, *nactive,
                            nspecies, 0, &max_kkt_iter, work);
     if (err_code != 0) break;
 
     // rate -> conc
     for (int i = 0; i < nspecies; i++) {
-      for (int k = 0; k < nactive; k++) {
-        conc[i] -= stoich_active[i * nactive + k] * rhs[k];
+      for (int k = 0; k < (*nactive); k++) {
+        conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k];
       }
     }
 
@@ -271,7 +265,7 @@ DISPATCH_MACRO int equilibrate_uv(
   memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
-  for (int i = 0; i < nactive; i++) {
+  for (int i = 0; i < (*nactive); i++) {
     for (int j = 0; j < nreaction; j++) {
       int k = reaction_set[i];
       int l = reaction_set[j];
@@ -289,7 +283,6 @@ DISPATCH_MACRO int equilibrate_uv(
     free(logsvp_ddT);
     free(weight);
     free(rhs);
-    free(reaction_set);
     free(stoich_active);
     free(gain_cpy);
   }

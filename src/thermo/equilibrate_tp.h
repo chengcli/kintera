@@ -23,20 +23,22 @@ namespace kintera {
  * This function finds the thermodynamic equilibrium for an array
  * of species.
  *
- * \param[out] gain           WS gain matrix
- * \param[in,out]             xfrac array of species mole fractions, modified in
- *                            place.
- * \param[in] temp            equilibrium temperature in Kelvin.
- * \param[in] pres            equilibrium pressure in Pascals.
- * \param[in] nspecies        number of species in the system.
- * \param[in] ngas            number of gas species in the system.
- * \param[in] logsvp_func     user-defined function for logarithm of saturation
- *                            vapor pressure with respect to temperature.
- * \param[in] logsvp_eps      tolerance for convergence in logarithm
- *                            of saturation vapor pressure.
- * \param[in,out] max_iter    maximum number of iterations allowed for
- *                            convergence.
- * \param[in] work            workspace if not null, otherwise allocated
+ * \param[out] gain             WS gain matrix
+ * \param[in,out]               xfrac array of species mole fractions, modified
+ * in place.
+ * \param[in] temp              equilibrium temperature in Kelvin.
+ * \param[in] pres              equilibrium pressure in Pascals.
+ * \param[in] nspecies          number of species in the system.
+ * \param[in] ngas              number of gas species in the system.
+ * \param[in] logsvp_func       user-defined function for logarithm of
+ * saturation vapor pressure with respect to temperature.
+ * \param[in] logsvp_eps        tolerance for convergence in logarithm
+ *                              of saturation vapor pressure.
+ * \param[in,out] max_iter      maximum number of iterations allowed for
+ *                              convergence.
+ * \param[in,out] reaction_set  active set of reactions, modified in place.
+ * \param[in,out] nactive       number of active reactions, modified in place.
+ * \param[in] work              workspace if not null, otherwise allocated
  * internally.
  */
 template <typename T>
@@ -44,6 +46,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
                                   T const *stoich, int nspecies, int nreaction,
                                   int ngas, user_func1 const *logsvp_func,
                                   float logsvp_eps, int *max_iter,
+                                  int *reaction_set, int *nactive,
                                   char *work = nullptr) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
@@ -78,7 +81,6 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   T *logsvp, *weight, *rhs;
   T *stoich_active, *stoich_sum, *xfrac0;
   T *gain_cpy;
-  int *reaction_set;
 
   if (work == nullptr) {
     logsvp = (T *)malloc(nreaction * sizeof(T));
@@ -90,12 +92,6 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     // right-hand-side vector
     rhs = (T *)malloc(nreaction * sizeof(T));
     memset(rhs, 0, nreaction * sizeof(T));
-
-    // active set
-    reaction_set = (int *)malloc(nreaction * sizeof(int));
-    for (int i = 0; i < nreaction; i++) {
-      reaction_set[i] = i;
-    }
 
     // active stoichiometric matrix
     stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
@@ -130,12 +126,6 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
 
     // gain matrix copy
     gain_cpy = alloc_from<T>(work, nreaction * nreaction);
-
-    // active set
-    reaction_set = alloc_from<int>(work, nreaction);
-    for (int i = 0; i < nreaction; i++) {
-      reaction_set[i] = i;
-    }
   }
 
   // evaluate log vapor saturation pressure and its derivative
@@ -150,7 +140,6 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
 
   int iter = 0;
   int kkt_err = 0;
-  int nactive = 0;
   T lambda = 0.;  // rate scale factor
   while (iter++ < *max_iter) {
     /*printf("iter = %d\n ", iter);
@@ -211,30 +200,30 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     }
 
     // populate active stoichiometric and constraint matrix
-    nactive = first;
+    (*nactive) = first;
     for (int i = 0; i < nspecies; i++)
-      for (int k = 0; k < nactive; k++) {
+      for (int k = 0; k < (*nactive); k++) {
         int j = reaction_set[k];
-        stoich_active[i * nactive + k] = stoich[i * nreaction + j];
+        stoich_active[i * (*nactive) + k] = stoich[i * nreaction + j];
       }
 
-    mmdot(gain, weight, stoich_active, nactive, nspecies, nactive);
+    mmdot(gain, weight, stoich_active, *nactive, nspecies, *nactive);
 
     for (int i = 0; i < nspecies; i++)
-      for (int k = 0; k < nactive; k++) {
-        stoich_active[i * nactive + k] *= -1;
+      for (int k = 0; k < (*nactive); k++) {
+        stoich_active[i * (*nactive) + k] *= -1;
       }
     // note that stoich_active is negated
 
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
-    kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, nactive, nactive,
+    kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, *nactive, *nactive,
                           nspecies, 0, &max_kkt_iter, work);
     if (kkt_err != 0) break;
 
     /* print rate
     printf("rate = ");
-    for (int k = 0; k < nactive; k++) {
+    for (int k = 0; k < (*nactive); k++) {
       printf("%f ", rhs[k]);
     }
     printf("\n");*/
@@ -248,8 +237,8 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
       bool positive_vapor = true;
       xsum = 0.;
       for (int i = 0; i < nspecies; i++) {
-        for (int k = 0; k < nactive; k++) {
-          xfrac[i] -= stoich_active[i * nactive + k] * rhs[k] * lambda;
+        for (int k = 0; k < (*nactive); k++) {
+          xfrac[i] -= stoich_active[i * (*nactive) + k] * rhs[k] * lambda;
         }
         if (i < ngas && xfrac[i] <= 0.) positive_vapor = false;
         xsum += xfrac[i];
@@ -305,21 +294,21 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   }
 
   // populate active stoichiometric and constraint matrix
-  nactive = first;
+  (*nactive) = first;
   for (int i = 0; i < nspecies; i++)
-    for (int k = 0; k < nactive; k++) {
+    for (int k = 0; k < (*nactive); k++) {
       int j = reaction_set[k];
-      stoich_active[i * nactive + k] = stoich[i * nreaction + j];
+      stoich_active[i * (*nactive) + k] = stoich[i * nreaction + j];
     }
 
-  mmdot(gain_cpy, weight, stoich_active, nactive, nspecies, nactive);
+  mmdot(gain_cpy, weight, stoich_active, *nactive, nspecies, *nactive);
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
-  for (int k = 0; k < nactive; k++) {
-    for (int l = 0; l < nactive; l++) {
+  for (int k = 0; k < (*nactive); k++) {
+    for (int l = 0; l < (*nactive); l++) {
       int i = reaction_set[k];
       int j = reaction_set[l];
-      gain[i * nreaction + j] = gain_cpy[k * nactive + l];
+      gain[i * nreaction + j] = gain_cpy[k * (*nactive) + l];
     }
   }
 
@@ -330,7 +319,6 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     free(logsvp);
     free(rhs);
     free(weight);
-    free(reaction_set);
     free(stoich_active);
     free(stoich_sum);
     free(xfrac0);

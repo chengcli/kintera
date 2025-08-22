@@ -153,7 +153,7 @@ torch::Tensor ThermoXImpl::compute(std::string ab,
 }
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
-                                   torch::Tensor &xfrac,
+                                   torch::Tensor &xfrac, bool warm_start,
                                    torch::optional<torch::Tensor> diag) {
   if (options.reactions().size() == 0) {  // no-op
     return torch::Tensor();
@@ -166,6 +166,17 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
   // |reactions| x |reactions| weight matrix
   vec[xfrac.dim() - 1] = reactions.size() * reactions.size();
   auto gain = torch::zeros(vec, xfrac.options());
+
+  if (!warm_start || !reaction_set.defined()) {
+    auto vec2 = temp.sizes().vec();
+    vec2.push_back(reactions.size());
+    reaction_set =
+        torch::arange(0, reactions.size(), temp.options().dtype(torch::kInt));
+    for (int i = 0; i < temp.dim(); ++i)
+      reaction_set = reaction_set.unsqueeze(0);
+    reaction_set = reaction_set.expand(vec2).contiguous();
+    nactive = torch::zeros_like(temp, temp.options().dtype(torch::kInt));
+  }
 
   // diagnostic array
   vec[xfrac.dim() - 1] = 1;
@@ -184,6 +195,8 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .add_output(xfrac)
                   .add_owned_input(temp.unsqueeze(-1))
                   .add_owned_input(pres.unsqueeze(-1))
+                  .add_input(reaction_set)
+                  .add_owned_input(nactive.unsqueeze(-1))
                   .build();
 
   // call the equilibrium solver

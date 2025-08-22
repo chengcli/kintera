@@ -79,6 +79,9 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! stoichiometry matrix (nspecies, nreaction)
   torch::Tensor stoich;
 
+  //! kkt warm start active set
+  torch::Tensor reaction_set, nactive;
+
   //! options with which this `ThermoY` was constructed
   ThermoOptions options;
 
@@ -102,11 +105,12 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * \param[in] rho density
    * \param[in] intEng total internal energy [J/m^3]
    * \param[in,out] yfrac mass fraction, (ny, ...)
+   * \param[in] warm_start if true, use previous active set as warm start
    * \param[out] diag optional diagnostic output, (..., ndiag)
    * \return gain matrix, (..., nreaction, nreaction)
    */
   torch::Tensor forward(torch::Tensor rho, torch::Tensor intEng,
-                        torch::Tensor& yfrac,
+                        torch::Tensor& yfrac, bool warm_start = false,
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:
@@ -210,6 +214,9 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   //! stoichiometry matrix
   torch::Tensor stoich;
 
+  //! kkt warm start active set
+  torch::Tensor reaction_set, nactive;
+
   //! options with which this `ThermoX` was constructed
   ThermoOptions options;
 
@@ -274,11 +281,12 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param[in] temp temperature, K
    * \param[in] pres pressure, Pa
    * \param[in,out] xfrac mole fraction, (..., 1 + ny)
+   * \param[in] warm_start if true, use previous active set as warm start
    * \param[out] diag optional diagnostic output, (..., ndiag)
    * \return gain matrix, (..., nreaction, nreaction)
    */
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
-                        torch::Tensor& xfrac,
+                        torch::Tensor& xfrac, bool warm_start = false,
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:
