@@ -170,8 +170,8 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
   if (!warm_start || !reaction_set.defined()) {
     auto vec2 = temp.sizes().vec();
     vec2.push_back(reactions.size());
-    reaction_set =
-        torch::arange(0, reactions.size(), temp.options().dtype(torch::kInt));
+    reaction_set = torch::arange(0, (int)reactions.size(),
+                                 temp.options().dtype(torch::kInt));
     for (int i = 0; i < temp.dim(); ++i)
       reaction_set = reaction_set.unsqueeze(0);
     reaction_set = reaction_set.expand(vec2).contiguous();

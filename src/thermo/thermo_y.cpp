@@ -212,8 +212,8 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   if (!warm_start || !reaction_set.defined()) {
     auto vec2 = rho.sizes().vec();
     vec2.push_back(reactions.size());
-    reaction_set =
-        torch::arange(0, reactions.size(), rho.options().dtype(torch::kInt));
+    reaction_set = torch::arange(0, (int)reactions.size(),
+                                 rho.options().dtype(torch::kInt));
     for (int i = 0; i < rho.dim(); ++i)
       reaction_set = reaction_set.unsqueeze(0);
     reaction_set = reaction_set.expand(vec2).contiguous();

@@ -266,6 +266,7 @@ Args:
   rho (torch.Tensor): Density tensor [kg/m^3].
   intEng (torch.Tensor): Internal energy tensor [J/m^3].
   yfrac (torch.Tensor): Mass fraction tensor.
+  warm_start (bool): Whether to use warm start for the calculation.
 
 Returns:
   torch.Tensor: changed in mass fraction
@@ -282,6 +283,7 @@ Examples:
     >> dyfrac = thermo_y.forward(rho, intEng, yfrac)
     )doc",
                      py::arg("rho"), py::arg("intEng"), py::arg("yfrac"),
+                     py::arg("warm_start") = false,
                      py::arg("diag") = py::none())
 
       .def("compute", &kintera::ThermoYImpl::compute, R"doc(
@@ -313,6 +315,7 @@ Args:
   temp (torch.Tensor): Temperature tensor [K].
   pres (torch.Tensor): Pressure tensor [Pa].
   xfrac (torch.Tensor): mole fraction tensor.
+  warm_start (bool): whether to use warm start for the iteration.
 
 Returns:
   torch.Tensor: changes in mole fraction
@@ -329,6 +332,7 @@ Examples:
     >> dxfrac = thermo_x.forward(temp, pres, xfrac)
     )doc",
                      py::arg("temp"), py::arg("pres"), py::arg("xfrac"),
+                     py::arg("warm_start") = false,
                      py::arg("diag") = py::none())
 
       .def("compute", &kintera::ThermoXImpl::compute, R"doc(
