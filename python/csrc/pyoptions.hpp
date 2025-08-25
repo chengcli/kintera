@@ -19,25 +19,11 @@
            [](const kintera::m_name##Impl &a) {                            \
              return fmt::format(#m_name "{}", a.options);                  \
            })                                                              \
-      .def(                                                                \
-          "module",                                                        \
-          [](kintera::m_name##Impl &self) {                                \
-            return py::make_iterator(self.named_modules().begin(),         \
-                                     self.named_modules().end());          \
-          },                                                               \
-          py::keep_alive<0, 1>())                                          \
-      .def("get_module",                                                   \
+      .def("module",                                                       \
            [](kintera::m_name##Impl &self, std::string name) {             \
              return self.named_modules()[name];                            \
            })                                                              \
-      .def(                                                                \
-          "buffer",                                                        \
-          [](kintera::m_name##Impl &self) {                                \
-            return py::make_iterator(self.named_buffers().begin(),         \
-                                     self.named_buffers().end());          \
-          },                                                               \
-          py::keep_alive<0, 1>())                                          \
-      .def("get_buffer",                                                   \
+      .def("buffer",                                                       \
            [](kintera::m_name##Impl &self, std::string name) {             \
              return self.named_buffers()[name];                            \
            })                                                              \

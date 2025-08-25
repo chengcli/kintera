@@ -77,7 +77,7 @@ def test_case1():
     entropy_mol = entropy_vol / conc.sum(dim=-1)
 
     # compute relative humdity
-    stoich = thermo.get_buffer("stoich")
+    stoich = thermo.buffer("stoich")
     rh = relative_humidity(temp, conc, stoich, thermo.options.nucleation())
 
     print("temp = ", temp)

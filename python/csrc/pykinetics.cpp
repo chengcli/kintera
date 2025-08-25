@@ -99,7 +99,13 @@ void bind_kinetics(py::module &m) {
           R"(Whether to evolve temperature during kinetics calculation, default is false)");
 
   ADD_KINTERA_MODULE(Kinetics, KineticsOptions, R"(Evolve kinetic reactions)",
-                     py::arg("temp"), py::arg("conc"), py::arg("conc"))
+                     py::arg("temp"), py::arg("pres"), py::arg("conc"))
+      .def("forward_nogil",
+           [](kintera::KineticsImpl &self, torch::Tensor temp,
+              torch::Tensor pres, torch::Tensor conc) {
+             py::gil_scoped_release no_gil;
+             return self.forward(temp, pres, conc);
+           })
       .def("jacobian", &kintera::KineticsImpl::jacobian, py::arg("temp"),
            py::arg("conc"), py::arg("cvol"), py::arg("rate"), py::arg("rc_ddC"),
            py::arg("rc_ddT") = torch::nullopt);
