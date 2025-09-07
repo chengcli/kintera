@@ -11,9 +11,6 @@
 #include "luminv.h"
 #include "solve_block_system.h"
 
-#define A(i, j) a[(i) * n2 + (j)]
-#define ATA(i, j) ata[(i) * n2 + (j)]
-
 namespace kintera {
 
 /*!
@@ -60,11 +57,12 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   }
 
   // Allocate memory for the augmented matrix and right-hand side vector
-  T *ata, *ata_inv, *rhs, *eval;
+  T *ata, *atb, *ata_inv, *rhs, *eval;
   int *ct_indx;
 
   if (work == nullptr) {
     ata = (T *)malloc(n2 * n2 * sizeof(T));
+    atb = (T *)malloc(n2 * sizeof(T));
     ata_inv = (T *)malloc(n2 * n2 * sizeof(T));
     rhs = (T *)malloc((n2 + n3) * sizeof(T));
 
@@ -75,6 +73,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     ct_indx = (int *)malloc(n3 * sizeof(int));
   } else {
     ata = alloc_from<T>(work, n2 * n2);
+    atb = alloc_from<T>(work, n2);
     ata_inv = alloc_from<T>(work, n2 * n2);
     rhs = alloc_from<T>(work, n2 + n3);
     eval = alloc_from<T>(work, n3);
@@ -84,18 +83,18 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   // populate A^T.A
   for (int i = 0; i < n2; ++i) {
     for (int j = 0; j < n2; ++j) {
-      ATA(i, j) = 0.0;
+      ata[i * n2 + j] = 0.0;
       for (int k = 0; k < n1; ++k) {
-        ATA(i, j) += A(k, i) * A(k, j);
+        ata[i * n2 + j] += a[k * n2 + i] * a[k * n2 + j];
       }
     }
   }
 
   // populate A^T.b
   for (int i = 0; i < n2; ++i) {
-    rhs[i] = 0.0;
+    atb[i] = 0.0;
     for (int j = 0; j < n1; ++j) {
-      rhs[i] += A(j, i) * b[j];
+      atb[i] += a[j * n2 + i] * b[j];
     }
   }
 
@@ -126,6 +125,11 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     printf("\n");
     int nactive0 = nactive;
 
+    // populate c (upper part)
+    for (int i = 0; i < n2; ++i) {
+      rhs[i] = atb[i];
+    }
+
     // populate d (lower part)
     for (int i = 0; i < nactive; ++i) {
       rhs[n2 + i] = d[ct_indx[i]];
@@ -144,13 +148,6 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     }
 
     // print solution vector (rhs)
-    printf("A^T.A = \n");
-    for (int i = 0; i < n2; ++i) {
-      for (int j = 0; j < n2; ++j) {
-        printf("%f ", ATA(i, j));
-      }
-      printf("\n");
-    }
     printf("rhs = ");
     for (int i = 0; i < n2; ++i) {
       printf("%f ", rhs[i]);
@@ -241,6 +238,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 
   if (work == nullptr) {
     free(ata);
+    free(atb);
     free(ata_inv);
     free(rhs);
     free(eval);
@@ -259,6 +257,3 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 }
 
 }  // namespace kintera
-
-#undef A
-#undef ATA

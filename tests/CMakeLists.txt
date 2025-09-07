@@ -11,7 +11,7 @@ setup_test(test_thermo)
 setup_test(test_kinetics)
 setup_test(test_kkt)
 
-file(GLOB inputs *.inp *.dat *.yaml)
+file(GLOB inputs *.inp *.dat *.yaml X.txt Y.txt)
 foreach(input ${inputs})
   execute_process(COMMAND ln -sf ${input} ${CMAKE_BINARY_DIR}/tests/${inp})
 endforeach()
