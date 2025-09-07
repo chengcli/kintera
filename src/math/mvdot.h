@@ -10,7 +10,7 @@ namespace kintera {
 
 // matrix utilities (row-major)
 template <typename T>
-DISPATCH_MACRO void matvec(T *y, const T *A, const T *x, int n, int m) {
+DISPATCH_MACRO void mvdot(T *y, const T *A, const T *x, int n, int m) {
   // y = A x, A is n×m
   for (int i = 0; i < n; i++) {
     T sum = 0.0;
@@ -22,7 +22,7 @@ DISPATCH_MACRO void matvec(T *y, const T *A, const T *x, int n, int m) {
 }
 
 template <typename T>
-DISPATCH_MACRO void matvec_t(T *y, const T *A, const T *x, int n, int m) {
+DISPATCH_MACRO void mvdot_t(T *y, const T *A, const T *x, int n, int m) {
   // y = A^T x, A is m×n
   for (int i = 0; i < n; i++) {
     T sum = 0.0;
