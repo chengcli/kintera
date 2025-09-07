@@ -8,61 +8,14 @@
 #include <configure.h>
 
 // math
-#include "lubksb.h"
 #include "ludcmp.h"
+#include "luminv.h"
+#include "solve_block_system.h"
 
 #define A(i, j) a[(i) * n2 + (j)]
 #define ATA(i, j) ata[(i) * n2 + (j)]
-#define AUG(i, j) aug[(i) * (n2 + nact) + (j)]
-#define C(i, j) c[(i) * n2 + (j)]
 
 namespace kintera {
-
-template <typename T>
-DISPATCH_MACRO void populate_aug(T *aug, T const *ata, T const *c, int n2,
-                                 int nact, int const *ct_indx) {
-  // populate A^T.A (upper left block)
-  for (int i = 0; i < n2; ++i) {
-    for (int j = 0; j < n2; ++j) {
-      AUG(i, j) = ATA(i, j);
-    }
-  }
-
-  // populate C (lower left block)
-  for (int i = 0; i < nact; ++i) {
-    for (int j = 0; j < n2; ++j) {
-      AUG(n2 + i, j) = C(ct_indx[i], j);
-    }
-  }
-
-  // populate C^T (upper right block)
-  for (int i = 0; i < n2; ++i) {
-    for (int j = 0; j < nact; ++j) {
-      AUG(i, n2 + j) = C(ct_indx[j], i);
-    }
-  }
-
-  // zero (lower right block)
-  for (int i = 0; i < nact; ++i) {
-    for (int j = 0; j < nact; ++j) {
-      AUG(n2 + i, n2 + j) = 0.0;
-    }
-  }
-}
-
-template <typename T>
-DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
-                                 int nact, int const *ct_indx) {
-  // populate A^T.b (upper part)
-  for (int i = 0; i < n2; ++i) {
-    rhs[i] = atb[i];
-  }
-
-  // populate d (lower part)
-  for (int i = 0; i < nact; ++i) {
-    rhs[n2 + i] = d[ct_indx[i]];
-  }
-}
 
 /*!
  * \brief solve constrained least square problem: min ||A.x - b||, s.t. C.x <= d
@@ -74,7 +27,7 @@ DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
  *
  * \param[in,out] b[0..n1-1]    right-hand-side vector and output. Input
  *                              dimension is n1, output dimension is n2,
- * requiring n1 >= n2
+ *                              requiring n1 >= n2
  * \param[in] a[0..n1*n2-1]     row-major input matrix, A
  * \param[in] c[0..n3*n2-1]     row-major constraint matrix, C
  * \param[in] d[0..n3-1]        right-hand-side constraint vector, d
@@ -108,15 +61,13 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   }
 
   // Allocate memory for the augmented matrix and right-hand side vector
-  int size = n2 + n3;
-  T *aug, *ata, *atb, *rhs, *eval;
+  T *ata, *ata_inv, *rhs, *eval;
   int *ct_indx, *lu_indx;
 
   if (work == nullptr) {
-    aug = (T *)malloc(size * size * sizeof(T));
     ata = (T *)malloc(n2 * n2 * sizeof(T));
-    atb = (T *)malloc(size * sizeof(T));
-    rhs = (T *)malloc(size * sizeof(T));
+    ata_inv = (T *)malloc(n2 * n2 * sizeof(T));
+    rhs = (T *)malloc((n2 + n3) * sizeof(T));
 
     // evaluation of constraints
     eval = (T *)malloc(n3 * sizeof(T));
@@ -125,15 +76,14 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     ct_indx = (int *)malloc(n3 * sizeof(int));
 
     // index array for the LU decomposition
-    lu_indx = (int *)malloc(size * sizeof(int));
+    lu_indx = (int *)malloc(n2 * sizeof(int));
   } else {
-    aug = alloc_from<T>(work, size * size);
     ata = alloc_from<T>(work, n2 * n2);
-    atb = alloc_from<T>(work, size);
-    rhs = alloc_from<T>(work, size);
+    ata_inv = alloc_from<T>(work, n2 * n2);
+    rhs = alloc_from<T>(work, n2 + n3);
     eval = alloc_from<T>(work, n3);
     ct_indx = alloc_from<int>(work, n3);
-    lu_indx = alloc_from<int>(work, size);
+    lu_indx = alloc_from<int>(work, n2);
   }
 
   // populate A^T.A
@@ -148,9 +98,9 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 
   // populate A^T.b
   for (int i = 0; i < n2; ++i) {
-    atb[i] = 0.0;
+    rhs[i] = 0.0;
     for (int j = 0; j < n1; ++j) {
-      atb[i] += A(j, i) * b[j];
+      rhs[i] += A(j, i) * b[j];
     }
   }
 
@@ -158,11 +108,15 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     ct_indx[i] = i;
   }
 
+  // invert A^T.A
+  ludcmp(ata, lu_indx, n2, work);
+  luminv(ata_inv, ata, lu_indx, n2, work);
+
   int nactive = neq;
   int iter = 0;
 
   while (iter++ < *max_iter) {
-    /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
+    printf("kkt iter = %d, nactive = %d\n", iter, nactive);
     printf("ct_indx = ");
     for (int i = 0; i < neq; ++i) {
       printf("%d ", ct_indx[i]);
@@ -175,28 +129,34 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     for (int i = nactive; i < n3; ++i) {
       printf("%d ", ct_indx[i]);
     }
-    printf("\n");*/
+    printf("\n");
     int nactive0 = nactive;
-    populate_aug(aug, ata, c, n2, nactive, ct_indx);
-    populate_rhs(rhs, atb, d, n2, nactive, ct_indx);
 
-    // solve the KKT system
-    ludcmp(aug, lu_indx, n2 + nactive, work);
+    // populate d (lower part)
+    for (int i = 0; i < nactive; ++i) {
+      rhs[n2 + i] = d[ct_indx[i]];
+    }
 
-    for (int i = 0; i < n2 + nactive; ++i)
-      assert(lu_indx[i] >= 0 && lu_indx[i] < n2 + nactive);
-    lubksb(rhs, aug, lu_indx, n2 + nactive);
+    // solve the KKT system using block elimination
+    solve_block_system(ata_inv, c, rhs, rhs + n2, n2, nactive, work);
 
     // evaluate the inactive constraints
     for (int i = nactive; i < n3; ++i) {
       int k = ct_indx[i];
       eval[k] = 0.;
       for (int j = 0; j < n2; ++j) {
-        eval[k] += C(k, j) * rhs[j];
+        eval[k] += c[k * n2 + j] * rhs[j];
       }
     }
 
-    /* print solution vector (rhs)
+    // print solution vector (rhs)
+    printf("A^T.A = \n");
+    for (int i = 0; i < n2; ++i) {
+      for (int j = 0; j < n2; ++j) {
+        printf("%f ", ATA(i, j));
+      }
+      printf("\n");
+    }
     printf("rhs = ");
     for (int i = 0; i < n2; ++i) {
       printf("%f ", rhs[i]);
@@ -205,7 +165,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     for (int i = n2; i < n2 + nactive; ++i) {
       printf("%f ", rhs[i]);
     }
-    printf("\n");*/
+    printf("\n");
 
     // remove inactive constraints (three-way swap)
     //           mu < 0
@@ -286,9 +246,8 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   }
 
   if (work == nullptr) {
-    free(aug);
     free(ata);
-    free(atb);
+    free(ata_inv);
     free(rhs);
     free(eval);
     free(ct_indx);
@@ -310,5 +269,3 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 
 #undef A
 #undef ATA
-#undef AUG
-#undef C

@@ -221,7 +221,15 @@ DISPATCH_MACRO int equilibrate_uv(
     int max_kkt_iter = *max_iter;
     err_code = leastsq_kkt(rhs, gain, stoich_active, conc, *nactive, *nactive,
                            nspecies, 0, &max_kkt_iter, work);
-    if (err_code != 0) break;
+    if (err_code != 0) {
+      printf("conc = ");
+      for (int i = 0; i < nspecies; i++) {
+        printf("%e ", conc[i]);
+      }
+      printf("\n");
+      printf("u0 = %e\n", h0);
+      break;
+    }
 
     // rate -> conc
     for (int i = 0; i < nspecies; i++) {

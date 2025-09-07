@@ -30,26 +30,64 @@ size_t ludcmp_space(int n) {
   auto bump = [&](size_t align, size_t nbytes) {
     bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
   };
+
   bump(alignof(T), n * sizeof(T));  // vv
   return bytes;
 }
 
 template <typename T>
-size_t leastsq_kkt_space(int n2, int n3) {
-  int size = n2 + n3;
-
+size_t luminv_space(int n) {
   size_t bytes = 0;
   auto bump = [&](size_t align, size_t nbytes) {
     bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
   };
-  bump(alignof(T), size * size * sizeof(T));  // aug
-  bump(alignof(T), n2 * n2 * sizeof(T));      // ata
-  bump(alignof(T), size * sizeof(T));         // atb
-  bump(alignof(T), size * sizeof(T));         // rhs
-  bump(alignof(T), n3 * sizeof(T));           // eval
-  bump(alignof(int), n3 * sizeof(int));       // ct_indx
-  bump(alignof(int), size * sizeof(int));     // lu_indx
-  return bytes + ludcmp_space<T>(n2 + n3);
+
+  bump(alignof(T), n * sizeof(T));  // col
+  return bytes;
+}
+
+template <typename T>
+size_t leastsq_space(int n1, int n2) {
+  size_t bytes = 0;
+  auto bump = [&](size_t align, size_t nbytes) {
+    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  };
+
+  bump(alignof(T), n1 * sizeof(T));       // c
+  bump(alignof(T), n2 * n2 * sizeof(T));  // y
+  bump(alignof(int), n2 * sizeof(int));   // indx
+  return bytes + ludcmp_space<T>(n2);
+}
+
+template <typename T>
+size_t block_system_space(int n, int m) {
+  size_t bytes = 0;
+  auto bump = [&](size_t align, size_t nbytes) {
+    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  };
+
+  bump(alignof(T), m * n * sizeof(T));  // B_Ainv
+  bump(alignof(T), m * m * sizeof(T));  // B_Ainv_Bt
+  bump(alignof(T), n * sizeof(T));      // tmp_n
+  bump(alignof(T), m * sizeof(T));      // B_Ainv_C
+  return bytes + leastsq_space<T>(n, n);
+}
+
+template <typename T>
+size_t leastsq_kkt_space(int n2, int n3) {
+  size_t bytes = 0;
+  auto bump = [&](size_t align, size_t nbytes) {
+    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  };
+
+  bump(alignof(T), n2 * n2 * sizeof(T));    // ata
+  bump(alignof(T), n2 * n2 * sizeof(T));    // ata_inv
+  bump(alignof(T), (n2 + n3) * sizeof(T));  // rhs
+  bump(alignof(T), n3 * sizeof(T));         // eval
+  bump(alignof(int), n3 * sizeof(int));     // ct_indx
+  bump(alignof(int), n2 * sizeof(int));     // lu_indx
+  return bytes + block_system_space<T>(n2, n3) + ludcmp_space<T>(n2) +
+         luminv_space<T>(n2);
 }
 
 template <typename T>
