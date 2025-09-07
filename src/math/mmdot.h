@@ -20,23 +20,29 @@ namespace kintera {
 template <typename T>
 DISPATCH_MACRO void mmdot(T *r, T const *a, T const *b, int n1, int n2,
                           int n3) {
-  // Check if r, a, and b are not the same
-  if (r == a || r == b || a == b) {
-    printf("Error: r, a, and b must be distinct pointers.\n");
-    return;
-  }
-
-  // Initialize the result matrix to zero
-  for (int i = 0; i < n1 * n3; ++i) {
-    r[i] = 0.0;
-  }
-
   // Perform matrix multiplication
   for (int i = 0; i < n1; ++i) {
     for (int j = 0; j < n3; ++j) {
+      T sum = 0.0;
       for (int k = 0; k < n2; ++k) {
-        r[i * n3 + j] += a[i * n2 + k] * b[k * n3 + j];
+        sum += a[i * n2 + k] * b[k * n3 + j];
       }
+      r[i * n3 + j] = sum;
+    }
+  }
+}
+
+template <typename T>
+DISPATCH_MACRO void mmdot_t(T *r, T const *a, T const *b, int n1, int n2,
+                            int n3) {
+  // Perform matrix multiplication
+  for (int i = 0; i < n1; ++i) {
+    for (int j = 0; j < n3; ++j) {
+      T sum = 0.0;
+      for (int k = 0; k < n2; ++k) {
+        sum += a[i * n2 + j] * b[j * n2 + k];
+      }
+      r[i * n3 + j] = sum;
     }
   }
 }

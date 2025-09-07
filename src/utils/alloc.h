@@ -42,7 +42,7 @@ size_t luminv_space(int n) {
     bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
   };
 
-  bump(alignof(T), n * sizeof(T));  // col
+  bump(alignof(int), n * sizeof(int));  // indx
   return bytes;
 }
 
@@ -85,9 +85,7 @@ size_t leastsq_kkt_space(int n2, int n3) {
   bump(alignof(T), (n2 + n3) * sizeof(T));  // rhs
   bump(alignof(T), n3 * sizeof(T));         // eval
   bump(alignof(int), n3 * sizeof(int));     // ct_indx
-  bump(alignof(int), n2 * sizeof(int));     // lu_indx
-  return bytes + block_system_space<T>(n2, n3) + ludcmp_space<T>(n2) +
-         luminv_space<T>(n2);
+  return bytes + luminv_space<T>(n2) + block_system_space<T>(n2, n3);
 }
 
 template <typename T>

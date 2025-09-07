@@ -9,7 +9,9 @@
 // kintera
 #include <kintera/utils/alloc.h>
 
+// math
 #include "lubksb.h"
+#include "ludcmp.h"
 
 namespace kintera {
 
@@ -20,20 +22,27 @@ namespace kintera {
  * it is completely straightforward to find the inverse of a matrix
  * column by column.
  *
- * \param[out] y[0..n*n-1]  row-major output matrix, Y = A^{-1}
- * \param[in] a[0..n*n-1]   row-major LU decomposition matrix
- * \param[in] indx[0..n-1]  the permutation vector returned by ludcmp.
- * \param[in] n             size of matrix
+ * \param[out] y[0..n*n-1]      row-major output matrix, Y = A^{-1}
+ * \param[in,out] a[0..n*n-1]   in: row-major A matrix
+ *                              out: LU-decomposed A matrix
+ * \param[in] n                 size of matrix
  */
 template <typename T>
-DISPATCH_MACRO void luminv(T *y, T const *a, int const *indx, int n,
-                           char *work = nullptr) {
+DISPATCH_MACRO void luminv(T *y, T *a, int n, char *work = nullptr) {
+  int *indx;
   T *col;
+
   if (work == nullptr) {
+    indx = (int *)malloc(n * sizeof(int));
     col = (T *)malloc(n * sizeof(T));
   } else {
-    col = alloc_from<T>(work, n);
+    indx = alloc_from<int>(work, n);
+    uintptr_t p = reinterpret_cast<uintptr_t>(work);
+    p = align_up(p, alignof(T));
+    col = reinterpret_cast<T *>(p);
   }
+
+  ludcmp(a, indx, n, work);
 
   for (int j = 0; j < n; j++) {
     for (int i = 0; i < n; i++) col[i] = 0.0;
@@ -44,6 +53,7 @@ DISPATCH_MACRO void luminv(T *y, T const *a, int const *indx, int n,
 
   if (work == nullptr) {
     free(col);
+    free(indx);
   }
 }
 

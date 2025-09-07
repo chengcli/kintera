@@ -8,7 +8,6 @@
 #include <configure.h>
 
 // math
-#include "ludcmp.h"
 #include "luminv.h"
 #include "solve_block_system.h"
 
@@ -62,7 +61,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 
   // Allocate memory for the augmented matrix and right-hand side vector
   T *ata, *ata_inv, *rhs, *eval;
-  int *ct_indx, *lu_indx;
+  int *ct_indx;
 
   if (work == nullptr) {
     ata = (T *)malloc(n2 * n2 * sizeof(T));
@@ -74,16 +73,12 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
 
     // index for the active set
     ct_indx = (int *)malloc(n3 * sizeof(int));
-
-    // index array for the LU decomposition
-    lu_indx = (int *)malloc(n2 * sizeof(int));
   } else {
     ata = alloc_from<T>(work, n2 * n2);
     ata_inv = alloc_from<T>(work, n2 * n2);
     rhs = alloc_from<T>(work, n2 + n3);
     eval = alloc_from<T>(work, n3);
     ct_indx = alloc_from<int>(work, n3);
-    lu_indx = alloc_from<int>(work, n2);
   }
 
   // populate A^T.A
@@ -109,8 +104,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   }
 
   // invert A^T.A
-  ludcmp(ata, lu_indx, n2, work);
-  luminv(ata_inv, ata, lu_indx, n2, work);
+  luminv(ata_inv, ata, n2, work);
 
   int nactive = neq;
   int iter = 0;
@@ -251,7 +245,6 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     free(rhs);
     free(eval);
     free(ct_indx);
-    free(lu_indx);
   }
 
   if (iter >= *max_iter) {

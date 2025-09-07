@@ -44,7 +44,7 @@ DISPATCH_MACRO void matvec(T *y, const T *A, const T *x, int n, int m) {
 
 template <typename T>
 DISPATCH_MACRO void matvec_t(T *y, const T *A, const T *x, int n, int m) {
-  // y = A x, A is n×m
+  // y = A^T x, A is m×n
   for (int i = 0; i < n; i++) {
     T sum = 0.0;
     for (int j = 0; j < m; j++) {
