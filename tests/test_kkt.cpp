@@ -1,6 +1,7 @@
 // kintera
 #include <kintera/math/lubksb.h>
 #include <kintera/math/ludcmp.h>
+#include <kintera/math/luminv.h>
 #include <kintera/math/mvdot.h>
 #include <kintera/math/solve_block_system.h>
 
@@ -15,7 +16,10 @@ void solve_block_system() {
   double C[2] = {1, 2};
   double D[1] = {3};
 
-  solve_block_system(A, B, C, D, n, m);
+  double A_inv[4];
+  luminv(A_inv, A, n);
+
+  solve_block_system(A_inv, B, C, D, n, m);
 
   printf("x = [%f, %f]\n", C[0], C[1]);
   printf("y = [%f]\n", D[0]);
