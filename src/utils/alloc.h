@@ -79,8 +79,9 @@ size_t leastsq_kkt_space(int n2, int n3) {
   auto bump = [&](size_t align, size_t nbytes) {
     bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
   };
+  int nmax = (n2 > n3) ? n2 : n3;
 
-  bump(alignof(T), n2 * n2 * sizeof(T));    // ata
+  bump(alignof(T), nmax * n2 * sizeof(T));  // ata
   bump(alignof(T), n2 * sizeof(T));         // atb
   bump(alignof(T), n2 * n2 * sizeof(T));    // ata_inv
   bump(alignof(T), (n2 + n3) * sizeof(T));  // rhs

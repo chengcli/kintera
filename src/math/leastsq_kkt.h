@@ -59,9 +59,10 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   // Allocate memory for the augmented matrix and right-hand side vector
   T *ata, *atb, *ata_inv, *rhs, *eval;
   int *ct_indx;
+  int nmax = n2 > n3 ? n2 : n3;
 
   if (work == nullptr) {
-    ata = (T *)malloc(n2 * n2 * sizeof(T));
+    ata = (T *)malloc(nmax * n2 * sizeof(T));
     atb = (T *)malloc(n2 * sizeof(T));
     ata_inv = (T *)malloc(n2 * n2 * sizeof(T));
     rhs = (T *)malloc((n2 + n3) * sizeof(T));
@@ -72,7 +73,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     // index for the active set
     ct_indx = (int *)malloc(n3 * sizeof(int));
   } else {
-    ata = alloc_from<T>(work, n2 * n2);
+    ata = alloc_from<T>(work, nmax * n2);
     atb = alloc_from<T>(work, n2);
     ata_inv = alloc_from<T>(work, n2 * n2);
     rhs = alloc_from<T>(work, n2 + n3);
@@ -90,6 +91,9 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     }
   }
 
+  // invert A^T.A
+  luminv(ata_inv, ata, n2, work);
+
   // populate A^T.b
   for (int i = 0; i < n2; ++i) {
     atb[i] = 0.0;
@@ -102,8 +106,8 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     ct_indx[i] = i;
   }
 
-  // invert A^T.A
-  luminv(ata_inv, ata, n2, work);
+  memset(ata, 0, nmax * n2 * sizeof(T));
+  T *c_act = ata;  // reuse ata for c_act
 
   int nactive = neq;
   int iter = 0;
@@ -125,6 +129,12 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     printf("\n");
     int nactive0 = nactive;
 
+    // populate B
+    for (int i = 0; i < nactive; ++i)
+      for (int j = 0; j < n2; ++j) {
+        c_act[i * n2 + j] = c[ct_indx[i] * n2 + j];
+      }
+
     // populate c (upper part)
     for (int i = 0; i < n2; ++i) {
       rhs[i] = atb[i];
@@ -136,7 +146,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     }
 
     // solve the KKT system using block elimination
-    solve_block_system(ata_inv, c, rhs, rhs + n2, n2, nactive, work);
+    solve_block_system(ata_inv, c_act, rhs, rhs + n2, n2, nactive, work);
 
     // evaluate the inactive constraints
     for (int i = nactive; i < n3; ++i) {
