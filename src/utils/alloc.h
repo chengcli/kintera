@@ -43,7 +43,7 @@ size_t luminv_space(int n) {
   };
 
   bump(alignof(int), n * sizeof(int));  // indx
-  return bytes;
+  return bytes + ludcmp_space<T>(n);
 }
 
 template <typename T>
@@ -71,6 +71,23 @@ size_t block_system_space(int n, int m) {
   bump(alignof(T), n * sizeof(T));      // tmp_n
   bump(alignof(T), m * sizeof(T));      // B_Ainv_C
   return bytes + leastsq_space<T>(n, n);
+}
+
+template <typename T>
+size_t psolve_space(int n) {
+  size_t bytes = 0;
+  auto bump = [&](size_t align, size_t nbytes) {
+    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  };
+
+  bump(alignof(T), n * n * sizeof(T));  // ATA
+  bump(alignof(T), n * n * sizeof(T));  // S
+  bump(alignof(T), n * n * sizeof(T));  // V
+  bump(alignof(T), n * sizeof(T));      // eval
+  bump(alignof(T), n * sizeof(T));      // vi
+  bump(alignof(T), n * sizeof(T));      // Avi
+  bump(alignof(T), n * sizeof(T));      // b0
+  return bytes;
 }
 
 template <typename T>

@@ -1,9 +1,10 @@
 // kintera
+#include <kintera/math/core.h>
 #include <kintera/math/leastsq_kkt.h>
 #include <kintera/math/lubksb.h>
 #include <kintera/math/ludcmp.h>
 #include <kintera/math/luminv.h>
-#include <kintera/math/mvdot.h>
+#include <kintera/math/psolve.h>
 #include <kintera/math/solve_block_system.h>
 
 using namespace kintera;
@@ -302,10 +303,26 @@ void test_leastsq_kkt_large() {
   printf("\n");
 }
 
+void test_psolve() {
+  printf("Testing psolve...\n");
+  int n = 2;
+
+  double A[4] = {3.e-6, 0.0, 0.0, 0.0};
+  double b[2] = {0.008312, 0.};
+
+  psolve(b, A, n);
+
+  // Print solution vector x
+  for (int i = 0; i < n; ++i) {
+    printf("%.12g%c", b[i], (i + 1 < n) ? ' ' : '\n');
+  }
+}
+
 int main(int argc, char **argv) {
   test_luminv();
   test_leastsq();
   solve_block_system();
   test_leastsq_kkt();
   test_leastsq_kkt_large();
+  test_psolve();
 }
