@@ -1,5 +1,6 @@
 // kintera
 #include <kintera/math/core.h>
+#include <kintera/math/leastsq.h>
 #include <kintera/math/leastsq_kkt.h>
 #include <kintera/math/lubksb.h>
 #include <kintera/math/ludcmp.h>

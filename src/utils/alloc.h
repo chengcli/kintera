@@ -60,20 +60,6 @@ size_t leastsq_space(int n1, int n2) {
 }
 
 template <typename T>
-size_t block_system_space(int n, int m) {
-  size_t bytes = 0;
-  auto bump = [&](size_t align, size_t nbytes) {
-    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
-  };
-
-  bump(alignof(T), m * n * sizeof(T));  // B_Ainv
-  bump(alignof(T), m * m * sizeof(T));  // B_Ainv_Bt
-  bump(alignof(T), n * sizeof(T));      // tmp_n
-  bump(alignof(T), m * sizeof(T));      // B_Ainv_C
-  return bytes + leastsq_space<T>(n, n);
-}
-
-template <typename T>
 size_t psolve_space(int n) {
   size_t bytes = 0;
   auto bump = [&](size_t align, size_t nbytes) {
@@ -88,6 +74,20 @@ size_t psolve_space(int n) {
   bump(alignof(T), n * sizeof(T));      // Avi
   bump(alignof(T), n * sizeof(T));      // b0
   return bytes;
+}
+
+template <typename T>
+size_t block_system_space(int n, int m) {
+  size_t bytes = 0;
+  auto bump = [&](size_t align, size_t nbytes) {
+    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  };
+
+  bump(alignof(T), m * n * sizeof(T));  // B_Ainv
+  bump(alignof(T), m * m * sizeof(T));  // B_Ainv_Bt
+  bump(alignof(T), n * sizeof(T));      // tmp_n
+  bump(alignof(T), m * sizeof(T));      // B_Ainv_C
+  return bytes + psolve_space<T>(m);
 }
 
 template <typename T>

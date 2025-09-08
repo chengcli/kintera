@@ -57,7 +57,7 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n, char *work = nullptr) {
     if (big == 0.0) {
       // printf("Singular matrix in routine ludcmp\n");
       if (work == nullptr) free(vv);
-      return 1;
+      return 0;
     }
     vv[i] = 1.0 / big;
   }

@@ -14,7 +14,6 @@
 #include "lubksb.h"
 #include "ludcmp.h"
 #include "psolve.h"
-#include "rank.h"
 
 /*
  * Solve kkt-block system:
@@ -90,17 +89,20 @@ template <typename T>
 DISPATCH_MACRO void solve_block_system(const T *A_inv, const T *B, T *C, T *D,
                                        int n, int m, char *work = nullptr) {
   T *B_Ainv, *B_Ainv_Bt, *tmp_n, *B_Ainv_C;
+  int *indx;
 
   if (work == nullptr) {
     B_Ainv = (T *)malloc(m * n * sizeof(T));
     B_Ainv_Bt = (T *)malloc(m * m * sizeof(T));
     tmp_n = (T *)malloc(n * sizeof(T));
     B_Ainv_C = (T *)malloc(m * sizeof(T));
+    indx = (int *)malloc(m * sizeof(int));
   } else {
     B_Ainv = alloc_from<T>(work, m * n);
     B_Ainv_Bt = alloc_from<T>(work, m * m);
     tmp_n = alloc_from<T>(work, n);
     B_Ainv_C = alloc_from<T>(work, m);
+    indx = alloc_from<int>(work, m);
   }
 
   // Step 1: Compute B_Ainv and B_Ainv_Bt
@@ -129,16 +131,9 @@ DISPATCH_MACRO void solve_block_system(const T *A_inv, const T *B, T *C, T *D,
     printf("\n");
   }
 
-  int r = matrix_rank(B_Ainv_Bt, m, m);
+  int d = ludcmp(B_Ainv_Bt, indx, m, work);
 
-  if (r == m) {  // full rank, use LU
-    int *indx;
-    if (work == nullptr) {
-      indx = (int *)malloc(m * sizeof(int));
-    } else {
-      indx = alloc_from<int>(work, m);
-    }
-    ludcmp(B_Ainv_Bt, indx, m, work);
+  if (d != 0) {  // full rank, use lu
     lubksb(D, B_Ainv_Bt, indx, m);
   } else {  // rank deficient, use psolve
     psolve(D, B_Ainv_Bt, m, work);
@@ -157,6 +152,7 @@ DISPATCH_MACRO void solve_block_system(const T *A_inv, const T *B, T *C, T *D,
     free(B_Ainv_Bt);
     free(tmp_n);
     free(B_Ainv_C);
+    free(indx);
   }
 }
 

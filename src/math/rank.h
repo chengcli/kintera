@@ -26,7 +26,7 @@ DISPATCH_MACRO T max_abs(const T *A, int m, int n) {
 
 /* Compute rank via row-echelon form with partial pivoting */
 template <typename T>
-int matrix_rank(T *A, int m, int n) {
+DISPATCH_MACRO int matrix_rank(T *A, int m, int n) {
   int rank = 0;
   int row = 0;
   T scale = max_abs(A, m, n);
