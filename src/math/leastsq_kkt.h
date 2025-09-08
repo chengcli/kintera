@@ -42,7 +42,7 @@ namespace kintera {
 template <typename T>
 DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
                                int n2, int n3, int neq, int *max_iter,
-                               char *work = nullptr) {
+                               float ftol = 1.e-8, char *work = nullptr) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
     printf(
@@ -122,7 +122,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   int iter = 0;
 
   while (iter++ < *max_iter) {
-    printf("kkt iter = %d, nactive = %d\n", iter, nactive);
+    /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
     printf("ct_indx = ");
     for (int i = 0; i < neq; ++i) {
       printf("%d ", ct_indx[i]);
@@ -135,7 +135,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     for (int i = nactive; i < n3; ++i) {
       printf("%d ", ct_indx[i]);
     }
-    printf("\n");
+    printf("\n");*/
     int nactive0 = nactive;
 
     // populate B
@@ -164,7 +164,8 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     }
 
     // solve the KKT system using block elimination
-    solve_block_system(ata_inv, c_act, rhs, rhs + n2, n2, nactive, work);
+    solve_block_system(ata_inv, c_act, rhs, rhs + n2, n2, nactive, ftol / 100.,
+                       work);
 
     // evaluate the inactive constraints
     for (int i = nactive; i < n3; ++i) {

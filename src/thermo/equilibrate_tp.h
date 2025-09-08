@@ -142,13 +142,13 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   int kkt_err = 0;
   T lambda = 0.;  // rate scale factor
   while (iter++ < *max_iter) {
-    printf("========== iter = %d\n ", iter);
+    /*printf("========== iter = %d\n ", iter);
     // print xfrac
     printf("xfrac = ");
     for (int i = 0; i < nspecies; i++) {
       printf("%g ", xfrac[i]);
     }
-    printf("\n");
+    printf("\n");*/
 
     // fraction of gases
     T xg = 0.0;
@@ -174,6 +174,8 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
       // active set, weight matrix and rhs vector
       if ((log_frac_sum < (logsvp[j] - logsvp_eps) && prod > 0.) ||
           (log_frac_sum > (logsvp[j] + logsvp_eps))) {
+        // printf("log_frac_sum = %g, logsvp = %g, prod = %g\n", log_frac_sum,
+        // logsvp[j], prod);
         for (int i = 0; i < ngas; i++) {
           weight[first * nspecies + i] = -stoich_sum[j] / xg;
           if ((stoich[i * nreaction + j] < 0) && (xfrac[i] > 0.)) {
@@ -194,10 +196,8 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
       }
     }
 
-    if (first == 0) {
-      // all reactions are in equilibrium, no need to adjust saturation
-      break;
-    }
+    // break if all reactions are in equilibrium, no need to adjust saturation
+    if (first == 0) break;
 
     // populate active stoichiometric and constraint matrix
     (*nactive) = first;
@@ -217,8 +217,9 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
 
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
-    kkt_err = leastsq_kkt(rhs, gain_cpy, stoich_active, xfrac, *nactive,
-                          *nactive, nspecies, 0, &max_kkt_iter, work);
+    kkt_err =
+        leastsq_kkt(rhs, gain_cpy, stoich_active, xfrac, *nactive, *nactive,
+                    nspecies, 0, &max_kkt_iter, logsvp_eps / 100., work);
     if (kkt_err != 0) break;
 
     /* print rate
@@ -255,11 +256,20 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
       memcpy(xfrac, xfrac0, nspecies * sizeof(T));
     }
 
+    // break if abs change is small enough
+    T max_abs_change = 0.;
+    for (int i = 0; i < nspecies; i++) {
+      T abs_change = fabs(xfrac[i] - xfrac0[i]);
+      if (abs_change > max_abs_change) max_abs_change = abs_change;
+    }
+
+    if (max_abs_change < logsvp_eps / 1.e4) break;
+
     // re-normalize mole fractions
     for (int i = 0; i < nspecies; i++) xfrac[i] /= xsum;
   }
 
-  /////////// Construct a gain matrix of active reactions ///////////
+  /*///////// Construct a gain matrix of active reactions ///////////
   int first = 0;
   int last = nreaction;
   T xg = 0.0;
@@ -306,7 +316,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     for (int k = 0; k < (*nactive); k++) {
       int j = reaction_set[k];
       stoich_active[i * (*nactive) + k] = stoich[i * nreaction + j];
-    }
+    }*/
 
   // mmdot(gain_cpy, weight, stoich_active, *nactive, nspecies, *nactive);
   memset(gain, 0, nreaction * nreaction * sizeof(T));

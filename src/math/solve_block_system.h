@@ -87,7 +87,8 @@ DISPATCH_MACRO void matmat_t(T *C, const T *A, const T *B, int n, int m,
 
 template <typename T>
 DISPATCH_MACRO void solve_block_system(const T *A_inv, const T *B, T *C, T *D,
-                                       int n, int m, char *work = nullptr) {
+                                       int n, int m, float ftol = 1.e-10,
+                                       char *work = nullptr) {
   T *B_Ainv, *B_Ainv_Bt, *tmp_n, *B_Ainv_C;
   int *indx;
 
@@ -131,7 +132,7 @@ DISPATCH_MACRO void solve_block_system(const T *A_inv, const T *B, T *C, T *D,
     printf("\n");
   }*/
 
-  psolve(D, B_Ainv_Bt, m, /*ftol=*/1.e-12, work);
+  psolve(D, B_Ainv_Bt, m, ftol, work);
 
   // Step 4: Recover x = A^{-1}(C - B^T y)
   matvec_t(tmp_n, B, D, n, m);

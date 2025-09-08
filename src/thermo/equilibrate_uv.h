@@ -219,8 +219,9 @@ DISPATCH_MACRO int equilibrate_uv(
 
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
-    err_code = leastsq_kkt(rhs, gain_cpy, stoich_active, conc, *nactive,
-                           *nactive, nspecies, 0, &max_kkt_iter, work);
+    err_code =
+        leastsq_kkt(rhs, gain_cpy, stoich_active, conc, *nactive, *nactive,
+                    nspecies, 0, &max_kkt_iter, logsvp_eps / 100., work);
     if (err_code != 0) {
       printf("conc = ");
       for (int i = 0; i < nspecies; i++) {
