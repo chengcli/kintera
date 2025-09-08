@@ -144,13 +144,13 @@ DISPATCH_MACRO int equilibrate_uv(
   int iter = 0;
   int err_code = 0;
   while (iter++ < *max_iter) {
-    /*printf("iteration %d: T = %g\n", iter, *temp);
-    //print conc
+    printf("iteration %d: T = %g\n", iter, *temp);
+    // print conc
     printf("concentrations: ");
     for (int i = 0; i < nspecies; i++) {
       printf("%g ", conc[i]);
     }
-    printf("\n");*/
+    printf("\n");
 
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
