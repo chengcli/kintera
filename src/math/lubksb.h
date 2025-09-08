@@ -12,12 +12,13 @@ namespace kintera {
  * zero elements, so it is efficient for use in matrix inversion.
  * Adapted from Numerical Recipes in C, 2nd Ed., p. 47.
  *
- * \param[in,out] b[0..n-1] input as the right-hand side vector B, and returns
- * with the solution vector X.
- * \param[in] a[0..n*n-1] row-major input matrix, not as the matrix A but rather
- * as its LU decomposition, determined by the routine ludcmp.
- * \param[in] indx[0..n-1] input the permutation vector returned by ludcmp.
- * \param[in] n size of matrix
+ * \param[in,out] b[0..n-1]   input as the right-hand side vector B,
+ *                            and returns with the solution vector X.
+ * \param[in] a[0..n*n-1]     row-major input matrix, not as the matrix A
+ *                            but rather as its LU decomposition,
+ *                            determined by the routine ludcmp.
+ * \param[in] indx[0..n-1]    input the permutation vector returned by ludcmp.
+ * \param[in] n               size of matrix
  */
 template <typename T>
 DISPATCH_MACRO void lubksb(T *b, T const *a, int const *indx, int n) {

@@ -27,8 +27,8 @@ namespace kintera {
  * \param[in,out] a[0..n*n-1]   row-major input matrix, output LU decomposition
  * \param[out] indx[0..n-1]     vector that records the row permutation effected
  *                              by the partial pivoting. Outputs as +/- 1
- * depending on whether the number of row interchanges was even or odd,
- *                              respectively.
+ *                              depending on whether the number of row
+ *                              interchanges was even or odd, respectively.
  * \param[in] n                 size of matrix
  * \param[in] work              workspace if not null, otherwise allocated
  * internally

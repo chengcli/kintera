@@ -11,7 +11,10 @@
 #include <kintera/utils/alloc.h>
 
 // math
-#include "leastsq.h"
+#include "lubksb.h"
+#include "ludcmp.h"
+#include "psolve.h"
+#include "rank.h"
 
 /*
  * Solve kkt-block system:
@@ -126,7 +129,20 @@ DISPATCH_MACRO void solve_block_system(const T *A_inv, const T *B, T *C, T *D,
     printf("\n");
   }
 
-  leastsq(D, B_Ainv_Bt, m, m, work);
+  int r = matrix_rank(B_Ainv_Bt, m, m);
+
+  if (r == m) {  // full rank, use LU
+    int *indx;
+    if (work == nullptr) {
+      indx = (int *)malloc(m * sizeof(int));
+    } else {
+      indx = alloc_from<int>(work, m);
+    }
+    ludcmp(B_Ainv_Bt, indx, m, work);
+    lubksb(D, B_Ainv_Bt, indx, m);
+  } else {  // rank deficient, use psolve
+    psolve(D, B_Ainv_Bt, m, work);
+  }
 
   // Step 4: Recover x = A^{-1}(C - B^T y)
   matvec_t(tmp_n, B, D, n, m);
