@@ -6,8 +6,12 @@
 #include <cstdlib>
 #include <cstring>
 
+// base
+#include <configure.h>
+
 // math
 #include "core.h"
+#include "swap.h"
 
 // kintera
 #include <kintera/utils/alloc.h>
@@ -30,33 +34,6 @@ DISPATCH_MACRO T max_abs_offdiag(const T* S, int n, int* p, int* q) {
     }
   }
   return maxv;
-}
-
-template <typename T>
-DISPATCH_MACRO void swap_cols(T* M, int n, int c1, int c2) {
-  if (c1 == c2) return;
-  for (int i = 0; i < n; ++i) {
-    T tmp = M[i * n + c1];
-    M[i * n + c2] = (M[i * n + c1] = M[i * n + c2],
-                     tmp);  // no-op trick won't work; do normal swap
-  }
-}
-
-template <typename T>
-DISPATCH_MACRO void swap_cols_safe(T* M, int n, int c1, int c2) {
-  if (c1 == c2) return;
-  for (int i = 0; i < n; ++i) {
-    T tmp = M[i * n + c1];
-    M[i * n + c1] = M[i * n + c2];
-    M[i * n + c2] = tmp;
-  }
-}
-
-template <typename T>
-DISPATCH_MACRO void swap_vals(T* a, int i, int j) {
-  T t = a[i];
-  a[i] = a[j];
-  a[j] = t;
 }
 
 /* Jacobi eigen-decomposition for real symmetric matrices.

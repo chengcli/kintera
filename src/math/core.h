@@ -2,6 +2,8 @@
 
 // C/C++
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 // base
 #include <configure.h>

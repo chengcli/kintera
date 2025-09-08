@@ -5,6 +5,7 @@
 #include <kintera/math/ludcmp.h>
 #include <kintera/math/luminv.h>
 #include <kintera/math/psolve.h>
+#include <kintera/math/rank.h>
 #include <kintera/math/solve_block_system.h>
 
 using namespace kintera;
@@ -318,6 +319,14 @@ void test_psolve() {
   }
 }
 
+void test_rank() {
+  int m, n;
+  double A[4] = {3.e-6, 0.0, 0.0, 0.0};
+
+  int r = matrix_rank(A, 2, 2);
+  printf("%d\n", r);
+}
+
 int main(int argc, char **argv) {
   test_luminv();
   test_leastsq();
@@ -325,4 +334,5 @@ int main(int argc, char **argv) {
   test_leastsq_kkt();
   test_leastsq_kkt_large();
   test_psolve();
+  test_rank();
 }
