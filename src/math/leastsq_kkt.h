@@ -122,7 +122,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   int iter = 0;
 
   while (iter++ < *max_iter) {
-    /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
+    printf("kkt iter = %d, nactive = %d\n", iter, nactive);
     printf("ct_indx = ");
     for (int i = 0; i < neq; ++i) {
       printf("%d ", ct_indx[i]);
@@ -135,7 +135,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     for (int i = nactive; i < n3; ++i) {
       printf("%d ", ct_indx[i]);
     }
-    printf("\n");*/
+    printf("\n");
     int nactive0 = nactive;
 
     // populate B

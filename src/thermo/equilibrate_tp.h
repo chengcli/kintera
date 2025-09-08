@@ -142,13 +142,13 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   int kkt_err = 0;
   T lambda = 0.;  // rate scale factor
   while (iter++ < *max_iter) {
-    /*printf("iter = %d\n ", iter);
+    printf("========== iter = %d\n ", iter);
     // print xfrac
     printf("xfrac = ");
     for (int i = 0; i < nspecies; i++) {
       printf("%g ", xfrac[i]);
     }
-    printf("\n");*/
+    printf("\n");
 
     // fraction of gases
     T xg = 0.0;
@@ -242,6 +242,13 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
         }
         if (i < ngas && xfrac[i] <= 0.) positive_vapor = false;
         xsum += xfrac[i];
+      }
+
+      // limit species xfrac change to be less than a factor of 100
+      for (int i = 0; i < nspecies; i++) {
+        if (fabs(xfrac[i] / xfrac0[i]) > 100. ||
+            fabs(xfrac0[i] / xfrac[i]) > 100.)
+          positive_vapor = false;
       }
       if (positive_vapor) break;
       lambda *= 0.99;
