@@ -91,7 +91,7 @@ DISPATCH_MACRO int equilibrate_uv(
   }
 
   T *intEng, *intEng_ddT, *logsvp, *logsvp_ddT, *weight, *rhs;
-  T *stoich_active;
+  T *stoich_active, *conc0;
   T *gain_cpy;
 
   if (work == nullptr) {
@@ -109,6 +109,9 @@ DISPATCH_MACRO int equilibrate_uv(
     // active stoichiometric matrix
     stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
 
+    // concentration copy
+    conc0 = (T *)malloc(nspecies * sizeof(T));
+
     // gain matrix copy
     gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
   } else {
@@ -119,6 +122,7 @@ DISPATCH_MACRO int equilibrate_uv(
     weight = alloc_from<T>(work, nreaction * nspecies);
     rhs = alloc_from<T>(work, nreaction);
     stoich_active = alloc_from<T>(work, nspecies * nreaction);
+    conc0 = alloc_from<T>(work, nspecies);
     gain_cpy = alloc_from<T>(work, nreaction * nreaction);
   }
 
@@ -140,6 +144,14 @@ DISPATCH_MACRO int equilibrate_uv(
   int iter = 0;
   int err_code = 0;
   while (iter++ < *max_iter) {
+    /*printf("iteration %d: T = %g\n", iter, *temp);
+    //print conc
+    printf("concentrations: ");
+    for (int i = 0; i < nspecies; i++) {
+      printf("%g ", conc[i]);
+    }
+    printf("\n");*/
+
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
       T stoich_sum = 0.0;
@@ -224,11 +236,20 @@ DISPATCH_MACRO int equilibrate_uv(
     if (err_code != 0) break;
 
     // rate -> conc
+    // memcpy(conc0, conc, nspecies * sizeof(T));
+    T lambda = 1.;  // scale
+                    // while (true) {
+    // bool positive_vapor = true;
     for (int i = 0; i < nspecies; i++) {
       for (int k = 0; k < (*nactive); k++) {
-        conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k];
+        conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k] * lambda;
       }
+      // if (i < ngas && conc[i] <= 0.) positive_vapor = false;
     }
+    // if (positive_vapor) break;
+    // lambda *= 0.99;
+    // memcpy(conc, conc0, nspecies * sizeof(T));
+    //}
 
     // temperature iteration
     T temp0 = 0.;

@@ -20,13 +20,15 @@ namespace kintera {
  * \param[in] n size of matrix
  */
 template <typename T>
-DISPATCH_MACRO void lubksb(T *b, T const *a, int const *indx, int n) {
+DISPATCH_MACRO void lubksb(T *b, T const *a, int const *indx, int n,
+                           int *skip_row = nullptr) {
   int i, ip, j;
   int ii = -1;
   T sum;
 
   // Forward substitution
   for (i = 0; i < n; ++i) {
+    if (skip_row && skip_row[i]) continue;
     ip = indx[i];
     sum = b[ip];
     b[ip] = b[i];
@@ -40,6 +42,7 @@ DISPATCH_MACRO void lubksb(T *b, T const *a, int const *indx, int n) {
 
   // Back substitution
   for (i = n - 1; i >= 0; --i) {
+    if (skip_row && skip_row[i]) continue;
     sum = b[i];
     for (j = i + 1; j < n; ++j) sum -= a[i * n + j] * b[j];
     b[i] = sum / a[i * n + i];

@@ -65,7 +65,7 @@ size_t leastsq_kkt_space(int n2, int n3) {
   bump(alignof(T), n3 * sizeof(T));           // eval
   bump(alignof(int), n3 * sizeof(int));       // ct_indx
   bump(alignof(int), size * sizeof(int));     // lu_indx
-  // return bytes + psolve_space<T>(n2 + n3);
+  bump(alignof(int), size * sizeof(int));     // skip_row
   return bytes + ludcmp_space<T>(n2 + n3);
 }
 
@@ -98,6 +98,7 @@ size_t equilibrate_uv_space(int nspecies, int nreaction) {
   bump(alignof(T), nreaction * nspecies * sizeof(T));   // weight
   bump(alignof(T), nreaction * sizeof(T));              // rhs
   bump(alignof(T), nspecies * nreaction * sizeof(T));   // stoich_active
+  bump(alignof(T), nspecies * sizeof(T));               // conc0
   bump(alignof(T), nreaction * nreaction * sizeof(T));  // gain_cpy
   return bytes + leastsq_kkt_space<T>(nreaction, nspecies);
 }

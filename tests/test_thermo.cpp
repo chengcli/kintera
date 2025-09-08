@@ -6,6 +6,8 @@
 
 // kintera
 #include <kintera/constants.h>
+#include <kintera/math/lubksb.h>
+#include <kintera/math/ludcmp.h>
 
 #include <kintera/thermo/eval_uhs.hpp>
 #include <kintera/thermo/relative_humidity.hpp>
@@ -384,7 +386,25 @@ TEST_P(DeviceTest, relative_humidity) {
   EXPECT_GE(rh.max().item<float>(), 0.0);
 }
 
+void test_ludcmp_skip() {
+  double array[9] = {3, 0, 0, 0, 0, 0, 0, 0, 1};
+  double rhs[3] = {1, 2, 3};
+  int indx[3];
+  int skip_row[3] = {0, 1, 0};
+
+  ludcmp(array, indx, 3, nullptr, skip_row);
+  lubksb(rhs, array, indx, 3, skip_row);
+
+  printf("rhs = \n");
+  for (int i = 0; i < 3; ++i) {
+    printf("%f\n", rhs[i]);
+  }
+}
+
 int main(int argc, char **argv) {
+  // torch::set_num_threads(1);
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
+
+  // test_ludcmp_skip();
 }
