@@ -118,26 +118,20 @@ DISPATCH_MACRO void solve_block_system(const T *A_inv, const T *B, T *C, T *D,
   }
 
   // Step 3: Solve (B_Ainv_Bt) y = rhs_y
-  printf("D = \n");
+  /*printf("D = \n");
   for (int i = 0; i < m; i++) {
     printf("%f ", D[i]);
   }
 
-  printf("B_Ainv_Bt = \n");
+  printf("\nB_Ainv_Bt = \n");
   for (int i = 0; i < m; i++) {
     for (int j = 0; j < m; j++) {
       printf("%f ", B_Ainv_Bt[i * m + j]);
     }
     printf("\n");
-  }
+  }*/
 
-  int d = ludcmp(B_Ainv_Bt, indx, m, work);
-
-  if (d != 0) {  // full rank, use lu
-    lubksb(D, B_Ainv_Bt, indx, m);
-  } else {  // rank deficient, use psolve
-    psolve(D, B_Ainv_Bt, m, work);
-  }
+  psolve(D, B_Ainv_Bt, m, work);
 
   // Step 4: Recover x = A^{-1}(C - B^T y)
   matvec_t(tmp_n, B, D, n, m);

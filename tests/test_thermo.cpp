@@ -385,6 +385,7 @@ TEST_P(DeviceTest, relative_humidity) {
 }
 
 int main(int argc, char **argv) {
+  torch::set_num_threads(1);
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

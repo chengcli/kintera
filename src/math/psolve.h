@@ -45,7 +45,7 @@ template <typename T>
 DISPATCH_MACRO void jacobi_eigen_symmetric(T* S, int n, T* evals, T* V) {
   set_identity(V, n);
   const int max_sweeps = 100;  // sufficient for moderate n
-  const T eps = 1e-12;
+  const T eps = 1e-10;
 
   for (int sweep = 0; sweep < max_sweeps; ++sweep) {
     int p, q;
@@ -112,12 +112,11 @@ DISPATCH_MACRO void sort_eigenpairs_desc(T* evals, T* V, int n) {
    A: n x n, b: n, output x: n
 */
 template <typename T>
-DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
-  T *ATA, *S, *V, *eval, *vi, *Avi, *b0;
+DISPATCH_MACRO void psolve(T* b, T* A, int n, char* work = nullptr) {
+  T *ATA, *V, *eval, *vi, *Avi, *b0;
 
   if (work == nullptr) {
     ATA = (T*)malloc(n * n * sizeof(T));
-    S = (T*)malloc(n * n * sizeof(T));
     V = (T*)malloc(n * n * sizeof(T));
     eval = (T*)malloc(n * sizeof(T));
     vi = (T*)malloc(n * sizeof(T));
@@ -125,7 +124,6 @@ DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
     b0 = (T*)malloc(n * sizeof(T));
   } else {
     ATA = alloc_from<T>(work, n * n);
-    S = alloc_from<T>(work, n * n);
     V = alloc_from<T>(work, n * n);
     eval = alloc_from<T>(work, n);
     vi = alloc_from<T>(work, n);
@@ -134,20 +132,19 @@ DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
   }
 
   matmul_ATA(ATA, A, n);
-  memcpy(S, ATA, n * n * sizeof(T));
   memcpy(b0, b, n * sizeof(T));
   memset(b, 0, n * sizeof(T));  // output x
 
-  jacobi_eigen_symmetric(S, n, eval, V);
+  jacobi_eigen_symmetric(ATA, n, eval, V);
   // Clean tiny negative due to roundoff and sort
   for (int i = 0; i < n; ++i) {
-    if (eval[i] < 0 && eval[i] > -1e-14) eval[i] = 0.0;
+    if (eval[i] < 0 && eval[i] > -1e-12) eval[i] = 0.0;
   }
   sort_eigenpairs_desc(eval, V, n);
 
   // Tolerance relative to the largest eigenvalue (sigma^2)
   T maxlam = (n > 0) ? eval[0] : 0.0;
-  T tol = (maxlam > 0 ? maxlam : 1.0) * 1e-12;
+  T tol = (maxlam > 0 ? maxlam : 1.0) * 1e-10;
 
   // x = sum_i ( (u_i^T b)/sigma_i ) * v_i, where u_i = (A v_i)/sigma_i
   for (int i = 0; i < n; ++i) {
@@ -173,7 +170,6 @@ DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
 
   if (work == nullptr) {
     free(ATA);
-    free(S);
     free(V);
     free(eval);
     free(vi);

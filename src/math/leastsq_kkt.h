@@ -94,14 +94,14 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   // invert A^T.A
   luminv(ata_inv, ata, n2, work);
 
-  // print ata_inv
+  /* print ata_inv
   printf("ata_inv = \n");
   for (int i = 0; i < n2; ++i) {
     for (int j = 0; j < n2; ++j) {
       printf("%f ", ata_inv[i * n2 + j]);
     }
     printf("\n");
-  }
+  }*/
 
   // populate A^T.b
   for (int i = 0; i < n2; ++i) {
@@ -122,7 +122,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   int iter = 0;
 
   while (iter++ < *max_iter) {
-    printf("kkt iter = %d, nactive = %d\n", iter, nactive);
+    /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
     printf("ct_indx = ");
     for (int i = 0; i < neq; ++i) {
       printf("%d ", ct_indx[i]);
@@ -135,7 +135,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     for (int i = nactive; i < n3; ++i) {
       printf("%d ", ct_indx[i]);
     }
-    printf("\n");
+    printf("\n");*/
     int nactive0 = nactive;
 
     // populate B
@@ -144,14 +144,14 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
         c_act[i * n2 + j] = c[ct_indx[i] * n2 + j];
       }
 
-    // print B
+    /* print B
     printf("c_act = \n");
     for (int i = 0; i < nactive; ++i) {
       for (int j = 0; j < n2; ++j) {
         printf("%f ", c_act[i * n2 + j]);
       }
       printf("\n");
-    }
+    }*/
 
     // populate c (upper part)
     for (int i = 0; i < n2; ++i) {
@@ -175,7 +175,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
       }
     }
 
-    // print solution vector (rhs)
+    /* print solution vector (rhs)
     printf("rhs = ");
     for (int i = 0; i < n2; ++i) {
       printf("%f ", rhs[i]);
@@ -184,7 +184,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     for (int i = n2; i < n2 + nactive; ++i) {
       printf("%f ", rhs[i]);
     }
-    printf("\n");
+    printf("\n");*/
 
     // remove inactive constraints (three-way swap)
     //           mu < 0

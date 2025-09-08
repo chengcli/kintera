@@ -142,13 +142,13 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   int kkt_err = 0;
   T lambda = 0.;  // rate scale factor
   while (iter++ < *max_iter) {
-    /*printf("iter = %d\n ", iter);
+    printf("iter = %d\n ", iter);
     // print xfrac
     printf("xfrac = ");
     for (int i = 0; i < nspecies; i++) {
       printf("%g ", xfrac[i]);
     }
-    printf("\n");*/
+    printf("\n");
 
     // fraction of gases
     T xg = 0.0;

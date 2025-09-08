@@ -67,7 +67,6 @@ size_t psolve_space(int n) {
   };
 
   bump(alignof(T), n * n * sizeof(T));  // ATA
-  bump(alignof(T), n * n * sizeof(T));  // S
   bump(alignof(T), n * n * sizeof(T));  // V
   bump(alignof(T), n * sizeof(T));      // eval
   bump(alignof(T), n * sizeof(T));      // vi
