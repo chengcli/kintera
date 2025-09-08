@@ -233,11 +233,17 @@ DISPATCH_MACRO int equilibrate_uv(
     }
 
     // rate -> conc
+    T max_abs_change = 0.;
     for (int i = 0; i < nspecies; i++) {
+      T sum = 0.;
       for (int k = 0; k < (*nactive); k++) {
-        conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k];
+        sum += stoich_active[i * (*nactive) + k] * rhs[k];
       }
+      if (fabs(sum) > max_abs_change) max_abs_change = fabs(sum);
+      conc[i] -= sum;
     }
+
+    if (max_abs_change < logsvp_eps / 1.e4) break;
 
     // temperature iteration
     T temp0 = 0.;

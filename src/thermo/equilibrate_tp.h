@@ -50,14 +50,16 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
                                   char *work = nullptr) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
-    printf("Error: Non-positive temperature or pressure.\n");
+    printf("Error: Non-positive temperature (%g) or pressure (%g).\n", temp,
+           pres);
     return 1;  // error: non-positive temperature or pressure
   }
 
   // check positive gas fractions
   for (int i = 0; i < ngas; i++) {
     if (xfrac[i] <= 0) {
-      printf("Error: Non-positive gas fraction for species %d.\n", i);
+      printf("Error: Non-positive gas fraction for species %d = %g.\n", i,
+             xfrac[i]);
       return 1;  // error: negative gas fraction
     }
   }
@@ -65,8 +67,11 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   // check non-negative solid concentration
   for (int i = ngas; i < nspecies; i++) {
     if (xfrac[i] < 0) {
-      printf("Error: Negative solid concentration for species %d.\n", i);
-      return 1;  // error: negative solid concentration
+      printf("Warning: Negative solid concentration for species %d = %g.\n", i,
+             xfrac[i]);
+      printf("Setting solid concentration to zero.\n");
+      xfrac[i] = 0.;
+      // return 1;  // error: negative solid concentration
     }
   }
 
