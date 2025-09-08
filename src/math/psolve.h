@@ -42,10 +42,11 @@ DISPATCH_MACRO T max_abs_offdiag(const T* S, int n, int* p, int* q) {
    S is overwritten during iterations.
 */
 template <typename T>
-DISPATCH_MACRO void jacobi_eigen_symmetric(T* S, int n, T* evals, T* V) {
+DISPATCH_MACRO void jacobi_eigen_symmetric(T* S, int n, T* evals, T* V,
+                                           float ftol) {
   set_identity(V, n);
   const int max_sweeps = 100;  // sufficient for moderate n
-  const T eps = 1e-8;
+  const T eps = ftol;
 
   for (int sweep = 0; sweep < max_sweeps; ++sweep) {
     int p, q;
@@ -112,7 +113,8 @@ DISPATCH_MACRO void sort_eigenpairs_desc(T* evals, T* V, int n) {
    A: n x n, b: n, output x: n
 */
 template <typename T>
-DISPATCH_MACRO void psolve(T* b, T* A, int n, char* work = nullptr) {
+DISPATCH_MACRO void psolve(T* b, T* A, int n, float ftol = 1.e-10,
+                           char* work = nullptr) {
   T *ATA, *V, *eval, *vi, *Avi, *b0;
 
   if (work == nullptr) {
@@ -135,16 +137,16 @@ DISPATCH_MACRO void psolve(T* b, T* A, int n, char* work = nullptr) {
   memcpy(b0, b, n * sizeof(T));
   memset(b, 0, n * sizeof(T));  // output x
 
-  jacobi_eigen_symmetric(ATA, n, eval, V);
+  jacobi_eigen_symmetric(ATA, n, eval, V, ftol);
   // Clean tiny negative due to roundoff and sort
   for (int i = 0; i < n; ++i) {
-    if (eval[i] < 0 && eval[i] > -1e-10) eval[i] = 0.0;
+    if (eval[i] < 0 && eval[i] > -ftol) eval[i] = 0.0;
   }
   sort_eigenpairs_desc(eval, V, n);
 
   // Tolerance relative to the largest eigenvalue (sigma^2)
   T maxlam = (n > 0) ? eval[0] : 0.0;
-  T tol = (maxlam > 0 ? maxlam : 1.0) * 1e-8;
+  T tol = (maxlam > 0 ? maxlam : 1.0) * ftol / 100.;
 
   // x = sum_i ( (u_i^T b)/sigma_i ) * v_i, where u_i = (A v_i)/sigma_i
   for (int i = 0; i < n; ++i) {
