@@ -285,7 +285,7 @@ TEST_P(DeviceTest, equilibrate_uv) {
 }
 
 TEST_P(DeviceTest, equilibrate_uv_large) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(20);
 
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
@@ -385,7 +385,7 @@ TEST_P(DeviceTest, relative_humidity) {
 }
 
 int main(int argc, char **argv) {
-  torch::set_num_threads(1);
+  // torch::set_num_threads(1);
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

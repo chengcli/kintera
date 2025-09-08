@@ -97,7 +97,7 @@ size_t leastsq_kkt_space(int n2, int n3) {
   };
   int nmax = (n2 > n3) ? n2 : n3;
 
-  bump(alignof(T), nmax * n2 * sizeof(T));  // ata
+  bump(alignof(T), nmax * n2 * sizeof(T));  // ata, c_act
   bump(alignof(T), n2 * sizeof(T));         // atb
   bump(alignof(T), n2 * n2 * sizeof(T));    // ata_inv
   bump(alignof(T), (n2 + n3) * sizeof(T));  // rhs

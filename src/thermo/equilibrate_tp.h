@@ -142,13 +142,13 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   int kkt_err = 0;
   T lambda = 0.;  // rate scale factor
   while (iter++ < *max_iter) {
-    printf("iter = %d\n ", iter);
+    /*printf("iter = %d\n ", iter);
     // print xfrac
     printf("xfrac = ");
     for (int i = 0; i < nspecies; i++) {
       printf("%g ", xfrac[i]);
     }
-    printf("\n");
+    printf("\n");*/
 
     // fraction of gases
     T xg = 0.0;
@@ -207,7 +207,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
         stoich_active[i * (*nactive) + k] = stoich[i * nreaction + j];
       }
 
-    mmdot(gain, weight, stoich_active, *nactive, nspecies, *nactive);
+    mmdot(gain_cpy, weight, stoich_active, *nactive, nspecies, *nactive);
 
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < (*nactive); k++) {
@@ -217,8 +217,8 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
 
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
-    kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, *nactive, *nactive,
-                          nspecies, 0, &max_kkt_iter, work);
+    kkt_err = leastsq_kkt(rhs, gain_cpy, stoich_active, xfrac, *nactive,
+                          *nactive, nspecies, 0, &max_kkt_iter, work);
     if (kkt_err != 0) break;
 
     /* print rate
@@ -301,7 +301,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
       stoich_active[i * (*nactive) + k] = stoich[i * nreaction + j];
     }
 
-  mmdot(gain_cpy, weight, stoich_active, *nactive, nspecies, *nactive);
+  // mmdot(gain_cpy, weight, stoich_active, *nactive, nspecies, *nactive);
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
   for (int k = 0; k < (*nactive); k++) {

@@ -209,7 +209,7 @@ DISPATCH_MACRO int equilibrate_uv(
         stoich_active[i * (*nactive) + k] = stoich[i * nreaction + j];
       }
 
-    mmdot(gain, weight, stoich_active, *nactive, nspecies, *nactive);
+    mmdot(gain_cpy, weight, stoich_active, *nactive, nspecies, *nactive);
 
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < (*nactive); k++) {
@@ -219,8 +219,8 @@ DISPATCH_MACRO int equilibrate_uv(
 
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
-    err_code = leastsq_kkt(rhs, gain, stoich_active, conc, *nactive, *nactive,
-                           nspecies, 0, &max_kkt_iter, work);
+    err_code = leastsq_kkt(rhs, gain_cpy, stoich_active, conc, *nactive,
+                           *nactive, nspecies, 0, &max_kkt_iter, work);
     if (err_code != 0) {
       printf("conc = ");
       for (int i = 0; i < nspecies; i++) {
@@ -270,7 +270,7 @@ DISPATCH_MACRO int equilibrate_uv(
   }
 
   // restore the reaction order of gain
-  memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
+  // memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
   for (int i = 0; i < (*nactive); i++) {

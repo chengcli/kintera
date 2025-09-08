@@ -45,7 +45,7 @@ template <typename T>
 DISPATCH_MACRO void jacobi_eigen_symmetric(T* S, int n, T* evals, T* V) {
   set_identity(V, n);
   const int max_sweeps = 100;  // sufficient for moderate n
-  const T eps = 1e-10;
+  const T eps = 1e-8;
 
   for (int sweep = 0; sweep < max_sweeps; ++sweep) {
     int p, q;
@@ -138,13 +138,13 @@ DISPATCH_MACRO void psolve(T* b, T* A, int n, char* work = nullptr) {
   jacobi_eigen_symmetric(ATA, n, eval, V);
   // Clean tiny negative due to roundoff and sort
   for (int i = 0; i < n; ++i) {
-    if (eval[i] < 0 && eval[i] > -1e-12) eval[i] = 0.0;
+    if (eval[i] < 0 && eval[i] > -1e-10) eval[i] = 0.0;
   }
   sort_eigenpairs_desc(eval, V, n);
 
   // Tolerance relative to the largest eigenvalue (sigma^2)
   T maxlam = (n > 0) ? eval[0] : 0.0;
-  T tol = (maxlam > 0 ? maxlam : 1.0) * 1e-10;
+  T tol = (maxlam > 0 ? maxlam : 1.0) * 1e-8;
 
   // x = sum_i ( (u_i^T b)/sigma_i ) * v_i, where u_i = (A v_i)/sigma_i
   for (int i = 0; i < n; ++i) {
