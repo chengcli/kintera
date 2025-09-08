@@ -30,7 +30,7 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
 
     int mem_size = equilibrate_tp_space<scalar_t>(nspecies, nreaction);
-    //std::cout << "mem size (bytes) = " << mem_size << std::endl;
+    std::cout << "mem size (bytes) = " << mem_size << std::endl;
 
     native::gpu_mem_kernel<32, 7>(
         iter, mem_size, [=] GPU_LAMBDA(
@@ -94,7 +94,7 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter,
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
 
     int mem_size = equilibrate_uv_space<scalar_t>(nspecies, nreaction);
-    //std::cout << "mem size (bytes) = " << mem_size << std::endl;
+    std::cout << "mem size (bytes) = " << mem_size << std::endl;
 
     native::gpu_mem_kernel<32, 7>(
         iter, mem_size, [=] GPU_LAMBDA(

@@ -35,6 +35,22 @@ size_t ludcmp_space(int n) {
 }
 
 template <typename T>
+size_t psolve_space(int n) {
+  size_t bytes = 0;
+  auto bump = [&](size_t align, size_t nbytes) {
+    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  };
+
+  bump(alignof(T), n * n * sizeof(T));  // ATA
+  bump(alignof(T), n * n * sizeof(T));  // V
+  bump(alignof(T), n * sizeof(T));      // eval
+  bump(alignof(T), n * sizeof(T));      // vi
+  bump(alignof(T), n * sizeof(T));      // Avi
+  bump(alignof(T), n * sizeof(T));      // b0
+  return bytes;
+}
+
+template <typename T>
 size_t leastsq_kkt_space(int n2, int n3) {
   int size = n2 + n3;
 
@@ -44,11 +60,12 @@ size_t leastsq_kkt_space(int n2, int n3) {
   };
   bump(alignof(T), size * size * sizeof(T));  // aug
   bump(alignof(T), n2 * n2 * sizeof(T));      // ata
-  bump(alignof(T), size * sizeof(T));         // atb
+  bump(alignof(T), n2 * sizeof(T));           // atb
   bump(alignof(T), size * sizeof(T));         // rhs
   bump(alignof(T), n3 * sizeof(T));           // eval
   bump(alignof(int), n3 * sizeof(int));       // ct_indx
   bump(alignof(int), size * sizeof(int));     // lu_indx
+  // return bytes + psolve_space<T>(n2 + n3);
   return bytes + ludcmp_space<T>(n2 + n3);
 }
 

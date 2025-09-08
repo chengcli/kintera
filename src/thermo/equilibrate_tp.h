@@ -10,8 +10,8 @@
 #include <configure.h>
 
 // kintera
+#include <kintera/math/core.h>
 #include <kintera/math/leastsq_kkt.h>
-#include <kintera/math/mmdot.h>
 
 #include <kintera/utils/func1.hpp>
 
