@@ -65,15 +65,18 @@ DISPATCH_MACRO int equilibrate_uv(
     char *work = nullptr) {
   // check positive temperature
   if (*temp <= 0) {
-    printf("Error: Non-positive temperature.\n");
+    printf("Error: Non-positive temperature = %g.\n", *temp);
     return 1;  // error: non-positive temperature
   }
 
   // check non-negative concentration
   for (int i = 0; i < nspecies; i++) {
     if (conc[i] < 0) {
-      printf("Error: Negative concentration for species %d.\n", i);
-      return 1;  // error: negative concentration
+      printf("Error: Negative concentration for species %d = %g.\n", i,
+             conc[i]);
+      printf("Setting it to zero.\n");
+      conc[i] = 0.;
+      // return 1;  // error: negative concentration
     }
   }
 
