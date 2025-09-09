@@ -72,7 +72,7 @@ DISPATCH_MACRO int equilibrate_uv(
   // check non-negative concentration
   for (int i = 0; i < nspecies; i++) {
     if (conc[i] < 0) {
-      printf("Error: Negative concentration for species %d = %g.\n", i,
+      printf("Warning: Negative concentration for species %d = %g.\n", i,
              conc[i]);
       printf("Setting it to zero.\n");
       conc[i] = 0.;
