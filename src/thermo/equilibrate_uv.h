@@ -245,12 +245,12 @@ DISPATCH_MACRO int equilibrate_uv(
 
     // rate -> conc
     // memcpy(conc0, conc, nspecies * sizeof(T));
-    T lambda = 1.;  // scale
-                    // while (true) {
+    // T lambda = 1.;  // scale
+    // while (true) {
     // bool positive_vapor = true;
     for (int i = 0; i < nspecies; i++) {
       for (int k = 0; k < (*nactive); k++) {
-        conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k] * lambda;
+        conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k];
       }
       // if (i < ngas && conc[i] <= 0.) positive_vapor = false;
     }
