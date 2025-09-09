@@ -110,7 +110,7 @@ DISPATCH_MACRO int equilibrate_uv(
     stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
 
     // concentration copy
-    conc0 = (T *)malloc(nspecies * sizeof(T));
+    // conc0 = (T *)malloc(nspecies * sizeof(T));
 
     // gain matrix copy
     gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
@@ -122,7 +122,7 @@ DISPATCH_MACRO int equilibrate_uv(
     weight = alloc_from<T>(work, nreaction * nspecies);
     rhs = alloc_from<T>(work, nreaction);
     stoich_active = alloc_from<T>(work, nspecies * nreaction);
-    conc0 = alloc_from<T>(work, nspecies);
+    // conc0 = alloc_from<T>(work, nspecies);
     gain_cpy = alloc_from<T>(work, nreaction * nreaction);
   }
 
@@ -144,13 +144,13 @@ DISPATCH_MACRO int equilibrate_uv(
   int iter = 0;
   int err_code = 0;
   while (iter++ < *max_iter) {
-    printf("iteration %d: T = %g\n", iter, *temp);
+    /*printf("iteration %d: T = %g\n", iter, *temp);
     // print conc
     printf("concentrations: ");
     for (int i = 0; i < nspecies; i++) {
       printf("%g ", conc[i]);
     }
-    printf("\n");
+    printf("\n");*/
 
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
@@ -180,8 +180,12 @@ DISPATCH_MACRO int equilibrate_uv(
 
       // active set condition variables
       for (int i = 0; i < nspecies; i++) {
-        if ((stoich[i * nreaction + j] < 0) && (conc[i] > 0.)) {  // reactant
-          log_conc_sum += (-stoich[i * nreaction + j]) * log(conc[i]);
+        if (stoich[i * nreaction + j] < 0) {  // reactant
+          if (conc[i] == 0.) {
+            log_conc_sum = -99;  // force to be in active set
+          } else {
+            log_conc_sum += (-stoich[i * nreaction + j]) * log(conc[i]);
+          }
         } else if (stoich[i * nreaction + j] > 0) {  // product
           prod *= conc[i];
         }
@@ -193,9 +197,13 @@ DISPATCH_MACRO int equilibrate_uv(
         for (int i = 0; i < nspecies; i++) {
           weight[first * nspecies + i] =
               logsvp_ddT[j] * intEng[i] / heat_capacity;
-          if ((stoich[i * nreaction + j] < 0) && (conc[i] > 0.)) {
-            weight[first * nspecies + i] +=
-                (-stoich[i * nreaction + j]) / conc[i];
+          if (stoich[i * nreaction + j] < 0) {
+            if (conc[i] == 0.) {
+              weight[first * nspecies + i] += 1.e5;
+            } else {
+              weight[first * nspecies + i] +=
+                  (-stoich[i * nreaction + j]) / conc[i];
+            }
           }
         }
         rhs[first] = logsvp[j] - log_conc_sum;

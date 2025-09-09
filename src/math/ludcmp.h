@@ -97,7 +97,6 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n, char *work = nullptr,
     }
   }
   if (work == nullptr) free(vv);
-
   return d;
 }
 
