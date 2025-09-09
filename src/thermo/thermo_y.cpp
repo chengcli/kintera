@@ -247,12 +247,12 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .build();
 
   // call the equilibrium solver
-  at::native::call_equilibrate_uv(conc.device().type(), iter, stoich,
-                                  u0 / inv_mu,   // J/kg -> J/mol*/
-                                  cv0 / inv_mu,  // J/(kg K) -> J/(mol K)*/
-                                  options.nucleation().logsvp(),
-                                  options.intEng_R_extra(), options.ftol(),
-                                  options.max_iter());
+  at::native::call_equilibrate_uv(
+      conc.device().type(), iter, options.vapor_ids().size(), stoich,
+      u0 / inv_mu,   // J/kg -> J/mol*/
+      cv0 / inv_mu,  // J/(kg K) -> J/(mol K)*/
+      options.nucleation().logsvp(), options.intEng_R_extra(), options.ftol(),
+      options.max_iter());
 
   ivol = conc / inv_mu;
   yfrac = compute("V->Y", {ivol});

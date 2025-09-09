@@ -53,7 +53,8 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
   });
 }
 
-void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
+void call_equilibrate_uv_cpu(at::TensorIterator &iter, int ngas,
+                             at::Tensor const &stoich,
                              at::Tensor const &intEng_offset,
                              at::Tensor const &cv_const,
                              std::vector<std::string> const &logsvp_func,
@@ -110,10 +111,10 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
 
             int max_iter_i = max_iter;
             equilibrate_uv(gain, diag, temp, conc, *intEng, stoich_ptr,
-                           nspecies, nreaction, intEng_offset_ptr, cv_const_ptr,
-                           logsvp_ptrs, logsvp_ddT_ptrs, intEng_extra_ptrs,
-                           intEng_extra_ddT_ptrs, logsvp_eps, &max_iter_i,
-                           reaction_set, nactive);
+                           nspecies, nreaction, ngas, intEng_offset_ptr,
+                           cv_const_ptr, logsvp_ptrs, logsvp_ddT_ptrs,
+                           intEng_extra_ptrs, intEng_extra_ddT_ptrs, logsvp_eps,
+                           &max_iter_i, reaction_set, nactive);
           }
         },
         grain_size);

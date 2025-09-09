@@ -91,14 +91,14 @@ size_t equilibrate_uv_space(int nspecies, int nreaction) {
   auto bump = [&](size_t align, size_t nbytes) {
     bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
   };
-  bump(alignof(T), nspecies * sizeof(T));              // intEng
-  bump(alignof(T), nspecies * sizeof(T));              // intEng_ddT
-  bump(alignof(T), nreaction * sizeof(T));             // logsvp
-  bump(alignof(T), nreaction * sizeof(T));             // logsvp_ddT
-  bump(alignof(T), nreaction * nspecies * sizeof(T));  // weight
-  bump(alignof(T), nreaction * sizeof(T));             // rhs
-  bump(alignof(T), nspecies * nreaction * sizeof(T));  // stoich_active
-  // bump(alignof(T), nspecies * sizeof(T));               // conc0
+  bump(alignof(T), nspecies * sizeof(T));               // intEng
+  bump(alignof(T), nspecies * sizeof(T));               // intEng_ddT
+  bump(alignof(T), nreaction * sizeof(T));              // logsvp
+  bump(alignof(T), nreaction * sizeof(T));              // logsvp_ddT
+  bump(alignof(T), nreaction * nspecies * sizeof(T));   // weight
+  bump(alignof(T), nreaction * sizeof(T));              // rhs
+  bump(alignof(T), nspecies * nreaction * sizeof(T));   // stoich_active
+  bump(alignof(T), nspecies * sizeof(T));               // conc0
   bump(alignof(T), nreaction * nreaction * sizeof(T));  // gain_cpy
   return bytes + leastsq_kkt_space<T>(nreaction, nspecies);
 }

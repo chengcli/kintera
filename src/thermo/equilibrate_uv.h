@@ -37,6 +37,7 @@ namespace kintera {
  *                              nreaction.
  * \param[in] nspecies          number of species in the system.
  * \param[in] nreaction         number of reactions in the system.
+ * \param[in] ngas              number of gas species in the system.
  * \param[in] intEng_offset     offset for internal energy calculations.
  * \param[in] cv_const          const component of heat capacity.
  * \param[in] logsvp_func       user-defined functions for logarithm of
@@ -57,7 +58,7 @@ namespace kintera {
 template <typename T>
 DISPATCH_MACRO int equilibrate_uv(
     T *gain, T *diag, T *temp, T *conc, T h0, T const *stoich, int nspecies,
-    int nreaction, T const *intEng_offset, T const *cv_const,
+    int nreaction, int ngas, T const *intEng_offset, T const *cv_const,
     user_func1 const *logsvp_func, user_func1 const *logsvp_func_ddT,
     user_func2 const *intEng_R_extra, user_func2 const *cv_R_extra,
     float logsvp_eps, int *max_iter, int *reaction_set, int *nactive,
@@ -110,7 +111,7 @@ DISPATCH_MACRO int equilibrate_uv(
     stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
 
     // concentration copy
-    // conc0 = (T *)malloc(nspecies * sizeof(T));
+    conc0 = (T *)malloc(nspecies * sizeof(T));
 
     // gain matrix copy
     gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
@@ -122,7 +123,7 @@ DISPATCH_MACRO int equilibrate_uv(
     weight = alloc_from<T>(work, nreaction * nspecies);
     rhs = alloc_from<T>(work, nreaction);
     stoich_active = alloc_from<T>(work, nspecies * nreaction);
-    // conc0 = alloc_from<T>(work, nspecies);
+    conc0 = alloc_from<T>(work, nspecies);
     gain_cpy = alloc_from<T>(work, nreaction * nreaction);
   }
 
@@ -244,20 +245,22 @@ DISPATCH_MACRO int equilibrate_uv(
     if (err_code != 0) break;
 
     // rate -> conc
-    // memcpy(conc0, conc, nspecies * sizeof(T));
-    // T lambda = 1.;  // scale
-    // while (true) {
-    // bool positive_vapor = true;
-    for (int i = 0; i < nspecies; i++) {
-      for (int k = 0; k < (*nactive); k++) {
-        conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k];
+    memcpy(conc0, conc, nspecies * sizeof(T));
+    T lambda = 1.;  // scale
+    while (true) {
+      bool good = true;
+      for (int i = 0; i < nspecies; i++) {
+        for (int k = 0; k < (*nactive); k++) {
+          conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k] * lambda;
+        }
+        if ((i < ngas) && (conc0[i] > 0.) &&
+            ((conc[i] / conc0[i] > 100.) || (conc[i] / conc0[i] < 0.01)))
+          good = false;
       }
-      // if (i < ngas && conc[i] <= 0.) positive_vapor = false;
+      if (good) break;
+      lambda *= 0.99;
+      memcpy(conc, conc0, nspecies * sizeof(T));
     }
-    // if (positive_vapor) break;
-    // lambda *= 0.99;
-    // memcpy(conc, conc0, nspecies * sizeof(T));
-    //}
 
     // temperature iteration
     T temp0 = 0.;
