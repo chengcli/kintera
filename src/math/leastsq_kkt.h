@@ -60,6 +60,8 @@ DISPATCH_MACRO void populate_aug(T *aug, T const *ata, T const *c, int n2,
     for (int j = 0; j < nact; ++j) {
       AUG(n2 + i, n2 + j) = 0.0;
     }
+    // add a small diagonal perturbation to improve numerical stability
+    AUG(n2 + i, n2 + i) = -1e-10;
   }
 }
 
@@ -211,6 +213,17 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
       skip_row[i] = all_zero;
       if (all_zero) rhs[i] = 0.0;
     }
+
+    /* print aug
+    printf("aug = \n");
+    for (int i = 0; i < n2 + nactive; ++i) {
+      for (int j = 0; j < n2 + nactive; ++j) {
+        printf("%f ", aug[i * (n2 + nactive) + j]);
+      }
+      printf("| %f", rhs[i]);
+      if (skip_row[i]) printf(" *");
+      printf("\n");
+    }*/
 
     ludcmp(aug, lu_indx, n2 + nactive, work, skip_row);
     lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);

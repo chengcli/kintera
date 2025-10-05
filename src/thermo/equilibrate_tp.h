@@ -144,7 +144,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   while (iter++ < *max_iter) {
     /*printf("iter = %d\n ", iter);
     // print xfrac
-    printf("xfrac = ");
+    printf("- xfrac = ");
     for (int i = 0; i < nspecies; i++) {
       printf("%g ", xfrac[i]);
     }
@@ -208,6 +208,28 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
       }
 
     mmdot(gain, weight, stoich_active, *nactive, nspecies, *nactive);
+
+    /* print gain
+    printf("gain = \n");
+    for (int i = 0; i < (*nactive); i++) {
+      for (int j = 0; j < (*nactive); j++) {
+        printf("%f ", gain[i * (*nactive) + j]);
+      }
+      printf("\n");
+    }
+
+    // print rhs
+    printf("rhs = ");
+    for (int k = 0; k < (*nactive); k++) {
+      printf("%f ", rhs[k]);
+    }
+
+    // print xfrac
+    printf("\nxfrac = ");
+    for (int i = 0; i < nspecies; i++) {
+      printf("%f ", xfrac[i]);
+    }
+    printf("\n");*/
 
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < (*nactive); k++) {
