@@ -3,6 +3,9 @@
 // base
 #include <configure.h>
 
+// kintera
+#include <kintera/utils/func1.hpp>
+
 using user_func1 = double (*)(double);
 
 DISPATCH_MACRO extern double h2o_ideal(double);
@@ -27,3 +30,7 @@ static user_func1 func1_table[] = {
     nh3_h2s_lewis, nh3_h2s_lewis_ddT, h2s_ideal,   h2s_ideal_ddT,
     h2s_antoine,   h2s_antoine_ddT,   ch4_ideal,   ch4_ideal_ddT,
     so2_antoine,   so2_antoine_ddT,   co2_antoine, co2_antoine_ddT};
+
+std::vector<std::string> init_func1_table() {
+  return Func1Registrar::list_names();
+};

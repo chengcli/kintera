@@ -29,6 +29,9 @@ CPP_TEMPLATE = """\
 // base
 #include <configure.h>
 
+// kintera
+#include <kintera/utils/func1.hpp>
+
 using user_func1 = double (*)(double);
 
 {declarations}
@@ -37,6 +40,9 @@ static user_func1 func1_table[] = {{
 {pointers}
 }};
 
+std::vector<std::string> init_func1_table() {{
+  return Func1Registrar::list_names();
+}};
 """
 
 DECLARATION_TEMPLATE = "DISPATCH_MACRO extern double {name}(double);"
