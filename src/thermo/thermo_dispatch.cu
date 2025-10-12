@@ -5,8 +5,7 @@
 #include <c10/cuda/CUDAGuard.h>
 
 // kintera
-#include <kintera/utils/func1.hpp>
-#include <kintera/utils/func2.hpp>
+#include <kintera/utils/user_funcs.hpp>
 #include <kintera/loops.cuh>
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
