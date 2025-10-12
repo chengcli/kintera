@@ -9,10 +9,19 @@
 
 namespace kintera {
 
+extern user_func1 func1_table_cpu[];
+extern std::vector<std::string> func1_names;
+
+extern user_func2 func2_table_cpu[];
+extern std::vector<std::string> func2_names;
+
+extern user_func3 func3_table_cpu[];
+extern std::vector<std::string> func3_names;
+
 void call_func1_cpu(at::TensorIterator &iter,
                     std::vector<std::string> const &funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto f1 = get_host_func1(funcs);
+  auto f1 = get_host_func(funcs, func1_names, func1_table_cpu);
   auto f1_ptrs = f1.data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func1_cpu", [&] {
@@ -34,7 +43,7 @@ void call_func1_cpu(at::TensorIterator &iter,
 void call_func2_cpu(at::TensorIterator &iter,
                     std::vector<std::string> const &funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto f2 = get_host_func2(funcs);
+  auto f2 = get_host_func(funcs, func2_names, func2_table_cpu);
   auto f2_ptrs = f2.data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func2_cpu", [&] {
@@ -58,7 +67,7 @@ void call_func2_cpu(at::TensorIterator &iter,
 void call_func3_cpu(at::TensorIterator &iter,
                     std::vector<std::string> const &funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto f3 = get_host_func3(funcs);
+  auto f3 = get_host_func(funcs, func3_names, func3_table_cpu);
   auto f3_ptrs = f3.data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func3_cpu", [&] {

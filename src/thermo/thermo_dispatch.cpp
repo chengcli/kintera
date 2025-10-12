@@ -8,8 +8,7 @@
 #include <ATen/native/cpu/Loops.h>
 
 // kintera
-#include <kintera/utils/func1.hpp>
-#include <kintera/utils/func2.hpp>
+#include <kintera/utils/user_funcs.hpp>
 
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
@@ -17,13 +16,19 @@
 
 namespace kintera {
 
+extern user_func1 func1_table_cpu[];
+extern std::vector<std::string> func1_names;
+
+extern user_func2 func2_table_cpu[];
+extern std::vector<std::string> func2_names;
+
 void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
                              at::Tensor const &stoich,
                              std::vector<std::string> const &logsvp_func,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
 
-  auto f1 = get_host_func1(logsvp_func);
+  auto f1 = get_host_func(logsvp_func, func1_names, func1_table_cpu);
   auto logsvp_ptrs = f1.data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cpu", [&] {
@@ -63,18 +68,18 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, int ngas,
   int grain_size = iter.numel() / at::get_num_threads();
 
   /////  (1) Get svp functions   /////
-  auto f1a = get_host_func1(logsvp_func);
+  auto f1a = get_host_func(logsvp_func, func1_names, func1_table_cpu);
   auto logsvp_ptrs = f1a.data();
 
   // transform the name of logsvp_func by appending "_ddT"
   auto logsvp_ddT_func = logsvp_func;
   for (auto &name : logsvp_ddT_func) name += "_ddT";
 
-  auto f1b = get_host_func1(logsvp_ddT_func);
+  auto f1b = get_host_func(logsvp_ddT_func, func1_names, func1_table_cpu);
   auto logsvp_ddT_ptrs = f1b.data();
 
   /////  (2) Get intEng_extra functions   /////
-  auto f2a = get_host_func2(intEng_extra_func);
+  auto f2a = get_host_func(intEng_extra_func, func2_names, func2_table_cpu);
   auto intEng_extra_ptrs = f2a.data();
 
   // transform the name of intEng_extra_func by appending "_ddT"
@@ -83,7 +88,7 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, int ngas,
     if (!name.empty()) name += "_ddT";
   }
 
-  auto f2b = get_host_func2(intEng_extra_ddT_func);
+  auto f2b = get_host_func(intEng_extra_ddT_func, func2_names, func2_table_cpu);
   auto intEng_extra_ddT_ptrs = f2b.data();
 
   /////  (3) Launch kernel calculation    /////

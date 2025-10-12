@@ -13,7 +13,7 @@
 #include <kintera/math/core.h>
 #include <kintera/math/leastsq_kkt.h>
 
-#include <kintera/utils/func1.hpp>
+#include <kintera/utils/user_funcs.hpp>
 
 namespace kintera {
 

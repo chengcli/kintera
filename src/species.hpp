@@ -5,8 +5,7 @@
 #include <vector>
 
 // kintera
-#include <kintera/utils/func2.hpp>
-#include <kintera/utils/func3.hpp>
+#include <kintera/utils/user_funcs.hpp>
 
 // arg
 #include "add_arg.h"

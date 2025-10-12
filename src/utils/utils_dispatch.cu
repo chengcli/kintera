@@ -11,10 +11,20 @@
 
 namespace kintera {
 
-void call_func1_cuda(at::TensorIterator &iter, std::vector<std::string> const& funcs) {
+extern __device__ user_func1 func1_table_cuda[];
+extern std::vector<std::string> func1_names;
+
+extern __device__ user_func2 func2_table_cuda[];
+extern std::vector<std::string> func2_names;
+
+extern __device__ user_func3 func3_table_cuda[];
+extern std::vector<std::string> func3_names;
+
+void call_func1_cuda(at::TensorIterator &iter,
+                     std::vector<std::string> const& funcs) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  auto f1 = get_device_func1(funcs);
+  auto f1 = get_device_func(funcs, func1_names, func1_table_cuda);
   auto f1_ptrs = f1.data().get();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func1_cuda", [&] {
@@ -34,10 +44,11 @@ void call_func1_cuda(at::TensorIterator &iter, std::vector<std::string> const& f
   });
 }
 
-void call_func2_cuda(at::TensorIterator &iter, std::vector<std::string> const& funcs) {
+void call_func2_cuda(at::TensorIterator &iter,
+                     std::vector<std::string> const& funcs) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  auto f2 = get_device_func2(funcs);
+  auto f2 = get_device_func(funcs, func2_names, func2_table_cuda);
   auto f2_ptrs = f2.data().get();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func2_cuda", [&] {
@@ -61,7 +72,7 @@ void call_func2_cuda(at::TensorIterator &iter, std::vector<std::string> const& f
 void call_func3_cuda(at::TensorIterator &iter, std::vector<std::string> const& funcs) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  auto f3 = get_device_func3(funcs);
+  auto f3 = get_device_func(funcs, func3_names, func3_table_cuda);
   auto f3_ptrs = f3.data().get();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func3_cuda", [&] {

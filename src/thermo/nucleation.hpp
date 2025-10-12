@@ -9,7 +9,7 @@
 // kintera
 #include <kintera/kintera_formatter.hpp>
 #include <kintera/reaction.hpp>
-#include <kintera/utils/func1.hpp>
+#include <kintera/utils/user_funcs.hpp>
 
 // arg
 #include <kintera/add_arg.h>
