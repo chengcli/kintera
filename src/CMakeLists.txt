@@ -82,7 +82,6 @@ if (CUDAToolkit_FOUND)
   target_link_libraries(${namel}_cuda_${buildl}
       PUBLIC
       CUDA::cudart
-      CUDA::cudart_static
       ${TORCH_CUDA_LIBRARY}
       ${C10_CUDA_LIBRARY}
       )
