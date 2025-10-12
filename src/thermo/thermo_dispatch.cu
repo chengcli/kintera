@@ -13,10 +13,7 @@
 
 namespace kintera {
 
-extern __device__ user_func1 func1_table_cuda[];
 extern std::vector<std::string> func1_names;
-
-extern __device__ user_func2 func2_table_cuda[];
 extern std::vector<std::string> func2_names;
 
 void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
@@ -25,7 +22,7 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                               double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  auto f1 = get_device_func(logsvp_func, func1_names, func1_table_cuda);
+  auto f1 = get_device_func1(logsvp_func, func1_names);
   auto logsvp_ptrs = f1.data().get();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cuda", [&] {
@@ -67,25 +64,25 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
   at::cuda::CUDAGuard device_guard(iter.device());
 
   /////  (1) Get svp functions   /////
-  auto f1a = get_device_func(logsvp_func, func1_names, func1_table_cuda);
+  auto f1a = get_device_func1(logsvp_func, func1_names);
   auto logsvp_ptrs = f1a.data().get();
 
   // transform the name of logsvp_func by appending "_ddT"
   auto logsvp_ddT_func = logsvp_func;
   for (auto &name : logsvp_ddT_func) name += "_ddT";
 
-  auto f1b = get_device_func(logsvp_ddT_func, func1_names, func1_table_cuda);
+  auto f1b = get_device_func1(logsvp_ddT_func, func1_names);
   auto logsvp_ddT_ptrs = f1b.data().get();
 
   /////  (2) Get intEng_extra functions   /////
-  auto f2a = get_device_func(intEng_extra_func, func2_names, func2_table_cuda);
+  auto f2a = get_device_func2(intEng_extra_func, func2_names);
   auto intEng_extra_ptrs = f2a.data().get();
 
   auto intEng_extra_ddT_func = intEng_extra_func;
   for (auto &name : intEng_extra_ddT_func) {
     if (!name.empty()) name += "_ddT";
   }
-  auto f2b = get_device_func(intEng_extra_ddT_func, func2_names, func2_table_cuda);
+  auto f2b = get_device_func2(intEng_extra_ddT_func, func2_names);
   auto intEng_extra_ddT_ptrs = f2b.data().get();
 
   /////  (3) Launch kernel calculation    /////
