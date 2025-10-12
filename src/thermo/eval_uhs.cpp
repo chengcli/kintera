@@ -1,8 +1,6 @@
 // kintera
 #include "eval_uhs.hpp"
 
-#include <kintera/constants.h>
-
 #include <kintera/utils/utils_dispatch.hpp>
 
 #include "log_svp.hpp"
