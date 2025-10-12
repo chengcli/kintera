@@ -66,8 +66,12 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   // check non-negative solid concentration
   for (int i = ngas; i < nspecies; i++) {
     if (xfrac[i] < 0) {
-      printf("Error: Negative solid concentration for species %d.\n", i);
-      return 1;  // error: negative solid concentration
+      printf(
+          "Warning: Negative solid concentration for species %d. Setting to "
+          "zero\n",
+          i);
+      xfrac[i] = 0.;
+      // return 1;  // error: negative solid concentration
     }
   }
 
