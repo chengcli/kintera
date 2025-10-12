@@ -18,13 +18,12 @@ std::vector<T> get_host_func(std::vector<std::string> const& names,
                              std::vector<std::string> const& func_names,
                              T* func_table) {
   std::vector<T> funcs;
-
   for (const auto& name : names) {
     auto it = std::find(func_names.begin(), func_names.end(), name);
     if (it != func_names.end()) {
       int id = static_cast<int>(std::distance(func_names.begin(), it));
       funcs.push_back(func_table[id]);
-    } else if (name == "null") {
+    } else if (name.empty() || name == "null") {
       funcs.push_back(nullptr);
     } else {
       throw std::runtime_error("Function " + name + " not registered.");
@@ -52,7 +51,7 @@ thrust::device_vector<T> get_device_func(
     if (it != func_names.end()) {
       int id = static_cast<int>(std::distance(func_names.begin(), it));
       h_idx.push_back(id + 1);
-    } else if (name == "null") {
+    } else if (name.empty() || name == "null") {
       h_idx.push_back(0);
     } else {
       throw std::runtime_error("Function " + name + " not registered.");
