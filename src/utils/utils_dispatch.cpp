@@ -5,6 +5,7 @@
 #include <torch/torch.h>
 
 // kintera
+#include <kintera/utils/user_funcs.hpp>
 #include "utils_dispatch.hpp"
 
 namespace kintera {

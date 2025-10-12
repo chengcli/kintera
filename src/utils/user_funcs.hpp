@@ -7,6 +7,11 @@
 #include <string>
 #include <vector>
 
+#ifdef __CUDACC__
+#include <thrust/device_vector.h>
+#include <thrust/gather.h>
+#endif
+
 namespace kintera {
 
 using user_func1 = double (*)(double);
@@ -33,7 +38,6 @@ std::vector<T> get_host_func(std::vector<std::string> const& names,
 }
 
 #ifdef __CUDACC__
-#include <thrust/device_vector.h>
 
 template <typename T>
 thrust::device_vector<T> get_device_func(
@@ -41,7 +45,7 @@ thrust::device_vector<T> get_device_func(
     std::vector<std::string> const& func_names, T* func_table) {
   // (1) Get full device function table
   T* d_full_table = nullptr;
-  cudaMemcpyFromSymbol(&d_full_table, func1_table_device_ptr, sizeof(T*));
+  cudaMemcpyFromSymbol(&d_full_table, func_table, sizeof(T*));
 
   // (2) Build a host‐side index list
   std::vector<int> h_idx;

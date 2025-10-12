@@ -25,7 +25,7 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                               double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  auto f1 = get_device_func(logsvp_func, logsvp_names, logsvp_table_cuda);
+  auto f1 = get_device_func(logsvp_func, func1_names, func1_table_cuda);
   auto logsvp_ptrs = f1.data().get();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cuda", [&] {

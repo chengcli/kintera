@@ -4,9 +4,6 @@
 #include <ATen/TensorIterator.h>
 #include <ATen/native/DispatchStub.h>
 
-// kintera
-#include <kintera/utils/user_funcs.hpp>
-
 namespace at::native {
 
 using fn_iter = void (*)(at::TensorIterator &iter,
