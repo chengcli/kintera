@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-ARG CUDA_VER=12.4.1
+ARG CUDA_VER=12.9.1
 ARG UBUNTU_VER=22.04
 
 ############################
@@ -34,15 +34,6 @@ ENV EDITOR=nvim VISUAL=nvim
 
 # System-wide git editor default (users can override)
 RUN git config --system core.editor "nvim"
-
-# Put a base Neovim config in /etc/skel so future users get it,
-# and also install for the existing dev user.
-ARG USERNAME=dev
-RUN mkdir -p /etc/skel/.config/nvim
-COPY docker/nvim/ /etc/skel/.config/nvim/
-RUN mkdir -p /home/${USERNAME}/.config/nvim && \
-    cp -r /etc/skel/.config/nvim/* /home/${USERNAME}/.config/nvim/ && \
-    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config/nvim
 
 # Pre-warm plugins (optional, speeds first start)
 # This runs Neovim headless to install plugins via lazy.nvim.
@@ -93,6 +84,14 @@ RUN pip install --upgrade pip setuptools wheel build
 
 # Optional: pin pip resolver behavior and set default index/extra-index if needed
 # COPY docker/pip.conf /etc/pip.conf
+
+# Put a base Neovim config in /etc/skel so future users get it,
+# and also install for the existing dev user.
+RUN mkdir -p /etc/skel/.config/nvim
+COPY docker/nvim/ /etc/skel/.config/nvim/
+RUN mkdir -p /home/${USERNAME}/.config/nvim && \
+    cp -r /etc/skel/.config/nvim/* /home/${USERNAME}/.config/nvim/ && \
+    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config/nvim
 
 ############################
 # Cache Python wheels separately (optional but recommended)
