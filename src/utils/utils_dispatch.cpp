@@ -4,6 +4,9 @@
 #include <ATen/native/cpu/Loops.h>
 #include <torch/torch.h>
 
+// base
+#include <configure.h>
+
 // kintera
 #include <kintera/utils/user_funcs.hpp>
 
@@ -96,9 +99,13 @@ void call_func3_cpu(at::TensorIterator &iter,
 
 namespace at::native {
 
+#ifdef DISABLE_CUDA
+
 DEFINE_DISPATCH(call_func1);
 DEFINE_DISPATCH(call_func2);
 DEFINE_DISPATCH(call_func3);
+
+#endif
 
 REGISTER_ALL_CPU_DISPATCH(call_func1, &kintera::call_func1_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_func2, &kintera::call_func2_cpu);

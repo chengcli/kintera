@@ -9,6 +9,9 @@
 // PNetCDF output (PNETCDFOUTPUT or NO_PNETCDFOUTPUT)
 #define @PNETCDF_OPTION@
 
+// CUDA FLAG (ENABLE_CUDA or DISABLE_CUDA)
+#define @CUDA_OPTION@
+
 #ifdef __CUDACC__
   #define DISPATCH_MACRO __host__ __device__
 #else

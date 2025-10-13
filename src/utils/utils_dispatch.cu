@@ -94,6 +94,10 @@ void call_func3_cuda(at::TensorIterator &iter, std::vector<std::string> const& f
 
 namespace at::native {
 
+DEFINE_DISPATCH(call_func1);
+DEFINE_DISPATCH(call_func2);
+DEFINE_DISPATCH(call_func3);
+
 REGISTER_CUDA_DISPATCH(call_func1, &kintera::call_func1_cuda);
 REGISTER_CUDA_DISPATCH(call_func2, &kintera::call_func2_cuda);
 REGISTER_CUDA_DISPATCH(call_func3, &kintera::call_func3_cuda);
