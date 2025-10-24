@@ -26,7 +26,7 @@ HOME_DIR="$(getent passwd "${USER_UID}" | cut -d: -f6)"
 mkdir -p "${HOME_DIR}"
 
 # Make sure our common writable paths are owned (skip bind mounts like /workspace)
-for d in /ccache /opt/venv; do
+for d in /opt/venv; do
   if [ -d "$d" ]; then chown -R "${USER_UID}:${USER_GID}" "$d" || true; fi
 done
 
@@ -38,6 +38,10 @@ chown "${USER_UID}:${USER_GID}" "${HOME_DIR}/.bashrc" || true
 if [ -f /host/.gitconfig ] && [ ! -e "${HOME_DIR}/.gitconfig" ]; then
   ln -s /host/.gitconfig "${HOME_DIR}/.gitconfig"
   chown -h "${USER_UID}:${USER_GID}" "${HOME_DIR}/.gitconfig" || true
+
+  #cp /host/.gitconfig "${HOME_DIR}/.gitconfig"
+  #chown "${USER_UID}:${USER_GID}" "${HOME_DIR}/.gitconfig"
+  #chmod 600 "${HOME_DIR}/.gitconfig"
 fi
 
 # Drop privileges (use tini/gosu if installed; otherwise su-exec/ runuser)
