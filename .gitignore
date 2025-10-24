@@ -13,6 +13,9 @@ data/example.speos
 # mac
 .DS_Store
 
+# env
+.env
+
 # cache
 __pycache__
 

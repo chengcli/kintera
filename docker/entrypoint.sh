@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-: "${USER_UID:=114256397}"
-: "${USER_GID:=114256397}"
-: "${USERNAME:=chengcli}"
+: "${USER_UID:=1000}"
+: "${USER_GID:=1000}"
+: "${USERNAME:=cli}"
 
 # Activate venv for login shells and non-interactive shells
 export VIRTUAL_ENV=/opt/venv

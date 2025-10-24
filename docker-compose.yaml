@@ -19,6 +19,7 @@ services:
     volumes:
       - ./:/workspace
       - ${HOME}/data/:/data
+      - ${HOME}/.gitconfig:/home/${USER}/.gitconfig:ro
     working_dir: /workspace
     tty: true
     stdin_open: true
