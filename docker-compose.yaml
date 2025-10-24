@@ -19,12 +19,8 @@ services:
     volumes:
       - ./:/workspace
       - ${HOME}/data/:/data
-      - ccache:/ccache
     working_dir: /workspace
     tty: true
     stdin_open: true
     ports:
       - "8888:8888"
-volumes:
-  ccache:
-

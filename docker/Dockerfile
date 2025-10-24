@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ninja-build \
       cmake \
       git curl ca-certificates \
-      python3 python3-pip python3-venv \
+      python3 python3-pip python3-venv python3-dev \
       pkg-config \
       libssl-dev \
       ripgrep fd-find unzip neovim \
@@ -115,9 +115,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # (Optional) CUDA env defaults for many toolchains
 ENV TORCH_CUDA_ARCH_LIST="8.6;8.9;9.0+PTX"  \
     CUDA_CACHE_MAXSIZE=2147483647
-
-# Pre-create build directory and wire ccache into typical build tools
-#ENV CC="ccache gcc" CXX="ccache g++" CUDAHOSTCXX="ccache g++"
 
 # Put your entrypoint in place
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
