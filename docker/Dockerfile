@@ -12,6 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 # System deps (C++ toolchain, Python, venv, git, neovim, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
+      gosu tini \
       build-essential \
       gcc g++ gfortran \
       ninja-build \
@@ -19,7 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates \
       python3 python3-pip python3-venv \
       pkg-config \
-      ccache \
       libssl-dev \
       ripgrep fd-find unzip neovim \
       clangd \
@@ -38,13 +38,6 @@ RUN git config --system core.editor "nvim"
 # Pre-warm plugins (optional, speeds first start)
 # This runs Neovim headless to install plugins via lazy.nvim.
 RUN nvim --headless "+Lazy! sync" +qa || true
-
-# Speed up C/C++ builds with ccache
-ENV CCACHE_DIR=/ccache \
-    CCACHE_MAXSIZE=20G \
-    CCACHE_COMPRESS=1 \
-    CCACHE_SLOPPINESS=time_macros
-RUN mkdir -p ${CCACHE_DIR} && chmod 777 ${CCACHE_DIR}
 
 ############################
 # Convenient command-line tools
@@ -66,14 +59,6 @@ RUN find /opt/tools -type f -name "*.sh" -exec chmod +x {} \; \
 # Configure non-root user and Python venv
 ############################
 
-# Create a non-root user that matches host UID/GID (override via build args)
-ARG USERNAME=dev
-ARG USER_UID=1000
-ARG USER_GID=1000
-RUN groupadd --gid ${USER_GID} ${USERNAME} \
- && useradd  --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME} \
- && usermod -aG sudo ${USERNAME} || true
-
 # Python venv in /opt/venv (global, fast, easy)
 RUN python3 -m venv /opt/venv
 ENV VIRTUAL_ENV=/opt/venv
@@ -87,11 +72,11 @@ RUN pip install --upgrade pip setuptools wheel build
 
 # Put a base Neovim config in /etc/skel so future users get it,
 # and also install for the existing dev user.
-RUN mkdir -p /etc/skel/.config/nvim
-COPY docker/nvim/ /etc/skel/.config/nvim/
-RUN mkdir -p /home/${USERNAME}/.config/nvim && \
-    cp -r /etc/skel/.config/nvim/* /home/${USERNAME}/.config/nvim/ && \
-    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config/nvim
+#RUN mkdir -p /etc/skel/.config/nvim
+#COPY docker/nvim/ /etc/skel/.config/nvim/
+#RUN mkdir -p /home/${USERNAME}/.config/nvim && \
+#    cp -r /etc/skel/.config/nvim/* /home/${USERNAME}/.config/nvim/ && \
+#    chown -R ${USERNAME}:${USERNAME} /home/${USERNAME}/.config/nvim
 
 ############################
 # Cache Python wheels separately (optional but recommended)
@@ -116,7 +101,7 @@ FROM base AS dev
 WORKDIR /workspace
 
 # Load for login shells
-RUN printf 'alias vi=nvim\nalias vim=nvim\nexport TERM=xterm-256color\n' >> /home/${USERNAME}/.bashrc
+#RUN printf 'alias vi=nvim\nalias vim=nvim\nexport TERM=xterm-256color\n' >> /home/${USERNAME}/.bashrc
 
 # Bring in prebuilt wheels (fast installs)
 COPY --from=wheels /tmp/wheelhouse /tmp/wheelhouse
@@ -132,15 +117,18 @@ ENV TORCH_CUDA_ARCH_LIST="8.6;8.9;9.0+PTX"  \
     CUDA_CACHE_MAXSIZE=2147483647
 
 # Pre-create build directory and wire ccache into typical build tools
-ENV CC="ccache gcc" CXX="ccache g++" CUDAHOSTCXX="ccache g++"
+#ENV CC="ccache gcc" CXX="ccache g++" CUDAHOSTCXX="ccache g++"
 
 # Put your entrypoint in place
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Keep the workspace owned by the non-root user
-RUN chown -R ${USERNAME}:${USERNAME} /workspace
-USER ${USERNAME}
+#RUN chown -R ${USERNAME}:${USERNAME} /workspace
+#USER ${USERNAME}
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+#ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+#CMD ["/bin/bash"]
+
+ENTRYPOINT ["/usr/bin/tini","--","/usr/local/bin/entrypoint.sh"]
 CMD ["/bin/bash"]
