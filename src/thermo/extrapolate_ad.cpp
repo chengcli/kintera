@@ -46,7 +46,8 @@ torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
 }
 
 void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
-                                 torch::Tensor xfrac, double dlnp) {
+                                 torch::Tensor xfrac, double dlnp,
+                                 bool verbose) {
   auto conc = compute("TPX->V", {temp, pres, xfrac});
   auto entropy_vol = compute("TPV->S", {temp, pres, conc});
   auto entropy_mole0 = entropy_vol / conc.sum(-1);
@@ -78,10 +79,21 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
 }
 
 void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
-                                 torch::Tensor xfrac, double grav, double dz) {
+                                 torch::Tensor xfrac, double grav, double dz,
+                                 bool verbose) {
   auto conc = compute("TPX->V", {temp, pres, xfrac});
   auto entropy_vol = compute("TPV->S", {temp, pres, conc});
   auto entropy_mole0 = entropy_vol / conc.sum(-1);
+
+  if (verbose) {
+    std::cout << "Initial State: T = [" << temp.min().item<double>() << ", "
+              << temp.max().item<double>() << "] K" << std::endl;
+    std::cout << "               P = [" << pres.min().item<double>() << ", "
+              << pres.max().item<double>() << "] Pa" << std::endl;
+    std::cout << "               S = [" << entropy_mole0.min().item<double>()
+              << ", " << entropy_mole0.max().item<double>() << "] J/K/mol"
+              << std::endl;
+  }
 
   auto gain = forward(temp, pres, xfrac);
   auto cp_mole = effective_cp(temp, pres, xfrac, gain, conc);
@@ -89,26 +101,77 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
   auto mmw = (mu * xfrac).sum(-1);
 
   int iter = 0;
-  torch::Tensor temp1;
+  std::vector<torch::Tensor> temp_list;
+  std::vector<torch::Tensor> pres_list;
+  std::vector<torch::Tensor> entropy_list;
+
+  torch::Tensor temp1 = temp.clone();
+  torch::Tensor pres1 =
+      pres * torch::exp(-grav * mmw * dz / (constants::Rgas * temp));
+
   while (iter++ < options.max_iter()) {
-    temp1 = temp - 2. * grav * mmw / (cp_mole + cp_mole0) * dz;
+    temp_list.push_back(temp1.clone());
+    pres_list.push_back(pres1.clone());
 
-    entropy_vol = compute("TPV->S", {temp1, pres, conc});
+    if (verbose) {
+      std::cout << "Iter " << iter << std::endl;
+      std::cout << "temp1 = [" << temp1.min().item<double>() << ", "
+                << temp1.max().item<double>() << "] K" << std::endl;
+      std::cout << "pres1 = [" << pres1.min().item<double>() << ", "
+                << pres1.max().item<double>() << "] Pa" << std::endl;
+    }
+
+    entropy_vol = compute("TPV->S", {temp1, pres1, conc});
     auto entropy_mole = entropy_vol / conc.sum(-1);
+    entropy_list.push_back(entropy_mole.clone());
 
-    pres *= 1. - (entropy_mole0 - entropy_mole) / constants::Rgas;
+    if (verbose) {
+      std::cout << "entropy_mole = [" << entropy_mole.min().item<double>()
+                << ", " << entropy_mole.max().item<double>() << "] J/K/mol"
+                << std::endl;
+    }
 
     if ((entropy_mole0 - entropy_mole).abs().max().item<double>() <
         10 * options.ftol()) {
       break;
     }
 
-    auto gain = forward(temp1, pres, xfrac);
-    conc = compute("TPX->V", {temp1, pres, xfrac});
-    auto cp_mole = effective_cp(temp1, pres, xfrac, gain, conc);
+    temp1 *= 1. + (entropy_mole0 - entropy_mole) / cp_mole;
+    pres1 = pres * torch::exp(-2. * grav * mmw * dz /
+                              (constants::Rgas * (temp + temp1)));
+
+    // make average of all iterates to improve stability
+    if (iter % 2 == 0) {
+      // weight by distance from current iterate
+      auto w1 = entropy_list[0] - entropy_mole0;
+      auto w2 = entropy_list[1] - entropy_mole0;
+      w1 = w1 * w1 / (w1 * w1 + w2 * w2 + 1e-10);
+      w2 = 1. - w1;
+
+      temp1 = w2 * temp_list[0] + w1 * temp_list[1];
+      pres1 = w2 * pres_list[0] + w1 * pres_list[1];
+
+      if (verbose) {
+        std::cout << "Averaging over last " << temp_list.size() << " iterates."
+                  << std::endl;
+        std::cout << "temp1 = [" << temp1.min().item<double>() << ", "
+                  << temp1.max().item<double>() << "] K" << std::endl;
+        std::cout << "pres1 = [" << pres1.min().item<double>() << ", "
+                  << pres1.max().item<double>() << "] Pa" << std::endl;
+      }
+
+      temp_list.clear();
+      pres_list.clear();
+      entropy_list.clear();
+    }
+
+    auto gain = forward(temp1, pres1, xfrac);
+    conc = compute("TPX->V", {temp1, pres1, xfrac});
+    auto cp_mole = effective_cp(temp1, pres1, xfrac, gain, conc);
   }
 
-  temp -= temp - temp1;
+  temp.copy_(temp1);
+  pres.copy_(pres1);
 
   if (iter >= options.max_iter()) {
     TORCH_WARN("extrapolate_ad does not converge after ", options.max_iter(),

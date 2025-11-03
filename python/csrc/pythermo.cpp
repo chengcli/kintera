@@ -372,10 +372,11 @@ Returns:
            py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("gain"),
            py::arg("conc") = py::none())
 
-      .def("extrapolate_ad",
-           py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor,
-                             double>(&kintera::ThermoXImpl::extrapolate_ad),
-           R"doc(
+      .def(
+          "extrapolate_ad",
+          py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor, double,
+                            bool>(&kintera::ThermoXImpl::extrapolate_ad),
+          R"doc(
 Extrapolate the temperature and pressure along an adiabatic path.
 
 Args:
@@ -398,13 +399,14 @@ Examples:
     >> xfrac = torch.tensor([0.1, 0.2, 0.3])
     >> thermo_x.extrapolate_ad(temp, pres, xfrac, thermo, -0.01)
     )doc",
-           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"))
+          py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"),
+          py::arg("verbose") = false)
 
-      .def(
-          "extrapolate_ad",
-          py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor, double,
-                            double>(&kintera::ThermoXImpl::extrapolate_ad),
-          R"doc(
+      .def("extrapolate_ad",
+           py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor,
+                             double, double, bool>(
+               &kintera::ThermoXImpl::extrapolate_ad),
+           R"doc(
 Extrapolate the temperature and pressure along an adiabatic path.
 
 Args:
@@ -428,8 +430,8 @@ Examples:
     >> xfrac = torch.tensor([0.1, 0.2, 0.3])
     >> thermo_x.extrapolate_ad(temp, pres, xfrac, thermo, -0.01)
     )doc",
-          py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("grav"),
-          py::arg("dz"));
+           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("grav"),
+           py::arg("dz"), py::arg("verbose") = false);
 
   m.def("relative_humidity", &kintera::relative_humidity, R"doc(
 Calculate the relative humidity.

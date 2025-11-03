@@ -33,7 +33,7 @@ DISPATCH_MACRO uint64_t hash_set(const int *arr, int size, int n) {
 
 template <typename T>
 DISPATCH_MACRO void populate_aug(T *aug, T const *ata, T const *c, int n2,
-                                 int nact, int const *ct_indx) {
+                                 int nact, int const *ct_indx, float reg = 0.) {
   // populate A^T.A (upper left block)
   for (int i = 0; i < n2; ++i) {
     for (int j = 0; j < n2; ++j) {
@@ -61,7 +61,7 @@ DISPATCH_MACRO void populate_aug(T *aug, T const *ata, T const *c, int n2,
       AUG(n2 + i, n2 + j) = 0.0;
     }
     // add a small diagonal perturbation to improve numerical stability
-    AUG(n2 + i, n2 + i) = -1e-10;
+    AUG(n2 + i, n2 + i) = reg;
   }
 }
 
@@ -108,7 +108,7 @@ DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
 template <typename T>
 DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
                                int n2, int n3, int neq, int *max_iter,
-                               char *work = nullptr) {
+                               float reg = 0., char *work = nullptr) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
     printf(
@@ -197,7 +197,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     printf("\n");*/
     uint64_t hash0 = hash_set(ct_indx, nactive, n3);
 
-    populate_aug(aug, ata, c, n2, nactive, ct_indx);
+    populate_aug(aug, ata, c, n2, nactive, ct_indx, reg);
     populate_rhs(rhs, atb, d, n2, nactive, ct_indx);
 
     // solve the KKT system

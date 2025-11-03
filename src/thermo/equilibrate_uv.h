@@ -243,7 +243,7 @@ DISPATCH_MACRO int equilibrate_uv(
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
     err_code = leastsq_kkt(rhs, gain, stoich_active, conc, *nactive, *nactive,
-                           nspecies, 0, &max_kkt_iter, work);
+                           nspecies, 0, &max_kkt_iter, -1.e-10, work);
     if (err_code != 0) break;
 
     // rate -> conc

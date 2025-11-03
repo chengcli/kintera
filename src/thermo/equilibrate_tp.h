@@ -67,9 +67,10 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   for (int i = ngas; i < nspecies; i++) {
     if (xfrac[i] < 0) {
       printf(
-          "Warning: Negative solid concentration for species %d. Setting to "
+          "Warning: Negative solid concentration (%f) for species %d. Setting "
+          "to "
           "zero\n",
-          i);
+          xfrac[i], i);
       xfrac[i] = 0.;
       // return 1;  // error: negative solid concentration
     }
@@ -244,7 +245,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
     kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, *nactive, *nactive,
-                          nspecies, 0, &max_kkt_iter, work);
+                          nspecies, 0, &max_kkt_iter, 0., work);
     if (kkt_err != 0) break;
 
     /* print rate
