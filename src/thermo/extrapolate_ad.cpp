@@ -207,11 +207,11 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
       pres.set_(w2 * pres_list[0] + w1 * pres_list[1]);
 
       if (verbose) {
-        std::cout << "  Averaging over last " << temp_list.size()
+        std::cout << "  Weighted averaging over last " << temp_list.size()
                   << " iterates." << std::endl;
-        std::cout << "  temp = [" << temp.min().item<double>() << ", "
+        std::cout << "    temp = [" << temp.min().item<double>() << ", "
                   << temp.max().item<double>() << "] K" << std::endl;
-        std::cout << "  pres = [" << pres.min().item<double>() << ", "
+        std::cout << "    pres = [" << pres.min().item<double>() << ", "
                   << pres.max().item<double>() << "] Pa" << std::endl;
       }
 
@@ -222,12 +222,14 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
       int sub_iter = 3;
       auto pres1 = pres.clone();
       auto temp1 = temp.clone();
+      // total gas mole fractions
+      auto xg = xfrac.narrow(-1, 0, options.vapor_ids().size()).sum(-1);
       while (sub_iter-- > 0) {
         auto rho = compute("V->D", {conc});
         pres.set_(pres0 - 0.5 * (rho + rho0) * grav * dz);
         auto dlnp = pres.log() - pres1.log();
         temp.set_(temp1 * (1. + (entropy_mole0 - entropy_mole +
-                                 constants::Rgas * dlnp) /
+                                 xg * constants::Rgas * dlnp) /
                                     cp_mole));
         conc = compute("TPX->V", {temp, pres, xfrac});
         if (verbose) {
