@@ -17,7 +17,7 @@ endforeach()
 
 # Python tests
 
-file(GLOB pyfiles *.py)
+file(GLOB pyfiles test*.py)
 foreach(pyfile ${pyfiles})
   get_filename_component(name ${pyfile} NAME)
   message(STATUS "Copying ${pyfile} to ${name}")
