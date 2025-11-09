@@ -28,14 +28,14 @@ void bind_thermo(py::module &m) {
              return fmt::format("NucleationOptions({})", ss.str());
            })
 
-      .ADD_OPTION(std::vector<double>, kintera::NucleationOptions, minT, "")
+      .ADD_OPTION(std::vector<double>, kintera::NucleationOptions, minT)
 
-      .ADD_OPTION(std::vector<double>, kintera::NucleationOptions, maxT, "")
+      .ADD_OPTION(std::vector<double>, kintera::NucleationOptions, maxT)
 
-      .ADD_OPTION(std::vector<std::string>, kintera::NucleationOptions, logsvp, "")
+      .ADD_OPTION(std::vector<std::string>, kintera::NucleationOptions, logsvp)
 
       .ADD_OPTION(std::vector<kintera::Reaction>, kintera::NucleationOptions,
-                  reactions, "");
+                  reactions);
 
   auto pyThermoOptions =
       py::class_<kintera::ThermoOptions, kintera::SpeciesThermo>(
@@ -57,18 +57,18 @@ void bind_thermo(py::module &m) {
            py::overload_cast<std::string const &>(
                &kintera::ThermoOptions::from_yaml))
 
-      .ADD_OPTION(double, kintera::ThermoOptions, Tref, "")
+      .ADD_OPTION(double, kintera::ThermoOptions, Tref)
 
-      .ADD_OPTION(double, kintera::ThermoOptions, Pref, "")
+      .ADD_OPTION(double, kintera::ThermoOptions, Pref)
 
       .ADD_OPTION(kintera::NucleationOptions, kintera::ThermoOptions,
-                  nucleation, "")
+                  nucleation)
 
-      .ADD_OPTION(int, kintera::ThermoOptions, max_iter, "")
+      .ADD_OPTION(int, kintera::ThermoOptions, max_iter)
 
-      .ADD_OPTION(double, kintera::ThermoOptions, ftol, "");
+      .ADD_OPTION(double, kintera::ThermoOptions, ftol);
 
-  ADD_KINTERA_MODULE(ThermoY, ThermoOptions, "",
+  ADD_KINTERA_MODULE(ThermoY, ThermoOptions,
                      py::arg("rho"), py::arg("intEng"), py::arg("yfrac"),
                      py::arg("warm_start") = false,
                      py::arg("diag") = py::none())
@@ -76,7 +76,7 @@ void bind_thermo(py::module &m) {
       .def("compute", &kintera::ThermoYImpl::compute,
            py::arg("ab"), py::arg("args"));
 
-  ADD_KINTERA_MODULE(ThermoX, ThermoOptions, "",
+  ADD_KINTERA_MODULE(ThermoX, ThermoOptions,
                      py::arg("temp"), py::arg("pres"), py::arg("xfrac"),
                      py::arg("warm_start") = false,
                      py::arg("diag") = py::none())

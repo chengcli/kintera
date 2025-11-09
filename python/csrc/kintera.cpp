@@ -48,15 +48,15 @@ PYBIND11_MODULE(kintera, m) {
       .def("narrow_copy", &kintera::SpeciesThermo::narrow_copy)
       .def("accumulate", &kintera::SpeciesThermo::accumulate)
 
-      .ADD_OPTION(std::vector<int>, kintera::SpeciesThermo, vapor_ids, "")
+      .ADD_OPTION(std::vector<int>, kintera::SpeciesThermo, vapor_ids)
 
-      .ADD_OPTION(std::vector<int>, kintera::SpeciesThermo, cloud_ids, "")
+      .ADD_OPTION(std::vector<int>, kintera::SpeciesThermo, cloud_ids)
 
-      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, cref_R, "")
+      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, cref_R)
 
-      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, uref_R, "")
+      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, uref_R)
 
-      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, sref_R, "");
+      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, sref_R);
 
   auto pyReaction = py::class_<kintera::Reaction>(m, "Reaction");
 
@@ -72,9 +72,9 @@ PYBIND11_MODULE(kintera, m) {
 
       .def("equation", &kintera::Reaction::equation)
 
-      .ADD_OPTION(kintera::Composition, kintera::Reaction, reactants, "")
+      .ADD_OPTION(kintera::Composition, kintera::Reaction, reactants)
 
-      .ADD_OPTION(kintera::Composition, kintera::Reaction, products, "");
+      .ADD_OPTION(kintera::Composition, kintera::Reaction, products);
 
   bind_thermo(m);
   bind_constants(m);
