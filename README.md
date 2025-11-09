@@ -149,14 +149,25 @@ pre-commit run --all-files
 kintera/
 ├── src/              # C++ source code
 ├── python/           # Python bindings and API
-│   ├── csrc/        # pybind11 binding code
-│   └── api/         # Pure Python API
+│   ├── csrc/        # pybind11 binding code (C++ implementation)
+│   ├── api/         # Pure Python API
+│   ├── kintera.pyi  # Type stub file for IDE/type checker support
+│   └── py.typed     # PEP 561 marker for type hints
 ├── tests/            # C++ and Python tests
 ├── examples/         # Example usage
 ├── docs/             # Documentation source
 ├── cmake/            # CMake modules and macros
 └── data/             # Test data and examples
 ```
+
+### Type Hints and IDE Support
+
+KINTERA provides full type hint support through Python stub files (`.pyi`):
+- **IDE autocomplete**: Enhanced code completion in VS Code, PyCharm, etc.
+- **Type checking**: Verify code correctness with `mypy` or `pyright`
+- **Documentation**: Inline documentation with parameter types and examples
+
+See [`python/STUB_FILES.md`](python/STUB_FILES.md) for more details on using type hints.
 
 ### Continuous Integration
 
