@@ -55,4 +55,4 @@ packages = ["kintera", "kintera.api"]
 include-package-data = false
 
 [tool.setuptools.package-data]
-"kintera" = ["kintera/**/*", "lib/*.so", "lib/*.dylib"]
+"kintera" = ["kintera/**/*", "lib/*.so", "lib/*.dylib", "*.pyi", "py.typed"]
