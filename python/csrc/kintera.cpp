@@ -80,62 +80,50 @@ PYBIND11_MODULE(kintera, m) {
   bind_constants(m);
   bind_kinetics(m);
 
-  m.def(
-      "species_names",
-      []() -> const std::vector<std::string> & {
-        return kintera::species_names;
-      });
+  m.def("species_names", []() -> const std::vector<std::string> & {
+    return kintera::species_names;
+  });
 
-  m.def(
-      "set_species_names",
-      [](const std::vector<std::string> &names) {
-        kintera::species_names = names;
-        return kintera::species_names;
-      });
+  m.def("set_species_names", [](const std::vector<std::string> &names) {
+    kintera::species_names = names;
+    return kintera::species_names;
+  });
 
-  m.def(
-      "species_weights",
-      []() -> const std::vector<double> & { return kintera::species_weights; });
+  m.def("species_weights", []() -> const std::vector<double> & {
+    return kintera::species_weights;
+  });
 
-  m.def(
-      "set_species_weights",
-      [](const std::vector<double> &weights) {
-        kintera::species_weights = weights;
-        return kintera::species_weights;
-      });
+  m.def("set_species_weights", [](const std::vector<double> &weights) {
+    kintera::species_weights = weights;
+    return kintera::species_weights;
+  });
 
-  m.def(
-      "species_cref_R",
-      []() -> const std::vector<double> & { return kintera::species_cref_R; });
+  m.def("species_cref_R", []() -> const std::vector<double> & {
+    return kintera::species_cref_R;
+  });
 
-  m.def(
-      "set_species_cref_R",
-      [](const std::vector<double> &cref_R) {
-        kintera::species_cref_R = cref_R;
-        return kintera::species_cref_R;
-      });
+  m.def("set_species_cref_R", [](const std::vector<double> &cref_R) {
+    kintera::species_cref_R = cref_R;
+    return kintera::species_cref_R;
+  });
 
-  m.def(
-      "species_uref_R",
-      []() -> const std::vector<double> & { return kintera::species_uref_R; });
+  m.def("species_uref_R", []() -> const std::vector<double> & {
+    return kintera::species_uref_R;
+  });
 
-  m.def(
-      "set_species_uref_R",
-      [](const std::vector<double> &uref_R) {
-        kintera::species_uref_R = uref_R;
-        return kintera::species_uref_R;
-      });
+  m.def("set_species_uref_R", [](const std::vector<double> &uref_R) {
+    kintera::species_uref_R = uref_R;
+    return kintera::species_uref_R;
+  });
 
-  m.def(
-      "species_sref_R",
-      []() -> const std::vector<double> & { return kintera::species_sref_R; });
+  m.def("species_sref_R", []() -> const std::vector<double> & {
+    return kintera::species_sref_R;
+  });
 
-  m.def(
-      "set_species_sref_R",
-      [](const std::vector<double> &sref_R) {
-        kintera::species_sref_R = sref_R;
-        return kintera::species_sref_R;
-      });
+  m.def("set_species_sref_R", [](const std::vector<double> &sref_R) {
+    kintera::species_sref_R = sref_R;
+    return kintera::species_sref_R;
+  });
 
   m.def(
       "set_search_paths",
@@ -145,9 +133,9 @@ PYBIND11_MODULE(kintera, m) {
       },
       py::arg("path"));
 
-  m.def(
-      "get_search_paths",
-      []() { return kintera::deserialize_search_paths(kintera::search_paths); });
+  m.def("get_search_paths", []() {
+    return kintera::deserialize_search_paths(kintera::search_paths);
+  });
 
   m.def(
       "add_resource_directory",
@@ -159,6 +147,6 @@ PYBIND11_MODULE(kintera, m) {
 
   m.def("find_resource", &kintera::find_resource, py::arg("filename"));
 
-  m.def("evolve_implicit", &kintera::evolve_implicit,
-        py::arg("rate"), py::arg("stoich"), py::arg("jacobian"), py::arg("dt"));
+  m.def("evolve_implicit", &kintera::evolve_implicit, py::arg("rate"),
+        py::arg("stoich"), py::arg("jacobian"), py::arg("dt"));
 }

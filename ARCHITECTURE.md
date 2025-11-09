@@ -128,20 +128,20 @@ PYBIND11_MODULE(kintera, m) {
 # kintera.pyi - API DOCUMENTATION ONLY
 class ThermoOptions:
     """Configuration options for thermodynamic calculations."""
-    
+
     def __init__(self) -> None: ...
-    
+
     @overload
     def Tref(self) -> float: ...
-    
+
     @overload
     def Tref(self, value: float) -> ThermoOptions:
         """
         Set the reference temperature.
-        
+
         Args:
             value (float): Reference temperature in Kelvin
-        
+
         Returns:
             ThermoOptions: class object for method chaining
         """

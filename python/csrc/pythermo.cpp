@@ -53,9 +53,8 @@ void bind_thermo(py::module &m) {
 
       .def("reactions", &kintera::ThermoOptions::reactions)
 
-      .def("from_yaml",
-           py::overload_cast<std::string const &>(
-               &kintera::ThermoOptions::from_yaml))
+      .def("from_yaml", py::overload_cast<std::string const &>(
+                            &kintera::ThermoOptions::from_yaml))
 
       .ADD_OPTION(double, kintera::ThermoOptions, Tref)
 
@@ -68,24 +67,22 @@ void bind_thermo(py::module &m) {
 
       .ADD_OPTION(double, kintera::ThermoOptions, ftol);
 
-  ADD_KINTERA_MODULE(ThermoY, ThermoOptions,
-                     py::arg("rho"), py::arg("intEng"), py::arg("yfrac"),
-                     py::arg("warm_start") = false,
+  ADD_KINTERA_MODULE(ThermoY, ThermoOptions, py::arg("rho"), py::arg("intEng"),
+                     py::arg("yfrac"), py::arg("warm_start") = false,
                      py::arg("diag") = py::none())
 
-      .def("compute", &kintera::ThermoYImpl::compute,
-           py::arg("ab"), py::arg("args"));
+      .def("compute", &kintera::ThermoYImpl::compute, py::arg("ab"),
+           py::arg("args"));
 
-  ADD_KINTERA_MODULE(ThermoX, ThermoOptions,
-                     py::arg("temp"), py::arg("pres"), py::arg("xfrac"),
-                     py::arg("warm_start") = false,
+  ADD_KINTERA_MODULE(ThermoX, ThermoOptions, py::arg("temp"), py::arg("pres"),
+                     py::arg("xfrac"), py::arg("warm_start") = false,
                      py::arg("diag") = py::none())
 
-      .def("compute", &kintera::ThermoXImpl::compute,
-           py::arg("ab"), py::arg("args"))
+      .def("compute", &kintera::ThermoXImpl::compute, py::arg("ab"),
+           py::arg("args"))
 
-      .def("effective_cp", &kintera::ThermoXImpl::effective_cp,
-           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("gain"),
+      .def("effective_cp", &kintera::ThermoXImpl::effective_cp, py::arg("temp"),
+           py::arg("pres"), py::arg("xfrac"), py::arg("gain"),
            py::arg("conc") = py::none())
 
       .def(
@@ -102,6 +99,6 @@ void bind_thermo(py::module &m) {
            py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("grav"),
            py::arg("dz"), py::arg("verbose") = false);
 
-  m.def("relative_humidity", &kintera::relative_humidity,
-        py::arg("temp"), py::arg("conc"), py::arg("stoich"), py::arg("op"));
+  m.def("relative_humidity", &kintera::relative_humidity, py::arg("temp"),
+        py::arg("conc"), py::arg("stoich"), py::arg("op"));
 }

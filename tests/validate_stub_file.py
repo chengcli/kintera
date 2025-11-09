@@ -14,10 +14,10 @@ def parse_stub_file(stub_path):
     """Parse the stub file and extract all public classes and methods."""
     with open(stub_path, 'r') as f:
         tree = ast.parse(f.read(), filename=str(stub_path))
-    
+
     classes = {}
     functions = []
-    
+
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             # Get class name and methods
@@ -31,28 +31,28 @@ def parse_stub_file(stub_path):
             # Top-level functions
             if not node.name.startswith('_') and not any(node in c.body for c in ast.walk(tree) if isinstance(c, ast.ClassDef)):
                 functions.append(node.name)
-    
+
     return classes, functions
 
 def validate_stub_completeness(stub_path):
     """Validate that the stub file has comprehensive coverage."""
     print(f"Validating stub file: {stub_path}")
     print("=" * 60)
-    
+
     classes, functions = parse_stub_file(stub_path)
-    
+
     print(f"\n✅ Found {len(classes)} classes:")
     for class_name, methods in sorted(classes.items()):
         print(f"   - {class_name} ({len(methods)} methods)")
-        
+
     print(f"\n✅ Found {len(functions)} module-level functions:")
     for func in sorted(functions):
         print(f"   - {func}")
-    
+
     # Expected classes from C++ bindings
     expected_classes = [
         'SpeciesThermo',
-        'Reaction', 
+        'Reaction',
         'NucleationOptions',
         'ThermoOptions',
         'ThermoX',
@@ -66,7 +66,7 @@ def validate_stub_completeness(stub_path):
         'Kinetics',
         'constants'
     ]
-    
+
     print(f"\n{'='*60}")
     print("Checking for required classes...")
     missing = []
@@ -76,11 +76,11 @@ def validate_stub_completeness(stub_path):
         else:
             print(f"   ❌ {cls} MISSING")
             missing.append(cls)
-    
+
     if missing:
         print(f"\n❌ Missing classes: {', '.join(missing)}")
         return False
-    
+
     # Expected functions
     expected_functions = [
         'species_names',
@@ -100,7 +100,7 @@ def validate_stub_completeness(stub_path):
         'evolve_implicit',
         'relative_humidity'
     ]
-    
+
     print(f"\n{'='*60}")
     print("Checking for required functions...")
     missing_funcs = []
@@ -110,18 +110,18 @@ def validate_stub_completeness(stub_path):
         else:
             print(f"   ❌ {func} MISSING")
             missing_funcs.append(func)
-    
+
     if missing_funcs:
         print(f"\n❌ Missing functions: {', '.join(missing_funcs)}")
         return False
-    
+
     print(f"\n{'='*60}")
     print("✅ All required classes and functions are present!")
     print(f"\nSummary:")
     print(f"  - Classes: {len(classes)}")
     print(f"  - Module functions: {len(functions)}")
     print(f"  - Total methods: {sum(len(m) for m in classes.values())}")
-    
+
     return True
 
 def check_stub_syntax(stub_path):
@@ -140,19 +140,19 @@ def main():
     """Main validation function."""
     repo_root = Path(__file__).parent.parent
     stub_file = repo_root / "python" / "kintera.pyi"
-    
+
     if not stub_file.exists():
         print(f"❌ Stub file not found: {stub_file}")
         sys.exit(1)
-    
+
     # Check syntax
     if not check_stub_syntax(stub_file):
         sys.exit(1)
-    
+
     # Validate completeness
     if not validate_stub_completeness(stub_file):
         sys.exit(1)
-    
+
     print(f"\n{'='*60}")
     print("✅ Stub file validation PASSED!")
     print(f"{'='*60}")

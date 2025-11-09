@@ -28,9 +28,8 @@ void bind_kinetics(py::module &m) {
       .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptions, Ea_R)
       .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptions, E4_R);
 
-  ADD_KINTERA_MODULE(Arrhenius, ArrheniusOptions,
-                     py::arg("temp"), py::arg("pres"), py::arg("conc"),
-                     py::arg("other"));
+  ADD_KINTERA_MODULE(Arrhenius, ArrheniusOptions, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"), py::arg("other"));
 
   ////////////// Coagulation //////////////
   auto pyCoagulationOptions =
@@ -53,9 +52,8 @@ void bind_kinetics(py::module &m) {
       .ADD_OPTION(std::vector<double>, kintera::EvaporationOptions, vm)
       .ADD_OPTION(std::vector<double>, kintera::EvaporationOptions, diameter);
 
-  ADD_KINTERA_MODULE(Evaporation, EvaporationOptions,
-                     py::arg("temp"), py::arg("pres"), py::arg("conc"),
-                     py::arg("other"));
+  ADD_KINTERA_MODULE(Evaporation, EvaporationOptions, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"), py::arg("other"));
 
   ////////////// Kinetics //////////////
   auto pyKineticsOptions =
@@ -76,8 +74,8 @@ void bind_kinetics(py::module &m) {
                   evaporation)
       .ADD_OPTION(bool, kintera::KineticsOptions, evolve_temperature);
 
-  ADD_KINTERA_MODULE(Kinetics, KineticsOptions,
-                     py::arg("temp"), py::arg("pres"), py::arg("conc"))
+  ADD_KINTERA_MODULE(Kinetics, KineticsOptions, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"))
       .def("forward_nogil",
            [](kintera::KineticsImpl &self, torch::Tensor temp,
               torch::Tensor pres, torch::Tensor conc) {
