@@ -149,28 +149,20 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
   auto pres0 = pres.clone();
   pres.set_(pres0 * exp(-grav * mmw * dz / (constants::Rgas * temp)));
 
-  // -------------------------
-  // |       |       |       |
-  // -------------------------
-  // P0      P
-  // T0      T
-  //     P1 --->
-  //     T1 ---> T2
-
   int iter = 0;
-  std::vector<torch::Tensor> temp_list;
-  std::vector<torch::Tensor> pres_list;
-  std::vector<torch::Tensor> entropy_list;
+  // std::vector<torch::Tensor> temp_list;
+  // std::vector<torch::Tensor> pres_list;
+  // std::vector<torch::Tensor> entropy_list;
 
   while (iter++ < options.max_iter()) {
-    temp_list.push_back(temp.clone());
-    pres_list.push_back(pres.clone());
+    // temp_list.push_back(temp.clone());
+    // pres_list.push_back(pres.clone());
 
     auto gain = forward(temp, pres, xfrac);
     conc = compute("TPX->V", {temp, pres, xfrac});
     auto cp_mole = effective_cp(temp, pres, xfrac, gain, conc);
     auto entropy_mole = compute("TPV->S", {temp, pres, conc}) / conc.sum(-1);
-    entropy_list.push_back(entropy_mole.clone());
+    // entropy_list.push_back(entropy_mole.clone());
 
     if (verbose) {
       std::cout << "Iter " << iter << std::endl;
@@ -196,7 +188,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
       break;
     }
 
-    if (iter % 2 == 0) {
+    /*if (iter % 2 == 0) {
       // weight by distance from previous iterate
       auto w1 = entropy_list[0] - entropy_mole0;
       auto w2 = entropy_list[1] - entropy_mole0;
@@ -218,30 +210,30 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
       temp_list.clear();
       pres_list.clear();
       entropy_list.clear();
-    } else {
-      int sub_iter = 3;
-      auto pres1 = pres.clone();
-      auto temp1 = temp.clone();
-      // total gas mole fractions
-      auto xg = xfrac.narrow(-1, 0, options.vapor_ids().size()).sum(-1);
-      while (sub_iter-- > 0) {
-        auto rho = compute("V->D", {conc});
-        pres.set_(pres0 - 0.5 * (rho + rho0) * grav * dz);
-        auto dlnp = pres.log() - pres1.log();
-        temp.set_(temp1 * (1. + (entropy_mole0 - entropy_mole +
-                                 xg * constants::Rgas * dlnp) /
-                                    cp_mole));
-        conc = compute("TPX->V", {temp, pres, xfrac});
-        if (verbose) {
-          std::cout << "  Sub-iter: pres = [" << pres.min().item<double>()
-                    << ", " << pres.max().item<double>() << "] Pa" << std::endl;
-          std::cout << "            temp = [" << temp.min().item<double>()
-                    << ", " << temp.max().item<double>() << "] K" << std::endl;
-          std::cout << "            dlnp = [" << dlnp.min().item<double>()
-                    << ", " << dlnp.max().item<double>() << "]" << std::endl;
-        }
+    } else {*/
+    int sub_iter = 3;
+    auto pres1 = pres.clone();
+    auto temp1 = temp.clone();
+    // total gas mole fractions
+    auto xg = xfrac.narrow(-1, 0, options.vapor_ids().size()).sum(-1);
+    while (sub_iter-- > 0) {
+      auto rho = compute("V->D", {conc});
+      pres.set_(pres0 - 0.5 * (rho + rho0) * grav * dz);
+      auto dlnp = pres.log() - pres1.log();
+      temp.set_(temp1 * (1. + (entropy_mole0 - entropy_mole +
+                               xg * constants::Rgas * dlnp) /
+                                  cp_mole));
+      conc = compute("TPX->V", {temp, pres, xfrac});
+      if (verbose) {
+        std::cout << "  Sub-iter: pres = [" << pres.min().item<double>() << ", "
+                  << pres.max().item<double>() << "] Pa" << std::endl;
+        std::cout << "            temp = [" << temp.min().item<double>() << ", "
+                  << temp.max().item<double>() << "] K" << std::endl;
+        std::cout << "            dlnp = [" << dlnp.min().item<double>() << ", "
+                  << dlnp.max().item<double>() << "]" << std::endl;
       }
     }
+    //}
   }
 
   if (iter >= options.max_iter()) {
