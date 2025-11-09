@@ -19,7 +19,7 @@ This example demonstrates basic usage with a pre-configured YAML file.
    # Load configuration from YAML
    op = ThermoOptions.from_yaml("jupiter.yaml")
    op.max_iter(15).ftol(1.e-8)
-   
+
    # Create thermodynamics object
    thermo = ThermoX(op)
 
@@ -30,16 +30,16 @@ This example demonstrates basic usage with a pre-configured YAML file.
    # Get species and create random initial composition
    species = op.species()
    print("Species:", species)
-   
+
    nspecies = len(species)
    xfrac = torch.rand((1, 1, nspecies), dtype=torch.float64)
    xfrac /= xfrac.sum(dim=-1, keepdim=True)
 
    print("Initial composition:", xfrac)
-   
+
    # Compute equilibrium
    thermo.forward(temp, pres, xfrac)
-   
+
    print("Equilibrium composition:", xfrac)
 
 Expected output shows the equilibrium composition of Jupiter's atmosphere at the specified temperature and pressure.
@@ -103,7 +103,7 @@ A complete example of modeling Earth's atmosphere with water phase transitions.
        pmin = 1.e4  # Top pressure
        Tbot = 310.0  # Surface temperature (K)
        nspecies = len(thermo.options.species())
-       
+
        # Initialize state
        temp = Tbot * torch.ones((ncol, nlyr), dtype=torch.float64)
        pres = pmax * torch.ones((ncol, nlyr), dtype=torch.float64)
@@ -122,7 +122,7 @@ A complete example of modeling Earth's atmosphere with water phase transitions.
        # Compute relative humidity
        stoich = thermo.get_buffer("stoich")
        rh = relative_humidity(temp, conc, stoich, thermo.options.nucleation())
-       
+
        print("Relative humidity at bottom:", rh[:, 0])
 
 Example 3: Vertical Profile with Adiabatic Extrapolation
@@ -172,7 +172,7 @@ Computing a vertical atmospheric profile with adiabatic lapse rate.
    def compute_vertical_profile():
        """Compute vertical atmospheric profile."""
        thermo = setup_earth_thermo()
-       
+
        # Grid parameters
        ncol = 1
        nlyr = 40
@@ -197,7 +197,7 @@ Computing a vertical atmospheric profile with adiabatic lapse rate.
            temp[:, i] = temp[:, i - 1]
            pres[:, i] = pres[:, i - 1]
            xfrac[:, i, :] = xfrac[:, i - 1, :]
-           
+
            # Adiabatic extrapolation
            thermo.extrapolate_ad(temp[:, i], pres[:, i], xfrac[:, i, :], grav, dz)
 
@@ -214,13 +214,13 @@ Computing a vertical atmospheric profile with adiabatic lapse rate.
 
    if __name__ == "__main__":
        temp, pres, xfrac, entropy, rh = compute_vertical_profile()
-       
+
        print("Temperature profile:", temp[0, :])
        print("Pressure profile:", pres[0, :])
        print("Water vapor profile:", xfrac[0, :, 1])
        print("Liquid water profile:", xfrac[0, :, 2])
        print("Relative humidity profile:", rh[0, :])
-       
+
        # Optional: Plot results
        # fig, axes = plt.subplots(1, 4, figsize=(16, 6))
        # axes[0].plot(temp[0, :].numpy(), pres[0, :].numpy())
@@ -306,10 +306,10 @@ Leveraging GPU acceleration for large-scale computations.
    # Compute equilibrium (automatically on GPU)
    import time
    start = time.time()
-   
+
    for i in range(nlyr):
        thermo.forward(temp[:, i], pres[:, i], xfrac[:, i, :])
-   
+
    elapsed = time.time() - start
    print(f"Computed {ncol * nlyr} equilibrium states in {elapsed:.3f} seconds")
    print(f"Rate: {ncol * nlyr / elapsed:.1f} states/second")
@@ -348,14 +348,14 @@ Using type hints for code validation.
    def main() -> None:
        """Main function."""
        torch.set_default_dtype(torch.float64)
-       
+
        thermo = setup_atmosphere("jupiter.yaml")
-       
+
        temp = torch.tensor([200.0])
        pres = torch.tensor([1.e5])
        nspecies = len(thermo.options.species())
        xfrac = torch.ones((1, 1, nspecies)) / nspecies
-       
+
        result = compute_equilibrium(thermo, temp, pres, xfrac)
        print("Result:", result)
 
@@ -395,16 +395,16 @@ Loading and using external atmospheric data.
 
    # Load external profile
    pres_data, temp_data = load_profile("atmosphere_profile.csv")
-   
+
    # Convert to tensors
    nlyr = len(pres_data)
    ncol = 1
    nspecies = len(op.species())
-   
+
    temp = torch.from_numpy(temp_data).reshape(ncol, nlyr)
    pres = torch.from_numpy(pres_data).reshape(ncol, nlyr)
    xfrac = torch.zeros((ncol, nlyr, nspecies), dtype=torch.float64)
-   
+
    # Set initial composition
    xfrac[:, :, 0] = 0.89  # H2
    xfrac[:, :, 1] = 0.11  # He
@@ -421,7 +421,7 @@ Loading and using external atmospheric data.
        xfrac[0, :, 0].numpy(),  # H2
        xfrac[0, :, 1].numpy(),  # He
    ])
-   
+
    np.savetxt("equilibrium_results.csv", results,
               delimiter=',',
               header="Pressure(Pa),Temperature(K),H2,He",

@@ -57,11 +57,11 @@ Basic Configuration
    from kintera import ThermoOptions
 
    op = ThermoOptions()
-   
+
    # Convergence criteria
    op.max_iter(15)  # Maximum iterations
    op.ftol(1.e-8)   # Convergence tolerance
-   
+
    # Reference state
    op.Tref(300.0)   # Reference temperature (K)
    op.Pref(1.e5)    # Reference pressure (Pa)
@@ -74,7 +74,7 @@ Species Configuration
    # Define which species are vapors vs clouds
    op.vapor_ids([0, 1])  # Indices of vapor species
    op.cloud_ids([2])     # Indices of cloud species
-   
+
    # Thermodynamic reference values (normalized by R)
    op.cref_R([2.5, 2.5, 9.0])        # Specific heat capacity
    op.uref_R([0.0, 0.0, -3430.])     # Internal energy
@@ -100,7 +100,7 @@ Example YAML structure:
      - name: He
        weight: 4.003e-3
        vapor: true
-   
+
    thermodynamics:
      Tref: 200.0
      Pref: 1.e5
@@ -118,17 +118,17 @@ Configuring Phase Transitions
    from kintera import NucleationOptions, Reaction
 
    nucleation = NucleationOptions()
-   
+
    # Define phase transition reactions
    nucleation.reactions([
        Reaction("H2O <=> H2O(l)"),
        Reaction("NH3 <=> NH3(l)")
    ])
-   
+
    # Temperature range for each transition
    nucleation.minT([200.0, 150.0])
    nucleation.maxT([400.0, 300.0])
-   
+
    # Saturation vapor pressure model
    nucleation.set_logsvp(["h2o_ideal", "nh3_ideal"])
 
@@ -187,10 +187,10 @@ Convert between different state representations:
 
    # Temperature, Pressure, Mole fraction -> Volume (concentration)
    conc = thermo.compute("TPX->V", [temp, pres, xfrac])
-   
+
    # Temperature, Pressure, Volume -> Entropy
    entropy = thermo.compute("TPV->S", [temp, pres, conc])
-   
+
    # Temperature, Pressure, Volume -> Internal energy
    energy = thermo.compute("TPV->U", [temp, pres, conc])
 
@@ -211,7 +211,7 @@ Propagate state adiabatically:
    # Using pressure coordinate
    dlnp = 0.1  # Change in log(pressure)
    thermo.extrapolate_ad(temp, pres, xfrac, -dlnp)
-   
+
    # Using height coordinate
    grav = 9.8  # m/s²
    dz = 100.0  # m
@@ -250,10 +250,10 @@ Configuring Kinetics
 .. code-block:: python
 
    kop = KineticsOptions()
-   
+
    # Set species information (inherits from SpeciesThermo)
    kop.vapor_ids([0, 1, 2])
-   
+
    # Add reactions with rate constants
    # (See API reference for detailed usage)
 
@@ -270,7 +270,7 @@ Global Species Management
    # Set species globally
    kintera.set_species_names(["H2", "O2", "H2O"])
    kintera.set_species_weights([2.016e-3, 32.0e-3, 18.015e-3])
-   
+
    # Get current species
    names = kintera.species_names()
    weights = kintera.species_weights()
@@ -282,10 +282,10 @@ Resource Management
 
    # Add resource directories for data files
    kintera.add_resource_directory("/path/to/data", prepend=True)
-   
+
    # Find resource files
    file_path = kintera.find_resource("jupiter.yaml")
-   
+
    # Get/set search paths
    paths = kintera.get_search_paths()
    kintera.set_search_paths("/path1:/path2")
@@ -299,7 +299,7 @@ Computing Relative Humidity
 
    # Get stoichiometry buffer from thermo object
    stoich = thermo.get_buffer("stoich")
-   
+
    # Compute relative humidity
    rh = relative_humidity(temp, conc, stoich, thermo.options.nucleation())
 
@@ -315,12 +315,12 @@ KINTERA supports GPU computation through PyTorch:
    # Check GPU availability
    if torch.cuda.is_available():
        device = torch.device("cuda")
-       
+
        # Move tensors to GPU
        temp = temp.to(device)
        pres = pres.to(device)
        xfrac = xfrac.to(device)
-       
+
        # Computations automatically use GPU
        thermo.forward(temp, pres, xfrac)
 
@@ -360,7 +360,7 @@ If thermodynamic solver doesn't converge:
 
    # Increase iterations or relax tolerance
    op.max_iter(30).ftol(1.e-6)
-   
+
    # Check initial conditions
    print("Initial state:", temp, pres, xfrac)
 
@@ -380,7 +380,7 @@ Ensure mole fractions are valid:
 
    # Check for negative values
    assert (xfrac >= 0).all()
-   
+
    # Normalize
    xfrac /= xfrac.sum(dim=-1, keepdim=True)
 

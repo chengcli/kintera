@@ -20,7 +20,7 @@ Import Required Modules
        Reaction,
        NucleationOptions
    )
-   
+
    # Set default dtype for PyTorch tensors
    torch.set_default_dtype(torch.float64)
 
@@ -63,10 +63,10 @@ Using a pre-configured YAML file:
    xfrac /= xfrac.sum(dim=-1, keepdim=True)
 
    print("Initial composition:", xfrac)
-   
+
    # Compute equilibrium
    thermo.forward(temp, pres, xfrac)
-   
+
    print("Equilibrium composition:", xfrac)
 
 Example 2: Earth Atmosphere with Water Condensation
@@ -117,7 +117,7 @@ Setting up a system with phase transitions:
 
    # Compute equilibrium condensation
    thermo.forward(temp, pres, xfrac)
-   
+
    print("After condensation:", xfrac)
 
 Working with Atmospheric Profiles
@@ -142,7 +142,7 @@ Computing Vertical Profiles
    pmin = 1.e4  # Top pressure (Pa)
    Tbot = 310.0  # Surface temperature (K)
    nspecies = len(thermo.options.species())
-   
+
    grav = 9.8  # m/s²
    dz = 100.0  # vertical spacing (m)
 
@@ -162,7 +162,7 @@ Computing Vertical Profiles
        temp[:, i] = temp[:, i - 1]
        pres[:, i] = pres[:, i - 1]
        xfrac[:, i, :] = xfrac[:, i - 1, :]
-       
+
        # Adiabatic extrapolation
        thermo.extrapolate_ad(temp[:, i], pres[:, i], xfrac[:, i, :], grav, dz)
 
@@ -223,9 +223,9 @@ For time-dependent chemistry:
    # Set up kinetics with reactions
    kop = KineticsOptions()
    # Configure kinetics options...
-   
+
    kinetics = Kinetics(kop)
-   
+
    # Compute reaction rates
    # (See API reference for detailed usage)
 

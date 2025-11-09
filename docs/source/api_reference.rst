@@ -34,7 +34,7 @@ ThermoX
       :return: Computed property tensor
 
       Available modes:
-      
+
       * ``"TPX->V"``: Mole fractions to concentrations
       * ``"TPV->S"``: State to entropy
       * ``"TPV->U"``: State to internal energy
@@ -472,7 +472,7 @@ Utility Functions
 .. function:: kintera.evolve_implicit(...)
 
    Implicit time evolution for chemical kinetics.
-   
+
    (Parameters depend on specific usage - see source for details)
 
 Constants
@@ -485,7 +485,7 @@ Constants
    Common constants include:
 
    * Gas constant
-   * Boltzmann constant  
+   * Boltzmann constant
    * Avogadro's number
    * Universal constants used in calculations
 

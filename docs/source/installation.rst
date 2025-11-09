@@ -59,7 +59,7 @@ The simplest way to install KINTERA:
 
    # Install Python dependencies
    pip install numpy 'torch==2.7.1' 'pyharp>=1.7.1'
-   
+
    # Install KINTERA
    pip install kintera
 
@@ -114,7 +114,7 @@ Test your installation:
 
    import kintera
    print(kintera.__version__)
-   
+
    # Check available classes
    from kintera import ThermoOptions, ThermoX, SpeciesThermo
    print("KINTERA installed successfully!")
@@ -139,18 +139,18 @@ For development, install in editable mode with pre-commit hooks:
    # Clone and navigate to repository
    git clone https://github.com/chengcli/kintera.git
    cd kintera
-   
+
    # Install dependencies
    pip install numpy 'torch==2.7.1' 'pyharp>=1.7.1'
    pip install pre-commit pytest
-   
+
    # Build C++ library
    cmake -B build
    cmake --build build --parallel
-   
+
    # Install Python package in editable mode
    pip install -e .
-   
+
    # Set up pre-commit hooks
    pre-commit install
 
