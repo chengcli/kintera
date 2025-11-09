@@ -79,76 +79,16 @@ The simplest way to build and install KINTERA:
 # 1. Install Python dependencies
 pip install numpy 'torch==2.7.1' 'pyharp>=1.7.1'
 
-# 2. Configure and build the C++ library
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
-cmake --build build --parallel
-
-# 3. Install the Python package
-pip install .
-```
-
-### Detailed Build Instructions
-
-#### Step 1: Clone the Repository
-
-```bash
+# 2. Clone the repository
 git clone https://github.com/chengcli/kintera.git
 cd kintera
-```
 
-#### Step 2: Install Python Dependencies
+# 3. Configure and build the C++ library
+cmake -B build
+cmake --build build --parallel
 
-```bash
-pip install numpy 'torch==2.7.1' 'pyharp>=1.7.1'
-```
-
-#### Step 3: Configure CMake
-
-```bash
-cmake -B build \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_TESTS=ON \
-      -DBUILD_EXAMPLES=OFF
-```
-
-**Configuration Options:**
-
-- `-DCMAKE_BUILD_TYPE`: Build type (`Release`, `Debug`, `RelWithDebInfo`)
-- `-DBUILD_TESTS`: Enable/disable test building (`ON`/`OFF`)
-- `-DBUILD_EXAMPLES`: Enable/disable examples (`ON`/`OFF`)
-- `-DCUDA`: Enable CUDA support (`ON`/`OFF`, default: `OFF`)
-
-#### Step 4: Build the C++ Library
-
-```bash
-cmake --build build --config Release --parallel
-```
-
-The `--parallel` flag uses all available CPU cores for faster compilation.
-
-#### Step 5: Install the Python Package
-
-```bash
+# 4. Install the Python toolkit
 pip install .
-```
-
-This command builds the Python extension and installs the `kintera` package in your Python environment.
-
-**Alternative: Development Installation**
-
-For development work where you want changes to take effect immediately:
-
-```bash
-pip install -e .
-```
-
-**Alternative: Build Wheel**
-
-To create a distributable wheel file:
-
-```bash
-python -m build --wheel
-pip install dist/*.whl
 ```
 
 ## Testing
@@ -161,36 +101,8 @@ After building and installing:
 
 ```bash
 cd build/tests
-ctest --output-on-failure
+ctest
 ```
-
-### Running C++ Tests Only
-
-```bash
-cd build/tests
-ctest -R test_thermo --output-on-failure
-ctest -R test_kinetics --output-on-failure
-```
-
-### Running Python Tests Only
-
-```bash
-cd build/tests
-pytest test_earth.py -v
-```
-
-Or from the repository root:
-
-```bash
-pytest tests/ -v
-```
-
-### Test Coverage
-
-The test suite includes:
-- **C++ Unit Tests**: Core library functionality (thermodynamics, kinetics, reactions)
-- **Python Integration Tests**: Python bindings and API functionality
-- **Example Tests**: Verification of example calculations
 
 ## Documentation
 
@@ -205,20 +117,6 @@ make html
 ```
 
 Documentation will be generated in `docs/_build/html/`.
-
-## Dependencies
-
-KINTERA automatically downloads and builds most dependencies during the CMake configuration. Internet connection is required for the first build.
-
-### Core Dependencies
-
-| Package | Version | Purpose |
-|---------|---------|---------|
-| [fmt](https://github.com/fmtlib/fmt) | 11.1.2 | String formatting |
-| [yaml-cpp](https://github.com/jbeder/yaml-cpp) | 0.8.0 | YAML parsing |
-| [googletest](https://github.com/google/googletest) | 1.13.0 | C++ testing framework |
-| [pyharp](https://github.com/chengcli/pyharp) | 1.3.1+ | Atmospheric data handling |
-| [torch](https://pytorch.org/) | 2.7.0-2.7.1 | Tensor operations |
 
 ### Dependency Cache
 
@@ -260,16 +158,6 @@ kintera/
 └── data/             # Test data and examples
 ```
 
-### Building Documentation
-
-Documentation is built using Sphinx:
-
-```bash
-cd docs
-pip install -r requirements.txt
-make html
-```
-
 ### Continuous Integration
 
 The project uses GitHub Actions for continuous integration. The CI pipeline:
@@ -277,38 +165,9 @@ The project uses GitHub Actions for continuous integration. The CI pipeline:
 2. Builds on Linux and macOS
 3. Runs all C++ and Python tests
 
-## Troubleshooting
+### Continuous Deployment
 
-### Common Issues
-
-#### NetCDF Not Found
-
-If CMake cannot find NetCDF:
-
-```bash
-# Linux
-export NC_HOME=/usr
-
-# macOS (Homebrew)
-export NC_HOME=/opt/homebrew
-```
-
-#### PyTorch ABI Compatibility
-
-KINTERA automatically detects the PyTorch ABI setting. If you encounter linking errors, ensure your PyTorch installation is compatible with your system's C++ standard library.
-
-#### Build Failures
-
-For build issues:
-
-1. Clear the build cache:
-   ```bash
-   rm -rf build .cache
-   ```
-
-2. Verify all prerequisites are installed
-
-3. Check the [GitHub Issues](https://github.com/chengcli/kintera/issues) for similar problems
+Releases are automatically built and published to PyPI using GitHub Actions when a new release is created on GitHub.
 
 ## Staying Updated
 
@@ -321,21 +180,3 @@ See [LICENSE](LICENSE) file for details.
 ## Authors
 
 - **Cheng Li** - [chengcli@umich.edu](mailto:chengcli@umich.edu)
-- **Sihe Chen** - [sihechen@caltech.edu](mailto:sihechen@caltech.edu)
-
-## Citation
-
-If you use KINTERA in your research, please cite:
-
-```bibtex
-@software{kintera,
-  title = {KINTERA: Atmospheric Chemistry and Thermodynamics Library},
-  author = {Li, Cheng and Chen, Sihe},
-  url = {https://github.com/chengcli/kintera},
-  year = {2024}
-}
-```
-
-## Acknowledgments
-
-This project builds upon several open-source libraries and acknowledges the contributions of the atmospheric science and computational chemistry communities.
