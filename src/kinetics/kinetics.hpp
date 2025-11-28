@@ -25,7 +25,7 @@ struct KineticsOptionsImpl : public SpeciesThermoImpl {
   }
 
   static std::shared_ptr<KineticsOptionsImpl> from_yaml(
-      std::string const& filename);
+      std::string const& filename, bool verbose = false);
 
   void report(std::ostream& os) const {
     os << "* Tref = " << Tref() << " K\n"
@@ -44,6 +44,7 @@ struct KineticsOptionsImpl : public SpeciesThermoImpl {
   ADD_ARG(EvaporationOptions, evaporation);
 
   ADD_ARG(bool, evolve_temperature) = false;
+  ADD_ARG(bool, verbose) = false;
 };
 using KineticsOptions = std::shared_ptr<KineticsOptionsImpl>;
 

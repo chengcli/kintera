@@ -31,6 +31,10 @@ struct EvaporationOptionsImpl : public NucleationOptionsImpl {
   }
   static std::shared_ptr<EvaporationOptionsImpl> from_yaml(
       const YAML::Node& node);
+
+  std::string name() const override { return "evaporation"; }
+  EvaporationOptionsImpl() = default;
+
   void report(std::ostream& os) const {
     NucleationOptionsImpl::report(os);
     os << "* Tref = " << Tref() << " K\n"

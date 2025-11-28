@@ -28,11 +28,13 @@ struct ArrheniusOptionsImpl {
   static std::shared_ptr<ArrheniusOptionsImpl> create() {
     return std::make_shared<ArrheniusOptionsImpl>();
   }
-
   static std::shared_ptr<ArrheniusOptionsImpl> from_yaml(
-      const YAML::Node& node, std::string const& other_type = "");
+      const YAML::Node& node,
+      std::shared_ptr<ArrheniusOptionsImpl> derived_type_ptr = nullptr);
 
+  virtual std::string name() const { return "arrhenius"; }
   virtual ~ArrheniusOptionsImpl() = default;
+
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* Tref = " << Tref() << " K\n"

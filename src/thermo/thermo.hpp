@@ -47,8 +47,9 @@ struct ThermoOptionsImpl : public SpeciesThermoImpl {
    * object from it.
    */
   static std::shared_ptr<ThermoOptionsImpl> from_yaml(
-      std::string const& filename);
-  static std::shared_ptr<ThermoOptionsImpl> from_yaml(YAML::Node const& config);
+      std::string const& filename, bool verbose = false);
+  static std::shared_ptr<ThermoOptionsImpl> from_yaml(YAML::Node const& config,
+                                                      bool verbose = false);
 
   void report(std::ostream& os) const {
     os << "* Tref = " << Tref() << " K\n"
@@ -67,6 +68,7 @@ struct ThermoOptionsImpl : public SpeciesThermoImpl {
   ADD_ARG(int, max_iter) = 10;
   ADD_ARG(double, ftol) = 1e-6;
   ADD_ARG(double, gas_floor) = 1.e-20;
+  ADD_ARG(bool, verbose) = false;
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 

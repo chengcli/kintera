@@ -37,22 +37,10 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
 
 EvaporationOptions EvaporationOptionsImpl::from_yaml(const YAML::Node& root) {
   auto options = EvaporationOptionsImpl::create();
+  NucleationOptionsImpl::from_yaml(root, options);
 
   for (const auto& rxn_node : root) {
-    TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
-
-    if (rxn_node["type"].as<std::string>() != "evaporation") {
-      continue;
-    }
-
-    TORCH_CHECK(rxn_node["equation"],
-                "'equation' is not defined in the reaction");
-
-    std::string equation = rxn_node["equation"].as<std::string>();
-    options->reactions().push_back(Reaction(equation));
-
-    TORCH_CHECK(rxn_node["rate-constant"],
-                "'rate-constant' is not defined in the reaction");
+    if (rxn_node["type"].as<std::string>() != options->name()) continue;
 
     auto node = rxn_node["rate-constant"];
 
@@ -64,11 +52,6 @@ EvaporationOptions EvaporationOptionsImpl::from_yaml(const YAML::Node& root) {
     options->diameter().push_back(node["diameter"].as<double>(1.e-2));
     options->minT().push_back(node["minT"].as<double>(0.));
     options->maxT().push_back(node["maxT"].as<double>(1.e4));
-
-    TORCH_CHECK(node["formula"],
-                "'formula' is not defined in the rate-constant");
-
-    options->logsvp().push_back(node["formula"].as<std::string>());
   }
 
   return options;

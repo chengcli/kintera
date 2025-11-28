@@ -27,4 +27,10 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
   }
 }
 
+CoagulationOptions CoagulationOptionsImpl::from_yaml(const YAML::Node& root) {
+  auto options = CoagulationOptionsImpl::create();
+  ArrheniusOptionsImpl::from_yaml(root, options);
+  return options;
+}
+
 }  // namespace kintera

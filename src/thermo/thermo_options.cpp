@@ -22,35 +22,67 @@ extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 
-ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename) {
+ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename,
+                                           bool verbose) {
   if (!species_initialized) {
     init_species_from_yaml(filename);
   }
 
   auto config = YAML::LoadFile(filename);
-  return ThermoOptionsImpl::from_yaml(config);
+  return ThermoOptionsImpl::from_yaml(config, verbose);
 }
 
-ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config) {
+ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
+                                           bool verbose) {
   if (!species_initialized) {
     init_species_from_yaml(config);
   }
 
   auto thermo = ThermoOptionsImpl::create();
+  thermo->verbose(verbose);
 
   if (config["reference-state"]) {
-    if (config["reference-state"]["Tref"])
+    if (config["reference-state"]["Tref"]) {
       thermo->Tref(config["reference-state"]["Tref"].as<double>());
-    if (config["reference-state"]["Pref"])
+      if (thermo->verbose()) {
+        std::cout
+            << fmt::format(
+                   "[ThermoOptions] setting reference temperature Tref = {} K",
+                   thermo->Tref())
+            << std::endl;
+      }
+    }
+
+    if (config["reference-state"]["Pref"]) {
       thermo->Pref(config["reference-state"]["Pref"].as<double>());
+
+      if (thermo->verbose()) {
+        std::cout
+            << fmt::format(
+                   "[ThermoOptions] setting reference pressure Pref = {} Pa",
+                   thermo->Pref())
+            << std::endl;
+      }
+    }
   }
 
   if (config["dynamics"]) {
     if (config["dynamics"]["equation-of-state"]) {
       thermo->max_iter() =
           config["dynamics"]["equation-of-state"]["max-iter"].as<int>(10);
+      if (thermo->verbose()) {
+        std::cout << fmt::format("[ThermoOptions] setting EOS max-iter = {}",
+                                 thermo->max_iter())
+                  << std::endl;
+      }
+
       thermo->ftol() =
           config["dynamics"]["equation-of-state"]["ftol"].as<double>(1e-6);
+      if (thermo->verbose()) {
+        std::cout << fmt::format("[ThermoOptions] setting EOS ftol = {}",
+                                 thermo->ftol())
+                  << std::endl;
+      }
     }
   }
 
@@ -66,12 +98,30 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config) {
     thermo->nucleation() =
         NucleationOptionsImpl::from_yaml(config["reactions"]);
     add_to_vapor_cloud(vapor_set, cloud_set, thermo->nucleation());
+    if (thermo->verbose()) {
+      std::cout << fmt::format(
+                       "[ThermoOptions] registered {} Nucleation reactions",
+                       thermo->nucleation()->reactions().size())
+                << std::endl;
+    }
 
     auto coagulation = CoagulationOptionsImpl::from_yaml(config["reactions"]);
     add_to_vapor_cloud(vapor_set, cloud_set, coagulation);
+    if (thermo->verbose()) {
+      std::cout << fmt::format(
+                       "[ThermoOptions] registered {} Coagulation reactions",
+                       coagulation->reactions().size())
+                << std::endl;
+    }
 
     auto evaporation = EvaporationOptionsImpl::from_yaml(config["reactions"]);
     add_to_vapor_cloud(vapor_set, cloud_set, evaporation);
+    if (thermo->verbose()) {
+      std::cout << fmt::format(
+                       "[ThermoOptions] registered {} Evaporation reactions",
+                       evaporation->reactions().size())
+                << std::endl;
+    }
   }
 
   // register vapors
@@ -83,6 +133,11 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config) {
 
   // sort vapor ids
   std::sort(thermo->vapor_ids().begin(), thermo->vapor_ids().end());
+  if (thermo->verbose()) {
+    std::cout << fmt::format("[ThermoOptions] registered vapor species: {}",
+                             thermo->vapor_ids())
+              << std::endl;
+  }
 
   for (const auto& id : thermo->vapor_ids()) {
     thermo->cref_R().push_back(species_cref_R[id]);
@@ -99,6 +154,11 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config) {
 
   // sort cloud ids
   std::sort(thermo->cloud_ids().begin(), thermo->cloud_ids().end());
+  if (thermo->verbose()) {
+    std::cout << fmt::format("[ThermoOptions] registered cloud species: {}",
+                             thermo->cloud_ids())
+              << std::endl;
+  }
 
   for (const auto& id : thermo->cloud_ids()) {
     thermo->cref_R().push_back(species_cref_R[id]);

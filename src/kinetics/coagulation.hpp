@@ -19,7 +19,10 @@ struct CoagulationOptionsImpl : public ArrheniusOptionsImpl {
   static std::shared_ptr<CoagulationOptionsImpl> create() {
     return std::make_shared<CoagulationOptionsImpl>();
   }
+  static std::shared_ptr<CoagulationOptionsImpl> from_yaml(
+      const YAML::Node& node);
 
+  std::string name() const override { return "coagulation"; }
   CoagulationOptionsImpl() = default;
   CoagulationOptionsImpl(const ArrheniusOptionsImpl& arrhenius)
       : ArrheniusOptionsImpl(arrhenius) {}

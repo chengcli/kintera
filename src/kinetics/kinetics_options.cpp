@@ -15,19 +15,38 @@ extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 
-KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename) {
+KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename,
+                                               bool verbose) {
   if (!species_initialized) {
     init_species_from_yaml(filename);
   }
 
   auto kinet = KineticsOptionsImpl::create();
+  kinet->verbose(verbose);
   auto config = YAML::LoadFile(filename);
 
   if (config["reference-state"]) {
-    if (config["reference-state"]["Tref"])
+    if (config["reference-state"]["Tref"]) {
       kinet->Tref(config["reference-state"]["Tref"].as<double>());
-    if (config["reference-state"]["Pref"])
+      if (kinet->verbose()) {
+        std::cout << fmt::format(
+                         "[KineticsOptions] setting reference temperature Tref "
+                         "= {} K",
+                         kinet->Tref())
+                  << std::endl;
+      }
+    }
+
+    if (config["reference-state"]["Pref"]) {
       kinet->Pref(config["reference-state"]["Pref"].as<double>());
+      if (kinet->verbose()) {
+        std::cout
+            << fmt::format(
+                   "[KineticsOptions] setting reference pressure Pref = {} Pa",
+                   kinet->Pref())
+            << std::endl;
+      }
+    }
   }
 
   std::set<std::string> vapor_set;
@@ -39,15 +58,32 @@ KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename) {
   // add arrhenius reactions
   kinet->arrhenius() = ArrheniusOptionsImpl::from_yaml(config["reactions"]);
   add_to_vapor_cloud(vapor_set, cloud_set, kinet->arrhenius());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Arrhenius reactions",
+                     kinet->arrhenius()->reactions().size())
+              << std::endl;
+  }
 
   // add coagulation reactions
-  kinet->coagulation() = std::dynamic_pointer_cast<CoagulationOptionsImpl>(
-      ArrheniusOptionsImpl::from_yaml(config["reactions"], "coagulation"));
+  kinet->coagulation() = CoagulationOptionsImpl::from_yaml(config["reactions"]);
   add_to_vapor_cloud(vapor_set, cloud_set, kinet->coagulation());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Coagulation reactions",
+                     kinet->coagulation()->reactions().size())
+              << std::endl;
+  }
 
   // add evaporation reactions
   kinet->evaporation() = EvaporationOptionsImpl::from_yaml(config["reactions"]);
   add_to_vapor_cloud(vapor_set, cloud_set, kinet->evaporation());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Evaporation reactions",
+                     kinet->evaporation()->reactions().size())
+              << std::endl;
+  }
 
   // register vapors
   for (const auto& sp : vapor_set) {
@@ -58,6 +94,11 @@ KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename) {
 
   // sort vapor ids
   std::sort(kinet->vapor_ids().begin(), kinet->vapor_ids().end());
+  if (kinet->verbose()) {
+    std::cout << fmt::format("[KineticsOptions] registered vapor species: {}",
+                             kinet->vapor_ids())
+              << std::endl;
+  }
 
   for (const auto& id : kinet->vapor_ids()) {
     kinet->cref_R().push_back(species_cref_R[id]);
@@ -74,6 +115,11 @@ KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename) {
 
   // sort cloud ids
   std::sort(kinet->cloud_ids().begin(), kinet->cloud_ids().end());
+  if (kinet->verbose()) {
+    std::cout << fmt::format("[KineticsOptions] registered cloud species: {}",
+                             kinet->cloud_ids())
+              << std::endl;
+  }
 
   for (const auto& id : kinet->cloud_ids()) {
     kinet->cref_R().push_back(species_cref_R[id]);

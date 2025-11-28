@@ -8,6 +8,7 @@
 #include <kintera/units/units.hpp>
 
 #include "arrhenius.hpp"
+#include "coagulation.hpp"
 
 namespace kintera {
 
@@ -35,14 +36,15 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
 }
 
 ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
-    const YAML::Node& root, std::string const& other_type) {
-  auto options = ArrheniusOptionsImpl::create();
+    const YAML::Node& root,
+    std::shared_ptr<ArrheniusOptionsImpl> derived_type_ptr) {
+  auto options =
+      derived_type_ptr ? derived_type_ptr : ArrheniusOptionsImpl::create();
 
   for (auto const& rxn_node : root) {
     TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
 
-    if (rxn_node["type"].as<std::string>() != "arrhenius" &&
-        rxn_node["type"].as<std::string>() != other_type) {
+    if (rxn_node["type"].as<std::string>() != options->name()) {
       continue;  // skip this reaction
     }
 

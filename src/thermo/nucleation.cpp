@@ -30,15 +30,16 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
   }
 }
 
-NucleationOptions NucleationOptionsImpl::from_yaml(const YAML::Node& root) {
-  auto options = NucleationOptionsImpl::create();
+NucleationOptions NucleationOptionsImpl::from_yaml(
+    const YAML::Node& root,
+    std::shared_ptr<NucleationOptionsImpl> derived_type_ptr) {
+  auto options =
+      derived_type_ptr ? derived_type_ptr : NucleationOptionsImpl::create();
 
   for (auto const& rxn_node : root) {
     TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
 
-    if (rxn_node["type"].as<std::string>() != "nucleation") {
-      continue;
-    }
+    if (rxn_node["type"].as<std::string>() != options->name()) continue;
 
     TORCH_CHECK(rxn_node["equation"],
                 "'equation' is not defined in the reaction");
