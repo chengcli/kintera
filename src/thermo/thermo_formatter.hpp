@@ -33,7 +33,8 @@ struct fmt::formatter<kintera::ThermoOptions> {
   auto format(const kintera::ThermoOptions& p, FormatContext& ctx) const {
     std::stringstream ss;
     p->report(ss);
-    ss << fmt::format("{}", static_cast<kintera::SpeciesThermo>(p));
+    ss << fmt::format("{}",
+                      std::static_pointer_cast<kintera::SpeciesThermoImpl>(p));
     ss << fmt::format("{}", p->nucleation());
     return fmt::format_to(ctx.out(), ss.str());
   }

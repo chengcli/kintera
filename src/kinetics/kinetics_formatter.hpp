@@ -68,8 +68,9 @@ struct fmt::formatter<kintera::CoagulationOptions> {
 
   template <typename FormatContext>
   auto format(const kintera::CoagulationOptions& p, FormatContext& ctx) const {
-    return fmt::format_to(ctx.out(), "{}",
-                          static_cast<kintera::ArrheniusOptions>(p));
+    return fmt::format_to(
+        ctx.out(), "{}",
+        std::static_pointer_cast<kintera::ArrheniusOptionsImpl>(p));
   }
 };
 
@@ -82,7 +83,8 @@ struct fmt::formatter<kintera::KineticsOptions> {
     std::stringstream ss;
     p->report(ss);
 
-    ss << fmt::format("{}", static_cast<kintera::SpeciesThermo>(p));
+    ss << fmt::format("{}",
+                      std::static_pointer_cast<kintera::SpeciesThermoImpl>(p));
     ss << "Arrhenius Reactions:\n";
     ss << fmt::format("{}", p->arrhenius());
 
