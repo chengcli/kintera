@@ -17,62 +17,88 @@ namespace py = pybind11;
 void bind_kinetics(py::module &m) {
   ////////////// Arrhenius //////////////
   auto pyArrheniusOptions =
-      py::class_<kintera::ArrheniusOptions>(m, "ArrheniusOptions");
+      py::class_<kintera::ArrheniusOptionsImpl, kintera::ArrheniusOptions>(
+          m, "ArrheniusOptions");
 
   pyArrheniusOptions.def(py::init<>())
-      .ADD_OPTION(double, kintera::ArrheniusOptions, Tref)
-      .ADD_OPTION(std::vector<kintera::Reaction>, kintera::ArrheniusOptions,
+      .def("__repr__",
+           [](const kintera::ArrheniusOptions &self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("ArrheniusOptions({})", ss.str());
+           })
+      .ADD_OPTION(double, kintera::ArrheniusOptionsImpl, Tref)
+      .ADD_OPTION(std::vector<kintera::Reaction>, kintera::ArrheniusOptionsImpl,
                   reactions)
-      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptions, A)
-      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptions, b)
-      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptions, Ea_R)
-      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptions, E4_R);
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, A)
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, b)
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, Ea_R)
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, E4_R);
 
   ADD_KINTERA_MODULE(Arrhenius, ArrheniusOptions, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"));
 
   ////////////// Coagulation //////////////
   auto pyCoagulationOptions =
-      py::class_<kintera::CoagulationOptions, kintera::ArrheniusOptions>(
-          m, "CoagulationOptions");
+      py::class_<kintera::CoagulationOptionsImpl, kintera::ArrheniusOptionsImpl,
+                 kintera::CoagulationOptions>(m, "CoagulationOptions");
 
-  pyCoagulationOptions.def(py::init<>());
+  pyCoagulationOptions.def(py::init<>())
+      .def("__repr__", [](const kintera::CoagulationOptions &self) {
+        std::stringstream ss;
+        self->report(ss);
+        return fmt::format("CoagulationOptions({})", ss.str());
+      });
 
   ///////////// Evaporation //////////////
   auto pyEvaporationOptions =
-      py::class_<kintera::EvaporationOptions, kintera::NucleationOptions>(
+      py::class_<kintera::EvaporationOptionsImpl,
+                 kintera::NucleationOptionsImpl, kintera::EvaporationOptions>(
           m, "EvaporationOptions");
 
   pyEvaporationOptions.def(py::init<>())
-      .ADD_OPTION(double, kintera::EvaporationOptions, Tref)
-      .ADD_OPTION(double, kintera::EvaporationOptions, Pref)
-      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptions, diff_c)
-      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptions, diff_T)
-      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptions, diff_P)
-      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptions, vm)
-      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptions, diameter);
+      .def("__repr__",
+           [](const kintera::EvaporationOptions &self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("EvaporationOptions({})", ss.str());
+           })
+      .ADD_OPTION(double, kintera::EvaporationOptionsImpl, Tref)
+      .ADD_OPTION(double, kintera::EvaporationOptionsImpl, Pref)
+      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl, diff_c)
+      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl, diff_T)
+      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl, diff_P)
+      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl, vm)
+      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl,
+                  diameter);
 
   ADD_KINTERA_MODULE(Evaporation, EvaporationOptions, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"));
 
   ////////////// Kinetics //////////////
   auto pyKineticsOptions =
-      py::class_<kintera::KineticsOptions, kintera::SpeciesThermo>(
-          m, "KineticsOptions");
+      py::class_<kintera::KineticsOptionsImpl, kintera::SpeciesThermoImpl,
+                 kintera::KineticsOptions>(m, "KineticsOptions");
 
   pyKineticsOptions.def(py::init<>())
-      .def_static("from_yaml", &kintera::KineticsOptions::from_yaml,
-                  py::arg("filename"))
-      .def("reactions", &kintera::KineticsOptions::reactions)
-      .ADD_OPTION(double, kintera::KineticsOptions, Tref)
-      .ADD_OPTION(double, kintera::KineticsOptions, Pref)
-      .ADD_OPTION(kintera::ArrheniusOptions, kintera::KineticsOptions,
+      .def("__repr__",
+           [](const kintera::KineticsOptions &self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("KineticsOptions({})", ss.str());
+           })
+      .def_static("from_yaml", &kintera::KineticsOptionsImpl::from_yaml,
+                  py::arg("filename"), py::arg("verbose") = false)
+      .def("reactions", &kintera::KineticsOptionsImpl::reactions)
+      .ADD_OPTION(double, kintera::KineticsOptionsImpl, Tref)
+      .ADD_OPTION(double, kintera::KineticsOptionsImpl, Pref)
+      .ADD_OPTION(kintera::ArrheniusOptions, kintera::KineticsOptionsImpl,
                   arrhenius)
-      .ADD_OPTION(kintera::CoagulationOptions, kintera::KineticsOptions,
+      .ADD_OPTION(kintera::CoagulationOptions, kintera::KineticsOptionsImpl,
                   coagulation)
-      .ADD_OPTION(kintera::EvaporationOptions, kintera::KineticsOptions,
+      .ADD_OPTION(kintera::EvaporationOptions, kintera::KineticsOptionsImpl,
                   evaporation)
-      .ADD_OPTION(bool, kintera::KineticsOptions, evolve_temperature);
+      .ADD_OPTION(bool, kintera::KineticsOptionsImpl, evolve_temperature);
 
   ADD_KINTERA_MODULE(Kinetics, KineticsOptions, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"))

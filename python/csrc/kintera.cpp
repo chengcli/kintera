@@ -33,47 +33,34 @@ PYBIND11_MODULE(kintera, m) {
   m.attr("__name__") = "kintera";
   m.doc() = R"(Atmospheric Thermodynamics and Chemistry Library)";
 
-  auto pySpeciesThermo = py::class_<kintera::SpeciesThermo>(m, "SpeciesThermo");
+  auto pySpeciesThermo =
+      py::class_<kintera::SpeciesThermoImpl, kintera::SpeciesThermo>(
+          m, "SpeciesThermo");
 
-  pySpeciesThermo
-      .def(py::init<>())
-
+  pySpeciesThermo.def(py::init<>())
       .def("__repr__",
            [](const kintera::SpeciesThermo &self) {
              return fmt::format("SpeciesThermo({})", self);
            })
-
-      .def("species", &kintera::SpeciesThermo::species)
-
-      .def("narrow_copy", &kintera::SpeciesThermo::narrow_copy)
-      .def("accumulate", &kintera::SpeciesThermo::accumulate)
-
-      .ADD_OPTION(std::vector<int>, kintera::SpeciesThermo, vapor_ids)
-
-      .ADD_OPTION(std::vector<int>, kintera::SpeciesThermo, cloud_ids)
-
-      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, cref_R)
-
-      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, uref_R)
-
-      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermo, sref_R);
+      .def("species", &kintera::SpeciesThermoImpl::species)
+      .def("narrow_copy", &kintera::SpeciesThermoImpl::narrow_copy)
+      .def("accumulate", &kintera::SpeciesThermoImpl::accumulate)
+      .ADD_OPTION(std::vector<int>, kintera::SpeciesThermoImpl, vapor_ids)
+      .ADD_OPTION(std::vector<int>, kintera::SpeciesThermoImpl, cloud_ids)
+      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermoImpl, cref_R)
+      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermoImpl, uref_R)
+      .ADD_OPTION(std::vector<double>, kintera::SpeciesThermoImpl, sref_R);
 
   auto pyReaction = py::class_<kintera::Reaction>(m, "Reaction");
 
-  pyReaction
-      .def(py::init<>())
-
+  pyReaction.def(py::init<>())
       .def(py::init<const std::string &>())
-
       .def("__repr__",
            [](const kintera::Reaction &self) {
              return fmt::format("Reaction({})", self);
            })
-
       .def("equation", &kintera::Reaction::equation)
-
       .ADD_OPTION(kintera::Composition, kintera::Reaction, reactants)
-
       .ADD_OPTION(kintera::Composition, kintera::Reaction, products);
 
   bind_thermo(m);
