@@ -19,7 +19,7 @@ struct fmt::formatter<kintera::NucleationOptions> {
   auto format(const kintera::NucleationOptions& p, FormatContext& ctx) const {
     std::stringstream ss;
     ss << "Nucleation options:\n";
-    p.report(ss);
+    p->report(ss);
 
     return fmt::format_to(ctx.out(), "{}", ss.str());
   }
@@ -32,9 +32,9 @@ struct fmt::formatter<kintera::ThermoOptions> {
   template <typename FormatContext>
   auto format(const kintera::ThermoOptions& p, FormatContext& ctx) const {
     std::stringstream ss;
-    p.report(ss);
+    p->report(ss);
     ss << fmt::format("{}", static_cast<kintera::SpeciesThermo>(p));
-    ss << fmt::format("{}", p.nucleation());
+    ss << fmt::format("{}", p->nucleation());
     return fmt::format_to(ctx.out(), ss.str());
   }
 };

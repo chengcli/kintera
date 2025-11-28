@@ -20,9 +20,13 @@ class Node;
 
 namespace kintera {
 
-struct NucleationOptions {
-  static NucleationOptions from_yaml(const YAML::Node& node);
-  NucleationOptions() = default;
+struct NucleationOptionsImpl {
+  static std::shared_ptr<NucleationOptionsImpl> create() {
+    return std::make_shared<NucleationOptionsImpl>();
+  }
+  static std::shared_ptr<NucleationOptionsImpl> from_yaml(
+      const YAML::Node& node);
+
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* minT = " << fmt::format("{}", minT()) << " K\n"
@@ -35,6 +39,7 @@ struct NucleationOptions {
   ADD_ARG(std::vector<double>, maxT) = {};
   ADD_ARG(std::vector<std::string>, logsvp) = {};
 };
+using NucleationOptions = std::shared_ptr<NucleationOptionsImpl>;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set, NucleationOptions op);

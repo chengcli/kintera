@@ -22,34 +22,34 @@ extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 
-ThermoOptions ThermoOptions::from_yaml(std::string const& filename) {
+ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename) {
   if (!species_initialized) {
     init_species_from_yaml(filename);
   }
 
   auto config = YAML::LoadFile(filename);
-  return ThermoOptions::from_yaml(config);
+  return ThermoOptionsImpl::from_yaml(config);
 }
 
-ThermoOptions ThermoOptions::from_yaml(YAML::Node const& config) {
+ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config) {
   if (!species_initialized) {
     init_species_from_yaml(config);
   }
 
-  ThermoOptions thermo;
+  auto thermo = ThermoOptionsImpl::create();
 
   if (config["reference-state"]) {
     if (config["reference-state"]["Tref"])
-      thermo.Tref(config["reference-state"]["Tref"].as<double>());
+      thermo->Tref(config["reference-state"]["Tref"].as<double>());
     if (config["reference-state"]["Pref"])
-      thermo.Pref(config["reference-state"]["Pref"].as<double>());
+      thermo->Pref(config["reference-state"]["Pref"].as<double>());
   }
 
   if (config["dynamics"]) {
     if (config["dynamics"]["equation-of-state"]) {
-      thermo.max_iter() =
+      thermo->max_iter() =
           config["dynamics"]["equation-of-state"]["max-iter"].as<int>(10);
-      thermo.ftol() =
+      thermo->ftol() =
           config["dynamics"]["equation-of-state"]["ftol"].as<double>(1e-6);
     }
   }
@@ -63,13 +63,14 @@ ThermoOptions ThermoOptions::from_yaml(YAML::Node const& config) {
   // register reactions
   if (config["reactions"]) {
     // add nucleation reactions
-    thermo.nucleation() = NucleationOptions::from_yaml(config["reactions"]);
-    add_to_vapor_cloud(vapor_set, cloud_set, thermo.nucleation());
+    thermo->nucleation() =
+        NucleationOptionsImpl::from_yaml(config["reactions"]);
+    add_to_vapor_cloud(vapor_set, cloud_set, thermo->nucleation());
 
-    auto coagulation = CoagulationOptions::from_yaml(config["reactions"]);
+    auto coagulation = CoagulationOptionsImpl::from_yaml(config["reactions"]);
     add_to_vapor_cloud(vapor_set, cloud_set, coagulation);
 
-    auto evaporation = EvaporationOptions::from_yaml(config["reactions"]);
+    auto evaporation = EvaporationOptionsImpl::from_yaml(config["reactions"]);
     add_to_vapor_cloud(vapor_set, cloud_set, evaporation);
   }
 
@@ -77,42 +78,42 @@ ThermoOptions ThermoOptions::from_yaml(YAML::Node const& config) {
   for (const auto& sp : vapor_set) {
     auto it = std::find(species_names.begin(), species_names.end(), sp);
     int id = it - species_names.begin();
-    thermo.vapor_ids().push_back(id);
+    thermo->vapor_ids().push_back(id);
   }
 
   // sort vapor ids
-  std::sort(thermo.vapor_ids().begin(), thermo.vapor_ids().end());
+  std::sort(thermo->vapor_ids().begin(), thermo->vapor_ids().end());
 
-  for (const auto& id : thermo.vapor_ids()) {
-    thermo.cref_R().push_back(species_cref_R[id]);
-    thermo.uref_R().push_back(species_uref_R[id]);
-    thermo.sref_R().push_back(species_sref_R[id]);
+  for (const auto& id : thermo->vapor_ids()) {
+    thermo->cref_R().push_back(species_cref_R[id]);
+    thermo->uref_R().push_back(species_uref_R[id]);
+    thermo->sref_R().push_back(species_sref_R[id]);
   }
 
   // register clouds
   for (const auto& sp : cloud_set) {
     auto it = std::find(species_names.begin(), species_names.end(), sp);
     int id = it - species_names.begin();
-    thermo.cloud_ids().push_back(id);
+    thermo->cloud_ids().push_back(id);
   }
 
   // sort cloud ids
-  std::sort(thermo.cloud_ids().begin(), thermo.cloud_ids().end());
+  std::sort(thermo->cloud_ids().begin(), thermo->cloud_ids().end());
 
-  for (const auto& id : thermo.cloud_ids()) {
-    thermo.cref_R().push_back(species_cref_R[id]);
-    thermo.uref_R().push_back(species_uref_R[id]);
-    thermo.sref_R().push_back(species_sref_R[id]);
+  for (const auto& id : thermo->cloud_ids()) {
+    thermo->cref_R().push_back(species_cref_R[id]);
+    thermo->uref_R().push_back(species_uref_R[id]);
+    thermo->sref_R().push_back(species_sref_R[id]);
   }
 
   return thermo;
 }
 
-std::vector<Reaction> ThermoOptions::reactions() const {
+std::vector<Reaction> ThermoOptionsImpl::reactions() const {
   std::vector<Reaction> reactions;
-  reactions.reserve(nucleation().reactions().size());
+  reactions.reserve(nucleation()->reactions().size());
 
-  for (const auto& reaction : nucleation().reactions()) {
+  for (const auto& reaction : nucleation()->reactions()) {
     reactions.push_back(reaction);
   }
 

@@ -25,10 +25,14 @@ class Node;
 namespace kintera {
 
 //! Options to initialize all reaction rate constants
-struct EvaporationOptions : public NucleationOptions {
-  static EvaporationOptions from_yaml(const YAML::Node& node);
+struct EvaporationOptionsImpl : public NucleationOptionsImpl {
+  static std::shared_ptr<EvaporationOptionsImpl> create() {
+    return std::make_shared<EvaporationOptionsImpl>();
+  }
+  static std::shared_ptr<EvaporationOptionsImpl> from_yaml(
+      const YAML::Node& node);
   void report(std::ostream& os) const {
-    NucleationOptions::report(os);
+    NucleationOptionsImpl::report(os);
     os << "* Tref = " << Tref() << " K\n"
        << "* Pref = " << Pref() << " Pa\n"
        << "* diff_c = " << fmt::format("{}", diff_c()) << "\n"
@@ -59,6 +63,7 @@ struct EvaporationOptions : public NucleationOptions {
   //! Particle diameter [m]
   ADD_ARG(std::vector<double>, diameter) = {};
 };
+using EvaporationOptions = std::shared_ptr<EvaporationOptionsImpl>;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,
@@ -81,7 +86,7 @@ class EvaporationImpl : public torch::nn::Cloneable<EvaporationImpl> {
   EvaporationOptions options;
 
   //! Constructor to initialize the layer
-  EvaporationImpl() = default;
+  EvaporationImpl() : options(EvaporationOptionsImpl::create()) {}
   explicit EvaporationImpl(EvaporationOptions const& options_);
   void reset() override;
   void pretty_print(std::ostream& os) const override;

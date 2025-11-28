@@ -24,7 +24,7 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  auto cv_R_extra_func = op.intEng_R_extra();
+  auto cv_R_extra_func = op->intEng_R_extra();
   for (auto& name : cv_R_extra_func) {
     if (!name.empty()) name += "_ddT";
   }
@@ -32,7 +32,7 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
   at::native::call_func2(cv_R_extra.device().type(), iter, cv_R_extra_func);
 
   auto cref_R =
-      torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
+      torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
   return cv_R_extra + cref_R;
 }
 
@@ -52,18 +52,18 @@ torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  at::native::call_func2(cp_R_extra.device().type(), iter, op.cp_R_extra());
+  at::native::call_func2(cp_R_extra.device().type(), iter, op->cp_R_extra());
 
   auto cref_R =
-      torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
-  cref_R.narrow(-1, 0, op.vapor_ids().size()) += 1;
+      torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
+  cref_R.narrow(-1, 0, op->vapor_ids().size()) += 1;
   return cp_R_extra + cref_R;
 }
 
 torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
                        SpeciesThermo const& op) {
   auto cz = torch::zeros_like(conc);
-  cz.narrow(-1, 0, op.vapor_ids().size()) = 1.;
+  cz.narrow(-1, 0, op->vapor_ids().size()) = 1.;
 
   // bundle iterator
   auto iter = at::TensorIteratorConfig()
@@ -77,7 +77,7 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  at::native::call_func2(cz.device().type(), iter, op.czh());
+  at::native::call_func2(cz.device().type(), iter, op->czh());
 
   return cz;
 }
@@ -98,7 +98,7 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  at::native::call_func2(cz_ddC.device().type(), iter, op.czh_ddC());
+  at::native::call_func2(cz_ddC.device().type(), iter, op->czh_ddC());
 
   return cz_ddC;
 }
@@ -120,10 +120,10 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
 
   // call the evaluation function
   at::native::call_func2(intEng_R_extra.device().type(), iter,
-                         op.intEng_R_extra());
+                         op->intEng_R_extra());
 
-  auto cref_R = torch::tensor(op.cref_R(), temp.options());
-  auto uref_R = torch::tensor(op.uref_R(), temp.options());
+  auto cref_R = torch::tensor(op->cref_R(), temp.options());
+  auto uref_R = torch::tensor(op->uref_R(), temp.options());
 
   return uref_R + temp.unsqueeze(-1) * cref_R + intEng_R_extra;
 }
@@ -131,8 +131,8 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                              torch::Tensor conc, torch::Tensor stoich,
                              SpeciesThermo const& op) {
-  int ngas = op.vapor_ids().size();
-  int ncloud = op.cloud_ids().size();
+  int ngas = op->vapor_ids().size();
+  int ncloud = op->cloud_ids().size();
 
   // check dimension consistency
   TORCH_CHECK(conc.size(-1) == ngas + ncloud,
@@ -168,12 +168,13 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
 
   // call the evaluation function
   at::native::call_func3(entropy_R_extra.device().type(), iter,
-                         op.entropy_R_extra());
+                         op->entropy_R_extra());
 
   // std::cout << "entropy_R_extra = " << entropy_R_extra << std::endl;
 
-  auto sref_R = torch::tensor(op.sref_R(), temp.options());
-  auto cp_gas_R = torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, ngas);
+  auto sref_R = torch::tensor(op->sref_R(), temp.options());
+  auto cp_gas_R =
+      torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, ngas);
   cp_gas_R += 1;
 
   auto entropy_R = torch::zeros_like(conc);
@@ -192,8 +193,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                              torch::Tensor conc, torch::Tensor stoich,
                              ThermoOptions const& op) {
-  int ngas = op.vapor_ids().size();
-  int ncloud = op.cloud_ids().size();
+  int ngas = op->vapor_ids().size();
+  int ncloud = op->cloud_ids().size();
 
   // check dimension consistency
   TORCH_CHECK(conc.size(-1) == ngas + ncloud,
@@ -229,10 +230,11 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
 
   // call the evaluation function
   at::native::call_func3(entropy_R_extra.device().type(), iter,
-                         op.entropy_R_extra());
+                         op->entropy_R_extra());
 
-  auto sref_R = torch::tensor(op.sref_R(), temp.options());
-  auto cp_gas_R = torch::tensor(op.cref_R(), temp.options()).narrow(0, 0, ngas);
+  auto sref_R = torch::tensor(op->sref_R(), temp.options());
+  auto cp_gas_R =
+      torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, ngas);
   cp_gas_R += 1;
 
   auto entropy_R = torch::zeros_like(conc);
@@ -246,7 +248,7 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   //////////// Evaluate condensate entropy ////////////
 
   // (1) Evaluate log-svp
-  LogSVPFunc::init(op.nucleation());
+  LogSVPFunc::init(op->nucleation());
   auto logsvp = LogSVPFunc::call(temp);
   // std::cout << "logsvp = " << logsvp << std::endl;
 
@@ -286,8 +288,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
 
 torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
                               SpeciesThermo const& op) {
-  int ngas = op.vapor_ids().size();
-  int ncloud = op.cloud_ids().size();
+  int ngas = op->vapor_ids().size();
+  int ncloud = op->cloud_ids().size();
 
   // check dimension consistency
   TORCH_CHECK(conc.size(-1) == ngas + ncloud,
@@ -303,8 +305,8 @@ torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
       eval_intEng_R(temp, conc, op).narrow(-1, 0, ngas) +
       czh.narrow(-1, 0, ngas) * temp.unsqueeze(-1);
 
-  auto cref_R = torch::tensor(op.cref_R(), temp.options());
-  auto uref_R = torch::tensor(op.uref_R(), temp.options());
+  auto cref_R = torch::tensor(op->cref_R(), temp.options());
+  auto uref_R = torch::tensor(op->uref_R(), temp.options());
   enthalpy_R.narrow(-1, ngas, ncloud) =
       uref_R.narrow(-1, ngas, ncloud) +
       cref_R.narrow(-1, ngas, ncloud) * temp.unsqueeze(-1) +

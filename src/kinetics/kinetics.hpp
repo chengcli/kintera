@@ -19,9 +19,14 @@
 
 namespace kintera {
 
-struct KineticsOptions : public SpeciesThermo {
-  static KineticsOptions from_yaml(std::string const& filename);
-  KineticsOptions() = default;
+struct KineticsOptionsImpl : public SpeciesThermoImpl {
+  static std::shared_ptr<KineticsOptionsImpl> create() {
+    return std::make_shared<KineticsOptionsImpl>();
+  }
+
+  static std::shared_ptr<KineticsOptionsImpl> from_yaml(
+      std::string const& filename);
+
   void report(std::ostream& os) const {
     os << "* Tref = " << Tref() << " K\n"
        << "* Pref = " << Pref() << " Pa\n"
@@ -40,6 +45,7 @@ struct KineticsOptions : public SpeciesThermo {
 
   ADD_ARG(bool, evolve_temperature) = false;
 };
+using KineticsOptions = std::shared_ptr<KineticsOptionsImpl>;
 
 class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
  public:
@@ -53,7 +59,7 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   KineticsOptions options;
 
   //! Constructor to initialize the layer
-  KineticsImpl() = default;
+  KineticsImpl() : options(KineticsOptionsImpl::create()) {}
   explicit KineticsImpl(const KineticsOptions& options_);
   void reset() override;
 

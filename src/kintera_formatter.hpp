@@ -36,11 +36,11 @@ struct fmt::formatter<kintera::SpeciesThermo> {
   template <typename FormatContext>
   auto format(const kintera::SpeciesThermo& p, FormatContext& ctx) const {
     std::stringstream ss;
-    ss << "* vapors = " << fmt::format("{}", p.vapor_ids()) << "\n";
-    ss << "* clouds = " << fmt::format("{}", p.cloud_ids()) << "\n";
-    ss << "* cref_R = " << fmt::format("{}", p.cref_R()) << "\n";
-    ss << "* uref_R = " << fmt::format("{}", p.uref_R()) << "\n";
-    ss << "* sref_R = " << fmt::format("{}", p.sref_R()) << "\n";
+    ss << "* vapors = " << fmt::format("{}", p->vapor_ids()) << "\n";
+    ss << "* clouds = " << fmt::format("{}", p->cloud_ids()) << "\n";
+    ss << "* cref_R = " << fmt::format("{}", p->cref_R()) << "\n";
+    ss << "* uref_R = " << fmt::format("{}", p->uref_R()) << "\n";
+    ss << "* sref_R = " << fmt::format("{}", p->sref_R()) << "\n";
 
     return fmt::format_to(ctx.out(), ss.str());
   }

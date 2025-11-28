@@ -23,15 +23,20 @@ namespace kintera {
 void init_species_from_yaml(std::string filename);
 void init_species_from_yaml(YAML::Node const& config);
 
-struct SpeciesThermo {
-  virtual ~SpeciesThermo() = default;
+struct SpeciesThermoImpl {
+  static std::shared_ptr<SpeciesThermoImpl> create() {
+    return std::make_shared<SpeciesThermoImpl>();
+  }
+
+  virtual ~SpeciesThermoImpl() = default;
 
   //! \return species names
   std::vector<std::string> species() const;
 
-  at::Tensor narrow_copy(at::Tensor data, SpeciesThermo const& other) const;
+  at::Tensor narrow_copy(at::Tensor data,
+                         std::shared_ptr<SpeciesThermoImpl> const& other) const;
   void accumulate(at::Tensor& data, at::Tensor const& other_data,
-                  SpeciesThermo const& other) const;
+                  std::shared_ptr<SpeciesThermoImpl> const& other) const;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);
@@ -57,8 +62,9 @@ struct SpeciesThermo {
   //! valid numbers. The rests are no-ops.
   ADD_ARG(std::vector<std::string>, czh_ddC);
 };
+using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
-void populate_thermo(SpeciesThermo& thermo);
+void populate_thermo(SpeciesThermo thermo);
 
 void check_dimensions(SpeciesThermo const& thermo);
 

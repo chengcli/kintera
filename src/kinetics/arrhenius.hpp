@@ -24,10 +24,15 @@ class Node;
 namespace kintera {
 
 //! Options to initialize all reaction rate constants
-struct ArrheniusOptions {
-  static ArrheniusOptions from_yaml(const YAML::Node& node,
-                                    std::string const& other_type = "");
-  virtual ~ArrheniusOptions() = default;
+struct ArrheniusOptionsImpl {
+  static std::shared_ptr<ArrheniusOptionsImpl> create() {
+    return std::make_shared<ArrheniusOptionsImpl>();
+  }
+
+  static std::shared_ptr<ArrheniusOptionsImpl> from_yaml(
+      const YAML::Node& node, std::string const& other_type = "");
+
+  virtual ~ArrheniusOptionsImpl() = default;
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* Tref = " << Tref() << " K\n"
@@ -60,6 +65,7 @@ struct ArrheniusOptions {
   //! Additional 4th parameter in the rate expression
   ADD_ARG(std::vector<double>, E4_R) = {};
 };
+using ArrheniusOptions = std::shared_ptr<ArrheniusOptionsImpl>;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set, ArrheniusOptions op);
@@ -82,7 +88,7 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
   ArrheniusOptions options;
 
   //! Constructor to initialize the layer
-  ArrheniusImpl() = default;
+  ArrheniusImpl() : options(ArrheniusOptionsImpl::create()) {}
   explicit ArrheniusImpl(ArrheniusOptions const& options_);
   void reset() override;
   void pretty_print(std::ostream& os) const override;

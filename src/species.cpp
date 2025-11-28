@@ -77,7 +77,7 @@ void init_species_from_yaml(YAML::Node const& config) {
   species_initialized = true;
 }
 
-std::vector<std::string> SpeciesThermo::species() const {
+std::vector<std::string> SpeciesThermoImpl::species() const {
   std::vector<std::string> species_list;
 
   // add vapors
@@ -93,11 +93,11 @@ std::vector<std::string> SpeciesThermo::species() const {
   return species_list;
 }
 
-at::Tensor SpeciesThermo::narrow_copy(at::Tensor data,
-                                      SpeciesThermo const& other) const {
+at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
+                                          SpeciesThermo const& other) const {
   auto indices =
       locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
-                     merge_vectors(other.vapor_ids(), other.cloud_ids()));
+                     merge_vectors(other->vapor_ids(), other->cloud_ids()));
 
   TORCH_CHECK(indices.size() == vapor_ids().size() + cloud_ids().size(),
               "Missing indices for some species in other's thermo data.");
@@ -108,11 +108,12 @@ at::Tensor SpeciesThermo::narrow_copy(at::Tensor data,
   return data.index_select(-1, id);
 }
 
-void SpeciesThermo::accumulate(at::Tensor& data, at::Tensor const& other_data,
-                               SpeciesThermo const& other) const {
+void SpeciesThermoImpl::accumulate(at::Tensor& data,
+                                   at::Tensor const& other_data,
+                                   SpeciesThermo const& other) const {
   auto indices =
       locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
-                     merge_vectors(other.vapor_ids(), other.cloud_ids()));
+                     merge_vectors(other->vapor_ids(), other->cloud_ids()));
 
   TORCH_CHECK(indices.size() == vapor_ids().size() + cloud_ids().size(),
               "Missing indices for some species in other's thermo data.");
@@ -122,66 +123,66 @@ void SpeciesThermo::accumulate(at::Tensor& data, at::Tensor const& other_data,
   data.index_add_(-1, id, other_data);
 }
 
-void populate_thermo(SpeciesThermo& thermo) {
-  int nspecies = thermo.vapor_ids().size() + thermo.cloud_ids().size();
+void populate_thermo(SpeciesThermo thermo) {
+  int nspecies = thermo->vapor_ids().size() + thermo->cloud_ids().size();
 
   // populate higher-order thermodynamic functions
-  while (thermo.intEng_R_extra().size() < nspecies) {
-    thermo.intEng_R_extra().push_back("");
+  while (thermo->intEng_R_extra().size() < nspecies) {
+    thermo->intEng_R_extra().push_back("");
   }
 
-  while (thermo.entropy_R_extra().size() < nspecies) {
-    thermo.entropy_R_extra().push_back("");
+  while (thermo->entropy_R_extra().size() < nspecies) {
+    thermo->entropy_R_extra().push_back("");
   }
 
-  while (thermo.cp_R_extra().size() < nspecies) {
-    thermo.cp_R_extra().push_back("");
+  while (thermo->cp_R_extra().size() < nspecies) {
+    thermo->cp_R_extra().push_back("");
   }
 
-  while (thermo.czh().size() < nspecies) {
-    thermo.czh().push_back("");
+  while (thermo->czh().size() < nspecies) {
+    thermo->czh().push_back("");
   }
 
-  while (thermo.czh_ddC().size() < nspecies) {
-    thermo.czh_ddC().push_back("");
+  while (thermo->czh_ddC().size() < nspecies) {
+    thermo->czh_ddC().push_back("");
   }
 }
 
 void check_dimensions(SpeciesThermo const& thermo) {
-  int nspecies = thermo.vapor_ids().size() + thermo.cloud_ids().size();
+  int nspecies = thermo->vapor_ids().size() + thermo->cloud_ids().size();
 
-  TORCH_CHECK(thermo.cref_R().size() == nspecies,
-              "cref_R size = ", thermo.cref_R().size(),
+  TORCH_CHECK(thermo->cref_R().size() == nspecies,
+              "cref_R size = ", thermo->cref_R().size(),
               ". Expected = ", nspecies);
 
-  TORCH_CHECK(thermo.uref_R().size() == nspecies,
-              "uref_R size = ", thermo.uref_R().size(),
+  TORCH_CHECK(thermo->uref_R().size() == nspecies,
+              "uref_R size = ", thermo->uref_R().size(),
               ". Expected = ", nspecies);
 
-  TORCH_CHECK(thermo.sref_R().size() == nspecies,
-              "sref_R size = ", thermo.sref_R().size(),
+  TORCH_CHECK(thermo->sref_R().size() == nspecies,
+              "sref_R size = ", thermo->sref_R().size(),
               ". Expected = ", nspecies);
 
   TORCH_CHECK(
-      thermo.intEng_R_extra().size() == nspecies,
+      thermo->intEng_R_extra().size() == nspecies,
       "Missing non-ideal internal energies. Please call `populate_thermo` "
       "to fill in the missing data.");
 
   TORCH_CHECK(
-      thermo.cp_R_extra().size() == nspecies,
+      thermo->cp_R_extra().size() == nspecies,
       "Missing non-ideal heat capacities at constant pressure. Please call "
       "`populate_thermo` to fill in the missing data.");
 
-  TORCH_CHECK(thermo.entropy_R_extra().size() == nspecies,
+  TORCH_CHECK(thermo->entropy_R_extra().size() == nspecies,
               "Missing non-ideal entropies. Please call `populate_thermo` "
               "to fill in the missing data.");
 
   TORCH_CHECK(
-      thermo.czh().size() == nspecies,
+      thermo->czh().size() == nspecies,
       "Missing non-ideal compressibilities. Please call `populate_thermo` "
       "to fill in the missing data.");
 
-  TORCH_CHECK(thermo.czh_ddC().size() == nspecies,
+  TORCH_CHECK(thermo->czh_ddC().size() == nspecies,
               "Missing non-ideal compressibility derivatives. Please call "
               "`populate_thermo` to fill in the missing data.");
 }
@@ -193,45 +194,48 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   check_dimensions(thermo2);
 
   // return a new SpeciesThermo object with merged data
-  SpeciesThermo merged;
+  auto merged = SpeciesThermoImpl::create();
 
-  auto& vapor_ids = merged.vapor_ids();
-  auto& cloud_ids = merged.cloud_ids();
+  auto& vapor_ids = merged->vapor_ids();
+  auto& cloud_ids = merged->cloud_ids();
 
-  auto& cref_R = merged.cref_R();
-  auto& uref_R = merged.uref_R();
-  auto& sref_R = merged.sref_R();
-  auto& intEng_R_extra = merged.intEng_R_extra();
-  auto& cp_R_extra = merged.cp_R_extra();
-  auto& entropy_R_extra = merged.entropy_R_extra();
-  auto& czh = merged.czh();
-  auto& czh_ddC = merged.czh_ddC();
+  auto& cref_R = merged->cref_R();
+  auto& uref_R = merged->uref_R();
+  auto& sref_R = merged->sref_R();
+  auto& intEng_R_extra = merged->intEng_R_extra();
+  auto& cp_R_extra = merged->cp_R_extra();
+  auto& entropy_R_extra = merged->entropy_R_extra();
+  auto& czh = merged->czh();
+  auto& czh_ddC = merged->czh_ddC();
 
   // concatenate fields
-  int nvapor1 = thermo1.vapor_ids().size();
-  int nvapor2 = thermo2.vapor_ids().size();
+  int nvapor1 = thermo1->vapor_ids().size();
+  int nvapor2 = thermo2->vapor_ids().size();
 
-  vapor_ids = merge_vectors(thermo1.vapor_ids(), thermo2.vapor_ids());
-  cloud_ids = merge_vectors(thermo1.cloud_ids(), thermo2.cloud_ids());
+  vapor_ids = merge_vectors(thermo1->vapor_ids(), thermo2->vapor_ids());
+  cloud_ids = merge_vectors(thermo1->cloud_ids(), thermo2->cloud_ids());
 
-  cref_R = merge_vectors(thermo1.cref_R(), thermo2.cref_R(), nvapor1, nvapor2);
+  cref_R =
+      merge_vectors(thermo1->cref_R(), thermo2->cref_R(), nvapor1, nvapor2);
 
-  uref_R = merge_vectors(thermo1.uref_R(), thermo2.uref_R(), nvapor1, nvapor2);
+  uref_R =
+      merge_vectors(thermo1->uref_R(), thermo2->uref_R(), nvapor1, nvapor2);
 
-  sref_R = merge_vectors(thermo1.sref_R(), thermo2.sref_R(), nvapor1, nvapor2);
+  sref_R =
+      merge_vectors(thermo1->sref_R(), thermo2->sref_R(), nvapor1, nvapor2);
 
-  intEng_R_extra = merge_vectors(thermo1.intEng_R_extra(),
-                                 thermo2.intEng_R_extra(), nvapor1, nvapor2);
+  intEng_R_extra = merge_vectors(thermo1->intEng_R_extra(),
+                                 thermo2->intEng_R_extra(), nvapor1, nvapor2);
 
-  cp_R_extra = merge_vectors(thermo1.cp_R_extra(), thermo2.cp_R_extra(),
+  cp_R_extra = merge_vectors(thermo1->cp_R_extra(), thermo2->cp_R_extra(),
                              nvapor1, nvapor2);
-  entropy_R_extra = merge_vectors(thermo1.entropy_R_extra(),
-                                  thermo2.entropy_R_extra(), nvapor1, nvapor2);
+  entropy_R_extra = merge_vectors(thermo1->entropy_R_extra(),
+                                  thermo2->entropy_R_extra(), nvapor1, nvapor2);
 
-  czh = merge_vectors(thermo1.czh(), thermo2.czh(), nvapor1, nvapor2);
+  czh = merge_vectors(thermo1->czh(), thermo2->czh(), nvapor1, nvapor2);
 
   czh_ddC =
-      merge_vectors(thermo1.czh_ddC(), thermo2.czh_ddC(), nvapor1, nvapor2);
+      merge_vectors(thermo1->czh_ddC(), thermo2->czh_ddC(), nvapor1, nvapor2);
 
   // identify duplicated vapor ids and remove them from all vectors
   int first = 0;

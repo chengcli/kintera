@@ -6,8 +6,11 @@
 namespace kintera {
 
 // Forward declaration
-struct SpeciesThermo;
-struct ThermoOptions;
+struct SpeciesThermoImpl;
+struct ThermoOptionsImpl;
+
+using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
+using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
                         SpeciesThermo const& op);

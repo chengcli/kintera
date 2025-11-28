@@ -21,15 +21,15 @@ using namespace kintera;
 using namespace torch::indexing;
 
 TEST_P(DeviceTest, thermo_y) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
 
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
   ThermoY thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int ny = thermo->options.vapor_ids().size() +
-           thermo->options.cloud_ids().size() - 1;
+  int ny = thermo->options->vapor_ids().size() +
+           thermo->options->cloud_ids().size() - 1;
   auto yfrac = torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
 
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
@@ -77,13 +77,14 @@ TEST_P(DeviceTest, thermo_y) {
 }
 
 TEST_P(DeviceTest, thermo_x) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_thermo->max_iter(10);
 
   ThermoX thermo(op_thermo);
   thermo->to(device, dtype);
 
-  int ny = thermo->options.vapor_ids().size() +
-           thermo->options.cloud_ids().size() - 1;
+  int ny = thermo->options->vapor_ids().size() +
+           thermo->options->cloud_ids().size() - 1;
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -122,14 +123,14 @@ TEST_P(DeviceTest, thermo_x) {
 }
 
 TEST_P(DeviceTest, thermo_xy) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
+  int ny = op_thermo->vapor_ids().size() + op_thermo->cloud_ids().size() - 1;
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -143,14 +144,14 @@ TEST_P(DeviceTest, thermo_xy) {
 }
 
 TEST_P(DeviceTest, thermo_yx) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
+  int ny = op_thermo->vapor_ids().size() + op_thermo->cloud_ids().size() - 1;
   auto yfrac = torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
@@ -161,15 +162,15 @@ TEST_P(DeviceTest, thermo_yx) {
 }
 
 TEST_P(DeviceTest, eng_pres) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
-  int ny = thermo_y->options.vapor_ids().size() +
-           thermo_y->options.cloud_ids().size() - 1;
+  int ny = thermo_y->options->vapor_ids().size() +
+           thermo_y->options->cloud_ids().size() - 1;
   auto yfrac = torch::zeros({ny, 1}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
@@ -190,12 +191,13 @@ TEST_P(DeviceTest, eng_pres) {
 }
 
 TEST_P(DeviceTest, equilibrate_tp) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(15);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_thermo->max_iter(15);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
+  int ny = op_thermo->vapor_ids().size() + op_thermo->cloud_ids().size() - 1;
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -218,12 +220,13 @@ TEST_P(DeviceTest, equilibrate_tp) {
 }
 
 TEST_P(DeviceTest, equilibrate_tp_large) {
-  auto op_thermo = ThermoOptions::from_yaml("earth.yaml").max_iter(15);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("earth.yaml");
+  op_thermo->max_iter(15);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
+  int ny = op_thermo->vapor_ids().size() + op_thermo->cloud_ids().size() - 1;
   auto xfrac =
       torch::zeros({100, 200, 200, 1 + ny}, torch::device(device).dtype(dtype));
 
@@ -247,13 +250,14 @@ TEST_P(DeviceTest, equilibrate_tp_large) {
 }
 
 TEST_P(DeviceTest, equilibrate_uv) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_thermo->max_iter(10);
 
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int ny = thermo_y->options.vapor_ids().size() +
-           thermo_y->options.cloud_ids().size() - 1;
+  int ny = thermo_y->options->vapor_ids().size() +
+           thermo_y->options->cloud_ids().size() - 1;
   auto yfrac = torch::zeros({ny, 1, 2, 3}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
@@ -287,13 +291,14 @@ TEST_P(DeviceTest, equilibrate_uv) {
 }
 
 TEST_P(DeviceTest, equilibrate_uv_large) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_thermo->max_iter(10);
 
   ThermoY thermo_y(op_thermo);
   thermo_y->to(device, dtype);
 
-  int ny = thermo_y->options.vapor_ids().size() +
-           thermo_y->options.cloud_ids().size() - 1;
+  int ny = thermo_y->options->vapor_ids().size() +
+           thermo_y->options->cloud_ids().size() - 1;
   auto yfrac =
       torch::zeros({ny, 100, 200, 200}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
@@ -322,8 +327,8 @@ TEST_P(DeviceTest, extrapolate_ad) {
     GTEST_SKIP() << "Skipping float test";
   }
 
-  auto op_thermo =
-      ThermoOptions::from_yaml("jupiter.yaml").max_iter(15).ftol(1e-8);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  (*op_thermo).max_iter(15).ftol(1e-8);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
@@ -331,7 +336,7 @@ TEST_P(DeviceTest, extrapolate_ad) {
   auto temp = 200.0 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({2, 3}, torch::device(device).dtype(dtype));
 
-  int ny = op_thermo.vapor_ids().size() + op_thermo.cloud_ids().size() - 1;
+  int ny = op_thermo->vapor_ids().size() + op_thermo->cloud_ids().size() - 1;
   auto xfrac = torch::zeros({2, 3, 1 + ny}, torch::device(device).dtype(dtype));
 
   for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
@@ -358,13 +363,14 @@ TEST_P(DeviceTest, extrapolate_ad) {
 }
 
 TEST_P(DeviceTest, relative_humidity) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(15);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_thermo->max_iter(15);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
 
-  int ny = thermo_x->options.vapor_ids().size() +
-           thermo_x->options.cloud_ids().size() - 1;
+  int ny = thermo_x->options->vapor_ids().size() +
+           thermo_x->options->cloud_ids().size() - 1;
 
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
@@ -380,7 +386,7 @@ TEST_P(DeviceTest, relative_humidity) {
 
   auto conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
   auto rh = relative_humidity(temp, conc, thermo_x->stoich,
-                              thermo_x->options.nucleation());
+                              thermo_x->options->nucleation());
   std::cout << "rh = " << rh << std::endl;
   EXPECT_LE(rh.min().item<float>(), 1.0);
   EXPECT_GE(rh.max().item<float>(), 0.0);

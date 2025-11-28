@@ -16,7 +16,8 @@ void KineticsImpl::_jacobian_evaporation(
   auto stoich_local = stoich.slice(1, begin, end);
 
   // evaluate relative humidity
-  auto rh = relative_humidity(temp, conc, -stoich_local, options.evaporation());
+  auto rh =
+      relative_humidity(temp, conc, -stoich_local, options->evaporation());
 
   // mark reactants
   auto sm = stoich_local.clamp_max(0.).t();

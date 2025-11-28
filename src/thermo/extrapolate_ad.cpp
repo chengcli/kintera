@@ -22,7 +22,7 @@ torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
     return (cp * xfrac).sum(-1);
   }
 
-  LogSVPFunc::init(options.nucleation());
+  LogSVPFunc::init(options->nucleation());
 
   auto logsvp_ddT = LogSVPFunc::grad(temp);
 
@@ -74,7 +74,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
 
   int iter = 0;
   pres *= exp(dlnp);
-  while (iter++ < options.max_iter()) {
+  while (iter++ < options->max_iter()) {
     auto gain = forward(temp, pres, xfrac);
 
     conc = compute("TPX->V", {temp, pres, xfrac});
@@ -104,15 +104,15 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
     }
 
     if ((entropy_mole0 - entropy_mole).abs().max().item<double>() <
-        10 * options.ftol()) {
+        10 * options->ftol()) {
       break;
     }
 
     temp *= 1. + (entropy_mole0 - entropy_mole) / cp_mole;
   }
 
-  if (iter >= options.max_iter()) {
-    TORCH_WARN("extrapolate_ad does not converge after ", options.max_iter(),
+  if (iter >= options->max_iter()) {
+    TORCH_WARN("extrapolate_ad does not converge after ", options->max_iter(),
                " iterations.");
   }
 }
@@ -154,7 +154,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
   // std::vector<torch::Tensor> pres_list;
   // std::vector<torch::Tensor> entropy_list;
 
-  while (iter++ < options.max_iter()) {
+  while (iter++ < options->max_iter()) {
     // temp_list.push_back(temp.clone());
     // pres_list.push_back(pres.clone());
 
@@ -184,7 +184,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
     }
 
     if ((entropy_mole0 - entropy_mole).abs().max().item<double>() <
-        10 * options.ftol()) {
+        10 * options->ftol()) {
       break;
     }
 
@@ -215,7 +215,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
     auto pres1 = pres.clone();
     auto temp1 = temp.clone();
     // total gas mole fractions
-    auto xg = xfrac.narrow(-1, 0, options.vapor_ids().size()).sum(-1);
+    auto xg = xfrac.narrow(-1, 0, options->vapor_ids().size()).sum(-1);
     while (sub_iter-- > 0) {
       auto rho = compute("V->D", {conc});
       pres.set_(pres0 - 0.5 * (rho + rho0) * grav * dz);
@@ -236,8 +236,8 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
     //}
   }
 
-  if (iter >= options.max_iter()) {
-    TORCH_WARN("extrapolate_ad does not converge after ", options.max_iter(),
+  if (iter >= options->max_iter()) {
+    TORCH_WARN("extrapolate_ad does not converge after ", options->max_iter(),
                " iterations.");
   }
 }

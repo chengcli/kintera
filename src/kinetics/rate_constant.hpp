@@ -15,10 +15,14 @@
 
 namespace kintera {
 
-struct RateConstantOptions {
+struct RateConstantOptionsImpl {
+  static std::shared_ptr<RateConstantOptionsImpl> create() {
+    return std::make_shared<RateConstantOptionsImpl>();
+  }
   ADD_ARG(std::vector<std::string>, types) = {};
   ADD_ARG(std::string, reaction_file) = "";
 };
+using RateConstantOptions = std::shared_ptr<RateConstantOptionsImpl>;
 
 class RateConstantImpl : public torch::nn::Cloneable<RateConstantImpl> {
  public:
@@ -35,7 +39,7 @@ class RateConstantImpl : public torch::nn::Cloneable<RateConstantImpl> {
   std::vector<torch::nn::AnyModule> eval_rate_constants;
 
   //! Constructor to initialize the layer
-  RateConstantImpl() = default;
+  RateConstantImpl() : options(RateConstantOptionsImpl::create()) {}
   explicit RateConstantImpl(const RateConstantOptions& options_);
   void reset() override;
 

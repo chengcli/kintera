@@ -21,7 +21,7 @@
 using namespace kintera;
 
 TEST_P(DeviceTest, kinetics) {
-  auto op_kinet = KineticsOptions::from_yaml("jupiter.yaml");
+  auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_kinet) << std::endl;
 
   Kinetics kinet(op_kinet);
@@ -30,10 +30,10 @@ TEST_P(DeviceTest, kinetics) {
 }
 
 TEST_P(DeviceTest, merge) {
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml");
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_thermo) << std::endl;
 
-  auto op_kinet = KineticsOptions::from_yaml("jupiter.yaml");
+  auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_kinet) << std::endl;
 
   populate_thermo(op_thermo);
@@ -43,22 +43,23 @@ TEST_P(DeviceTest, merge) {
 }
 
 TEST_P(DeviceTest, forward) {
-  auto op_kinet =
-      KineticsOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
+  auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+  op_kinet->evolve_temperature(true);
   Kinetics kinet(op_kinet);
   kinet->to(device, dtype);
 
   std::cout << fmt::format("{}", kinet->options) << std::endl;
   std::cout << "kinet stoich =\n" << kinet->stoich << std::endl;
 
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_thermo->max_iter(10);
   ThermoX thermo(op_thermo, op_kinet);
   thermo->to(device, dtype);
 
   std::cout << fmt::format("{}", thermo->options) << std::endl;
   std::cout << "thermo stoich =\n" << thermo->stoich << std::endl;
 
-  auto species = thermo->options.species();
+  auto species = thermo->options->species();
   int ny = species.size() - 1;  // exclude the reference species
   std::cout << "Species = " << species << std::endl;
 
@@ -74,10 +75,10 @@ TEST_P(DeviceTest, forward) {
   auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
   std::cout << "conc = " << conc << std::endl;
 
-  auto conc_kinet = kinet->options.narrow_copy(conc, thermo->options);
+  auto conc_kinet = kinet->options->narrow_copy(conc, thermo->options);
   std::cout << "conc_kinet = " << conc_kinet << std::endl;
 
-  // kinet->options.accumulate(conc, conc_kinet, thermo->options);
+  // kinet->options->accumulate(conc, conc_kinet, thermo->options);
   // std::cout << "conc2 = " << conc << std::endl;
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
@@ -93,16 +94,17 @@ TEST_P(DeviceTest, forward) {
 }
 
 TEST_P(DeviceTest, evolve_implicit) {
-  auto op_kinet =
-      KineticsOptions::from_yaml("jupiter.yaml").evolve_temperature(true);
+  auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+  op_kinet->evolve_temperature(true);
   Kinetics kinet(op_kinet);
   kinet->to(device, dtype);
 
-  auto op_thermo = ThermoOptions::from_yaml("jupiter.yaml").max_iter(10);
+  auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_thermo->max_iter(10);
   ThermoX thermo(op_thermo, op_kinet);
   thermo->to(device, dtype);
 
-  auto species = thermo->options.species();
+  auto species = thermo->options->species();
   int ny = species.size() - 1;  // exclude the reference species
 
   auto xfrac =
@@ -115,7 +117,7 @@ TEST_P(DeviceTest, evolve_implicit) {
   auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
 
   auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
-  auto conc_kinet = kinet->options.narrow_copy(conc, thermo->options);
+  auto conc_kinet = kinet->options->narrow_copy(conc, thermo->options);
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
 
   std::cout << "rate: " << rate << std::endl;
@@ -139,7 +141,7 @@ TEST_P(DeviceTest, evolve_implicit) {
 
   std::cout << "conc before: " << conc << std::endl;
 
-  kinet->options.accumulate(conc, del_conc, thermo->options);
+  kinet->options->accumulate(conc, del_conc, thermo->options);
   std::cout << "conc after = " << conc << std::endl;
 }
 

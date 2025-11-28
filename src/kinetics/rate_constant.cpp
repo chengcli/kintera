@@ -12,22 +12,22 @@ RateConstantImpl::RateConstantImpl(const RateConstantOptions& options_)
 }
 
 void RateConstantImpl::reset() {
-  YAML::Node root = YAML::LoadFile(options.reaction_file());
+  YAML::Node root = YAML::LoadFile(options->reaction_file());
   printf("Loading complete\n");
 
   rxn_id_start.clear();
   rxn_id_end.clear();
 
   int current_id = 0;
-  for (auto const& type : options.types()) {
+  for (auto const& type : options->types()) {
     int nreaction = 0;
     rxn_id_start.push_back(current_id);
 
     // TODO: Implement the support of other reaction types
     if (type == "Arrhenius") {
-      auto op = ArrheniusOptions::from_yaml(root);
+      auto op = ArrheniusOptionsImpl::from_yaml(root);
       eval_rate_constants.push_back(torch::nn::AnyModule(Arrhenius(op)));
-      nreaction = op.A().size();
+      nreaction = op->A().size();
     } else if (type == "three-body") {
       TORCH_CHECK(false, "Three-body reaction not implemented");
     } else if (type == "falloff") {

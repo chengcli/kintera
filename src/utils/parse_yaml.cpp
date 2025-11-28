@@ -55,9 +55,7 @@ std::map<Reaction, torch::nn::AnyModule> parse_reactions_yaml(
 
     // TODO: Implement the support of other reaction types
     if (type == "arrhenius") {
-      std::cout << "start" << std::endl;
-      auto op = ArrheniusOptions::from_yaml(rxn_node["rate-constant"]);
-      std::cout << "end" << std::endl;
+      auto op = ArrheniusOptionsImpl::from_yaml(rxn_node["rate-constant"]);
       reaction_rates[reaction] = torch::nn::AnyModule(Arrhenius(op));
     } else if (type == "three-body") {
       printf("Three-body reaction not implemented\n");

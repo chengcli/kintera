@@ -15,12 +15,18 @@
 
 namespace kintera {
 
-struct CoagulationOptions : public ArrheniusOptions {
-  CoagulationOptions() = default;
-  CoagulationOptions(const ArrheniusOptions& arrhenius)
-      : ArrheniusOptions(arrhenius) {}
-  void report(std::ostream& os) const { ArrheniusOptions::report(os); }
+struct CoagulationOptionsImpl : public ArrheniusOptionsImpl {
+  static std::shared_ptr<CoagulationOptionsImpl> create() {
+    return std::make_shared<CoagulationOptionsImpl>();
+  }
+
+  CoagulationOptionsImpl() = default;
+  CoagulationOptionsImpl(const ArrheniusOptionsImpl& arrhenius)
+      : ArrheniusOptionsImpl(arrhenius) {}
+
+  void report(std::ostream& os) const { ArrheniusOptionsImpl::report(os); }
 };
+using CoagulationOptions = std::shared_ptr<CoagulationOptionsImpl>;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,

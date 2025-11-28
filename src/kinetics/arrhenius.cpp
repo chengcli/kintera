@@ -15,7 +15,7 @@ extern std::vector<std::string> species_names;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set, ArrheniusOptions op) {
-  for (auto& react : op.reactions()) {
+  for (auto& react : op->reactions()) {
     // go through reactants
     for (auto& [name, _] : react.reactants()) {
       auto it = std::find(species_names.begin(), species_names.end(), name);
@@ -34,9 +34,9 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
   }
 }
 
-ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root,
-                                             std::string const& other_type) {
-  ArrheniusOptions options;
+ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
+    const YAML::Node& root, std::string const& other_type) {
+  auto options = ArrheniusOptionsImpl::create();
 
   for (auto const& rxn_node : root) {
     TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
@@ -50,11 +50,11 @@ ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root,
                 "'equation' is not defined in the reaction");
 
     std::string equation = rxn_node["equation"].as<std::string>();
-    options.reactions().push_back(Reaction(equation));
+    options->reactions().push_back(Reaction(equation));
 
     // calcualte sum of reactant stoichiometric coefficients
     double sum_stoich = 0.;
-    for (const auto& [_, coeff] : options.reactions().back().reactants()) {
+    for (const auto& [_, coeff] : options->reactions().back().reactants()) {
       sum_stoich += coeff;
     }
 
@@ -72,40 +72,40 @@ ArrheniusOptions ArrheniusOptions::from_yaml(const YAML::Node& root,
     if (node["A"]) {
       auto unit = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
                               -3. * (1. - sum_stoich));
-      options.A().push_back(us.convert_from(node["A"].as<double>(), unit));
+      options->A().push_back(us.convert_from(node["A"].as<double>(), unit));
     } else {
-      options.A().push_back(1.);
+      options->A().push_back(1.);
     }
 
-    options.b().push_back(node["b"].as<double>(0.));
-    options.Ea_R().push_back(node["Ea_R"].as<double>(1.));
-    options.E4_R().push_back(node["E4"].as<double>(0.));
+    options->b().push_back(node["b"].as<double>(0.));
+    options->Ea_R().push_back(node["Ea_R"].as<double>(1.));
+    options->E4_R().push_back(node["E4"].as<double>(0.));
   }
 
   return options;
 }
 
 ArrheniusImpl::ArrheniusImpl(ArrheniusOptions const& options_)
-    : options(std::move(options_)) {
+    : options(options_) {
   reset();
 }
 
 void ArrheniusImpl::reset() {
-  A = register_buffer("A", torch::tensor(options.A(), torch::kFloat64));
-  b = register_buffer("b", torch::tensor(options.b(), torch::kFloat64));
+  A = register_buffer("A", torch::tensor(options->A(), torch::kFloat64));
+  b = register_buffer("b", torch::tensor(options->b(), torch::kFloat64));
   Ea_R =
-      register_buffer("Ea_R", torch::tensor(options.Ea_R(), torch::kFloat64));
+      register_buffer("Ea_R", torch::tensor(options->Ea_R(), torch::kFloat64));
   E4_R =
-      register_buffer("E4_R", torch::tensor(options.E4_R(), torch::kFloat64));
+      register_buffer("E4_R", torch::tensor(options->E4_R(), torch::kFloat64));
 }
 
 void ArrheniusImpl::pretty_print(std::ostream& os) const {
   os << "Arrhenius Rate: " << std::endl;
 
-  for (size_t i = 0; i < options.A().size(); i++) {
-    os << "(" << i + 1 << ") A = " << options.A()[i]
-       << ", b = " << options.b()[i] << ", Ea_R = " << options.Ea_R()[i] << " K"
-       << std::endl;
+  for (size_t i = 0; i < options->A().size(); i++) {
+    os << "(" << i + 1 << ") A = " << options->A()[i]
+       << ", b = " << options->b()[i] << ", Ea_R = " << options->Ea_R()[i]
+       << " K" << std::endl;
   }
 }
 
@@ -114,7 +114,7 @@ torch::Tensor ArrheniusImpl::forward(
     std::map<std::string, torch::Tensor> const& other) {
   // expand T if not yet
   auto temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
-  return A * (temp / options.Tref()).pow(b) * torch::exp(-Ea_R / temp);
+  return A * (temp / options->Tref()).pow(b) * torch::exp(-Ea_R / temp);
 }
 
 }  // namespace kintera

@@ -14,29 +14,29 @@ KineticsImpl::KineticsImpl(const KineticsOptions& options_)
 }
 
 void KineticsImpl::reset() {
-  auto species = options.species();
+  auto species = options->species();
   auto nspecies = species.size();
 
   check_dimensions(options);
 
   // change internal energy offset to T = 0
-  for (int i = 0; i < options.uref_R().size(); ++i) {
-    options.uref_R()[i] -= options.cref_R()[i] * options.Tref();
+  for (int i = 0; i < options->uref_R().size(); ++i) {
+    options->uref_R()[i] -= options->cref_R()[i] * options->Tref();
   }
 
   // change entropy offset to T = 1, P = 1
-  for (int i = 0; i < options.vapor_ids().size(); ++i) {
-    auto Tref = std::max(options.Tref(), 1.);
-    auto Pref = std::max(options.Pref(), 1.);
-    options.sref_R()[i] -= (options.cref_R()[i] + 1) * log(Tref) - log(Pref);
+  for (int i = 0; i < options->vapor_ids().size(); ++i) {
+    auto Tref = std::max(options->Tref(), 1.);
+    auto Pref = std::max(options->Pref(), 1.);
+    options->sref_R()[i] -= (options->cref_R()[i] + 1) * log(Tref) - log(Pref);
   }
 
   // set cloud entropy offset to 0 (not used)
-  for (int i = options.vapor_ids().size(); i < options.sref_R().size(); ++i) {
-    options.sref_R()[i] = 0.;
+  for (int i = options->vapor_ids().size(); i < options->sref_R().size(); ++i) {
+    options->sref_R()[i] = 0.;
   }
 
-  auto reactions = options.reactions();
+  auto reactions = options->reactions();
   // order = register_buffer("order",
   //     torch::zeros({nspecies, nreaction}), torch::kFloat64);
   stoich = register_buffer(
@@ -60,21 +60,21 @@ void KineticsImpl::reset() {
   _nreactions.clear();
 
   // register Arrhenius rates
-  rc_evaluator.push_back(torch::nn::AnyModule(Arrhenius(options.arrhenius())));
+  rc_evaluator.push_back(torch::nn::AnyModule(Arrhenius(options->arrhenius())));
   register_module("arrhenius", rc_evaluator.back().ptr());
-  _nreactions.push_back(options.arrhenius().reactions().size());
+  _nreactions.push_back(options->arrhenius()->reactions().size());
 
   // register Coagulation rates
   rc_evaluator.push_back(
-      torch::nn::AnyModule(Arrhenius(options.coagulation())));
+      torch::nn::AnyModule(Arrhenius(options->coagulation())));
   register_module("coagulation", rc_evaluator.back().ptr());
-  _nreactions.push_back(options.coagulation().reactions().size());
+  _nreactions.push_back(options->coagulation()->reactions().size());
 
   // register Evaporation rates
   rc_evaluator.push_back(
-      torch::nn::AnyModule(Evaporation(options.evaporation())));
+      torch::nn::AnyModule(Evaporation(options->evaporation())));
   register_module("evaporation", rc_evaluator.back().ptr());
-  _nreactions.push_back(options.evaporation().reactions().size());
+  _nreactions.push_back(options->evaporation()->reactions().size());
 }
 
 torch::Tensor KineticsImpl::jacobian(
@@ -118,7 +118,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
   torch::optional<torch::Tensor> rc_ddT;
 
   // track rate constant derivative
-  if (options.evolve_temperature()) {
+  if (options->evolve_temperature()) {
     rc_ddT = torch::empty(vec1, temp.options());
   }
 
@@ -137,7 +137,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     auto conc1 = conc.unsqueeze(-1).expand(vec2);
     conc1.requires_grad_(true);
 
-    if (options.evolve_temperature()) {
+    if (options->evolve_temperature()) {
       vec1.back() = _nreactions[i];
       auto temp1 = temp.unsqueeze(-1).expand(vec1);
       temp1.requires_grad_(true);

@@ -18,51 +18,50 @@ ThermoXImpl::ThermoXImpl(const ThermoOptions &options_) : options(options_) {
   reset();
 }
 
-ThermoXImpl::ThermoXImpl(const ThermoOptions &options1_,
-                         const SpeciesThermo &options2_)
-    : options(options1_) {
-  auto options2 = options2_;
-  populate_thermo(options);
+ThermoXImpl::ThermoXImpl(const ThermoOptions &options1,
+                         const SpeciesThermo &options2) {
+  populate_thermo(options1);
   populate_thermo(options2);
-  static_cast<SpeciesThermo &>(options) = merge_thermo(options, options2);
+  options = std::dynamic_pointer_cast<ThermoOptionsImpl>(
+      merge_thermo(options1, options2));
   reset();
 }
 
 void ThermoXImpl::reset() {
-  auto species = options.species();
+  auto species = options->species();
   auto nspecies = species.size();
 
   check_dimensions(options);
 
   std::vector<double> mu_vec(nspecies);
-  for (int i = 0; i < options.vapor_ids().size(); ++i) {
-    mu_vec[i] = species_weights[options.vapor_ids()[i]];
+  for (int i = 0; i < options->vapor_ids().size(); ++i) {
+    mu_vec[i] = species_weights[options->vapor_ids()[i]];
   }
-  for (int i = 0; i < options.cloud_ids().size(); ++i) {
-    mu_vec[i + options.vapor_ids().size()] =
-        species_weights[options.cloud_ids()[i]];
+  for (int i = 0; i < options->cloud_ids().size(); ++i) {
+    mu_vec[i + options->vapor_ids().size()] =
+        species_weights[options->cloud_ids()[i]];
   }
   mu = register_buffer("mu", torch::tensor(mu_vec, torch::kFloat64));
 
   // change internal energy offset to T = 0
-  for (int i = 0; i < options.uref_R().size(); ++i) {
-    options.uref_R()[i] -= options.cref_R()[i] * options.Tref();
+  for (int i = 0; i < options->uref_R().size(); ++i) {
+    options->uref_R()[i] -= options->cref_R()[i] * options->Tref();
   }
 
   // change entropy offset to T = 1, P = 1
-  for (int i = 0; i < options.vapor_ids().size(); ++i) {
-    auto Tref = std::max(options.Tref(), 1.);
-    auto Pref = std::max(options.Pref(), 1.);
-    options.sref_R()[i] -= (options.cref_R()[i] + 1) * log(Tref) - log(Pref);
+  for (int i = 0; i < options->vapor_ids().size(); ++i) {
+    auto Tref = std::max(options->Tref(), 1.);
+    auto Pref = std::max(options->Pref(), 1.);
+    options->sref_R()[i] -= (options->cref_R()[i] + 1) * log(Tref) - log(Pref);
   }
 
   // set cloud entropy offset to 0 (not used)
-  for (int i = options.vapor_ids().size(); i < options.sref_R().size(); ++i) {
-    options.sref_R()[i] = 0.;
+  for (int i = options->vapor_ids().size(); i < options->sref_R().size(); ++i) {
+    options->sref_R()[i] = 0.;
   }
 
   // populate stoichiometry matrix
-  auto reactions = options.reactions();
+  auto reactions = options->reactions();
   stoich = register_buffer(
       "stoich",
       torch::zeros({(int)nspecies, (int)reactions.size()}, torch::kFloat64));
@@ -92,7 +91,7 @@ torch::Tensor ThermoXImpl::compute(std::string ab,
     auto X = args[0];
     int ny = X.size(-1) - 1;
     TORCH_CHECK(
-        ny + 1 == options.vapor_ids().size() + options.cloud_ids().size(),
+        ny + 1 == options->vapor_ids().size() + options->cloud_ids().size(),
         "mass fraction size mismatch");
 
     auto vec = X.sizes().vec();
@@ -139,7 +138,7 @@ torch::Tensor ThermoXImpl::compute(std::string ab,
     auto P = args[0];
     auto X = args[1];
     auto S = args[2];
-    auto T = options.Tref() * torch::ones_like(P);
+    auto T = options->Tref() * torch::ones_like(P);
     _entropy_to_temp(P, X, S, T);
     return T;
   } else if (ab == "THS->G") {
@@ -155,13 +154,13 @@ torch::Tensor ThermoXImpl::compute(std::string ab,
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                                    torch::Tensor &xfrac, bool warm_start,
                                    torch::optional<torch::Tensor> diag) {
-  if (options.reactions().size() == 0) {  // no-op
+  if (options->reactions().size() == 0) {  // no-op
     return torch::Tensor();
   }
 
   auto xfrac0 = xfrac.clone();
   auto vec = xfrac.sizes().vec();
-  auto reactions = options.reactions();
+  auto reactions = options->reactions();
 
   // |reactions| x |reactions| weight matrix
   vec[xfrac.dim() - 1] = reactions.size() * reactions.size();
@@ -201,8 +200,8 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   // call the equilibrium solver
   at::native::call_equilibrate_tp(
-      xfrac.device().type(), iter, options.vapor_ids().size(), stoich,
-      options.nucleation().logsvp(), options.ftol(), options.max_iter());
+      xfrac.device().type(), iter, options->vapor_ids().size(), stoich,
+      options->nucleation()->logsvp(), options->ftol(), options->max_iter());
 
   vec[xfrac.dim() - 1] = reactions.size();
   vec.push_back(reactions.size());
@@ -227,19 +226,19 @@ void ThermoXImpl::_xfrac_to_yfrac(torch::Tensor xfrac,
 void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
                                    torch::Tensor entropy, torch::Tensor &out) {
   int iter = 0;
-  while (iter++ < options.max_iter()) {
+  while (iter++ < options->max_iter()) {
     auto conc = compute("TPX->V", {out, pres, xfrac});
     auto cp_vol = compute("TV->cp", {out, conc});
     auto entropy_vol = compute("TPV->S", {out, pres, conc});
     auto temp_pre = out.clone();
     out *= 1. + (entropy - entropy_vol) / cp_vol;
     forward(out, pres, xfrac);
-    if ((1. - temp_pre / out).abs().max().item<double>() < options.ftol()) {
+    if ((1. - temp_pre / out).abs().max().item<double>() < options->ftol()) {
       break;
     }
   }
 
-  if (iter >= options.max_iter()) {
+  if (iter >= options->max_iter()) {
     TORCH_WARN("ThermoX:_entropy_to_temp: max iteration reached");
     // get a time stamp (string) to dump diagnostic data
     auto time_stamp = std::to_string(std::time(nullptr));
@@ -258,29 +257,29 @@ void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
 void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
                                  torch::Tensor xfrac,
                                  torch::Tensor &out) const {
-  int ngas = options.vapor_ids().size();
-  int ncloud = options.cloud_ids().size();
+  int ngas = options->vapor_ids().size();
+  int ncloud = options->cloud_ids().size();
 
   auto xgas = xfrac.narrow(-1, 0, ngas).sum(-1, /*keepdim=*/true);
   auto ideal_gas_conc = xfrac.narrow(-1, 0, ngas) * pres.unsqueeze(-1) /
                         (temp.unsqueeze(-1) * constants::Rgas * xgas);
-  ideal_gas_conc.clamp_min_(options.gas_floor());
+  ideal_gas_conc.clamp_min_(options->gas_floor());
 
   auto conc_gas = ideal_gas_conc.clone();
 
   int iter = 0;
-  while (iter++ < options.max_iter()) {
+  while (iter++ < options->max_iter()) {
     auto cz = eval_czh(temp, conc_gas, options);
     auto cz_ddC = eval_czh_ddC(temp, conc_gas, options);
     auto conc_gas_pre = conc_gas.clone();
     conc_gas += (ideal_gas_conc - cz * conc_gas) / (cz_ddC * conc_gas + cz);
     if ((1. - conc_gas_pre / conc_gas).abs().max().item<double>() <
-        options.ftol()) {
+        options->ftol()) {
       break;
     }
   }
 
-  if (iter >= options.max_iter()) {
+  if (iter >= options->max_iter()) {
     TORCH_WARN("ThermoX:_xfrac_to_conc: max iteration reached");
 
     // get a time stamp (string) to dump diagnostic data
