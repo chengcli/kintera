@@ -8,7 +8,6 @@
 #include <kintera/units/units.hpp>
 
 #include "arrhenius.hpp"
-#include "coagulation.hpp"
 
 namespace kintera {
 
