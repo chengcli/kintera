@@ -25,7 +25,7 @@ class Node;
 namespace kintera {
 
 //! Options to initialize all reaction rate constants
-struct EvaporationOptionsImpl : public NucleationOptionsImpl {
+struct EvaporationOptionsImpl final : public NucleationOptionsImpl {
   static std::shared_ptr<EvaporationOptionsImpl> create() {
     return std::make_shared<EvaporationOptionsImpl>();
   }
@@ -34,6 +34,8 @@ struct EvaporationOptionsImpl : public NucleationOptionsImpl {
 
   std::string name() const override { return "evaporation"; }
   EvaporationOptionsImpl() = default;
+  EvaporationOptionsImpl(const NucleationOptionsImpl& nucleation)
+      : NucleationOptionsImpl(nucleation) {}
 
   void report(std::ostream& os) const {
     NucleationOptionsImpl::report(os);

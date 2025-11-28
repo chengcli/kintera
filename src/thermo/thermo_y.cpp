@@ -19,11 +19,12 @@ ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
 }
 
 ThermoYImpl::ThermoYImpl(const ThermoOptions &options1,
-                         const SpeciesThermo &options2) {
+                         const SpeciesThermo &options2)
+    : options(options1) {
   populate_thermo(options1);
   populate_thermo(options2);
-  options = std::dynamic_pointer_cast<ThermoOptionsImpl>(
-      merge_thermo(options1, options2));
+  auto merged = merge_thermo(options1, options2);
+  static_cast<SpeciesThermoImpl &>(*options) = (*merged);
   reset();
 }
 

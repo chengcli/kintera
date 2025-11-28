@@ -15,7 +15,7 @@
 
 namespace kintera {
 
-struct CoagulationOptionsImpl : public ArrheniusOptionsImpl {
+struct CoagulationOptionsImpl final : public ArrheniusOptionsImpl {
   static std::shared_ptr<CoagulationOptionsImpl> create() {
     return std::make_shared<CoagulationOptionsImpl>();
   }

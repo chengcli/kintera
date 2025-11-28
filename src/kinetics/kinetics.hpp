@@ -19,7 +19,7 @@
 
 namespace kintera {
 
-struct KineticsOptionsImpl : public SpeciesThermoImpl {
+struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   static std::shared_ptr<KineticsOptionsImpl> create() {
     return std::make_shared<KineticsOptionsImpl>();
   }

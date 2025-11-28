@@ -36,7 +36,7 @@ inline std::vector<T> insert_first(T value, std::vector<T> const& input) {
   return result;
 }
 
-struct ThermoOptionsImpl : public SpeciesThermoImpl {
+struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   static std::shared_ptr<ThermoOptionsImpl> create() {
     return std::make_shared<ThermoOptionsImpl>();
   }
@@ -95,7 +95,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 
   ThermoYImpl() : options(ThermoOptionsImpl::create()) {}
   explicit ThermoYImpl(const ThermoOptions& options_);
-  ThermoYImpl(const ThermoOptions& options1_, const SpeciesThermo& options2);
+  ThermoYImpl(const ThermoOptions& options1, const SpeciesThermo& options2);
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
@@ -230,7 +230,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
 
   ThermoXImpl() : options(ThermoOptionsImpl::create()) {}
   explicit ThermoXImpl(const ThermoOptions& options_);
-  ThermoXImpl(const ThermoOptions& options1_, const SpeciesThermo& options2_);
+  ThermoXImpl(const ThermoOptions& options1, const SpeciesThermo& options2);
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
