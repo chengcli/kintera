@@ -34,36 +34,30 @@ ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename,
 
 ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                                            bool verbose) {
-  if (!species_initialized) {
-    init_species_from_yaml(config);
-  }
+  if (!config["reference-state"]) return nullptr;
 
   auto thermo = ThermoOptionsImpl::create();
   thermo->verbose(verbose);
 
-  if (config["reference-state"]) {
-    if (config["reference-state"]["Tref"]) {
-      thermo->Tref(config["reference-state"]["Tref"].as<double>());
-      if (thermo->verbose()) {
-        std::cout
-            << fmt::format(
-                   "[ThermoOptions] setting reference temperature Tref = {} K",
-                   thermo->Tref())
-            << std::endl;
-      }
+  if (config["reference-state"]["Tref"]) {
+    thermo->Tref(config["reference-state"]["Tref"].as<double>());
+    if (thermo->verbose()) {
+      std::cout << "[ThermoOptions] setting reference temperature Tref = "
+                << thermo->Tref() << " K" << std::endl;
     }
+  }
 
-    if (config["reference-state"]["Pref"]) {
-      thermo->Pref(config["reference-state"]["Pref"].as<double>());
+  if (config["reference-state"]["Pref"]) {
+    thermo->Pref(config["reference-state"]["Pref"].as<double>());
 
-      if (thermo->verbose()) {
-        std::cout
-            << fmt::format(
-                   "[ThermoOptions] setting reference pressure Pref = {} Pa",
-                   thermo->Pref())
-            << std::endl;
-      }
+    if (thermo->verbose()) {
+      std::cout << "[ThermoOptions] setting reference pressure Pref = "
+                << thermo->Pref() << " K" << std::endl;
     }
+  }
+
+  if (!species_initialized) {
+    init_species_from_yaml(config);
   }
 
   if (config["dynamics"]) {
@@ -71,16 +65,14 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
       thermo->max_iter() =
           config["dynamics"]["equation-of-state"]["max-iter"].as<int>(10);
       if (thermo->verbose()) {
-        std::cout << fmt::format("[ThermoOptions] setting EOS max-iter = {}",
-                                 thermo->max_iter())
-                  << std::endl;
+        std::cout << "[ThermoOptions] setting EOS max-iter = "
+                  << thermo->max_iter() << std::endl;
       }
 
       thermo->ftol() =
           config["dynamics"]["equation-of-state"]["ftol"].as<double>(1e-6);
       if (thermo->verbose()) {
-        std::cout << fmt::format("[ThermoOptions] setting EOS ftol = {}",
-                                 thermo->ftol())
+        std::cout << "[ThermoOptions] setting EOS ftol = " << thermo->ftol()
                   << std::endl;
       }
     }

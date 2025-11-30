@@ -50,6 +50,19 @@ using KineticsOptions = std::shared_ptr<KineticsOptionsImpl>;
 
 class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
  public:
+  //! Create and register a `KineticsImpl` module
+  /*!
+   * This function registers the created module as a submodule
+   * of the given parent module `p`.
+   *
+   * \param[in] opts  options for constructing the `KineticsImpl`
+   * \param[in] p     parent module for registering the created module
+   * \return          created `KineticsImpl` module
+   */
+  static std::shared_ptr<KineticsImpl> create(
+      KineticsOptions const& opts, torch::nn::Module* p,
+      std::string const& name = "kinetics");
+
   //! stoichiometry matrix, shape (nspecies, nreaction)
   torch::Tensor stoich;
 

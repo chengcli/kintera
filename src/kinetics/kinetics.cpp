@@ -7,6 +7,12 @@
 
 namespace kintera {
 
+std::shared_ptr<KineticsImpl> KineticsImpl::create(KineticsOptions const& opts,
+                                                   torch::nn::Module* p,
+                                                   std::string const& name) {
+  return p->register_module(name, Kinetics(opts));
+}
+
 KineticsImpl::KineticsImpl(const KineticsOptions& options_)
     : options(options_) {
   populate_thermo(options);

@@ -43,8 +43,10 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
 
   //! \brief Create a `ThermoOptions` object from a YAML file
   /*!
-   * This function reads a YAML file and creates a `ThermoOptions`
-   * object from it.
+   * This function reads a YAML file and attemps to create a `ThermoOptions`
+   * object from it. If the YAML file contains "reference-state", a valid
+   * `ThermoOptions` object will be created. Otherwise, a nullptr
+   * is returned.
    */
   static std::shared_ptr<ThermoOptionsImpl> from_yaml(
       std::string const& filename, bool verbose = false);
@@ -55,7 +57,9 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
     os << "* Tref = " << Tref() << " K\n"
        << "* Pref = " << Pref() << " Pa\n"
        << "* max_iter = " << max_iter() << "\n"
-       << "* ftol = " << ftol() << "\n";
+       << "* ftol = " << ftol() << "\n"
+       << "* gas_floor = " << gas_floor() << "\n"
+       << "* verbose = " << (verbose() ? "true" : "false") << "\n";
   }
 
   std::vector<Reaction> reactions() const;
@@ -63,18 +67,31 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(double, Tref) = 300.0;
   ADD_ARG(double, Pref) = 1.e5;
 
-  ADD_ARG(NucleationOptions, nucleation);
-
   ADD_ARG(int, max_iter) = 10;
   ADD_ARG(double, ftol) = 1e-6;
   ADD_ARG(double, gas_floor) = 1.e-20;
   ADD_ARG(bool, verbose) = false;
+
+  ADD_ARG(NucleationOptions, nucleation) = nullptr;
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 
 //! Mass Thermodynamics
 class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
  public:
+  //! Create and register an ThermoY module
+  /*!
+   * This function registers the created module as a submodule
+   * of the given parent module `p`.
+   *
+   * \param[in] opts  options for creating the ThermoY module
+   * \param[in] p     parent module for registering the created module
+   * \return          created ThermoY module
+   */
+  static std::shared_ptr<ThermoYImpl> create(
+      ThermoOptions const& opts, torch::nn::Module* p,
+      std::string const& name = "thermo");
+
   //! 1. / mu. [mol/kg]
   torch::Tensor inv_mu;
 
@@ -216,6 +233,19 @@ TORCH_MODULE(ThermoY);
 //! Molar thermodynamics
 class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
  public:
+  //! Create and register an ThermoX module
+  /*!
+   * This function registers the created module as a submodule
+   * of the given parent module `p`.
+   *
+   * \param[in] opts  options for creating the ThermoX module
+   * \param[in] p     parent module for registering the created module
+   * \return          created ThermoX module
+   */
+  static std::shared_ptr<ThermoXImpl> create(
+      ThermoOptions const& opts, torch::nn::Module* p,
+      std::string const& name = "thermo");
+
   //! mu.
   torch::Tensor mu;
 

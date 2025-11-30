@@ -13,6 +13,12 @@ namespace kintera {
 
 extern std::vector<double> species_weights;
 
+std::shared_ptr<ThermoXImpl> ThermoXImpl::create(ThermoOptions const &opts,
+                                                 torch::nn::Module *p,
+                                                 std::string const &name) {
+  return p->register_module(name, ThermoX(opts));
+}
+
 ThermoXImpl::ThermoXImpl(const ThermoOptions &options_) : options(options_) {
   populate_thermo(options);
   reset();
