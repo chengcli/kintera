@@ -45,7 +45,7 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
 
   //! \brief Create a `ThermoOptions` object from a YAML file
   /*!
-   * This function reads a YAML file and attemps to create a `ThermoOptions`
+   * This function reads a YAML file and attempts to create a `ThermoOptions`
    * object from it. If the YAML file contains "reference-state", a valid
    * `ThermoOptions` object will be created. Otherwise, a nullptr
    * is returned.
