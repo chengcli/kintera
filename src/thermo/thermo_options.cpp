@@ -97,6 +97,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                 << std::endl;
     }
 
+    // create temporary coagulation and evaporation options to add species
     auto coagulation = CoagulationOptionsImpl::from_yaml(config["reactions"]);
     add_to_vapor_cloud(vapor_set, cloud_set, coagulation);
     if (thermo->verbose()) {

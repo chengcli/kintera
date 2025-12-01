@@ -10,6 +10,9 @@ namespace kintera {
 std::shared_ptr<KineticsImpl> KineticsImpl::create(KineticsOptions const& opts,
                                                    torch::nn::Module* p,
                                                    std::string const& name) {
+  TORCH_CHECK(p, "[Kinetics] Parent module is null");
+  TORCH_CHECK(opts, "[Kinetics] Options pointer is null");
+
   return p->register_module(name, Kinetics(opts));
 }
 
@@ -22,6 +25,11 @@ KineticsImpl::KineticsImpl(const KineticsOptions& options_)
 void KineticsImpl::reset() {
   auto species = options->species();
   auto nspecies = species.size();
+
+  if (options->verbose()) {
+    std::cout << "[Kinetics] initializing with species: "
+              << fmt::format("{}", species) << std::endl;
+  }
 
   check_dimensions(options);
 
@@ -40,6 +48,13 @@ void KineticsImpl::reset() {
   // set cloud entropy offset to 0 (not used)
   for (int i = options->vapor_ids().size(); i < options->sref_R().size(); ++i) {
     options->sref_R()[i] = 0.;
+  }
+
+  if (options->verbose()) {
+    std::cout << "[Kinetics] species uref_R (K) at T = 0: "
+              << fmt::format("{}", options->uref_R()) << std::endl;
+    std::cout << "[Kinetics] species sref_R (dimensionless): "
+              << fmt::format("{}", options->sref_R()) << std::endl;
   }
 
   auto reactions = options->reactions();
@@ -63,6 +78,10 @@ void KineticsImpl::reset() {
     }
   }
 
+  if (options->verbose()) {
+    std::cout << "[Kinetics] stoichiometry matrix:\n" << stoich << std::endl;
+  }
+
   _nreactions.clear();
 
   // register Arrhenius rates
@@ -70,17 +89,35 @@ void KineticsImpl::reset() {
   register_module("arrhenius", rc_evaluator.back().ptr());
   _nreactions.push_back(options->arrhenius()->reactions().size());
 
+  if (options->verbose()) {
+    std::cout << "[Kinetics] registered "
+              << options->arrhenius()->reactions().size()
+              << " Arrhenius reactions" << std::endl;
+  }
+
   // register Coagulation rates
   rc_evaluator.push_back(
       torch::nn::AnyModule(Arrhenius(options->coagulation())));
   register_module("coagulation", rc_evaluator.back().ptr());
   _nreactions.push_back(options->coagulation()->reactions().size());
 
+  if (options->verbose()) {
+    std::cout << "[Kinetics] registered "
+              << options->coagulation()->reactions().size()
+              << " Coagulation reactions" << std::endl;
+  }
+
   // register Evaporation rates
   rc_evaluator.push_back(
       torch::nn::AnyModule(Evaporation(options->evaporation())));
   register_module("evaporation", rc_evaluator.back().ptr());
   _nreactions.push_back(options->evaporation()->reactions().size());
+
+  if (options->verbose()) {
+    std::cout << "[Kinetics] registered "
+              << options->evaporation()->reactions().size()
+              << " Evaporation reactions" << std::endl;
+  }
 }
 
 torch::Tensor KineticsImpl::jacobian(

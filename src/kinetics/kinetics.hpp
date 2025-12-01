@@ -21,7 +21,11 @@ namespace kintera {
 
 struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   static std::shared_ptr<KineticsOptionsImpl> create() {
-    return std::make_shared<KineticsOptionsImpl>();
+    auto op = std::make_shared<KineticsOptionsImpl>();
+    op->arrhenius() = ArrheniusOptionsImpl::create();
+    op->coagulation() = CoagulationOptionsImpl::create();
+    op->evaporation() = EvaporationOptionsImpl::create();
+    return op;
   }
 
   static std::shared_ptr<KineticsOptionsImpl> from_yaml(

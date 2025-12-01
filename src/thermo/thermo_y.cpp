@@ -16,6 +16,8 @@ extern std::vector<double> species_weights;
 std::shared_ptr<ThermoYImpl> ThermoYImpl::create(ThermoOptions const &opts,
                                                  torch::nn::Module *p,
                                                  std::string const &name) {
+  TORCH_CHECK(p, "[ThermoY] Parent module is null");
+  TORCH_CHECK(opts, "[ThermoY] Options pointer is null");
   return p->register_module(name, ThermoY(opts));
 }
 
@@ -38,6 +40,11 @@ void ThermoYImpl::reset() {
   auto species = options->species();
   auto nspecies = species.size();
 
+  if (options->verbose()) {
+    std::cout << "[ThermoY] initializing with species: "
+              << fmt::format("{}", species) << std::endl;
+  }
+
   check_dimensions(options);
 
   std::vector<double> mu_vec(nspecies);
@@ -50,6 +57,11 @@ void ThermoYImpl::reset() {
   }
   inv_mu =
       register_buffer("inv_mu", 1. / torch::tensor(mu_vec, torch::kFloat64));
+
+  if (options->verbose()) {
+    std::cout << "[ThermoY] species molecular weights (kg/mol): "
+              << fmt::format("{}", mu_vec) << std::endl;
+  }
 
   // change internal energy offset to T = 0
   for (int i = 0; i < options->uref_R().size(); ++i) {
@@ -66,6 +78,15 @@ void ThermoYImpl::reset() {
   // set cloud entropy offset to 0 (not used)
   for (int i = options->vapor_ids().size(); i < options->sref_R().size(); ++i) {
     options->sref_R()[i] = 0.;
+  }
+
+  if (options->verbose()) {
+    std::cout << "[ThermoY] species cref_R (dimensionless): "
+              << fmt::format("{}", options->cref_R()) << std::endl;
+    std::cout << "[ThermoY] species uref_R (K) at T = 0: "
+              << fmt::format("{}", options->uref_R()) << std::endl;
+    std::cout << "[ThermoY] species sref_R (dimensionless) at T = 0: "
+              << fmt::format("{}", options->sref_R()) << std::endl;
   }
 
   auto cv_R = torch::tensor(options->cref_R(), torch::kFloat64);
@@ -95,6 +116,11 @@ void ThermoYImpl::reset() {
         stoich[i][j] = it->second;
       }
     }
+  }
+
+  if (options->verbose()) {
+    std::cout << "[ThermoY] stoichiometry matrix: " << std::endl;
+    std::cout << stoich << std::endl;
   }
 }
 

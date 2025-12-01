@@ -139,9 +139,11 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   for (const auto& reaction : arrhenius()->reactions()) {
     reactions.push_back(reaction);
   }
+
   for (const auto& reaction : coagulation()->reactions()) {
     reactions.push_back(reaction);
   }
+
   for (const auto& reaction : evaporation()->reactions()) {
     reactions.push_back(reaction);
   }

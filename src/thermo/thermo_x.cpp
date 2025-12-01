@@ -16,6 +16,9 @@ extern std::vector<double> species_weights;
 std::shared_ptr<ThermoXImpl> ThermoXImpl::create(ThermoOptions const &opts,
                                                  torch::nn::Module *p,
                                                  std::string const &name) {
+  TORCH_CHECK(p, "[ThermoX] Parent module is null");
+  TORCH_CHECK(opts, "[ThermoX] Options pointer is null");
+
   return p->register_module(name, ThermoX(opts));
 }
 
@@ -38,6 +41,11 @@ void ThermoXImpl::reset() {
   auto species = options->species();
   auto nspecies = species.size();
 
+  if (options->verbose()) {
+    std::cout << "[ThermoX] initializing with species:"
+              << fmt::format("{}", species) << std::endl;
+  }
+
   check_dimensions(options);
 
   std::vector<double> mu_vec(nspecies);
@@ -49,6 +57,11 @@ void ThermoXImpl::reset() {
         species_weights[options->cloud_ids()[i]];
   }
   mu = register_buffer("mu", torch::tensor(mu_vec, torch::kFloat64));
+
+  if (options->verbose()) {
+    std::cout << "[ThermoX] species molecular weights (kg/mol): "
+              << fmt::format("{}", mu_vec) << std::endl;
+  }
 
   // change internal energy offset to T = 0
   for (int i = 0; i < options->uref_R().size(); ++i) {
@@ -65,6 +78,15 @@ void ThermoXImpl::reset() {
   // set cloud entropy offset to 0 (not used)
   for (int i = options->vapor_ids().size(); i < options->sref_R().size(); ++i) {
     options->sref_R()[i] = 0.;
+  }
+
+  if (options->verbose()) {
+    std::cout << "[ThermoX] species cref/R (dimensionless): "
+              << fmt::format("{}", options->cref_R()) << std::endl;
+    std::cout << "[ThermoX] species uref/R (K) at T = 0: "
+              << fmt::format("{}", options->uref_R()) << std::endl;
+    std::cout << "[ThermoX] species sref/R (dimensionless): "
+              << fmt::format("{}", options->sref_R()) << std::endl;
   }
 
   // populate stoichiometry matrix
@@ -85,6 +107,10 @@ void ThermoXImpl::reset() {
         stoich[i][j] = it->second;
       }
     }
+  }
+
+  if (options->verbose()) {
+    std::cout << "[ThermoX] stoichiometry matrix:\n" << stoich << std::endl;
   }
 }
 
