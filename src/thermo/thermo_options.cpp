@@ -52,7 +52,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
 
     if (thermo->verbose()) {
       std::cout << "[ThermoOptions] setting reference pressure Pref = "
-                << thermo->Pref() << " K" << std::endl;
+                << thermo->Pref() << " Pa" << std::endl;
     }
   }
 
