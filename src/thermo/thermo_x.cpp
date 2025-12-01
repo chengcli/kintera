@@ -42,7 +42,7 @@ void ThermoXImpl::reset() {
   auto nspecies = species.size();
 
   if (options->verbose()) {
-    std::cout << "[ThermoX] initializing with species:"
+    std::cout << "[ThermoX] initializing with species: "
               << fmt::format("{}", species) << std::endl;
   }
 
