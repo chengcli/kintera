@@ -83,7 +83,7 @@ void ThermoXImpl::reset() {
   if (options->verbose()) {
     std::cout << "[ThermoX] species cref_R (dimensionless): "
               << fmt::format("{}", options->cref_R()) << std::endl;
-    std::cout << "[ThermoX] species uref/R (K) at T = 0: "
+    std::cout << "[ThermoX] species uref_R (K) at T = 0: "
               << fmt::format("{}", options->uref_R()) << std::endl;
     std::cout << "[ThermoX] species sref/R (dimensionless): "
               << fmt::format("{}", options->sref_R()) << std::endl;
