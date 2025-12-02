@@ -33,21 +33,26 @@ void KineticsImpl::reset() {
 
   check_dimensions(options);
 
-  // change internal energy offset to T = 0
-  for (int i = 0; i < options->uref_R().size(); ++i) {
-    options->uref_R()[i] -= options->cref_R()[i] * options->Tref();
-  }
+  if (!options->offset_zero()) {
+    // change internal energy offset to T = 0
+    for (int i = 0; i < options->uref_R().size(); ++i) {
+      options->uref_R()[i] -= options->cref_R()[i] * options->Tref();
+    }
 
-  // change entropy offset to T = 1, P = 1
-  for (int i = 0; i < options->vapor_ids().size(); ++i) {
-    auto Tref = std::max(options->Tref(), 1.);
-    auto Pref = std::max(options->Pref(), 1.);
-    options->sref_R()[i] -= (options->cref_R()[i] + 1) * log(Tref) - log(Pref);
-  }
+    // change entropy offset to T = 1, P = 1
+    for (int i = 0; i < options->vapor_ids().size(); ++i) {
+      auto Tref = std::max(options->Tref(), 1.);
+      auto Pref = std::max(options->Pref(), 1.);
+      options->sref_R()[i] -=
+          (options->cref_R()[i] + 1) * log(Tref) - log(Pref);
+    }
 
-  // set cloud entropy offset to 0 (not used)
-  for (int i = options->vapor_ids().size(); i < options->sref_R().size(); ++i) {
-    options->sref_R()[i] = 0.;
+    // set cloud entropy offset to 0 (not used)
+    for (int i = options->vapor_ids().size(); i < options->sref_R().size();
+         ++i) {
+      options->sref_R()[i] = 0.;
+    }
+    options->offset_zero(true);
   }
 
   if (options->verbose()) {

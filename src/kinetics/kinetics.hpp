@@ -34,6 +34,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   void report(std::ostream& os) const {
     os << "* Tref = " << Tref() << " K\n"
        << "* Pref = " << Pref() << " Pa\n"
+       << "* offset_zero = " << (offset_zero() ? "true" : "false") << "\n"
        << "* evolve_temperature = " << (evolve_temperature() ? "true" : "false")
        << "\n";
   }
@@ -49,6 +50,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
 
   ADD_ARG(bool, evolve_temperature) = false;
   ADD_ARG(bool, verbose) = false;
+  ADD_ARG(bool, offset_zero) = false;
 };
 using KineticsOptions = std::shared_ptr<KineticsOptionsImpl>;
 

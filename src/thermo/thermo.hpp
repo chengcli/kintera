@@ -61,6 +61,7 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
        << "* max_iter = " << max_iter() << "\n"
        << "* ftol = " << ftol() << "\n"
        << "* gas_floor = " << gas_floor() << "\n"
+       << "* offset_zero = " << (offset_zero() ? "true" : "false") << "\n"
        << "* verbose = " << (verbose() ? "true" : "false") << "\n";
   }
 
@@ -73,6 +74,7 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(double, ftol) = 1e-6;
   ADD_ARG(double, gas_floor) = 1.e-20;
   ADD_ARG(bool, verbose) = false;
+  ADD_ARG(bool, offset_zero) = false;
 
   ADD_ARG(NucleationOptions, nucleation) = nullptr;
 };
