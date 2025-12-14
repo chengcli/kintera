@@ -87,7 +87,9 @@ void bind_kinetics(py::module &m) {
              self->report(ss);
              return fmt::format("KineticsOptions({})", ss.str());
            })
-      .def_static("from_yaml", &kintera::KineticsOptionsImpl::from_yaml,
+      .def_static("from_yaml",
+                  py::overload_cast<std::string const &, bool>(
+                      &kintera::KineticsOptionsImpl::from_yaml),
                   py::arg("filename"), py::arg("verbose") = false)
       .def("reactions", &kintera::KineticsOptionsImpl::reactions)
       .ADD_OPTION(double, kintera::KineticsOptionsImpl, Tref)
