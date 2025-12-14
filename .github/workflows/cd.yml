@@ -138,6 +138,8 @@ jobs:
           sudo apt-get clean || true
           sudo rm -rf /var/lib/apt/lists/* || true
           python -m pip cache purge || true
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          docker system prune -af
 
       - name: Build Linux wheel
         env:
