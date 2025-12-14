@@ -33,7 +33,7 @@ void init_species_from_yaml(std::string filename) {
 
 void init_species_from_yaml(YAML::Node const& config) {
   // check if species are defined
-  TORCH_CHECK(config["species"].IsSequence(),
+  TORCH_CHECK(config["species"],
               "'species' is not defined in the kintera configuration file");
 
   species_names.clear();
