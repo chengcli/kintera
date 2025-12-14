@@ -30,6 +30,8 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
 
   static std::shared_ptr<KineticsOptionsImpl> from_yaml(
       std::string const& filename, bool verbose = false);
+  static std::shared_ptr<KineticsOptionsImpl> from_yaml(
+      YAML::Node const& config, bool verbose = false);
 
   void report(std::ostream& os) const {
     os << "* Tref = " << Tref() << " K\n"

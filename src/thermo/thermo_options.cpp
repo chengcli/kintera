@@ -24,17 +24,22 @@ extern std::vector<double> species_sref_R;
 
 ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename,
                                            bool verbose) {
+  auto config = YAML::LoadFile(filename);
+  if (!config["reference-state"]) return nullptr;
+
   if (!species_initialized) {
     init_species_from_yaml(filename);
   }
 
-  auto config = YAML::LoadFile(filename);
   return ThermoOptionsImpl::from_yaml(config, verbose);
 }
 
 ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                                            bool verbose) {
   if (!config["reference-state"]) return nullptr;
+  if (!species_initialized) {
+    init_species_from_yaml(config);
+  }
 
   auto thermo = ThermoOptionsImpl::create();
   thermo->verbose(verbose);

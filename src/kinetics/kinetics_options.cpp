@@ -17,35 +17,45 @@ extern std::vector<double> species_sref_R;
 
 KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename,
                                                bool verbose) {
+  auto config = YAML::LoadFile(filename);
+  if (!config["reference-state"]) return nullptr;
+
   if (!species_initialized) {
     init_species_from_yaml(filename);
   }
 
+  return KineticsOptionsImpl::from_yaml(config, verbose);
+}
+
+KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
+                                               bool verbose) {
+  if (!config["reference-state"]) return nullptr;
+  if (!species_initialized) {
+    init_species_from_yaml(config);
+  }
+
   auto kinet = KineticsOptionsImpl::create();
   kinet->verbose(verbose);
-  auto config = YAML::LoadFile(filename);
 
-  if (config["reference-state"]) {
-    if (config["reference-state"]["Tref"]) {
-      kinet->Tref(config["reference-state"]["Tref"].as<double>());
-      if (kinet->verbose()) {
-        std::cout << fmt::format(
-                         "[KineticsOptions] setting reference temperature Tref "
-                         "= {} K",
-                         kinet->Tref())
-                  << std::endl;
-      }
+  if (config["reference-state"]["Tref"]) {
+    kinet->Tref(config["reference-state"]["Tref"].as<double>());
+    if (kinet->verbose()) {
+      std::cout << fmt::format(
+                       "[KineticsOptions] setting reference temperature Tref "
+                       "= {} K",
+                       kinet->Tref())
+                << std::endl;
     }
+  }
 
-    if (config["reference-state"]["Pref"]) {
-      kinet->Pref(config["reference-state"]["Pref"].as<double>());
-      if (kinet->verbose()) {
-        std::cout
-            << fmt::format(
-                   "[KineticsOptions] setting reference pressure Pref = {} Pa",
-                   kinet->Pref())
-            << std::endl;
-      }
+  if (config["reference-state"]["Pref"]) {
+    kinet->Pref(config["reference-state"]["Pref"].as<double>());
+    if (kinet->verbose()) {
+      std::cout
+          << fmt::format(
+                 "[KineticsOptions] setting reference pressure Pref = {} Pa",
+                 kinet->Pref())
+          << std::endl;
     }
   }
 
