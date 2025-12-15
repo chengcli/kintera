@@ -322,7 +322,8 @@ DISPATCH_MACRO int equilibrate_uv(
   }
 
   if (iter >= *max_iter) {
-    printf("equilibrate_uv did not converge after %d iterations.\n", *max_iter);
+    printf("[Warning] equilibrate_uv did not converge after %d iterations.\n",
+           *max_iter);
     return 2 * 10 + err_code;  // failure to converge
   } else {
     *max_iter = iter;

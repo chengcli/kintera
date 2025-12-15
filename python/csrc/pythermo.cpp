@@ -72,19 +72,19 @@ void bind_thermo(py::module &m) {
       .def("effective_cp", &kintera::ThermoXImpl::effective_cp, py::arg("temp"),
            py::arg("pres"), py::arg("xfrac"), py::arg("gain"),
            py::arg("conc") = py::none())
-      .def(
-          "extrapolate_ad",
-          py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor, double,
-                            bool>(&kintera::ThermoXImpl::extrapolate_ad),
-          py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"),
-          py::arg("verbose") = false)
-
       .def("extrapolate_ad",
            py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor,
                              double, double, bool>(
                &kintera::ThermoXImpl::extrapolate_ad),
+           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"),
+           py::arg("ds_dlnp") = 0., py::arg("verbose") = false)
+
+      .def("extrapolate_ad",
+           py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor,
+                             double, double, double, bool>(
+               &kintera::ThermoXImpl::extrapolate_ad),
            py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("grav"),
-           py::arg("dz"), py::arg("verbose") = false);
+           py::arg("dz"), py::arg("ds_dlnp") = 0., py::arg("verbose") = false);
 
   m.def("relative_humidity", &kintera::relative_humidity, py::arg("temp"),
         py::arg("conc"), py::arg("stoich"), py::arg("op"));

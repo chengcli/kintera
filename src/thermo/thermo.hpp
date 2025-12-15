@@ -304,7 +304,8 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param[in] verbose If true, print debug information
    */
   void extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
-                      torch::Tensor xfrac, double dlnp, bool verbose = false);
+                      torch::Tensor xfrac, double dlnp, double ds_dlnp = 0.,
+                      bool verbose = false);
 
   /*! \brief Extrapolate state TPX to a new height along an adiabat
    * Extrapolates the state variables (temperature, pressure, and mole
@@ -319,7 +320,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    */
   void extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
                       torch::Tensor xfrac, double grav, double dz,
-                      bool verbose = false);
+                      double ds_dz = 0., bool verbose = false);
 
   //! \brief Calculate the equilibrium state given temperature and pressure
   /*!

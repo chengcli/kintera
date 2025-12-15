@@ -47,7 +47,7 @@ torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
 
 void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
                                  torch::Tensor xfrac, double dlnp,
-                                 bool verbose) {
+                                 double ds_dlnp, bool verbose) {
   if (verbose) {
     std::cout << "Extrapolating adiabat with dlnp = " << dlnp << std::endl;
   }
@@ -55,6 +55,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
   auto conc = compute("TPX->V", {temp, pres, xfrac});
   auto entropy_vol = compute("TPV->S", {temp, pres, conc});
   auto entropy_mole0 = entropy_vol / conc.sum(-1);
+  auto entropy_target = entropy_mole0 + ds_dlnp * dlnp;
 
   if (verbose) {
     std::cout << "Initial State: T = [" << temp.min().item<double>() << ", "
@@ -103,12 +104,12 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
       std::cout << "}" << std::endl;
     }
 
-    if ((entropy_mole0 - entropy_mole).abs().max().item<double>() <
+    if ((entropy_target - entropy_mole).abs().max().item<double>() <
         10 * options->ftol()) {
       break;
     }
 
-    temp *= 1. + (entropy_mole0 - entropy_mole) / cp_mole;
+    temp *= 1. + (entropy_target - entropy_mole) / cp_mole;
   }
 
   if (iter >= options->max_iter()) {
@@ -119,7 +120,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
 
 void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
                                  torch::Tensor xfrac, double grav, double dz,
-                                 bool verbose) {
+                                 double ds_dz, bool verbose) {
   if (verbose) {
     std::cout << "Extrapolating adiabat over dz = " << dz << " m"
               << " with gravity = " << grav << " m/s^2" << std::endl;
@@ -128,6 +129,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
   auto conc = compute("TPX->V", {temp, pres, xfrac});
   auto rho0 = compute("V->D", {conc});
   auto entropy_mole0 = compute("TPV->S", {temp, pres, conc}) / conc.sum(-1);
+  auto entropy_target = entropy_mole0 + ds_dz * dz;
 
   if (verbose) {
     std::cout << "Initial State: T = [" << temp.min().item<double>() << ", "
@@ -183,15 +185,15 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
       std::cout << "}" << std::endl;
     }
 
-    if ((entropy_mole0 - entropy_mole).abs().max().item<double>() <
+    if ((entropy_target - entropy_mole).abs().max().item<double>() <
         10 * options->ftol()) {
       break;
     }
 
     /*if (iter % 2 == 0) {
       // weight by distance from previous iterate
-      auto w1 = entropy_list[0] - entropy_mole0;
-      auto w2 = entropy_list[1] - entropy_mole0;
+      auto w1 = entropy_list[0] - entropy_target;
+      auto w2 = entropy_list[1] - entropy_target;
       w1 = w1 * w1 / (w1 * w1 + w2 * w2 + 1e-10);
       w2 = 1. - w1;
 
@@ -220,7 +222,7 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
       auto rho = compute("V->D", {conc});
       pres.set_(pres0 - 0.5 * (rho + rho0) * grav * dz);
       auto dlnp = pres.log() - pres1.log();
-      temp.set_(temp1 * (1. + (entropy_mole0 - entropy_mole +
+      temp.set_(temp1 * (1. + (entropy_target - entropy_mole +
                                xg * constants::Rgas * dlnp) /
                                   cp_mole));
       conc = compute("TPX->V", {temp, pres, xfrac});
