@@ -84,7 +84,7 @@ void bind_thermo(py::module &m) {
                              double, double, double, bool>(
                &kintera::ThermoXImpl::extrapolate_ad),
            py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("grav"),
-           py::arg("dz"), py::arg("ds_dlnp") = 0., py::arg("verbose") = false);
+           py::arg("dz"), py::arg("ds_dz") = 0., py::arg("verbose") = false);
 
   m.def("relative_humidity", &kintera::relative_humidity, py::arg("temp"),
         py::arg("conc"), py::arg("stoich"), py::arg("op"));
