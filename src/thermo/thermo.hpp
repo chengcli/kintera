@@ -139,7 +139,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    * \return gain matrix, (..., nreaction, nreaction)
    */
   torch::Tensor forward(torch::Tensor rho, torch::Tensor intEng,
-                        torch::Tensor& yfrac, bool warm_start = false,
+                        torch::Tensor const& yfrac, bool warm_start = false,
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:
@@ -332,7 +332,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \return gain matrix, (..., nreaction, nreaction)
    */
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
-                        torch::Tensor& xfrac, bool warm_start = false,
+                        torch::Tensor const& xfrac, bool warm_start = false,
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:

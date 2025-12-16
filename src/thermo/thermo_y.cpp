@@ -231,7 +231,7 @@ torch::Tensor ThermoYImpl::compute(std::string ab,
 }
 
 torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
-                                   torch::Tensor &yfrac, bool warm_start,
+                                   torch::Tensor const &yfrac, bool warm_start,
                                    torch::optional<torch::Tensor> diag) {
   if (options->reactions().size() == 0) {  // no-op
     return torch::Tensor();
@@ -286,13 +286,13 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   // call the equilibrium solver
   at::native::call_equilibrate_uv(
       conc.device().type(), iter, options->vapor_ids().size(), stoich,
-      u0 / inv_mu,   // J/kg -> J/mol*/
-      cv0 / inv_mu,  // J/(kg K) -> J/(mol K)*/
+      u0 / inv_mu,   // J/kg -> J/mol
+      cv0 / inv_mu,  // J/(kg K) -> J/(mol K)
       options->nucleation()->logsvp(), options->intEng_R_extra(),
       options->ftol(), options->max_iter());
 
   ivol = conc / inv_mu;
-  yfrac = compute("V->Y", {ivol});
+  yfrac.copy_(compute("V->Y", {ivol}));
 
   vec[ivol.dim() - 1] = reactions.size();
   vec.push_back(reactions.size());

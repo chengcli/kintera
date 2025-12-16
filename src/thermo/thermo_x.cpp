@@ -189,7 +189,7 @@ torch::Tensor ThermoXImpl::compute(std::string ab,
 }
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
-                                   torch::Tensor &xfrac, bool warm_start,
+                                   torch::Tensor const &xfrac, bool warm_start,
                                    torch::optional<torch::Tensor> diag) {
   if (options->reactions().size() == 0) {  // no-op
     return torch::Tensor();
