@@ -65,7 +65,7 @@ def test_case1():
         xfrac[:, i, :] = xfrac[:, i - 1, :]
 
         # adiabatic extrapolation
-        thermo.extrapolate_ad(temp[:, i], pres[:, i], xfrac[:, i, :], -dlnp);
+        thermo.extrapolate_dlnp(temp[:, i], pres[:, i], xfrac[:, i, :], -dlnp);
 
     # compute molar concentration
     conc = thermo.compute("TPX->V", [temp, pres, xfrac])
