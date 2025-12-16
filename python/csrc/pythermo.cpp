@@ -72,19 +72,28 @@ void bind_thermo(py::module &m) {
       .def("effective_cp", &kintera::ThermoXImpl::effective_cp, py::arg("temp"),
            py::arg("pres"), py::arg("xfrac"), py::arg("gain"),
            py::arg("conc") = py::none())
-      .def("extrapolate_ad",
-           py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor,
-                             double, double, bool>(
-               &kintera::ThermoXImpl::extrapolate_ad),
-           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"),
-           py::arg("ds_dlnp") = 0., py::arg("verbose") = false)
+      .def(
+          "extrapolate_dlnp",
+          [](kintera::ThermoXImpl &self, torch::Tensor temp, torch::Tensor pres,
+             torch::Tensor xfrac, double dlnp, double ds_dlnp, bool verbose) {
+            kintera::ExtrapOptions opts;
+            opts.dlnp(dlnp).ds_dlnp(ds_dlnp).verbose(verbose);
+            return self.extrapolate_dlnp(temp, pres, xfrac, opts);
+          },
+          py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"),
+          py::arg("ds_dlnp") = 0., py::arg("verbose") = false)
 
-      .def("extrapolate_ad",
-           py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor,
-                             double, double, double, bool>(
-               &kintera::ThermoXImpl::extrapolate_ad),
-           py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("grav"),
-           py::arg("dz"), py::arg("ds_dz") = 0., py::arg("verbose") = false);
+      .def(
+          "extrapolate_dz",
+          [](kintera::ThermoXImpl &self, torch::Tensor temp, torch::Tensor pres,
+             torch::Tensor xfrac, double dz, double grav, double ds_dz,
+             bool verbose) {
+            kintera::ExtrapOptions opts;
+            opts.dz(dz).grav(grav).ds_dz(ds_dz).verbose(verbose);
+            return self.extrapolate_dz(temp, pres, xfrac, opts);
+          },
+          py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dz"),
+          py::arg("grav"), py::arg("ds_dz") = 0., py::arg("verbose") = false);
 
   m.def("relative_humidity", &kintera::relative_humidity, py::arg("temp"),
         py::arg("conc"), py::arg("stoich"), py::arg("op"));

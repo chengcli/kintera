@@ -45,9 +45,13 @@ torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
   return cp_normal + cp_latent;
 }
 
-void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
-                                 torch::Tensor xfrac, double dlnp,
-                                 double ds_dlnp, bool verbose) {
+void ThermoXImpl::extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
+                                   torch::Tensor xfrac,
+                                   ExtrapOptions const& opts) {
+  double dlnp = opts.dlnp();
+  double ds_dlnp = opts.ds_dlnp();
+  bool verbose = opts.verbose();
+
   if (verbose) {
     std::cout << "Extrapolating adiabat with dlnp = " << dlnp << std::endl;
   }
@@ -113,14 +117,19 @@ void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
   }
 
   if (iter >= options->max_iter()) {
-    TORCH_WARN("extrapolate_ad does not converge after ", options->max_iter(),
+    TORCH_WARN("extrapolate_dlnp does not converge after ", options->max_iter(),
                " iterations.");
   }
 }
 
-void ThermoXImpl::extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
-                                 torch::Tensor xfrac, double grav, double dz,
-                                 double ds_dz, bool verbose) {
+void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
+                                 torch::Tensor xfrac,
+                                 ExtrapOptions const& opts) {
+  double grav = opts.grav();
+  double dz = opts.dz();
+  double ds_dz = opts.ds_dz();
+  bool verbose = opts.verbose();
+
   if (verbose) {
     std::cout << "Extrapolating adiabat over dz = " << dz << " m"
               << " with gravity = " << grav << " m/s^2" << std::endl;

@@ -350,7 +350,7 @@ TEST_P(DeviceTest, extrapolate_ad) {
   std::cout << "entropy before = " << entropy_mole0 << std::endl;
   std::cout << "temp before = " << temp << std::endl;
 
-  thermo_x->extrapolate_ad(temp, pres, xfrac, -0.1);
+  thermo_x->extrapolate_dlnp(temp, pres, xfrac, ExtrapOptions().dlnp(-0.1));
 
   conc = thermo_x->compute("TPX->V", {temp, pres, xfrac});
   entropy_vol = thermo_x->compute("TPV->S", {temp, pres, conc});

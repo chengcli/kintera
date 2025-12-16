@@ -80,6 +80,19 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 
+struct ExtrapOptions {
+  // Logarithmic change in pressure (dlnp = ln(p_new / p_old))
+  ADD_ARG(double, dlnp) = 0.;
+  ADD_ARG(double, dz) = 0.;
+  // Gravitational acceleration (m/s^2), positive
+  ADD_ARG(double, grav) = 0;
+  ADD_ARG(double, ds_dlnp) = 0;
+  // Height change (m)
+  ADD_ARG(double, ds_dz) = 0;
+  // If true, print debug information
+  ADD_ARG(bool, verbose) = false;
+};
+
 //! Mass Thermodynamics
 class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
  public:
@@ -300,12 +313,9 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param[in,out] temp Temperature tensor (K)
    * \param[in,out] pres Pressure tensor (Pa)
    * \param[in,out] xfrac Mole fraction tensor
-   * \param[in] dlnp Logarithmic change in pressure (dlnp = ln(p_new / p_old))
-   * \param[in] verbose If true, print debug information
    */
-  void extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
-                      torch::Tensor xfrac, double dlnp, double ds_dlnp = 0.,
-                      bool verbose = false);
+  void extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
+                        torch::Tensor xfrac, ExtrapOptions const& opts);
 
   /*! \brief Extrapolate state TPX to a new height along an adiabat
    * Extrapolates the state variables (temperature, pressure, and mole
@@ -314,13 +324,9 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param[in,out] temp Temperature tensor (K)
    * \param[in,out] pres Pressure tensor (Pa)
    * \param[in,out] xfrac Mole fraction tensor
-   * \param[in] grav Gravitational acceleration (m/s^2)
-   * \param[in] dz Height change (m)
-   * \param[in] verbose If true, print debug information
    */
-  void extrapolate_ad(torch::Tensor temp, torch::Tensor pres,
-                      torch::Tensor xfrac, double grav, double dz,
-                      double ds_dz = 0., bool verbose = false);
+  void extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
+                      torch::Tensor xfrac, ExtrapOptions const& opts);
 
   //! \brief Calculate the equilibrium state given temperature and pressure
   /*!
