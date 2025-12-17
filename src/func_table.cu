@@ -23,7 +23,11 @@ __device__ user_func1 func1_table_cuda[] = {
     so2_antoine,
     so2_antoine_ddT,
     co2_antoine,
-    co2_antoine_ddT
+    co2_antoine_ddT,
+    kcl_lodders,
+    kcl_lodders_ddT,
+    na_h2s_visscher,
+    na_h2s_visscher_ddT
 };
 
 __device__ __constant__ user_func1* func1_table_device_ptr = func1_table_cuda;

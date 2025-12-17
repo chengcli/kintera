@@ -161,4 +161,28 @@ inline double co2_antoine_ddT(double T) {
   return logsvp_antoine_ddT(T, B, C);
 }
 
+DISPATCH_MACRO
+inline double kcl_lodders(double T) {
+  double logp = 7.611 - 11382. / T;
+  return log(1.E5) + logp;
+}
+
+DISPATCH_MACRO
+inline double kcl_lodders_ddT(double T) { return 11382. / (T * T); }
+
+DISPATCH_MACRO
+inline double na_h2s_visscher(double T) {
+  // double log10p = 8.55 - 13889. / T - 0.5 * log10(pH2S / 1E5);
+  // return 1.E5 * pow(10., log10p);
+  double a = 8.55;
+  double b = 13889.;
+  return (15. + 2. * a - 2. * b / T) * log(10.);
+}
+
+DISPATCH_MACRO
+inline double na_h2s_visscher_ddT(double T) {
+  double b = 13889.;
+  return 2. * b * log(10.) / (T * T);
+}
+
 }  // namespace kintera

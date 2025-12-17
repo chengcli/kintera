@@ -8,8 +8,7 @@
 #include <configure.h>
 
 // kintera
-#include <kintera/utils/user_funcs.hpp>
-
+#include "user_funcs.hpp"
 #include "utils_dispatch.hpp"
 
 namespace kintera {
@@ -99,13 +98,13 @@ void call_func3_cpu(at::TensorIterator &iter,
 
 namespace at::native {
 
-#ifdef DISABLE_CUDA
+// #ifdef DISABLE_CUDA
 
 DEFINE_DISPATCH(call_func1);
 DEFINE_DISPATCH(call_func2);
 DEFINE_DISPATCH(call_func3);
 
-#endif
+// #endif
 
 REGISTER_ALL_CPU_DISPATCH(call_func1, &kintera::call_func1_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_func2, &kintera::call_func2_cpu);
