@@ -56,6 +56,7 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
                                                       bool verbose = false);
 
   void report(std::ostream& os) const {
+    os << "-- thermodynamics options --\n";
     os << "* Tref = " << Tref() << " K\n"
        << "* Pref = " << Pref() << " Pa\n"
        << "* max_iter = " << max_iter() << "\n"

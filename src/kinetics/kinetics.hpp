@@ -34,6 +34,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
       YAML::Node const& config, bool verbose = false);
 
   void report(std::ostream& os) const {
+    os << "-- kinetics options --\n";
     os << "* Tref = " << Tref() << " K\n"
        << "* Pref = " << Pref() << " Pa\n"
        << "* offset_zero = " << (offset_zero() ? "true" : "false") << "\n"
