@@ -75,7 +75,7 @@ void bind_thermo(py::module &m) {
       .def(
           "extrapolate_dlnp",
           [](kintera::ThermoXImpl &self, torch::Tensor temp, torch::Tensor pres,
-             torch::Tensor xfrac, double dlnp, double ds_dlnp, double rainout,
+             torch::Tensor xfrac, double dlnp, double ds_dlnp, bool rainout,
              bool verbose) {
             kintera::ExtrapOptions opts;
             opts.dlnp(dlnp).ds_dlnp(ds_dlnp).rainout(rainout).verbose(verbose);
@@ -89,7 +89,7 @@ void bind_thermo(py::module &m) {
           "extrapolate_dz",
           [](kintera::ThermoXImpl &self, torch::Tensor temp, torch::Tensor pres,
              torch::Tensor xfrac, double dz, double grav, double ds_dz,
-             double rainout, bool verbose) {
+             bool rainout, bool verbose) {
             kintera::ExtrapOptions opts;
             opts.dz(dz).grav(grav).ds_dz(ds_dz).rainout(rainout).verbose(
                 verbose);
