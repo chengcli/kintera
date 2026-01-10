@@ -12,18 +12,17 @@ KINTERA is a library for atmospheric chemistry and equation of state calculation
 - [Features](#features)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
-  - [Quick Start](#quick-start)
-  - [Detailed Build Instructions](#detailed-build-instructions)
+- [Photochemistry Module](#photochemistry-module)
 - [Testing](#testing)
 - [Documentation](#documentation)
-- [Dependencies](#dependencies)
 - [Development](#development)
 - [License](#license)
 
 ## Overview
 
 KINTERA provides efficient implementations of:
-- Chemical kinetics calculations
+- Chemical kinetics calculations (Arrhenius, coagulation, evaporation)
+- Photochemistry and photolysis reactions
 - Thermodynamic equation of state
 - Phase equilibrium computations
 - Atmospheric chemistry models
@@ -36,6 +35,7 @@ The library is written in C++17 with Python bindings, leveraging PyTorch for ten
 - **Python Interface**: Full Python API via pybind11
 - **PyTorch Integration**: Native tensor operations using PyTorch
 - **Chemical Kinetics**: Comprehensive reaction mechanism support
+- **Photochemistry**: Wavelength-dependent photolysis with multi-branch products
 - **Thermodynamics**: Advanced equation of state calculations
 - **Cloud Physics**: Nucleation and condensation modeling
 
@@ -75,8 +75,6 @@ brew install cmake netcdf
 
 ### Quick Start
 
-The simplest way to build and install KINTERA:
-
 ```bash
 # 1. Install Python dependencies
 pip install numpy 'torch==2.7.1' 'pyharp>=1.7.1'
@@ -93,18 +91,154 @@ cmake --build build --parallel
 pip install .
 ```
 
+## Photochemistry Module
+
+KINTERA includes a complete photochemistry module for modeling photolysis reactions in planetary atmospheres.
+
+### Architecture
+
+```
+src/kinetics/
+├── photolysis.hpp        # PhotolysisOptions and PhotolysisImpl definitions
+├── photolysis.cpp        # Implementation with YAML parsing and rate computation
+├── actinic_flux.hpp      # ActinicFluxData structure and helper functions
+└── jacobian_photolysis.cpp  # Jacobian for implicit time integration
+```
+
+### Key Components
+
+| Component | Description |
+|-----------|-------------|
+| `PhotolysisOptions` | Configuration: wavelength grid, cross-sections, branches |
+| `Photolysis` | PyTorch module computing rates via wavelength integration |
+| `ActinicFluxData` | Wavelength/flux tensor storage with interpolation |
+| `jacobian_photolysis()` | Jacobian computation for implicit solvers |
+
+### Rate Calculation
+
+Photolysis rates are computed by integrating cross-sections weighted by actinic flux:
+
+```
+k = ∫ σ(λ,T) · F(λ) dλ
+```
+
+where σ is the cross-section [cm² molecule⁻¹], F is the actinic flux [photons cm⁻² s⁻¹ nm⁻¹], and λ is wavelength [nm].
+
+### YAML Configuration
+
+Photolysis reactions are defined in YAML format:
+
+```yaml
+reactions:
+- equation: CH4 => CH3 + H + (1)CH2 + H2
+  type: photolysis
+  branches:
+    - "CH4:1"           # photoabsorption
+    - "CH3:1 H:1"       # CH3 + H branch
+    - "(1)CH2:1 H2:1"   # singlet CH2 + H2 branch
+  cross-section:
+    - format: KINETICS7
+      filename: "CH4.dat2"
+    # Or inline YAML format:
+    - format: YAML
+      temperature-range: [0., 300.]
+      data:
+        - [100., 1.e-18, 0.5e-18]
+        - [150., 2.e-18, 1.0e-18]
+```
+
+### C++ Usage
+
+```cpp
+#include <kintera/kinetics/photolysis.hpp>
+#include <kintera/kinetics/actinic_flux.hpp>
+
+// Create options
+auto opts = PhotolysisOptionsImpl::create();
+opts->wavelength() = {100., 150., 200.};
+opts->reactions().push_back(Reaction("N2 => N2"));
+opts->cross_section() = {1.e-18, 2.e-18, 1.e-18};
+
+// Create module and move to GPU
+Photolysis module(opts);
+module->to(torch::kCUDA, torch::kFloat64);
+
+// Create actinic flux
+auto flux = create_solar_flux(100., 200., 11, 1.e14);
+
+// Compute photolysis rates
+auto rate = module->forward(temp, pres, conc, flux.to_map());
+```
+
+### Python Usage
+
+```python
+from kintera import (
+    PhotolysisOptions, Photolysis, Reaction,
+    create_solar_flux, set_species_names
+)
+import torch
+
+# Initialize species list
+set_species_names(["N2", "O2", "CH4"])
+
+# Configure photolysis
+opts = PhotolysisOptions()
+opts.wavelength([100., 150., 200.])
+opts.reactions([Reaction("N2 => N2")])
+opts.cross_section([1e-18, 2e-18, 1e-18])
+
+# Create module
+module = Photolysis(opts)
+
+# Create flux and compute rates
+flux = create_solar_flux(100., 200., 11, 1e14)
+rate = module.forward(temp, pres, conc, flux.to_map())
+```
+
+### Cross-Section File Formats
+
+The module supports multiple cross-section formats:
+
+| Format | Description |
+|--------|-------------|
+| `YAML` | Inline wavelength/cross-section data |
+| `KINETICS7` | NCAR KINETICS7 format files |
+| `VULCAN` | VULCAN photochemistry format |
+
 ## Testing
 
-KINTERA includes both C++ and Python tests.
+KINTERA includes comprehensive C++ and Python tests.
 
 ### Running All Tests
-
-After building and installing:
 
 ```bash
 cd build/tests
 ctest
 ```
+
+### Photochemistry Tests
+
+Run photochemistry-specific tests:
+
+```bash
+# C++ tests
+cd build/tests
+ctest -R photolysis
+
+# Python tests
+pytest tests/test_photolysis.py -v
+```
+
+### Test Coverage
+
+| Test File | Coverage |
+|-----------|----------|
+| `test_photolysis_options.cpp` | YAML parsing, cross-section loading |
+| `test_photolysis_kinetics.cpp` | Kinetics integration, stoichiometry |
+| `test_actinic_flux.cpp` | Flux interpolation, tensor shapes |
+| `test_ch4_photolysis.cpp` | End-to-end CH4 photolysis, Jacobian |
+| `test_photolysis.py` | Python bindings integration |
 
 ## Documentation
 
@@ -118,16 +252,9 @@ pip install -r requirements.txt
 make html
 ```
 
-Documentation will be generated in `docs/_build/html/`.
-
 ### Dependency Cache
 
-A successful build saves cache files for each dependency in the `.cache` directory. These cache files:
-- Can be safely deleted at any time
-- Allow offline builds after the first successful build
-- Are automatically populated on first build
-
-To force a clean rebuild:
+A successful build saves cache files in `.cache/`. To force a clean rebuild:
 
 ```bash
 rm -rf .cache build
@@ -135,9 +262,25 @@ rm -rf .cache build
 
 ## Development
 
-### Code Style
+### Project Structure
 
-KINTERA uses pre-commit hooks for code formatting and linting:
+```
+kintera/
+├── src/
+│   ├── kinetics/       # Kinetics modules (Arrhenius, photolysis, etc.)
+│   ├── thermo/         # Thermodynamics
+│   ├── xsection/       # Cross-section loading
+│   └── math/           # Interpolation utilities
+├── python/
+│   ├── csrc/           # pybind11 bindings
+│   ├── kintera.pyi     # Type stubs
+│   └── py.typed        # PEP 561 marker
+├── tests/              # C++ and Python tests
+├── examples/           # Usage examples
+└── data/               # Test data (cross-sections, YAML configs)
+```
+
+### Code Style
 
 ```bash
 pip install pre-commit
@@ -145,46 +288,20 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-### Project Structure
+### Type Hints
 
-```
-kintera/
-├── src/              # C++ source code
-├── python/           # Python bindings and API
-│   ├── csrc/        # pybind11 binding code (C++ implementation)
-│   ├── api/         # Pure Python API
-│   ├── kintera.pyi  # Type stub file for IDE/type checker support
-│   └── py.typed     # PEP 561 marker for type hints
-├── tests/            # C++ and Python tests
-├── examples/         # Example usage
-├── docs/             # Documentation source
-├── cmake/            # CMake modules and macros
-└── data/             # Test data and examples
-```
+KINTERA provides full type hint support through Python stub files:
+- IDE autocomplete in VS Code, PyCharm
+- Type checking with `mypy` or `pyright`
 
-### Type Hints and IDE Support
-
-KINTERA provides full type hint support through Python stub files (`.pyi`):
-- **IDE autocomplete**: Enhanced code completion in VS Code, PyCharm, etc.
-- **Type checking**: Verify code correctness with `mypy` or `pyright`
-- **Documentation**: Inline documentation with parameter types and examples
-
-See [`python/STUB_FILES.md`](python/STUB_FILES.md) for more details on using type hints.
+See [`python/STUB_FILES.md`](python/STUB_FILES.md) for details.
 
 ### Continuous Integration
 
-The project uses GitHub Actions for continuous integration. The CI pipeline:
-1. Runs pre-commit checks (formatting, linting)
-2. Builds on Linux and macOS
-3. Runs all C++ and Python tests
-
-### Continuous Deployment
-
-Releases are automatically built and published to PyPI using GitHub Actions when a new release is created on GitHub.
-
-## Staying Updated
-
-If you have forked this repository, please enable notifications or watch for updates to stay current with the latest developments.
+GitHub Actions CI pipeline:
+1. Pre-commit checks (formatting, linting)
+2. Build on Linux and macOS
+3. Run all C++ and Python tests
 
 ## License
 

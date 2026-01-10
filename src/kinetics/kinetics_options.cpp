@@ -95,6 +95,16 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
               << std::endl;
   }
 
+  // add photolysis reactions
+  kinet->photolysis() = PhotolysisOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->photolysis());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Photolysis reactions",
+                     kinet->photolysis()->reactions().size())
+              << std::endl;
+  }
+
   // register vapors
   for (const auto& sp : vapor_set) {
     auto it = std::find(species_names.begin(), species_names.end(), sp);
@@ -144,7 +154,8 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   std::vector<Reaction> reactions;
   reactions.reserve(arrhenius()->reactions().size() +
                     coagulation()->reactions().size() +
-                    evaporation()->reactions().size());
+                    evaporation()->reactions().size() +
+                    photolysis()->reactions().size());
 
   for (const auto& reaction : arrhenius()->reactions()) {
     reactions.push_back(reaction);
@@ -155,6 +166,10 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   }
 
   for (const auto& reaction : evaporation()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : photolysis()->reactions()) {
     reactions.push_back(reaction);
   }
 

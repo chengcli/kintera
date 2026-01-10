@@ -13,6 +13,7 @@
 #include "arrhenius.hpp"
 #include "coagulation.hpp"
 #include "evaporation.hpp"
+#include "photolysis.hpp"
 
 // arg
 #include <kintera/add_arg.h>
@@ -25,6 +26,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     op->arrhenius() = ArrheniusOptionsImpl::create();
     op->coagulation() = CoagulationOptionsImpl::create();
     op->evaporation() = EvaporationOptionsImpl::create();
+    op->photolysis() = PhotolysisOptionsImpl::create();
     return op;
   }
 
@@ -57,6 +59,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(ArrheniusOptions, arrhenius);
   ADD_ARG(CoagulationOptions, coagulation);
   ADD_ARG(EvaporationOptions, evaporation);
+  ADD_ARG(PhotolysisOptions, photolysis);
 
   ADD_ARG(bool, evolve_temperature) = false;
   ADD_ARG(bool, verbose) = false;

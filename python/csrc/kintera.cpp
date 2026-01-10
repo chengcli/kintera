@@ -25,9 +25,10 @@ extern std::vector<double> species_sref_R;
 
 }  // namespace kintera
 
-void bind_thermo(py::module& m);
-void bind_constants(py::module& m);
-void bind_kinetics(py::module& m);
+void bind_thermo(py::module &m);
+void bind_constants(py::module &m);
+void bind_kinetics(py::module &m);
+void bind_photolysis(py::module &m);
 
 PYBIND11_MODULE(kintera, m) {
   m.attr("__name__") = "kintera";
@@ -66,6 +67,7 @@ PYBIND11_MODULE(kintera, m) {
   bind_thermo(m);
   bind_constants(m);
   bind_kinetics(m);
+  bind_photolysis(m);
 
   m.def("species_names", []() -> const std::vector<std::string>& {
     return kintera::species_names;

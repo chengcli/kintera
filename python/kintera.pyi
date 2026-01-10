@@ -1666,3 +1666,358 @@ class constants:
 
     Rgas: float  # Universal gas constant [J/(mol*K)]
     Avogadro: float  # Avogadro's number [1/mol]
+
+
+# ============================================================================
+# Photochemistry Module
+# ============================================================================
+
+class PhotolysisOptions:
+    """
+    Configuration options for photolysis reactions.
+
+    This class manages photolysis cross-section data, wavelength grids,
+    and branch compositions for photochemical calculations.
+    """
+
+    def __init__(self) -> None:
+        """Initialize PhotolysisOptions."""
+        ...
+
+    def __repr__(self) -> str: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]:
+        """Get the list of photolysis reactions."""
+        ...
+
+    @overload
+    def reactions(self, value: List[Reaction]) -> PhotolysisOptions:
+        """Set the list of photolysis reactions."""
+        ...
+
+    @overload
+    def wavelength(self) -> List[float]:
+        """Get the wavelength grid [nm]."""
+        ...
+
+    @overload
+    def wavelength(self, value: List[float]) -> PhotolysisOptions:
+        """Set the wavelength grid [nm]."""
+        ...
+
+    @overload
+    def temperature(self) -> List[float]:
+        """Get the temperature grid [K]."""
+        ...
+
+    @overload
+    def temperature(self, value: List[float]) -> PhotolysisOptions:
+        """Set the temperature grid [K]."""
+        ...
+
+    @overload
+    def cross_section(self) -> List[float]:
+        """Get the cross-section data [cm^2 molecule^-1]."""
+        ...
+
+    @overload
+    def cross_section(self, value: List[float]) -> PhotolysisOptions:
+        """Set the cross-section data [cm^2 molecule^-1]."""
+        ...
+
+    @overload
+    def branches(self) -> List[List[Composition]]:
+        """Get the branch compositions."""
+        ...
+
+    @overload
+    def branches(self, value: List[List[Composition]]) -> PhotolysisOptions:
+        """Set the branch compositions."""
+        ...
+
+    @overload
+    def branch_names(self) -> List[List[str]]:
+        """Get the branch names."""
+        ...
+
+    @overload
+    def branch_names(self, value: List[List[str]]) -> PhotolysisOptions:
+        """Set the branch names."""
+        ...
+
+
+class Photolysis:
+    """
+    Photolysis rate evaluator module.
+
+    Computes photolysis rates by integrating cross-sections weighted by
+    actinic flux over wavelength:
+
+        k = integral(sigma(lambda, T) * F(lambda) d_lambda)
+
+    where sigma is the cross-section, F is the actinic flux, and lambda
+    is the wavelength.
+    """
+
+    options: PhotolysisOptions
+
+    def __init__(self, options: PhotolysisOptions) -> None:
+        """
+        Initialize Photolysis with options.
+
+        Args:
+            options (PhotolysisOptions): Configuration options
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        """
+        Compute photolysis rate constants.
+
+        Args:
+            temp (torch.Tensor): Temperature [K], shape (...)
+            pres (torch.Tensor): Pressure [Pa], shape (...)
+            conc (torch.Tensor): Concentration [mol/m^3], shape (..., nspecies)
+            other (dict): Dictionary containing:
+                - "wavelength": Wavelength grid [nm], shape (nwave,)
+                - "actinic_flux": Actinic flux [photons cm^-2 s^-1 nm^-1]
+
+        Returns:
+            torch.Tensor: Photolysis rate constants [s^-1], shape (..., nreaction)
+        """
+        ...
+
+    def interp_cross_section(
+        self,
+        rxn_idx: int,
+        wave: torch.Tensor,
+        temp: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Interpolate cross-section to given wavelength and temperature.
+
+        Args:
+            rxn_idx (int): Reaction index
+            wave (torch.Tensor): Wavelength [nm]
+            temp (torch.Tensor): Temperature [K]
+
+        Returns:
+            torch.Tensor: Interpolated cross-section [cm^2], shape (..., nbranch)
+        """
+        ...
+
+    def get_effective_stoich(
+        self,
+        rxn_idx: int,
+        wave: torch.Tensor,
+        aflux: torch.Tensor,
+        temp: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Get effective stoichiometry coefficients for a reaction.
+
+        Returns weighted stoichiometry based on branch ratios.
+
+        Args:
+            rxn_idx (int): Reaction index
+            wave (torch.Tensor): Wavelength grid [nm]
+            aflux (torch.Tensor): Actinic flux
+            temp (torch.Tensor): Temperature [K]
+
+        Returns:
+            torch.Tensor: Effective stoichiometry coefficients
+        """
+        ...
+
+
+class ActinicFluxOptions:
+    """
+    Configuration options for actinic flux.
+    """
+
+    def __init__(self) -> None:
+        """Initialize ActinicFluxOptions."""
+        ...
+
+    def __repr__(self) -> str: ...
+
+    @overload
+    def wavelength(self) -> List[float]:
+        """Get the wavelength grid [nm]."""
+        ...
+
+    @overload
+    def wavelength(self, value: List[float]) -> ActinicFluxOptions:
+        """Set the wavelength grid [nm]."""
+        ...
+
+    @overload
+    def default_flux(self) -> List[float]:
+        """Get the default flux values."""
+        ...
+
+    @overload
+    def default_flux(self, value: List[float]) -> ActinicFluxOptions:
+        """Set the default flux values."""
+        ...
+
+    @overload
+    def wave_min(self) -> float:
+        """Get minimum wavelength [nm]."""
+        ...
+
+    @overload
+    def wave_min(self, value: float) -> ActinicFluxOptions:
+        """Set minimum wavelength [nm]."""
+        ...
+
+    @overload
+    def wave_max(self) -> float:
+        """Get maximum wavelength [nm]."""
+        ...
+
+    @overload
+    def wave_max(self, value: float) -> ActinicFluxOptions:
+        """Set maximum wavelength [nm]."""
+        ...
+
+
+class ActinicFluxData:
+    """
+    Data structure for storing and interpolating actinic flux.
+
+    Actinic flux F(lambda) represents the rate at which photons of
+    wavelength lambda are available to drive photochemical reactions.
+    Units are typically photons cm^-2 s^-1 nm^-1.
+    """
+
+    wavelength: torch.Tensor  # Wavelength grid [nm], shape (nwave,)
+    flux: torch.Tensor  # Actinic flux, shape (nwave, ...)
+
+    @overload
+    def __init__(self) -> None:
+        """Create empty ActinicFluxData."""
+        ...
+
+    @overload
+    def __init__(self, wavelength: torch.Tensor, flux: torch.Tensor) -> None:
+        """
+        Create ActinicFluxData with wavelength and flux tensors.
+
+        Args:
+            wavelength (torch.Tensor): Wavelength grid [nm], shape (nwave,)
+            flux (torch.Tensor): Actinic flux, shape (nwave, ...)
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+    def is_valid(self) -> bool:
+        """Check if flux data is valid."""
+        ...
+
+    def nwave(self) -> int:
+        """Get number of wavelength points."""
+        ...
+
+    def interpolate_to(self, new_wavelength: torch.Tensor) -> torch.Tensor:
+        """
+        Interpolate flux to new wavelength grid.
+
+        Args:
+            new_wavelength (torch.Tensor): Target wavelength grid [nm]
+
+        Returns:
+            torch.Tensor: Interpolated flux at new wavelengths
+        """
+        ...
+
+    def to_map(self) -> Dict[str, torch.Tensor]:
+        """
+        Get flux as a map for passing to forward().
+
+        Returns:
+            dict: Dictionary with "wavelength" and "actinic_flux" keys
+        """
+        ...
+
+
+def create_actinic_flux(
+    options: ActinicFluxOptions,
+    device: torch.device = ...,
+    dtype: torch.dtype = ...
+) -> ActinicFluxData:
+    """
+    Create ActinicFluxData from options.
+
+    Args:
+        options (ActinicFluxOptions): Configuration options
+        device (torch.device): Target device (default: CPU)
+        dtype (torch.dtype): Data type (default: float64)
+
+    Returns:
+        ActinicFluxData: Created flux data
+    """
+    ...
+
+
+def create_uniform_flux(
+    wave_min: float,
+    wave_max: float,
+    nwave: int,
+    flux_value: float,
+    device: torch.device = ...,
+    dtype: torch.dtype = ...
+) -> ActinicFluxData:
+    """
+    Create uniform actinic flux for testing.
+
+    Args:
+        wave_min (float): Minimum wavelength [nm]
+        wave_max (float): Maximum wavelength [nm]
+        nwave (int): Number of wavelength points
+        flux_value (float): Uniform flux value
+        device (torch.device): Target device (default: CPU)
+        dtype (torch.dtype): Data type (default: float64)
+
+    Returns:
+        ActinicFluxData: Created flux data
+    """
+    ...
+
+
+def create_solar_flux(
+    wave_min: float,
+    wave_max: float,
+    nwave: int,
+    peak_flux: float = 1.e14,
+    device: torch.device = ...,
+    dtype: torch.dtype = ...
+) -> ActinicFluxData:
+    """
+    Create solar-like actinic flux (simplified model).
+
+    Creates a simplified solar actinic flux profile that peaks
+    in the visible range and decreases towards UV.
+
+    Args:
+        wave_min (float): Minimum wavelength [nm]
+        wave_max (float): Maximum wavelength [nm]
+        nwave (int): Number of wavelength points
+        peak_flux (float): Peak flux value (default: 1e14)
+        device (torch.device): Target device (default: CPU)
+        dtype (torch.dtype): Data type (default: float64)
+
+    Returns:
+        ActinicFluxData: Created flux data
+    """
+    ...

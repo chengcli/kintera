@@ -123,6 +123,18 @@ void KineticsImpl::reset() {
               << options->evaporation()->reactions().size()
               << " Evaporation reactions" << std::endl;
   }
+
+  // register Photolysis rates
+  rc_evaluator.push_back(
+      torch::nn::AnyModule(Photolysis(options->photolysis())));
+  register_module("photolysis", rc_evaluator.back().ptr());
+  _nreactions.push_back(options->photolysis()->reactions().size());
+
+  if (options->verbose()) {
+    std::cout << "[Kinetics] registered "
+              << options->photolysis()->reactions().size()
+              << " Photolysis reactions" << std::endl;
+  }
 }
 
 torch::Tensor KineticsImpl::jacobian(

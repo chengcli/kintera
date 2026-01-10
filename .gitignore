@@ -25,3 +25,7 @@ dist
 # agent
 AGENTS.md
 CLAUDE.md
+
+# test outputs
+examples/*.png
+examples/*.pdf

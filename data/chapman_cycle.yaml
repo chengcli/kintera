@@ -1,0 +1,90 @@
+description: Chapman Cycle - Stratospheric Ozone Chemistry
+
+units:
+  length: cm
+  time: s
+
+reference-state:
+  Tref: 250.
+  Pref: 1.e3
+
+phases:
+- name: gas
+  thermo: ideal-gas
+  elements: [O, N]
+  species: [N2, O2, O, O3]
+  kinetics: gas
+
+species:
+- name: N2
+  composition: {N: 2}
+  cv_R: 2.5
+
+- name: O2
+  composition: {O: 2}
+  cv_R: 2.5
+
+- name: O
+  composition: {O: 1}
+  cv_R: 1.5
+
+- name: O3
+  composition: {O: 3}
+  cv_R: 3.5
+
+reactions:
+# O2 + hν → 2O (Schumann-Runge continuum, λ < 240 nm)
+- equation: O2 => 2 O
+  type: photolysis
+  cross-section:
+    - format: YAML
+      temperature-range: [200., 300.]
+      data:
+        - [120., 1.0e-17]
+        - [130., 1.2e-17]
+        - [140., 1.5e-17]
+        - [150., 1.8e-17]
+        - [160., 1.5e-17]
+        - [170., 1.0e-17]
+        - [180., 5.0e-18]
+        - [190., 1.5e-18]
+        - [200., 7.0e-19]
+        - [205., 5.0e-19]
+        - [210., 2.0e-19]
+        - [220., 5.0e-20]
+        - [230., 1.0e-20]
+        - [240., 1.0e-21]
+        - [250., 1.0e-23]
+
+# O + O2 + M → O3 + M (effective second-order rate)
+- equation: O + O2 => O3
+  type: arrhenius
+  rate-constant: {A: 1.7e-14, b: -2.4, Ea_R: 0.}
+
+# O3 + hν → O2 + O (Hartley band, 200-320 nm)
+- equation: O3 => O2 + O
+  type: photolysis
+  cross-section:
+    - format: YAML
+      temperature-range: [200., 300.]
+      data:
+        - [200., 3.0e-19]
+        - [210., 6.0e-19]
+        - [220., 1.0e-18]
+        - [230., 2.5e-18]
+        - [240., 5.0e-18]
+        - [250., 8.0e-18]
+        - [255., 1.1e-17]
+        - [260., 1.0e-17]
+        - [270., 7.0e-18]
+        - [280., 4.0e-18]
+        - [290., 2.0e-18]
+        - [300., 8.0e-19]
+        - [310., 3.0e-19]
+        - [320., 5.0e-20]
+        - [330., 5.0e-21]
+
+# O + O3 → 2O2
+- equation: O + O3 => 2 O2
+  type: arrhenius
+  rate-constant: {A: 8.0e-12, b: 0., Ea_R: 2060.}

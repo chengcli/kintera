@@ -9,6 +9,11 @@ enable_testing()
 
 setup_test(test_thermo)
 setup_test(test_kinetics)
+setup_test(test_photolysis_options)
+setup_test(test_photolysis_kinetics)
+setup_test(test_actinic_flux)
+setup_test(test_ch4_photolysis)
+setup_test(test_chapman_cycle)
 
 file(GLOB inputs *.inp *.dat *.yaml)
 foreach(input ${inputs})
