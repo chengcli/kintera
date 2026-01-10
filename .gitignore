@@ -29,3 +29,5 @@ CLAUDE.md
 # test outputs
 examples/*.png
 examples/*.pdf
+
+.vscode
