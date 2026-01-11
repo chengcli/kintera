@@ -27,6 +27,9 @@ struct Reaction {
   //! Reaction orders
   ADD_ARG(Composition, orders);
 
+  //! Third-body collision efficiencies (for three-body reactions)
+  ADD_ARG(Composition, efficiencies) = {};
+
   ADD_ARG(bool, reversible) = false;
 };
 
