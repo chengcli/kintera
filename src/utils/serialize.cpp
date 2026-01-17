@@ -20,7 +20,11 @@ void load_tensors(std::map<std::string, torch::Tensor>& tensor_map,
   torch::serialize::InputArchive archive;
   archive.load_from(filename);
   for (auto& pair : tensor_map) {
-    archive.read(pair.first, pair.second);
+    try {
+      archive.read(pair.first, pair.second);
+    } catch (const c10::Error& e) {
+      // skip missing tensors
+    }
   }
 }
 
