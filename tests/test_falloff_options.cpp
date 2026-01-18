@@ -1,3 +1,6 @@
+// C/C++
+#include <set>
+
 // external
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
@@ -5,8 +8,14 @@
 // kintera
 #include <kintera/kinetics/falloff.hpp>
 #include <kintera/kintera_formatter.hpp>
+#include <kintera/species.hpp>
 
 using namespace kintera;
+
+// Declare species_names at file scope for add_to_vapor_cloud tests
+namespace kintera {
+extern std::vector<std::string> species_names;
+}
 
 TEST(FalloffOptionsTest, default_options) {
   auto options = FalloffOptionsImpl::create();
@@ -314,4 +323,134 @@ TEST(FalloffOptionsTest, falloff_type_enum) {
   EXPECT_EQ(string_to_falloff_type("Troe"), FalloffType::Troe);
   EXPECT_EQ(string_to_falloff_type("SRI"), FalloffType::SRI);
   EXPECT_EQ(string_to_falloff_type("unknown"), FalloffType::None);
+}
+
+TEST(FalloffOptionsTest, add_to_vapor_cloud_three_body) {
+  // Initialize species list
+  kintera::species_names = {"H2O2", "O", "H2O", "M", "AR", "H2", "OH"};
+
+  std::string yaml_str = R"(
+- equation: H2O2 + M <=> O + H2O + M
+  type: three-body
+  rate-constant: {A: 1.2e+11, b: -1.0, Ea_R: 0.0}
+  efficiencies: {AR: 0.83, H2: 2.4, H2O: 15.4}
+)";
+
+  YAML::Node root = YAML::Load(yaml_str);
+  auto options = FalloffOptionsImpl::from_yaml(root);
+
+  std::set<std::string> vapor_set;
+  std::set<std::string> cloud_set;
+
+  add_to_vapor_cloud(vapor_set, cloud_set, options);
+
+  // Should include reactants (H2O2), products (O, H2O), and efficiency species (AR, H2, H2O)
+  // Note: M should be skipped
+  EXPECT_TRUE(vapor_set.count("H2O2") > 0);  // Reactant
+  EXPECT_TRUE(vapor_set.count("O") > 0);     // Product
+  EXPECT_TRUE(vapor_set.count("H2O") > 0);   // Product + efficiency
+  EXPECT_TRUE(vapor_set.count("AR") > 0);    // Efficiency
+  EXPECT_TRUE(vapor_set.count("H2") > 0);    // Efficiency
+  EXPECT_FALSE(vapor_set.count("M") > 0);    // Should be skipped
+}
+
+TEST(FalloffOptionsTest, add_to_vapor_cloud_falloff) {
+  // Initialize species list
+  kintera::species_names = {"OH", "H2O2", "M", "AR", "H2", "H2O"};
+
+  std::string yaml_str = R"(
+- equation: 2 OH (+ M) <=> H2O2 (+ M)
+  type: falloff
+  low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: 0.0}
+  high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+  efficiencies: {AR: 0.7, H2: 2.0, H2O: 6.0}
+)";
+
+  YAML::Node root = YAML::Load(yaml_str);
+  auto options = FalloffOptionsImpl::from_yaml(root);
+
+  std::set<std::string> vapor_set;
+  std::set<std::string> cloud_set;
+
+  add_to_vapor_cloud(vapor_set, cloud_set, options);
+
+  // Should include reactants (OH), products (H2O2), and efficiency species (AR, H2, H2O)
+  // Note: M or (+M) should be skipped
+  EXPECT_TRUE(vapor_set.count("OH") > 0);    // Reactant
+  EXPECT_TRUE(vapor_set.count("H2O2") > 0);  // Product
+  EXPECT_TRUE(vapor_set.count("AR") > 0);    // Efficiency
+  EXPECT_TRUE(vapor_set.count("H2") > 0);    // Efficiency
+  EXPECT_TRUE(vapor_set.count("H2O") > 0);   // Efficiency
+  EXPECT_FALSE(vapor_set.count("M") > 0);    // Should be skipped
+}
+
+TEST(FalloffOptionsTest, add_to_vapor_cloud_multiple_reactions) {
+  // Initialize species list
+  kintera::species_names = {"H2O2", "O", "H2O", "OH", "AR", "H2", "N2", "O2", "H"};
+
+  std::string yaml_str = R"(
+- equation: H2O2 + M <=> O + H2O + M
+  type: three-body
+  rate-constant: {A: 1.2e+11, b: -1.0, Ea_R: 0.0}
+  efficiencies: {AR: 0.83, H2: 2.4}
+- equation: 2 OH (+ M) <=> H2O2 (+ M)
+  type: falloff
+  low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: 0.0}
+  high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+  efficiencies: {N2: 1.0, O2: 0.4, H2O: 6.0}
+- equation: O + H2 (+ M) <=> H + OH (+ M)
+  type: falloff
+  low-P-rate-constant: {A: 4.0e+19, b: -3.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 1.0e+15, b: -2.0, Ea_R: 0.0}
+)";
+
+  YAML::Node root = YAML::Load(yaml_str);
+  auto options = FalloffOptionsImpl::from_yaml(root);
+
+  std::set<std::string> vapor_set;
+  std::set<std::string> cloud_set;
+
+  add_to_vapor_cloud(vapor_set, cloud_set, options);
+
+  // Should include all species from all reactions
+  // Reaction 1: H2O2, O, H2O, AR, H2
+  EXPECT_TRUE(vapor_set.count("H2O2") > 0);
+  EXPECT_TRUE(vapor_set.count("O") > 0);
+  EXPECT_TRUE(vapor_set.count("H2O") > 0);
+  EXPECT_TRUE(vapor_set.count("AR") > 0);
+  EXPECT_TRUE(vapor_set.count("H2") > 0);
+
+  // Reaction 2: OH, H2O2, N2, O2, H2O
+  EXPECT_TRUE(vapor_set.count("OH") > 0);
+  EXPECT_TRUE(vapor_set.count("N2") > 0);
+  EXPECT_TRUE(vapor_set.count("O2") > 0);
+
+  // Reaction 3: O, H2, H, OH (no efficiencies)
+  EXPECT_TRUE(vapor_set.count("H") > 0);
+}
+
+TEST(FalloffOptionsTest, add_to_vapor_cloud_no_efficiencies) {
+  // Initialize species list
+  kintera::species_names = {"OH", "H2O2", "M"};
+
+  std::string yaml_str = R"(
+- equation: 2 OH (+ M) <=> H2O2 (+ M)
+  type: falloff
+  low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: 0.0}
+  high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+)";
+
+  YAML::Node root = YAML::Load(yaml_str);
+  auto options = FalloffOptionsImpl::from_yaml(root);
+
+  std::set<std::string> vapor_set;
+  std::set<std::string> cloud_set;
+
+  add_to_vapor_cloud(vapor_set, cloud_set, options);
+
+  // Should only include reactants and products (no efficiency species)
+  EXPECT_TRUE(vapor_set.count("OH") > 0);
+  EXPECT_TRUE(vapor_set.count("H2O2") > 0);
+  EXPECT_FALSE(vapor_set.count("M") > 0);
+  EXPECT_EQ(vapor_set.size(), 2);  // Only OH and H2O2
 }
