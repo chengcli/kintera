@@ -31,6 +31,9 @@ struct NucleationOptionsImpl {
   virtual std::string name() const { return "nucleation"; }
   virtual ~NucleationOptionsImpl() = default;
 
+  std::shared_ptr<NucleationOptionsImpl> clone() const {
+    return std::make_shared<NucleationOptionsImpl>(*this);
+  }
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* minT = " << fmt::format("{}", minT()) << " K\n"

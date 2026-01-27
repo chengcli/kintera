@@ -37,6 +37,9 @@ struct EvaporationOptionsImpl final : public NucleationOptionsImpl {
   EvaporationOptionsImpl(const NucleationOptionsImpl& nucleation)
       : NucleationOptionsImpl(nucleation) {}
 
+  std::shared_ptr<ReactionOptionsImpl> clone() const {
+    return std::make_shared<EvaporationOptionsImpl>(*this);
+  }
   void report(std::ostream& os) const {
     NucleationOptionsImpl::report(os);
     os << "* Tref = " << Tref() << " K\n"

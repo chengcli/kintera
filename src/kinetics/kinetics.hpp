@@ -33,6 +33,12 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   static std::shared_ptr<KineticsOptionsImpl> from_yaml(
       YAML::Node const& config, bool verbose = false);
 
+  std::shared_ptr<KineticsOptionsImpl> clone() const {
+    auto op = std::make_shared<KineticsOptionsImpl>(*this);
+    if (arrhenius()) op->arrhenius() = arrhenius()->clone();
+    if (coagulation()) op->coagulation() = coagulation()->clone();
+    if (evaporation()) op->evaporation() = evaporation()->clone();
+  }
   void report(std::ostream& os) const {
     os << "-- kinetics options --\n";
     os << "* Tref = " << Tref() << " K\n"

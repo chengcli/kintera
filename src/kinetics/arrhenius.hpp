@@ -35,6 +35,9 @@ struct ArrheniusOptionsImpl {
   virtual std::string name() const { return "arrhenius"; }
   virtual ~ArrheniusOptionsImpl() = default;
 
+  std::shared_ptr<ArrheniusOptionsImpl> clone() const {
+    return std::make_shared<ArrheniusOptionsImpl>(*this);
+  }
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* Tref = " << Tref() << " K\n"
