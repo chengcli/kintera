@@ -38,6 +38,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     if (arrhenius()) op->arrhenius() = arrhenius()->clone();
     if (coagulation()) op->coagulation() = coagulation()->clone();
     if (evaporation()) op->evaporation() = evaporation()->clone();
+    return op;
   }
   void report(std::ostream& os) const {
     os << "-- kinetics options --\n";
