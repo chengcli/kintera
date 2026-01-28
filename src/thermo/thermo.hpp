@@ -55,6 +55,13 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   static std::shared_ptr<ThermoOptionsImpl> from_yaml(YAML::Node const& config,
                                                       bool verbose = false);
 
+  std::shared_ptr<ThermoOptionsImpl> clone() const {
+    auto op = std::make_shared<ThermoOptionsImpl>(*this);
+    if (nucleation() != nullptr) {
+      op->nucleation() = nucleation()->clone();
+    }
+    return op;
+  }
   void report(std::ostream& os) const {
     os << "-- thermodynamics options --\n";
     os << "* Tref = " << Tref() << " K\n"

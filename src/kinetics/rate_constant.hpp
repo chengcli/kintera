@@ -19,6 +19,10 @@ struct RateConstantOptionsImpl {
   static std::shared_ptr<RateConstantOptionsImpl> create() {
     return std::make_shared<RateConstantOptionsImpl>();
   }
+  std::shared_ptr<RateConstantOptionsImpl> clone() const {
+    return std::make_shared<RateConstantOptionsImpl>(*this);
+  }
+
   ADD_ARG(std::vector<std::string>, types) = {};
   ADD_ARG(std::string, reaction_file) = "";
 };

@@ -27,6 +27,9 @@ struct CoagulationOptionsImpl final : public ArrheniusOptionsImpl {
   CoagulationOptionsImpl(const ArrheniusOptionsImpl& arrhenius)
       : ArrheniusOptionsImpl(arrhenius) {}
 
+  std::shared_ptr<CoagulationOptionsImpl> clone() const {
+    return std::make_shared<CoagulationOptionsImpl>(*this);
+  }
   void report(std::ostream& os) const { ArrheniusOptionsImpl::report(os); }
 };
 using CoagulationOptions = std::shared_ptr<CoagulationOptionsImpl>;
