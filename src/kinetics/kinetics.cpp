@@ -4,6 +4,7 @@
 #include <kintera/constants.h>
 
 #include <kintera/thermo/eval_uhs.hpp>
+#include "falloff.hpp"
 
 namespace kintera {
 
@@ -122,6 +123,18 @@ void KineticsImpl::reset() {
     std::cout << "[Kinetics] registered "
               << options->evaporation()->reactions().size()
               << " Evaporation reactions" << std::endl;
+  }
+
+  // register Falloff rates
+  rc_evaluator.push_back(
+      torch::nn::AnyModule(Falloff(options->falloff())));
+  register_module("falloff", rc_evaluator.back().ptr());
+  _nreactions.push_back(options->falloff()->reactions().size());
+
+  if (options->verbose()) {
+    std::cout << "[Kinetics] registered "
+              << options->falloff()->reactions().size()
+              << " Falloff reactions" << std::endl;
   }
 
   // register Photolysis rates

@@ -95,6 +95,15 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
               << std::endl;
   }
 
+  kinet->falloff() = FalloffOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->falloff());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Falloff reactions",
+                     kinet->falloff()->reactions().size())
+              << std::endl;
+  }
+
   // add photolysis reactions
   kinet->photolysis() = PhotolysisOptionsImpl::from_yaml(config["reactions"]);
   add_to_vapor_cloud(vapor_set, cloud_set, kinet->photolysis());
@@ -155,6 +164,7 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   reactions.reserve(arrhenius()->reactions().size() +
                     coagulation()->reactions().size() +
                     evaporation()->reactions().size() +
+                    falloff()->reactions().size() +
                     photolysis()->reactions().size());
 
   for (const auto& reaction : arrhenius()->reactions()) {
@@ -166,6 +176,10 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   }
 
   for (const auto& reaction : evaporation()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : falloff()->reactions()) {
     reactions.push_back(reaction);
   }
 

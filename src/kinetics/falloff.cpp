@@ -201,7 +201,6 @@ void FalloffImpl::reset() {
   int nspecies = species_names.size();
   TORCH_CHECK(nspecies > 0, "species_names not initialized");
 
-  // Convert Arrhenius parameters to tensors
   k0_A = register_buffer("k0_A", torch::tensor(options->k0_A(), torch::kFloat64));
   k0_b = register_buffer("k0_b", torch::tensor(options->k0_b(), torch::kFloat64));
   k0_Ea_R = register_buffer("k0_Ea_R", torch::tensor(options->k0_Ea_R(), torch::kFloat64));
@@ -210,37 +209,31 @@ void FalloffImpl::reset() {
   kinf_b = register_buffer("kinf_b", torch::tensor(options->kinf_b(), torch::kFloat64));
   kinf_Ea_R = register_buffer("kinf_Ea_R", torch::tensor(options->kinf_Ea_R(), torch::kFloat64));
 
-  // Convert falloff type flags
   std::vector<int> falloff_type_vec;
   for (auto ft : options->falloff_types()) {
     falloff_type_vec.push_back(ft);
   }
   falloff_type_flags = register_buffer("falloff_type_flags", torch::tensor(falloff_type_vec, torch::kInt32));
 
-  // Convert is_three_body flags
   std::vector<int> is_three_body_vec;
   for (auto itb : options->is_three_body()) {
     is_three_body_vec.push_back(itb ? 1 : 0);
   }
   is_three_body = register_buffer("is_three_body", torch::tensor(is_three_body_vec, torch::kInt32));
 
-  // Convert Troe parameters
   troe_A = register_buffer("troe_A", torch::tensor(options->troe_A(), torch::kFloat64));
   troe_T3 = register_buffer("troe_T3", torch::tensor(options->troe_T3(), torch::kFloat64));
   troe_T1 = register_buffer("troe_T1", torch::tensor(options->troe_T1(), torch::kFloat64));
   troe_T2 = register_buffer("troe_T2", torch::tensor(options->troe_T2(), torch::kFloat64));
 
-  // Convert SRI parameters
   sri_A = register_buffer("sri_A", torch::tensor(options->sri_A(), torch::kFloat64));
   sri_B = register_buffer("sri_B", torch::tensor(options->sri_B(), torch::kFloat64));
   sri_C = register_buffer("sri_C", torch::tensor(options->sri_C(), torch::kFloat64));
   sri_D = register_buffer("sri_D", torch::tensor(options->sri_D(), torch::kFloat64));
   sri_E = register_buffer("sri_E", torch::tensor(options->sri_E(), torch::kFloat64));
 
-  // Build efficiency matrix: shape (nreaction, nspecies)
-  // For each reaction i and species j:
-  //   efficiency_matrix[i][j] = efficiency from map if exists, else 1.0
-  std::vector<double> eff_matrix_data(nreaction * nspecies, 1.0);  // Default to 1.0
+  // Build efficiency matrix: (nreaction, nspecies), default efficiency = 1.0
+  std::vector<double> eff_matrix_data(nreaction * nspecies, 1.0);
 
   for (int i = 0; i < nreaction; i++) {
     const auto& eff_map = options->efficiencies()[i];
@@ -288,82 +281,38 @@ void FalloffImpl::pretty_print(std::ostream& os) const {
   }
 }
 
-// Task 2.3: Compute effective third-body concentration [M]_eff
-torch::Tensor FalloffImpl::compute_effective_M(torch::Tensor C) const {
-  // C shape: (..., nspecies)
-  // efficiency_matrix shape: (nreaction, nspecies)
-  // Result shape: (..., nreaction)
-  
-  // Compute: [M]_eff[i] = sum_j (efficiency_matrix[i][j] * C[j])
-  // This is: C @ efficiency_matrix.T
-  // C: (..., nspecies), efficiency_matrix.T: (nspecies, nreaction)
-  // Result: (..., nreaction)
-  
-  auto eff_T = efficiency_matrix.transpose(0, 1);  // (nspecies, nreaction)
-  
-  // Use einsum or batched matmul
-  // If C is 1D: (nspecies,) @ (nspecies, nreaction) -> (nreaction,)
-  // If C is 2D+: (..., nspecies) - need to do batched matmul on last dimension
-  // Use torch::matmul which handles batched matmul: (..., n) @ (n, m) -> (..., m)
-  return torch::matmul(C, eff_T);  // (..., nspecies) @ (nspecies, nreaction) -> (..., nreaction)
-}
-
-// Task 2.4: Compute k0 rate constant
 torch::Tensor FalloffImpl::compute_k0(torch::Tensor T) const {
-  // k0 = A * (T/Tref)^b * exp(-Ea_R/T)
-  // T shape: (...)
-  // k0_A, k0_b, k0_Ea_R shape: (nreaction,)
-  // Result shape: (..., nreaction)
-  
   auto Tref = options->Tref();
-  auto temp = T.unsqueeze(-1);  // (..., 1) for broadcasting
-  
-  // Broadcast: (..., 1) with (nreaction,) -> (..., nreaction)
+  auto temp = T.unsqueeze(-1);
   return k0_A * (temp / Tref).pow(k0_b) * torch::exp(-k0_Ea_R / temp);
 }
 
-// Task 2.4: Compute k_inf rate constant
 torch::Tensor FalloffImpl::compute_kinf(torch::Tensor T) const {
-  // k_inf = A * (T/Tref)^b * exp(-Ea_R/T)
-  // Same as k0 but using kinf parameters
-  
   auto Tref = options->Tref();
-  auto temp = T.unsqueeze(-1);  // (..., 1) for broadcasting
-  
+  auto temp = T.unsqueeze(-1);
   return kinf_A * (temp / Tref).pow(kinf_b) * torch::exp(-kinf_Ea_R / temp);
 }
 
-// Task 2.5-2.6: Compute falloff broadening factor F
 torch::Tensor FalloffImpl::compute_falloff_factor(torch::Tensor T, torch::Tensor Pr) const {
-  // T shape: (...)
-  // Pr shape: (..., nreaction)
-  // Result shape: (..., nreaction)
-  
   int nreaction = efficiency_matrix.size(0);
-  auto temp = T.unsqueeze(-1);  // (..., 1) for broadcasting
+  auto temp = T.unsqueeze(-1);
+  auto result = torch::ones_like(Pr);
   
-  auto result = torch::ones_like(Pr);  // Initialize to 1.0 (no broadening for Lindemann/three-body)
+  auto Pr_clamped = Pr.clamp(1e-300, 1e300);
+  auto log10_Pr = torch::log10(Pr_clamped);
+  auto log10_Pr_sq = log10_Pr * log10_Pr;
+  auto denom = 1.0 + log10_Pr_sq;
   
-  // Compute Pr in log10 with stability: avoid log10 of very small numbers
-  // Use clamp to avoid numerical issues
-  auto Pr_clamped = Pr.clamp(1e-300, 1e300);  // Clamp to reasonable range
-  auto log10_Pr = torch::log10(Pr_clamped);  // (..., nreaction)
-  auto log10_Pr_sq = log10_Pr * log10_Pr;  // (..., nreaction)
-  auto denom = 1.0 + log10_Pr_sq;  // (..., nreaction)
-  
-  // For each reaction type, compute F_cent and then F
   for (int i = 0; i < nreaction; i++) {
     auto falloff_type = static_cast<FalloffType>(falloff_type_flags[i].item<int>());
     
     if (falloff_type == FalloffType::None) {
-      // Lindemann or three-body: F = 1.0 (already initialized)
       continue;
     }
     
     torch::Tensor F_cent;
     
     if (falloff_type == FalloffType::Troe) {
-      // Troe: F_cent = (1-A)*exp(-T/T3) + A*exp(-T/T1) + exp(-T2/T) [if T2 != 0]
       auto troe_A_val = troe_A[i].item<double>();
       auto troe_T3_val = troe_T3[i].item<double>();
       auto troe_T1_val = troe_T1[i].item<double>();
@@ -372,12 +321,10 @@ torch::Tensor FalloffImpl::compute_falloff_factor(torch::Tensor T, torch::Tensor
       F_cent = (1.0 - troe_A_val) * torch::exp(-temp / troe_T3_val) +
                 troe_A_val * torch::exp(-temp / troe_T1_val);
       
-      // Add 4th parameter term if T2 != 0
       if (std::abs(troe_T2_val) > 1e-10) {
         F_cent = F_cent + torch::exp(-troe_T2_val / temp);
       }
     } else if (falloff_type == FalloffType::SRI) {
-      // SRI: F_cent = A*exp(-B/T) + exp(-T/C) + D*exp(-E/T) [if E != 0]
       auto sri_A_val = sri_A[i].item<double>();
       auto sri_B_val = sri_B[i].item<double>();
       auto sri_C_val = sri_C[i].item<double>();
@@ -387,29 +334,22 @@ torch::Tensor FalloffImpl::compute_falloff_factor(torch::Tensor T, torch::Tensor
       F_cent = sri_A_val * torch::exp(-sri_B_val / temp) +
                 torch::exp(-temp / sri_C_val);
       
-      // Add 5th parameter term if E != 0
       if (std::abs(sri_E_val) > 1e-10) {
         F_cent = F_cent + sri_D_val * torch::exp(-sri_E_val / temp);
       }
     } else {
-      continue;  // Should not happen
+      continue;
     }
     
-    // F = F_cent^(1/(1 + log10(Pr)^2))
-    // Clamp F_cent to avoid issues with very small values
     F_cent = F_cent.clamp(1e-300, 1e300);
-    // denom has shape (..., nreaction), we need (..., 1) for this reaction
-    auto denom_i = denom.select(-1, i).unsqueeze(-1);  // (..., 1)
-    auto F = F_cent.pow(1.0 / denom_i);  // (..., 1)
-    
-    // Set result for this reaction: (..., 1) -> (...,) then assign to result[..., i]
+    auto denom_i = denom.select(-1, i).unsqueeze(-1);
+    auto F = F_cent.pow(1.0 / denom_i);
     result.select(-1, i).copy_(F.squeeze(-1));
   }
   
   return result;
 }
 
-// Task 2.7: Main forward method
 torch::Tensor FalloffImpl::forward(torch::Tensor T, torch::Tensor P, torch::Tensor C,
                                     std::map<std::string, torch::Tensor> const& other) {
   int nreaction = options->reactions().size();
@@ -419,45 +359,39 @@ torch::Tensor FalloffImpl::forward(torch::Tensor T, torch::Tensor P, torch::Tens
     return torch::empty(out_shape, T.options());
   }
   
-  // Compute k0 and k_inf: shape (..., nreaction)
   auto k0 = compute_k0(T);
   auto kinf = compute_kinf(T);
   
-  // Compute effective [M]: shape (..., nreaction)
-  auto M_eff = compute_effective_M(C);
+  // Extract concentration from expanded tensor (C may have shape (..., nspecies, nreaction))
+  auto C_actual = C;
+  if (C.dim() >= 2 && C.size(-1) == nreaction) {
+    C_actual = C.select(C.dim() - 1, 0);
+  }
   
-  // Compute reduced pressure: Pr = k0*[M]/k_inf
-  // Handle three-body case where k_inf is very large (clamp to avoid numerical issues)
-  auto kinf_clamped = kinf.clamp(1e-100);  // Avoid division by zero
-  auto Pr = k0 * M_eff / kinf_clamped;  // (..., nreaction)
+  // Compute effective [M] using efficiency matrix
+  int nspecies_kinetics = C_actual.size(-1);
+  int nspecies_full = efficiency_matrix.size(1);
+  auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, std::min(nspecies_kinetics, nspecies_full));
+  auto eff_T = eff_matrix_kinetics.transpose(0, 1);
+  auto M_eff = torch::matmul(C_actual, eff_T);
   
-  // Compute falloff factor F: shape (..., nreaction)
+  auto kinf_clamped = kinf.clamp(1e-100);
+  auto Pr = k0 * M_eff / kinf_clamped;
   auto F = compute_falloff_factor(T, Pr);
   
-  // Compute rate constant based on reaction type
-  // For three-body reactions: k = k0 * [M]
-  // For falloff reactions: k = k0*[M] / (1 + Pr) * F
+  auto is_three_body_bool = is_three_body.toType(torch::kBool);
+  auto k_three_body = k0 * M_eff;
+  auto k_lindemann = k0 * M_eff / (1.0 + Pr);
+  auto k_falloff = k_lindemann * F;
   
-  // Get is_three_body flags for all reactions as boolean
-  auto is_three_body_bool = is_three_body.toType(torch::kBool);  // (nreaction,)
-  
-  // Compute both rate types
-  auto k_three_body = k0 * M_eff;  // (..., nreaction)
-  auto k_lindemann = k0 * M_eff / (1.0 + Pr);  // (..., nreaction)
-  auto k_falloff = k_lindemann * F;  // (..., nreaction)
-  
-  // Expand is_three_body_bool to match result shape for broadcasting
-  // is_three_body_bool: (nreaction,) -> need (..., nreaction)
   auto out_shape = k0.sizes();
   std::vector<int64_t> mask_shape;
   for (int64_t i = 0; i < out_shape.size() - 1; i++) {
-    mask_shape.push_back(1);  // Add leading dimensions of size 1
+    mask_shape.push_back(1);
   }
-  mask_shape.push_back(nreaction);  // Last dimension matches nreaction
+  mask_shape.push_back(nreaction);
   
   auto mask = is_three_body_bool.view(mask_shape).expand(out_shape);
-  
-  // Select three-body or falloff rate based on mask
   auto result = torch::where(mask, k_three_body, k_falloff);
   
   return result;

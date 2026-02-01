@@ -164,10 +164,8 @@ class FalloffImpl : public torch::nn::Cloneable<FalloffImpl> {
                         std::map<std::string, torch::Tensor> const& other);
 
  private:
-  //! Helper methods for rate constant calculation
   torch::Tensor compute_k0(torch::Tensor T) const;
   torch::Tensor compute_kinf(torch::Tensor T) const;
-  torch::Tensor compute_effective_M(torch::Tensor C) const;
   torch::Tensor compute_falloff_factor(torch::Tensor T, torch::Tensor Pr) const;
 };
 TORCH_MODULE(Falloff);
