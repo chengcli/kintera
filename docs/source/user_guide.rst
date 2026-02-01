@@ -229,10 +229,15 @@ For time-dependent chemistry:
 
    from kintera import Kinetics, KineticsOptions, ArrheniusOptions
 
-Arrhenius Rate Expressions
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Reaction Types
+~~~~~~~~~~~~~~
 
-Define rate constants:
+KINTERA supports several types of chemical reactions, each with different rate constant formulations.
+
+Arrhenius Reactions
+~~~~~~~~~~~~~~~~~~~
+
+Standard temperature-dependent rate constants:
 
 .. code-block:: python
 
@@ -243,6 +248,98 @@ Define rate constants:
    rate.A(1.0e13)      # Pre-exponential factor
    rate.b(0.0)         # Temperature exponent
    rate.Ea(50.0e3)     # Activation energy (J/mol)
+
+YAML configuration:
+
+.. code-block:: yaml
+
+   reactions:
+   - equation: O + H2 <=> H + OH
+     type: arrhenius
+     rate-constant: {A: 38.7, b: 2.7, Ea_R: 6260.0}
+
+Three-Body Reactions
+~~~~~~~~~~~~~~~~~~~~
+
+Simple three-body reactions have the form ``A + B + M → products + M``, where M is a third body (collision partner). The rate is:
+
+.. math::
+
+   k = k_0 \times [M]_{eff}
+
+where :math:`[M]_{eff} = \sum_i \alpha_i [species_i]` is the effective third-body concentration, and :math:`\alpha_i` are collision efficiencies.
+
+YAML configuration:
+
+.. code-block:: yaml
+
+   reactions:
+   - equation: H2O2 + M <=> O + H2O + M
+     type: three-body
+     rate-constant: {A: 1.2e+11, b: -1.0, Ea_R: 0.0}
+     efficiencies: {AR: 0.83, H2: 2.4, H2O: 15.4}
+
+Falloff Reactions
+~~~~~~~~~~~~~~~~~
+
+Falloff reactions transition between low-pressure and high-pressure limits:
+
+.. math::
+
+   k = \frac{k_0 [M]_{eff}}{1 + k_0 [M]_{eff} / k_{\infty}} \times F(T)
+
+where :math:`F(T)` is a broadening factor (1.0 for Lindemann, or Troe/SRI for enhanced accuracy).
+
+YAML configuration examples:
+
+.. code-block:: yaml
+
+   reactions:
+   # Lindemann falloff (no broadening)
+   - equation: 2 OH (+ M) <=> H2O2 (+ M)
+     type: falloff
+     low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: -1700.0}
+     high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+     efficiencies: {AR: 0.7, H2: 2.0, H2O: 6.0}
+
+   # Troe falloff (3-parameter)
+   - equation: 2 OH (+ M) <=> H2O2 (+ M)
+     type: falloff
+     low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: -1700.0}
+     high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+     Troe: {A: 0.51, T3: 1.0e-30, T1: 1.0e+30}
+     efficiencies: {AR: 0.3, H2: 1.5, H2O: 2.7}
+
+   # Troe falloff (4-parameter)
+   - equation: 2 OH (+ M) <=> H2O2 (+ M)
+     type: falloff
+     low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: -1700.0}
+     high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+     Troe: {A: 0.7346, T3: 94.0, T1: 1756.0, T2: 5182.0}
+     efficiencies: {AR: 0.7, H2: 2.0, H2O: 6.0}
+
+   # SRI falloff (3-parameter)
+   - equation: O + H2 (+ M) <=> H + OH (+ M)
+     type: falloff
+     low-P-rate-constant: {A: 4.0e+19, b: -3.0, Ea: 0.0 cal/mol}
+     high-P-rate-constant: {A: 1.0e+15, b: -2.0, Ea: 1000.0 cal/mol}
+     SRI: {A: 0.54, B: 201.0, C: 1024.0}
+
+   # SRI falloff (5-parameter)
+   - equation: H + HO2 (+ M) <=> H2 + O2 (+ M)
+     type: falloff
+     low-P-rate-constant: {A: 7.0e+20, b: -1.0, Ea: 0.0 cal/mol}
+     high-P-rate-constant: {A: 4.0e+15, b: -0.5, Ea: 100.0 cal/mol}
+     SRI: {A: 1.1, B: 700.0, C: 1234.0, D: 56.0, E: 0.7}
+     efficiencies: {AR: 0.7, H2: 2.0, H2O: 6.0}
+
+**Notes:**
+
+* Use ``type: falloff`` with both ``low-P-rate-constant`` and ``high-P-rate-constant``
+* Optional ``efficiencies`` map specifies third-body collision efficiencies (defaults to 1.0)
+* Optional ``Troe`` or ``SRI`` nodes add temperature-dependent broadening
+* Activation energies can be ``Ea_R`` (K) or ``Ea`` with units (``cal/mol``, ``kJ/mol``)
+* Input units: ``molecule, cm, s``; internal: ``mol, m, s``
 
 Configuring Kinetics
 ~~~~~~~~~~~~~~~~~~~~

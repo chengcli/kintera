@@ -268,6 +268,49 @@ Defining and working with custom chemical reactions.
 
    print("Configured", len(nucleation.reactions()), "phase transitions")
 
+Example 4a: Falloff and Three-Body Reactions
+----------------------------------------------
+
+Working with pressure-dependent reaction rates.
+
+.. code-block:: python
+
+   import torch
+   from kintera import KineticsOptions, Kinetics
+
+   # Load reactions from YAML (includes falloff reactions)
+   kop = KineticsOptions.from_yaml("sample_reaction_full.yaml")
+   kinet = Kinetics(kop)
+
+   # Set up conditions
+   temp = torch.tensor([300.0, 500.0, 1000.0], dtype=torch.float64)
+   pres = torch.tensor([101325.0, 101325.0, 101325.0], dtype=torch.float64)
+   
+   # Create concentration array (mol/m³)
+   species = kop.species()
+   nspecies = len(species)
+   conc = torch.zeros((3, nspecies), dtype=torch.float64)
+   
+   # Set realistic concentrations (example)
+   # ... (set concentrations for each species) ...
+   
+   # Compute reaction rates
+   rate, rc_ddC, rc_ddT = kinet.forward(temp, pres, conc)
+   
+   print(f"Reaction rates shape: {rate.shape}")  # (3, nreactions)
+   print(f"Rate constants: {rate}")
+
+   # Access falloff-specific information
+   falloff_opts = kop.falloff()
+   print(f"Falloff reactions: {len(falloff_opts.reactions())}")
+   print(f"Three-body reactions: {sum(falloff_opts.is_three_body())}")
+   
+   # Compute Jacobian (includes derivatives w.r.t. third-body species)
+   cvol = torch.ones(3, dtype=torch.float64)
+   jac = kinet.jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT)
+   
+   print(f"Jacobian shape: {jac.shape}")  # (nspecies, nspecies, 3)
+
 Example 5: GPU Acceleration
 ----------------------------
 

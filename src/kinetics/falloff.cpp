@@ -362,18 +362,26 @@ torch::Tensor FalloffImpl::forward(torch::Tensor T, torch::Tensor P, torch::Tens
   auto k0 = compute_k0(T);
   auto kinf = compute_kinf(T);
   
-  // Extract concentration from expanded tensor (C may have shape (..., nspecies, nreaction))
-  auto C_actual = C;
-  if (C.dim() >= 2 && C.size(-1) == nreaction) {
-    C_actual = C.select(C.dim() - 1, 0);
-  }
+  torch::Tensor M_eff;
+  int nspecies_kinetics, nspecies_full = efficiency_matrix.size(1);
   
-  // Compute effective [M] using efficiency matrix
-  int nspecies_kinetics = C_actual.size(-1);
-  int nspecies_full = efficiency_matrix.size(1);
-  auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, std::min(nspecies_kinetics, nspecies_full));
-  auto eff_T = eff_matrix_kinetics.transpose(0, 1);
-  auto M_eff = torch::matmul(C_actual, eff_T);
+  if (C.dim() >= 2 && C.size(-1) == nreaction) {
+    // C has shape (..., nspecies, nreaction)
+    // Extract concentration: C[..., :, 0] -> (..., nspecies)
+    // Use select() to preserve gradients for autograd
+    int last_dim = C.dim() - 1;
+    auto C_actual = C.select(last_dim, 0);  // (..., nspecies)
+    nspecies_kinetics = C_actual.size(-1);
+    
+    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, std::min(nspecies_kinetics, nspecies_full));
+    auto eff_T = eff_matrix_kinetics.transpose(0, 1);
+    M_eff = torch::matmul(C_actual, eff_T);
+  } else {
+    nspecies_kinetics = C.size(-1);
+    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, std::min(nspecies_kinetics, nspecies_full));
+    auto eff_T = eff_matrix_kinetics.transpose(0, 1);
+    M_eff = torch::matmul(C, eff_T);
+  }
   
   auto kinf_clamped = kinf.clamp(1e-100);
   auto Pr = k0 * M_eff / kinf_clamped;
