@@ -62,10 +62,12 @@ if sys.platform == "darwin":
     ]
 else:
     extra_link_args = [
+        "-Wl,--no-as-needed",
         "-Wl,-rpath,$ORIGIN/lib",
         "-Wl,-rpath,$ORIGIN/../torch/lib",
         "-Wl,-rpath,$ORIGIN/../pydisort/lib",
         "-Wl,-rpath,$ORIGIN/../pyharp/lib",
+        "-Wl,--as-needed",
     ]
 
 ext_module = cpp_extension.CppExtension(

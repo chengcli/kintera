@@ -22,4 +22,8 @@ macro(setup_problem namel)
     ${namel}.${buildl}
     PRIVATE kintera::kintera
             $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>)
+
+  if (UNIX AND NOT APPLE)
+    target_link_options(${namel}.${buildl} PRIVATE -Wl,--no-as-needed)
+  endif()
 endmacro()
