@@ -19,9 +19,13 @@ macro(setup_test namel)
 
   target_link_libraries(
     ${namel}.${buildl}
-    PRIVATE  kintera::kintera
+    PRIVATE kintera::kintera
             $<IF:$<BOOL:${CUDAToolkit_FOUND}>,kintera::kintera_cu,>
             gtest_main)
+
+  if (UNIX AND NOT APPLE)
+    target_link_options(${namel}.${buildl} PRIVATE -Wl,--no-as-needed)
+  endif()
 
   add_test(NAME ${namel}.${buildl} COMMAND ${namel}.${buildl})
 endmacro()

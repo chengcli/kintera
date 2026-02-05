@@ -21,9 +21,15 @@ def parse_library_names(libdir):
     library_names.extend(['netcdf'])
 
     # move current library name to first
-    current = [item for item in library_names if item.startswith('kintera')]
-    other = [item for item in library_names if not item.startswith('kintera')]
-    return current + other
+    #current = [item for item in library_names if item.startswith('kintera')]
+    #other = [item for item in library_names if not item.startswith('kintera')]
+    # 1) non-cuda libs first (consumers)
+    kintera_non_cuda = [l for l in library_names if l.startswith("kintera") and "cuda" not in l]
+    # 2) cuda libs last (providers)
+    kintera_cuda = [l for l in library_names if l.startswith("kintera") and "cuda" in l]
+    # 3) everything else
+    other = [l for l in library_names if not l.startswith("kintera")]
+    return kintera_non_cuda + other + kintera_cuda
 
 site_dir = sysconfig.get_paths()["purelib"]
 
@@ -62,27 +68,15 @@ else:
         "-Wl,-rpath,$ORIGIN/../pyharp/lib",
     ]
 
-if torch.cuda.is_available():
-    ext_module = cpp_extension.CUDAExtension(
-        name='kintera.kintera',
-        sources=glob.glob('python/csrc/*.cpp'),
-        include_dirs=include_dirs,
-        library_dirs=lib_dirs,
-        libraries=libraries,
-        extra_compile_args={'nvcc': ['--extended-lambda'],
-                            'cc': ["-Wno-attributes"]},
-        extra_link_args=extra_link_args,
+ext_module = cpp_extension.CppExtension(
+    name='kintera.kintera',
+    sources=glob.glob('python/csrc/*.cpp'),
+    include_dirs=include_dirs,
+    library_dirs=lib_dirs,
+    libraries=libraries,
+    extra_compile_args=['-Wno-attributes'],
+    extra_link_args=extra_link_args,
     )
-else:
-    ext_module = cpp_extension.CppExtension(
-        name='kintera.kintera',
-        sources=glob.glob('python/csrc/*.cpp'),
-        include_dirs=include_dirs,
-        library_dirs=lib_dirs,
-        libraries=libraries,
-        extra_compile_args=['-Wno-attributes'],
-        extra_link_args=extra_link_args,
-        )
 
 setup(
     package_dir={"kintera": "python"},
