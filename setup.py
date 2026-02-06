@@ -60,12 +60,14 @@ if sys.platform == "darwin":
 else:
     # ubuntu system has an aggressive linker that removes unused shared libs
     # add cuda library explicitly if built with cuda
-    cuda_linker = ["-Wl,--no-as-needed"]
-    for libname in libraries:
-        if 'cuda' in libname:
-            libraries.remove(libname)
-            cuda_linker.append(f"-l{libname}")
-    cuda_linker.append("-Wl,--as-needed")
+    cuda_linker = []
+    cuda_libraries = [lib for lib in libraries if "cuda" in lib]
+    if cuda_libraries:
+        for lib in cuda_libraries:
+            libraries.remove(lib)
+        cuda_linker = ["-Wl,--no-as-needed"]
+            + [f"-l{lib}" for lib in cuda_libraries]
+            + ["-Wl,--as-needed"]
 
     extra_link_args = [
         "-Wl,-rpath,$ORIGIN/lib",
