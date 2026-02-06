@@ -58,14 +58,22 @@ if sys.platform == "darwin":
         "-Wl,-rpath,@loader_path/../pyharp/lib",
     ]
 else:
+    # ubuntu system has an aggressive linker that removes unused shared libs
+    # add cuda library explicitly if built with cuda
+    cuda_linker = []
+    if 'kintera_cuda_release' in libraries:
+        libraries.remove('kintera_cuda_release')
+        cuda_linker = ["-Wl,--no-as-needed",
+                       "-lkintera_cuda_release",
+                       "-Wl,--as-needed"]
+
     extra_link_args = [
         "-Wl,-rpath,$ORIGIN/lib",
         "-Wl,-rpath,$ORIGIN/../torch/lib",
         "-Wl,-rpath,$ORIGIN/../pydisort/lib",
-        "-Wl,-rpath,$ORIGIN/../pyharp/lib",
-        "-Wl,--no-as-needed",
-        "-lkintera_cuda_release",
-    ]
+        "-Wl,-rpath,$ORIGIN/../pyharp/lib"
+        ]
+    extra_link_args += cuda_linker
 
 ext_module = cpp_extension.CppExtension(
     name='kintera.kintera',
