@@ -20,9 +20,6 @@ def parse_library_names(libdir):
     # add system netcdf library
     library_names.extend(['netcdf'])
 
-    # move current library name to first
-    #current = [item for item in library_names if item.startswith('kintera')]
-    #other = [item for item in library_names if not item.startswith('kintera')]
     # 1) non-cuda libs first (consumers)
     kintera_non_cuda = [l for l in library_names if l.startswith("kintera") and "cuda" not in l]
     # 2) cuda libs last (providers)
@@ -62,12 +59,12 @@ if sys.platform == "darwin":
     ]
 else:
     extra_link_args = [
-        "-Wl,--no-as-needed",
         "-Wl,-rpath,$ORIGIN/lib",
         "-Wl,-rpath,$ORIGIN/../torch/lib",
         "-Wl,-rpath,$ORIGIN/../pydisort/lib",
         "-Wl,-rpath,$ORIGIN/../pyharp/lib",
-        "-Wl,--as-needed",
+        "-Wl,--no-as-needed",
+        "-lkintera_cuda_release",
     ]
 
 ext_module = cpp_extension.CppExtension(
