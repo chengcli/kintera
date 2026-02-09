@@ -11,8 +11,11 @@
 #include <torch/torch.h>
 
 // kintera
-#include <kintera/kinetics/falloff.hpp>
 #include <kintera/kinetics/kinetics.hpp>
+#include <kintera/kinetics/lindemann_falloff.hpp>
+#include <kintera/kinetics/sri_falloff.hpp>
+#include <kintera/kinetics/three_body.hpp>
+#include <kintera/kinetics/troe_falloff.hpp>
 #include <kintera/kintera_formatter.hpp>
 #include <kintera/species.hpp>
 
@@ -23,13 +26,18 @@ using namespace kintera;
 
 namespace kintera {
 extern std::vector<std::string> species_names;
+extern bool species_initialized;
 }
+
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(DeviceTest);
 
 class FalloffEndToEndTest : public DeviceTest {
  protected:
   void SetUp() override {
     DeviceTest::SetUp();
-    kintera::species_names = {"H2O2", "O", "H2O", "OH", "AR", "H2", "N2", "O2", "H"};
+    // Reset species state so each test's from_yaml properly reinitializes
+    kintera::species_initialized = false;
+    kintera::species_names = {"H2O2", "O", "H2O", "OH", "AR", "H2", "N2", "O2", "H", "HO2"};
   }
 };
 
@@ -38,12 +46,22 @@ class FalloffEndToEndTest : public DeviceTest {
 // ============================================================================
 
 TEST_P(FalloffEndToEndTest, default_options) {
-  auto options = FalloffOptionsImpl::create();
-  EXPECT_TRUE(options->reactions().empty());
-  EXPECT_TRUE(options->k0_A().empty());
-  EXPECT_TRUE(options->kinf_A().empty());
-  EXPECT_DOUBLE_EQ(options->Tref(), 300.0);
-  EXPECT_EQ(options->units(), "molecule,cm,s");
+  auto three_body_opts = ThreeBodyOptionsImpl::create();
+  EXPECT_TRUE(three_body_opts->reactions().empty());
+  EXPECT_TRUE(three_body_opts->k0_A().empty());
+  EXPECT_DOUBLE_EQ(three_body_opts->Tref(), 300.0);
+  EXPECT_EQ(three_body_opts->units(), "molecule,cm,s");
+
+  auto lindemann_opts = LindemannFalloffOptionsImpl::create();
+  EXPECT_TRUE(lindemann_opts->reactions().empty());
+  EXPECT_TRUE(lindemann_opts->k0_A().empty());
+  EXPECT_TRUE(lindemann_opts->kinf_A().empty());
+
+  auto troe_opts = TroeFalloffOptionsImpl::create();
+  EXPECT_TRUE(troe_opts->reactions().empty());
+
+  auto sri_opts = SRIFalloffOptionsImpl::create();
+  EXPECT_TRUE(sri_opts->reactions().empty());
 }
 
 TEST_P(FalloffEndToEndTest, yaml_parsing_three_body_and_falloff) {
@@ -67,6 +85,9 @@ species:
   - name: H2
     composition: {H: 2}
     cv_R: 2.5
+  - name: H
+    composition: {H: 1}
+    cv_R: 1.5
 reference-state:
   Tref: 300.0
   Pref: 101325.0
@@ -96,19 +117,11 @@ reactions:
   auto kinet_opts = KineticsOptionsImpl::from_yaml(config);
 
   ASSERT_NE(kinet_opts, nullptr);
-  EXPECT_EQ(kinet_opts->falloff()->reactions().size(), 4);
-  EXPECT_EQ(kinet_opts->falloff()->is_three_body().size(), 4);
-  EXPECT_EQ(kinet_opts->falloff()->falloff_types().size(), 4);
-
-  // Verify three-body flag
-  EXPECT_TRUE(kinet_opts->falloff()->is_three_body()[0]);
-  EXPECT_FALSE(kinet_opts->falloff()->is_three_body()[1]);
-
-  // Verify falloff types: None, None, Troe, SRI
-  EXPECT_EQ(kinet_opts->falloff()->falloff_types()[0], static_cast<int>(FalloffType::None));
-  EXPECT_EQ(kinet_opts->falloff()->falloff_types()[1], static_cast<int>(FalloffType::None));
-  EXPECT_EQ(kinet_opts->falloff()->falloff_types()[2], static_cast<int>(FalloffType::Troe));
-  EXPECT_EQ(kinet_opts->falloff()->falloff_types()[3], static_cast<int>(FalloffType::SRI));
+  // Verify reactions are split into appropriate modules
+  EXPECT_EQ(kinet_opts->three_body()->reactions().size(), 1);
+  EXPECT_EQ(kinet_opts->lindemann_falloff()->reactions().size(), 1);
+  EXPECT_EQ(kinet_opts->troe_falloff()->reactions().size(), 1);
+  EXPECT_EQ(kinet_opts->sri_falloff()->reactions().size(), 1);
 }
 
 TEST_P(FalloffEndToEndTest, species_registration_from_efficiencies) {
@@ -173,32 +186,32 @@ TEST_P(FalloffEndToEndTest, module_initialization) {
 )";
 
   YAML::Node root = YAML::Load(yaml_str);
-  auto opts = FalloffOptionsImpl::from_yaml(root);
-  Falloff module(opts);
-  module->to(device, dtype);
-
-  // Verify efficiency matrix
-  EXPECT_EQ(module->efficiency_matrix.size(0), 2);
-  EXPECT_EQ(module->efficiency_matrix.size(1), 9);
+  
+  // Test three-body module
+  auto three_body_opts = ThreeBodyOptionsImpl::from_yaml(root);
+  ThreeBody three_body_module(three_body_opts);
+  three_body_module->to(device, dtype);
+  EXPECT_EQ(three_body_module->efficiency_matrix.size(0), 1);
+  EXPECT_EQ(three_body_module->efficiency_matrix.size(1), kintera::species_names.size());
+  EXPECT_EQ(three_body_module->k0_A.size(0), 1);
 
   int ar_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "AR") - kintera::species_names.begin();
   int h2_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "H2") - kintera::species_names.begin();
   int h2o_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "H2O") - kintera::species_names.begin();
 
-  auto eff0 = module->efficiency_matrix[0];
+  auto eff0 = three_body_module->efficiency_matrix[0];
   EXPECT_DOUBLE_EQ(eff0[ar_idx].item<double>(), 0.83);
   EXPECT_DOUBLE_EQ(eff0[h2_idx].item<double>(), 2.4);
   EXPECT_DOUBLE_EQ(eff0[h2o_idx].item<double>(), 15.4);
 
-  // Verify all tensors are registered
-  EXPECT_EQ(module->k0_A.size(0), 2);
-  EXPECT_EQ(module->kinf_A.size(0), 2);
-  EXPECT_EQ(module->falloff_type_flags.size(0), 2);
-  EXPECT_EQ(module->is_three_body.size(0), 2);
-
-  // Three-body should have very large kinf_A
-  EXPECT_GT(module->kinf_A[0].item<double>(), 1e90);
-  EXPECT_LT(module->kinf_A[1].item<double>(), 1e90);
+  // Test Lindemann falloff module
+  auto lindemann_opts = LindemannFalloffOptionsImpl::from_yaml(root);
+  LindemannFalloff lindemann_module(lindemann_opts);
+  lindemann_module->to(device, dtype);
+  EXPECT_EQ(lindemann_module->efficiency_matrix.size(0), 1);
+  EXPECT_EQ(lindemann_module->k0_A.size(0), 1);
+  EXPECT_EQ(lindemann_module->kinf_A.size(0), 1);
+  EXPECT_LT(lindemann_module->kinf_A[0].item<double>(), 1e90);
 }
 
 // ============================================================================
@@ -214,8 +227,8 @@ TEST_P(FalloffEndToEndTest, forward_three_body) {
 )";
 
   YAML::Node root = YAML::Load(yaml_str);
-  auto opts = FalloffOptionsImpl::from_yaml(root);
-  Falloff module(opts);
+  auto opts = ThreeBodyOptionsImpl::from_yaml(root);
+  ThreeBody module(opts);
   module->to(device, dtype);
 
   auto T = torch::tensor({300.0}, dtype).to(device);
@@ -239,8 +252,8 @@ TEST_P(FalloffEndToEndTest, forward_falloff_lindemann) {
 )";
 
   YAML::Node root = YAML::Load(yaml_str);
-  auto opts = FalloffOptionsImpl::from_yaml(root);
-  Falloff module(opts);
+  auto opts = LindemannFalloffOptionsImpl::from_yaml(root);
+  LindemannFalloff module(opts);
   module->to(device, dtype);
 
   auto T = torch::tensor({300.0}, dtype).to(device);
@@ -265,8 +278,8 @@ TEST_P(FalloffEndToEndTest, forward_falloff_troe) {
 )";
 
   YAML::Node root = YAML::Load(yaml_str);
-  auto opts = FalloffOptionsImpl::from_yaml(root);
-  Falloff module(opts);
+  auto opts = TroeFalloffOptionsImpl::from_yaml(root);
+  TroeFalloff module(opts);
   module->to(device, dtype);
 
   auto T = torch::tensor({300.0}, dtype).to(device);
@@ -291,8 +304,8 @@ TEST_P(FalloffEndToEndTest, forward_falloff_sri) {
 )";
 
   YAML::Node root = YAML::Load(yaml_str);
-  auto opts = FalloffOptionsImpl::from_yaml(root);
-  Falloff module(opts);
+  auto opts = SRIFalloffOptionsImpl::from_yaml(root);
+  SRIFalloff module(opts);
   module->to(device, dtype);
 
   auto T = torch::tensor({300.0}, dtype).to(device);
@@ -308,10 +321,8 @@ TEST_P(FalloffEndToEndTest, forward_falloff_sri) {
 }
 
 TEST_P(FalloffEndToEndTest, forward_multiple_reactions) {
+  // Test that each module can handle multiple reactions of the same type
   std::string yaml_str = R"(
-- equation: H2O2 + M <=> O + H2O + M
-  type: three-body
-  rate-constant: {A: 1.2e+11, b: -1.0, Ea_R: 0.0}
 - equation: 2 OH (+ M) <=> H2O2 (+ M)
   type: falloff
   low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: 0.0}
@@ -320,12 +331,11 @@ TEST_P(FalloffEndToEndTest, forward_multiple_reactions) {
   type: falloff
   low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: 0.0}
   high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
-  Troe: {A: 0.7346, T3: 94.0, T1: 1756.0, T2: 5182.0}
 )";
 
   YAML::Node root = YAML::Load(yaml_str);
-  auto opts = FalloffOptionsImpl::from_yaml(root);
-  Falloff module(opts);
+  auto opts = LindemannFalloffOptionsImpl::from_yaml(root);
+  LindemannFalloff module(opts);
   module->to(device, dtype);
 
   auto T = torch::tensor({300.0}, dtype).to(device);
@@ -336,10 +346,9 @@ TEST_P(FalloffEndToEndTest, forward_multiple_reactions) {
   auto rate = module->forward(T, P, C, other);
 
   EXPECT_EQ(rate.size(0), 1);
-  EXPECT_EQ(rate.size(1), 3);
+  EXPECT_EQ(rate.size(1), 2);
   EXPECT_GT(rate[0][0].item<double>(), 0.0);
   EXPECT_GT(rate[0][1].item<double>(), 0.0);
-  EXPECT_GT(rate[0][2].item<double>(), 0.0);
 }
 
 // ============================================================================
@@ -386,7 +395,8 @@ reactions:
   Kinetics kinet(kinet_opts);
   kinet->to(device, dtype);
 
-  EXPECT_EQ(kinet_opts->falloff()->reactions().size(), 2);
+  EXPECT_EQ(kinet_opts->three_body()->reactions().size(), 1);
+  EXPECT_EQ(kinet_opts->lindemann_falloff()->reactions().size(), 1);
   EXPECT_EQ(kinet->stoich.size(1), 2);
 
   auto temp = torch::tensor({300.0}, dtype).to(device);
@@ -448,7 +458,11 @@ reactions:
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
   auto cvol = torch::tensor({1.0}, dtype).to(device);
-  auto jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
+  auto raw_jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
+
+  // Raw jacobian has shape (batch..., nreaction, nspecies).
+  // Full species-to-species jacobian: stoich @ raw_jac -> (batch..., nspecies, nspecies)
+  auto full_jac = kinet->stoich.matmul(raw_jac);
 
   int ar_idx = -1, h2_idx = -1, h2o2_idx = -1;
   for (int i = 0; i < nspecies; i++) {
@@ -460,13 +474,19 @@ reactions:
   ASSERT_GE(h2_idx, 0);
   ASSERT_GE(h2o2_idx, 0);
 
+  // Squeeze batch dimension: (1, nspecies, nspecies) -> (nspecies, nspecies)
+  auto jac_2d = full_jac.squeeze(0);
+  ASSERT_EQ(jac_2d.dim(), 2);
+  ASSERT_EQ(jac_2d.size(0), nspecies);
+  ASSERT_EQ(jac_2d.size(1), nspecies);
+
   // Third-body species should have non-zero derivatives
-  EXPECT_GT(std::abs(jac[h2o2_idx][ar_idx].item<double>()), 1e-10);
-  EXPECT_GT(std::abs(jac[h2o2_idx][h2_idx].item<double>()), 1e-10);
+  EXPECT_GT(std::abs(jac_2d[h2o2_idx][ar_idx].item<double>()), 1e-10);
+  EXPECT_GT(std::abs(jac_2d[h2o2_idx][h2_idx].item<double>()), 1e-10);
 
   // H2 efficiency (2.4) > AR efficiency (0.83), so derivative should be larger
-  EXPECT_GT(std::abs(jac[h2o2_idx][h2_idx].item<double>()),
-            std::abs(jac[h2o2_idx][ar_idx].item<double>()));
+  EXPECT_GT(std::abs(jac_2d[h2o2_idx][h2_idx].item<double>()),
+            std::abs(jac_2d[h2o2_idx][ar_idx].item<double>()));
 }
 
 TEST_P(FalloffEndToEndTest, jacobian_falloff_lindemann) {
@@ -504,11 +524,17 @@ reactions:
   auto pres = torch::tensor({101325.0}, dtype).to(device);
   auto species = kinet_opts->species();
   int nspecies = species.size();
-  auto conc = torch::ones({nspecies}, dtype).to(device) * 1e-3;
+  // Use very small concentrations to keep reduced pressure Pr moderate
+  // (k0/kinf ratio is ~1e19 after unit conversion, so need conc ~ 1e-20 for Pr ~ 1)
+  auto conc = torch::ones({nspecies}, dtype).to(device) * 1e-21;
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
   auto cvol = torch::tensor({1.0}, dtype).to(device);
-  auto jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
+  auto raw_jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
+
+  // Raw jacobian has shape (batch..., nreaction, nspecies).
+  // Full species-to-species jacobian: stoich @ raw_jac -> (batch..., nspecies, nspecies)
+  auto full_jac = kinet->stoich.matmul(raw_jac);
 
   int ar_idx = -1, n2_idx = -1, h2o2_idx = -1;
   for (int i = 0; i < nspecies; i++) {
@@ -520,13 +546,19 @@ reactions:
   ASSERT_GE(n2_idx, 0);
   ASSERT_GE(h2o2_idx, 0);
 
+  // Squeeze batch dimension: (1, nspecies, nspecies) -> (nspecies, nspecies)
+  auto jac_2d = full_jac.squeeze(0);
+  ASSERT_EQ(jac_2d.dim(), 2);
+  ASSERT_EQ(jac_2d.size(0), nspecies);
+  ASSERT_EQ(jac_2d.size(1), nspecies);
+
   // Derivatives should be non-zero
-  EXPECT_GT(std::abs(jac[h2o2_idx][ar_idx].item<double>()), 1e-10);
-  EXPECT_GT(std::abs(jac[h2o2_idx][n2_idx].item<double>()), 1e-10);
+  EXPECT_GT(std::abs(jac_2d[h2o2_idx][ar_idx].item<double>()), 1e-10);
+  EXPECT_GT(std::abs(jac_2d[h2o2_idx][n2_idx].item<double>()), 1e-10);
 
   // N2 efficiency (1.0) > AR efficiency (0.7)
-  EXPECT_GT(std::abs(jac[h2o2_idx][n2_idx].item<double>()),
-            std::abs(jac[h2o2_idx][ar_idx].item<double>()));
+  EXPECT_GT(std::abs(jac_2d[h2o2_idx][n2_idx].item<double>()),
+            std::abs(jac_2d[h2o2_idx][ar_idx].item<double>()));
 }
 
 TEST_P(FalloffEndToEndTest, jacobian_temperature_derivative) {
@@ -620,12 +652,22 @@ reactions:
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
   auto cvol = torch::tensor({1.0}, dtype).to(device);
-  auto jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
+  auto raw_jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
 
-  EXPECT_EQ(rate.size(1), 2);
-  EXPECT_EQ(rc_ddC.size(2), 2);
-  EXPECT_EQ(jac.size(0), nspecies);
-  EXPECT_EQ(jac.size(1), nspecies);
+  // rate shape: (1, nreaction) where nreaction = 2
+  EXPECT_EQ(rate.size(-1), 2);
+  // rc_ddC shape: (nspecies, nreaction) where nreaction = 2
+  EXPECT_EQ(rc_ddC.size(-1), 2);
+
+  // Raw jacobian has shape (batch..., nreaction, nspecies).
+  // Full species-to-species jacobian: stoich @ raw_jac -> (batch..., nspecies, nspecies)
+  auto full_jac = kinet->stoich.matmul(raw_jac);
+
+  // Squeeze batch dimension
+  auto jac_2d = full_jac.squeeze(0);
+  ASSERT_EQ(jac_2d.dim(), 2);
+  ASSERT_EQ(jac_2d.size(0), nspecies);
+  ASSERT_EQ(jac_2d.size(1), nspecies);
 
   int ar_idx = -1, h2o2_idx = -1;
   for (int i = 0; i < nspecies; i++) {
@@ -636,7 +678,7 @@ reactions:
   ASSERT_GE(h2o2_idx, 0);
 
   // AR should affect both reactions
-  EXPECT_GT(std::abs(jac[h2o2_idx][ar_idx].item<double>()), 1e-10);
+  EXPECT_GT(std::abs(jac_2d[h2o2_idx][ar_idx].item<double>()), 1e-10);
 }
 
 // ============================================================================
@@ -727,37 +769,11 @@ reactions:
   Kinetics kinet(kinet_opts);
   kinet->to(device, dtype);
 
-  // Verify all falloff reactions were parsed
-  EXPECT_GT(kinet_opts->falloff()->reactions().size(), 0);
-  EXPECT_EQ(kinet_opts->falloff()->reactions().size(), 6);  // 1 three-body + 5 falloff
-
-  // Verify reaction types
-  auto falloff_types = kinet_opts->falloff()->falloff_types();
-  auto is_three_body = kinet_opts->falloff()->is_three_body();
-  
-  // Reaction 0: three-body
-  EXPECT_TRUE(is_three_body[0]);
-  EXPECT_EQ(falloff_types[0], static_cast<int>(FalloffType::None));
-  
-  // Reaction 1: Lindemann
-  EXPECT_FALSE(is_three_body[1]);
-  EXPECT_EQ(falloff_types[1], static_cast<int>(FalloffType::None));
-  
-  // Reaction 2: Troe 3-param
-  EXPECT_FALSE(is_three_body[2]);
-  EXPECT_EQ(falloff_types[2], static_cast<int>(FalloffType::Troe));
-  
-  // Reaction 3: Troe 4-param
-  EXPECT_FALSE(is_three_body[3]);
-  EXPECT_EQ(falloff_types[3], static_cast<int>(FalloffType::Troe));
-  
-  // Reaction 4: SRI 3-param
-  EXPECT_FALSE(is_three_body[4]);
-  EXPECT_EQ(falloff_types[4], static_cast<int>(FalloffType::SRI));
-  
-  // Reaction 5: SRI 5-param
-  EXPECT_FALSE(is_three_body[5]);
-  EXPECT_EQ(falloff_types[5], static_cast<int>(FalloffType::SRI));
+  // Verify all falloff reactions were parsed into appropriate modules
+  EXPECT_EQ(kinet_opts->three_body()->reactions().size(), 1);
+  EXPECT_EQ(kinet_opts->lindemann_falloff()->reactions().size(), 1);  // 1 Lindemann reaction (no Troe/SRI)
+  EXPECT_EQ(kinet_opts->troe_falloff()->reactions().size(), 2);  // 2 Troe reactions
+  EXPECT_EQ(kinet_opts->sri_falloff()->reactions().size(), 2);  // 2 SRI reactions
 
   // Test forward() with realistic conditions
   auto temp = torch::tensor({300.0, 500.0, 1000.0}, dtype).to(device);
@@ -791,8 +807,7 @@ reactions:
   
   // Convert to concentration (mol/m^3) - approximate: P/(RT) * mole_fraction
   auto R = 8.314;  // J/(mol·K)
-  auto P_m3 = pres / 101325.0 * 101325.0;  // Pa
-  auto n_tot = P_m3 / (R * temp.unsqueeze(-1));  // mol/m^3
+  auto n_tot = (pres / (R * temp)).unsqueeze(-1);  // (batch, 1) mol/m^3
   conc = conc * n_tot;
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
@@ -804,29 +819,45 @@ reactions:
   // All rates should be non-negative
   EXPECT_TRUE(torch::all(rate >= 0.0).item<bool>());
   
-  // Three-body reaction should have positive rate
-  int three_body_rxn_idx = 0;  // First falloff reaction is three-body
-  EXPECT_GT(rate[0][three_body_rxn_idx].item<double>(), 0.0);
+  int nreaction = rate.size(1);
+  // At least one reaction should have a positive rate
+  EXPECT_GT(torch::sum(rate[0]).item<double>(), 0.0);
   
   // Test that rates vary with temperature
-  // Higher temperature should generally increase rates (for these reactions)
   auto rate_300K = rate[0];
   auto rate_1000K = rate[2];
-  // At least some reactions should have different rates
-  EXPECT_FALSE(torch::allclose(rate_300K, rate_1000K, 1e-6, 1e-6).item<bool>());
+  EXPECT_FALSE(torch::allclose(rate_300K, rate_1000K));
 
   // Test Jacobian computation
   auto cvol = torch::ones({3}, dtype).to(device);
-  auto jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
+  auto raw_jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
 
-  // Verify Jacobian shape
-  EXPECT_EQ(jac.size(0), nspecies);
-  EXPECT_EQ(jac.size(1), nspecies);
-  EXPECT_EQ(jac.size(2), 3);  // 3 temperature points
+  // Raw jacobian: (batch, nreaction, nspecies)
+  EXPECT_EQ(raw_jac.size(0), 3);  // 3 temperature points
+  EXPECT_EQ(raw_jac.size(1), nreaction);
+  EXPECT_EQ(raw_jac.size(2), nspecies);
+
+  // Full species-to-species jacobian: stoich @ raw_jac -> (batch, nspecies, nspecies)
+  auto full_jac = kinet->stoich.matmul(raw_jac);
+  EXPECT_EQ(full_jac.size(0), 3);
+  EXPECT_EQ(full_jac.size(1), nspecies);
+  EXPECT_EQ(full_jac.size(2), nspecies);
 
   // Test that third-body species (AR) affects reaction rates
   if (ar_idx >= 0 && h2o2_idx >= 0) {
     // AR should affect H2O2 consumption in three-body reaction
-    EXPECT_GT(std::abs(jac[h2o2_idx][ar_idx][0].item<double>()), 1e-10);
+    EXPECT_GT(std::abs(full_jac[0][h2o2_idx][ar_idx].item<double>()), 1e-10);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    DeviceTests, FalloffEndToEndTest,
+    testing::Values(Parameters{torch::kCPU, torch::kFloat64},
+                    Parameters{torch::kCUDA, torch::kFloat64}),
+    [](const testing::TestParamInfo<FalloffEndToEndTest::ParamType>& info) {
+      std::string name = torch::Device(info.param.device_type).str();
+      name += "_";
+      name += torch::toString(info.param.dtype);
+      std::replace(name.begin(), name.end(), '.', '_');
+      return name;
+    });

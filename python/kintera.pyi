@@ -1221,250 +1221,54 @@ class Evaporation:
         """
         ...
 
-class FalloffOptions:
-    """
-    Configuration options for falloff and three-body reactions.
+class ThreeBodyOptions:
+    """Configuration options for three-body reactions: k = k0 * [M]_eff."""
 
-    This class manages parameters for pressure-dependent reaction rates
-    including Lindemann, Troe, and SRI falloff formulations.
-    """
-
-    def __init__(self) -> None:
-        """Initialize FalloffOptions."""
-        ...
-
+    def __init__(self) -> None: ...
     def __repr__(self) -> str: ...
 
     @overload
-    def Tref(self) -> float:
-        """Get reference temperature [K] for rate constants."""
-        ...
+    def Tref(self) -> float: ...
+    @overload
+    def Tref(self, value: float) -> ThreeBodyOptions: ...
 
     @overload
-    def Tref(self, value: float) -> FalloffOptions:
-        """Set reference temperature [K] for rate constants."""
-        ...
+    def units(self) -> str: ...
+    @overload
+    def units(self, value: str) -> ThreeBodyOptions: ...
 
     @overload
-    def units(self) -> str:
-        """Get units string."""
-        ...
+    def reactions(self) -> List[Reaction]: ...
+    @overload
+    def reactions(self, value: List[Reaction]) -> ThreeBodyOptions: ...
 
     @overload
-    def units(self, value: str) -> FalloffOptions:
-        """Set units string."""
-        ...
+    def k0_A(self) -> List[float]: ...
+    @overload
+    def k0_A(self, value: List[float]) -> ThreeBodyOptions: ...
 
     @overload
-    def reactions(self) -> List[Reaction]:
-        """Get falloff/three-body reactions."""
-        ...
+    def k0_b(self) -> List[float]: ...
+    @overload
+    def k0_b(self, value: List[float]) -> ThreeBodyOptions: ...
 
     @overload
-    def reactions(self, value: List[Reaction]) -> FalloffOptions:
-        """Set falloff/three-body reactions."""
-        ...
+    def k0_Ea_R(self) -> List[float]: ...
+    @overload
+    def k0_Ea_R(self, value: List[float]) -> ThreeBodyOptions: ...
 
     @overload
-    def k0_A(self) -> List[float]:
-        """Get low-pressure pre-exponential factors."""
-        ...
-
+    def efficiencies(self) -> List[Composition]: ...
     @overload
-    def k0_A(self, value: List[float]) -> FalloffOptions:
-        """Set low-pressure pre-exponential factors."""
-        ...
-
-    @overload
-    def k0_b(self) -> List[float]:
-        """Get low-pressure temperature exponents."""
-        ...
-
-    @overload
-    def k0_b(self, value: List[float]) -> FalloffOptions:
-        """Set low-pressure temperature exponents."""
-        ...
-
-    @overload
-    def k0_Ea_R(self) -> List[float]:
-        """Get low-pressure activation energies [K]."""
-        ...
-
-    @overload
-    def k0_Ea_R(self, value: List[float]) -> FalloffOptions:
-        """Set low-pressure activation energies [K]."""
-        ...
-
-    @overload
-    def kinf_A(self) -> List[float]:
-        """Get high-pressure pre-exponential factors."""
-        ...
-
-    @overload
-    def kinf_A(self, value: List[float]) -> FalloffOptions:
-        """Set high-pressure pre-exponential factors."""
-        ...
-
-    @overload
-    def kinf_b(self) -> List[float]:
-        """Get high-pressure temperature exponents."""
-        ...
-
-    @overload
-    def kinf_b(self, value: List[float]) -> FalloffOptions:
-        """Set high-pressure temperature exponents."""
-        ...
-
-    @overload
-    def kinf_Ea_R(self) -> List[float]:
-        """Get high-pressure activation energies [K]."""
-        ...
-
-    @overload
-    def kinf_Ea_R(self, value: List[float]) -> FalloffOptions:
-        """Set high-pressure activation energies [K]."""
-        ...
-
-    @overload
-    def falloff_types(self) -> List[int]:
-        """Get falloff type flags (0=None, 1=Troe, 2=SRI)."""
-        ...
-
-    @overload
-    def falloff_types(self, value: List[int]) -> FalloffOptions:
-        """Set falloff type flags (0=None, 1=Troe, 2=SRI)."""
-        ...
-
-    @overload
-    def is_three_body(self) -> List[bool]:
-        """Get three-body flags."""
-        ...
-
-    @overload
-    def is_three_body(self, value: List[bool]) -> FalloffOptions:
-        """Set three-body flags."""
-        ...
-
-    @overload
-    def troe_A(self) -> List[float]:
-        """Get Troe A parameters."""
-        ...
-
-    @overload
-    def troe_A(self, value: List[float]) -> FalloffOptions:
-        """Set Troe A parameters."""
-        ...
-
-    @overload
-    def troe_T3(self) -> List[float]:
-        """Get Troe T3 parameters [K]."""
-        ...
-
-    @overload
-    def troe_T3(self, value: List[float]) -> FalloffOptions:
-        """Set Troe T3 parameters [K]."""
-        ...
-
-    @overload
-    def troe_T1(self) -> List[float]:
-        """Get Troe T1 parameters [K]."""
-        ...
-
-    @overload
-    def troe_T1(self, value: List[float]) -> FalloffOptions:
-        """Set Troe T1 parameters [K]."""
-        ...
-
-    @overload
-    def troe_T2(self) -> List[float]:
-        """Get Troe T2 parameters [K]."""
-        ...
-
-    @overload
-    def troe_T2(self, value: List[float]) -> FalloffOptions:
-        """Set Troe T2 parameters [K]."""
-        ...
-
-    @overload
-    def sri_A(self) -> List[float]:
-        """Get SRI A parameters."""
-        ...
-
-    @overload
-    def sri_A(self, value: List[float]) -> FalloffOptions:
-        """Set SRI A parameters."""
-        ...
-
-    @overload
-    def sri_B(self) -> List[float]:
-        """Get SRI B parameters [K]."""
-        ...
-
-    @overload
-    def sri_B(self, value: List[float]) -> FalloffOptions:
-        """Set SRI B parameters [K]."""
-        ...
-
-    @overload
-    def sri_C(self) -> List[float]:
-        """Get SRI C parameters [K]."""
-        ...
-
-    @overload
-    def sri_C(self, value: List[float]) -> FalloffOptions:
-        """Set SRI C parameters [K]."""
-        ...
-
-    @overload
-    def sri_D(self) -> List[float]:
-        """Get SRI D parameters."""
-        ...
-
-    @overload
-    def sri_D(self, value: List[float]) -> FalloffOptions:
-        """Set SRI D parameters."""
-        ...
-
-    @overload
-    def sri_E(self) -> List[float]:
-        """Get SRI E parameters."""
-        ...
-
-    @overload
-    def sri_E(self, value: List[float]) -> FalloffOptions:
-        """Set SRI E parameters."""
-        ...
-
-    @overload
-    def efficiencies(self) -> List[Composition]:
-        """Get third-body collision efficiencies."""
-        ...
-
-    @overload
-    def efficiencies(self, value: List[Composition]) -> FalloffOptions:
-        """Set third-body collision efficiencies."""
-        ...
+    def efficiencies(self, value: List[Composition]) -> ThreeBodyOptions: ...
 
 
-class Falloff:
-    """
-    Falloff and three-body rate kinetics model.
+class ThreeBody:
+    """Three-body rate kinetics model: k = k0 * [M]_eff."""
 
-    This class implements pressure-dependent reaction rates using
-    Lindemann, Troe, or SRI falloff formulations.
-    """
+    options: ThreeBodyOptions
 
-    options: FalloffOptions
-
-    def __init__(self, options: FalloffOptions) -> None:
-        """
-        Initialize Falloff with kinetics options.
-
-        Args:
-            options (FalloffOptions): Configuration options
-        """
-        ...
-
+    def __init__(self, options: ThreeBodyOptions) -> None: ...
     def __repr__(self) -> str: ...
 
     def forward(
@@ -1473,29 +1277,282 @@ class Falloff:
         pres: torch.Tensor,
         conc: torch.Tensor,
         other: Dict[str, torch.Tensor]
-    ) -> torch.Tensor:
-        """
-        Compute falloff reaction rate constants.
+    ) -> torch.Tensor: ...
 
-        Args:
-            temp (torch.Tensor): Temperature tensor [K], shape (...)
-            pres (torch.Tensor): Pressure tensor [Pa], shape (...)
-            conc (torch.Tensor): Concentration tensor [mol/m^3], shape (..., nspecies)
-            other (dict): Additional parameters dictionary
+    def pretty_print(self, os) -> None: ...
 
-        Returns:
-            torch.Tensor: Rate constants [mol, m, s], shape (..., nreaction)
-        """
-        ...
 
-    def pretty_print(self, os) -> None:
-        """
-        Print module state for debugging.
+class LindemannFalloffOptions:
+    """Configuration options for Lindemann falloff reactions: k = k0*[M]_eff / (1 + Pr)."""
 
-        Args:
-            os: Output stream
-        """
-        ...
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+    @overload
+    def Tref(self) -> float: ...
+    @overload
+    def Tref(self, value: float) -> LindemannFalloffOptions: ...
+
+    @overload
+    def units(self) -> str: ...
+    @overload
+    def units(self, value: str) -> LindemannFalloffOptions: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]: ...
+    @overload
+    def reactions(self, value: List[Reaction]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def k0_A(self) -> List[float]: ...
+    @overload
+    def k0_A(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def k0_b(self) -> List[float]: ...
+    @overload
+    def k0_b(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def k0_Ea_R(self) -> List[float]: ...
+    @overload
+    def k0_Ea_R(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def kinf_A(self) -> List[float]: ...
+    @overload
+    def kinf_A(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def kinf_b(self) -> List[float]: ...
+    @overload
+    def kinf_b(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def kinf_Ea_R(self) -> List[float]: ...
+    @overload
+    def kinf_Ea_R(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def efficiencies(self) -> List[Composition]: ...
+    @overload
+    def efficiencies(self, value: List[Composition]) -> LindemannFalloffOptions: ...
+
+
+class LindemannFalloff:
+    """Lindemann falloff rate kinetics model: k = k0*[M]_eff / (1 + Pr)."""
+
+    options: LindemannFalloffOptions
+
+    def __init__(self, options: LindemannFalloffOptions) -> None: ...
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor: ...
+
+    def pretty_print(self, os) -> None: ...
+
+
+class TroeFalloffOptions:
+    """Configuration options for Troe falloff reactions: k = k_Lindemann * F_Troe."""
+
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+    @overload
+    def Tref(self) -> float: ...
+    @overload
+    def Tref(self, value: float) -> TroeFalloffOptions: ...
+
+    @overload
+    def units(self) -> str: ...
+    @overload
+    def units(self, value: str) -> TroeFalloffOptions: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]: ...
+    @overload
+    def reactions(self, value: List[Reaction]) -> TroeFalloffOptions: ...
+
+    @overload
+    def k0_A(self) -> List[float]: ...
+    @overload
+    def k0_A(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def k0_b(self) -> List[float]: ...
+    @overload
+    def k0_b(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def k0_Ea_R(self) -> List[float]: ...
+    @overload
+    def k0_Ea_R(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def kinf_A(self) -> List[float]: ...
+    @overload
+    def kinf_A(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def kinf_b(self) -> List[float]: ...
+    @overload
+    def kinf_b(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def kinf_Ea_R(self) -> List[float]: ...
+    @overload
+    def kinf_Ea_R(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def troe_A(self) -> List[float]: ...
+    @overload
+    def troe_A(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def troe_T3(self) -> List[float]: ...
+    @overload
+    def troe_T3(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def troe_T1(self) -> List[float]: ...
+    @overload
+    def troe_T1(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def troe_T2(self) -> List[float]: ...
+    @overload
+    def troe_T2(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def efficiencies(self) -> List[Composition]: ...
+    @overload
+    def efficiencies(self, value: List[Composition]) -> TroeFalloffOptions: ...
+
+
+class TroeFalloff:
+    """Troe falloff rate kinetics model: k = k_Lindemann * F_Troe."""
+
+    options: TroeFalloffOptions
+
+    def __init__(self, options: TroeFalloffOptions) -> None: ...
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor: ...
+
+    def pretty_print(self, os) -> None: ...
+
+
+class SRIFalloffOptions:
+    """Configuration options for SRI falloff reactions: k = k_Lindemann * F_SRI."""
+
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+    @overload
+    def Tref(self) -> float: ...
+    @overload
+    def Tref(self, value: float) -> SRIFalloffOptions: ...
+
+    @overload
+    def units(self) -> str: ...
+    @overload
+    def units(self, value: str) -> SRIFalloffOptions: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]: ...
+    @overload
+    def reactions(self, value: List[Reaction]) -> SRIFalloffOptions: ...
+
+    @overload
+    def k0_A(self) -> List[float]: ...
+    @overload
+    def k0_A(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def k0_b(self) -> List[float]: ...
+    @overload
+    def k0_b(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def k0_Ea_R(self) -> List[float]: ...
+    @overload
+    def k0_Ea_R(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def kinf_A(self) -> List[float]: ...
+    @overload
+    def kinf_A(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def kinf_b(self) -> List[float]: ...
+    @overload
+    def kinf_b(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def kinf_Ea_R(self) -> List[float]: ...
+    @overload
+    def kinf_Ea_R(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_A(self) -> List[float]: ...
+    @overload
+    def sri_A(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_B(self) -> List[float]: ...
+    @overload
+    def sri_B(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_C(self) -> List[float]: ...
+    @overload
+    def sri_C(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_D(self) -> List[float]: ...
+    @overload
+    def sri_D(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_E(self) -> List[float]: ...
+    @overload
+    def sri_E(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def efficiencies(self) -> List[Composition]: ...
+    @overload
+    def efficiencies(self, value: List[Composition]) -> SRIFalloffOptions: ...
+
+
+class SRIFalloff:
+    """SRI falloff rate kinetics model: k = k_Lindemann * F_SRI."""
+
+    options: SRIFalloffOptions
+
+    def __init__(self, options: SRIFalloffOptions) -> None: ...
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor: ...
+
+    def pretty_print(self, os) -> None: ...
 
 
 class KineticsOptions(SpeciesThermo):
@@ -1618,21 +1675,43 @@ class KineticsOptions(SpeciesThermo):
         ...
 
     @overload
-    def falloff(self) -> FalloffOptions:
-        """Get options for falloff/three-body reactions."""
+    def three_body(self) -> ThreeBodyOptions:
+        """Get options for three-body reactions."""
         ...
 
     @overload
-    def falloff(self, value: FalloffOptions) -> KineticsOptions:
-        """
-        Set options for falloff/three-body reactions.
+    def three_body(self, value: ThreeBodyOptions) -> KineticsOptions:
+        """Set options for three-body reactions."""
+        ...
 
-        Args:
-            value (FalloffOptions): Falloff options
+    @overload
+    def lindemann_falloff(self) -> LindemannFalloffOptions:
+        """Get options for Lindemann falloff reactions."""
+        ...
 
-        Returns:
-            KineticsOptions: class object for method chaining
-        """
+    @overload
+    def lindemann_falloff(self, value: LindemannFalloffOptions) -> KineticsOptions:
+        """Set options for Lindemann falloff reactions."""
+        ...
+
+    @overload
+    def troe_falloff(self) -> TroeFalloffOptions:
+        """Get options for Troe falloff reactions."""
+        ...
+
+    @overload
+    def troe_falloff(self, value: TroeFalloffOptions) -> KineticsOptions:
+        """Set options for Troe falloff reactions."""
+        ...
+
+    @overload
+    def sri_falloff(self) -> SRIFalloffOptions:
+        """Get options for SRI falloff reactions."""
+        ...
+
+    @overload
+    def sri_falloff(self, value: SRIFalloffOptions) -> KineticsOptions:
+        """Set options for SRI falloff reactions."""
         ...
 
     @overload

@@ -56,10 +56,11 @@ reactions:
         - [240., 1.0e-21]
         - [250., 1.0e-23]
 
-# O + O2 + M → O3 + M (effective second-order rate)
-- equation: O + O2 => O3
-  type: arrhenius
-  rate-constant: {A: 1.7e-14, b: -2.4, Ea_R: 0.}
+# O + O2 + M → O3 + M (three-body recombination)
+- equation: O + O2 + M <=> O3 + M
+  type: three-body
+  rate-constant: {A: 6.0e-34, b: -2.4, Ea_R: 0.}
+  efficiencies: {N2: 1.0, O2: 1.0}
 
 # O3 + hν → O2 + O (Hartley band, 200-320 nm)
 - equation: O3 => O2 + O

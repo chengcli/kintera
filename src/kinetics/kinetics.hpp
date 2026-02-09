@@ -13,8 +13,11 @@
 #include "arrhenius.hpp"
 #include "coagulation.hpp"
 #include "evaporation.hpp"
-#include "falloff.hpp"
+#include "lindemann_falloff.hpp"
 #include "photolysis.hpp"
+#include "sri_falloff.hpp"
+#include "three_body.hpp"
+#include "troe_falloff.hpp"
 
 // arg
 #include <kintera/add_arg.h>
@@ -27,7 +30,10 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     op->arrhenius() = ArrheniusOptionsImpl::create();
     op->coagulation() = CoagulationOptionsImpl::create();
     op->evaporation() = EvaporationOptionsImpl::create();
-    op->falloff() = FalloffOptionsImpl::create();
+    op->three_body() = ThreeBodyOptionsImpl::create();
+    op->lindemann_falloff() = LindemannFalloffOptionsImpl::create();
+    op->troe_falloff() = TroeFalloffOptionsImpl::create();
+    op->sri_falloff() = SRIFalloffOptionsImpl::create();
     op->photolysis() = PhotolysisOptionsImpl::create();
     return op;
   }
@@ -61,7 +67,10 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(ArrheniusOptions, arrhenius);
   ADD_ARG(CoagulationOptions, coagulation);
   ADD_ARG(EvaporationOptions, evaporation);
-  ADD_ARG(FalloffOptions, falloff);
+  ADD_ARG(ThreeBodyOptions, three_body);
+  ADD_ARG(LindemannFalloffOptions, lindemann_falloff);
+  ADD_ARG(TroeFalloffOptions, troe_falloff);
+  ADD_ARG(SRIFalloffOptions, sri_falloff);
   ADD_ARG(PhotolysisOptions, photolysis);
 
   ADD_ARG(bool, evolve_temperature) = false;

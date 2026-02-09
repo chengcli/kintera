@@ -375,33 +375,58 @@ torch::Tensor PhotolysisImpl::forward(
   out_shape.push_back(_nreaction);
   auto result = torch::zeros(out_shape, T.options());
 
+  // Find max branches for padding
+  int max_branches = 0;
   for (int r = 0; r < _nreaction; r++) {
-    auto xs = interp_cross_section(r, wave, T);
+    max_branches = std::max(max_branches, _nbranches[r]);
+  }
+
+  // Process all reactions: compute cross-sections
+  std::vector<torch::Tensor> xs_diss_list;
+  for (int r = 0; r < _nreaction; r++) {
+    auto xs = interp_cross_section(r, wave, T);  // (..., nwave, nbranch)
 
     // Sum dissociation branches (skip index 0 which is photoabsorption)
     torch::Tensor xs_diss;
     if (_nbranches[r] > 1) {
-      xs_diss = xs.narrow(1, 1, _nbranches[r] - 1).sum(1);
+      xs_diss = xs.narrow(-1, 1, _nbranches[r] - 1).sum(-1);
     } else {
-      xs_diss = xs.select(1, 0);
+      xs_diss = xs.select(-1, 0);
     }
+    xs_diss_list.push_back(xs_diss);  // (..., nwave)
+  }
 
-    torch::Tensor rate;
-    if (aflux.dim() == 1) {
-      rate = torch::trapezoid(xs_diss * aflux, wave, 0);
-      result.select(-1, r).fill_(rate.item<double>());
-    } else if (aflux.dim() == 2) {
-      auto xs_exp = xs_diss.unsqueeze(-1);
-      rate = torch::trapezoid(xs_exp * aflux, wave, 0);
-      result.select(-1, r).copy_(rate);
-    } else {
-      auto xs_exp = xs_diss;
-      for (int d = 1; d < aflux.dim(); d++) {
-        xs_exp = xs_exp.unsqueeze(-1);
-      }
-      rate = torch::trapezoid(xs_exp * aflux, wave, 0);
-      result.select(-1, r).copy_(rate);
+  // Stack all xs_diss: (..., nwave, nreaction)
+  auto xs_diss_stacked = torch::stack(xs_diss_list, -1);
+
+  // Vectorized integration for all reactions
+  // Handle different aflux dimensions
+  if (aflux.dim() == 1) {
+    // aflux: (nwave,), xs_diss_stacked: (..., nwave, nreaction)
+    auto integrand = xs_diss_stacked * aflux.unsqueeze(-1);  // (..., nwave, nreaction)
+    auto rates = torch::trapezoid(integrand, wave, -2);  // (..., nreaction)
+    result.copy_(rates);
+  } else if (aflux.dim() == 2) {
+    // aflux: (nwave, nspatial) or similar, xs_diss_stacked: (..., nwave, nreaction)
+    // Need to broadcast properly
+    auto aflux_exp = aflux.unsqueeze(-1);  // (nwave, nspatial, 1)
+    auto integrand = xs_diss_stacked.unsqueeze(-2) * aflux_exp;  // (..., nwave, nspatial, nreaction)
+    auto rates = torch::trapezoid(integrand, wave, -3);  // (..., nspatial, nreaction)
+    // Reshape to match result shape
+    result.copy_(rates.view(result.sizes()));
+  } else {
+    // Higher dimensional aflux: need to handle broadcasting
+    // Expand xs_diss_stacked to match aflux dimensions
+    auto xs_exp = xs_diss_stacked;
+    for (int d = 1; d < aflux.dim(); d++) {
+      xs_exp = xs_exp.unsqueeze(-2);
     }
+    // Broadcast: xs_exp (..., nwave, 1, ..., 1, nreaction), aflux (..., nwave, ...)
+    auto integrand = xs_exp * aflux.unsqueeze(-1);
+    // Find wavelength dimension (should be -aflux.dim() or similar)
+    int wave_dim = xs_diss_stacked.dim() - 1;  // Last dimension before nreaction
+    auto rates = torch::trapezoid(integrand, wave, wave_dim);
+    result.copy_(rates.view(result.sizes()));
   }
 
   return result;

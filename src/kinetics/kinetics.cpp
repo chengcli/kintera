@@ -4,7 +4,10 @@
 #include <kintera/constants.h>
 
 #include <kintera/thermo/eval_uhs.hpp>
-#include "falloff.hpp"
+#include "lindemann_falloff.hpp"
+#include "sri_falloff.hpp"
+#include "three_body.hpp"
+#include "troe_falloff.hpp"
 
 namespace kintera {
 
@@ -125,16 +128,60 @@ void KineticsImpl::reset() {
               << " Evaporation reactions" << std::endl;
   }
 
-  // register Falloff rates
-  rc_evaluator.push_back(
-      torch::nn::AnyModule(Falloff(options->falloff())));
-  register_module("falloff", rc_evaluator.back().ptr());
-  _nreactions.push_back(options->falloff()->reactions().size());
+  // register Three-Body rates
+  if (options->three_body()->reactions().size() > 0) {
+    rc_evaluator.push_back(
+        torch::nn::AnyModule(ThreeBody(options->three_body())));
+    register_module("three_body", rc_evaluator.back().ptr());
+    _nreactions.push_back(options->three_body()->reactions().size());
 
-  if (options->verbose()) {
-    std::cout << "[Kinetics] registered "
-              << options->falloff()->reactions().size()
-              << " Falloff reactions" << std::endl;
+    if (options->verbose()) {
+      std::cout << "[Kinetics] registered "
+                << options->three_body()->reactions().size()
+                << " Three-Body reactions" << std::endl;
+    }
+  }
+
+  // register Lindemann Falloff rates
+  if (options->lindemann_falloff()->reactions().size() > 0) {
+    rc_evaluator.push_back(
+        torch::nn::AnyModule(LindemannFalloff(options->lindemann_falloff())));
+    register_module("lindemann_falloff", rc_evaluator.back().ptr());
+    _nreactions.push_back(options->lindemann_falloff()->reactions().size());
+
+    if (options->verbose()) {
+      std::cout << "[Kinetics] registered "
+                << options->lindemann_falloff()->reactions().size()
+                << " Lindemann Falloff reactions" << std::endl;
+    }
+  }
+
+  // register Troe Falloff rates
+  if (options->troe_falloff()->reactions().size() > 0) {
+    rc_evaluator.push_back(
+        torch::nn::AnyModule(TroeFalloff(options->troe_falloff())));
+    register_module("troe_falloff", rc_evaluator.back().ptr());
+    _nreactions.push_back(options->troe_falloff()->reactions().size());
+
+    if (options->verbose()) {
+      std::cout << "[Kinetics] registered "
+                << options->troe_falloff()->reactions().size()
+                << " Troe Falloff reactions" << std::endl;
+    }
+  }
+
+  // register SRI Falloff rates
+  if (options->sri_falloff()->reactions().size() > 0) {
+    rc_evaluator.push_back(
+        torch::nn::AnyModule(SRIFalloff(options->sri_falloff())));
+    register_module("sri_falloff", rc_evaluator.back().ptr());
+    _nreactions.push_back(options->sri_falloff()->reactions().size());
+
+    if (options->verbose()) {
+      std::cout << "[Kinetics] registered "
+                << options->sri_falloff()->reactions().size()
+                << " SRI Falloff reactions" << std::endl;
+    }
   }
 
   // register Photolysis rates
@@ -207,7 +254,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     torch::Tensor rate;
 
     vec2.back() = _nreactions[i];
-    auto conc1 = conc.unsqueeze(-1).expand(vec2);
+    auto conc1 = conc.unsqueeze(-1).expand(vec2).clone();
     conc1.requires_grad_(true);
 
     if (options->evolve_temperature()) {
@@ -232,8 +279,10 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
       }
     } else {
       rate = rc_evaluator[i].forward(temp, pres, conc1, other);
-      rate.requires_grad_(true);
-      rate.backward(torch::ones_like(rate));
+
+      if (rate.requires_grad()) {
+        rate.backward(torch::ones_like(rate));
+      }
 
       if (conc1.grad().defined()) {
         rc_ddC.narrow(-1, first, _nreactions[i]) = conc1.grad();
