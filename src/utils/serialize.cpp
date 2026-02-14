@@ -1,5 +1,6 @@
 // torch
 #include <torch/serialize.h>
+#include <torch/script.h>
 
 // kintera
 #include "serialize.hpp"
@@ -17,6 +18,17 @@ void save_tensors(const std::map<std::string, torch::Tensor>& tensor_map,
 
 void load_tensors(std::map<std::string, torch::Tensor>& tensor_map,
                   const std::string& filename) {
+  // get keys
+  torch::jit::Module m = torch::jit::load(filename);
+
+  for (const auto& p : m.named_parameters(/*recurse=*/true)) {
+    tensor_map[p.name] = p.value;
+  }
+
+  for (const auto& b : m.named_buffers(/*recurse=*/true)) {
+    tensor_map[p.name] = p.value;
+  }
+
   torch::serialize::InputArchive archive;
   archive.load_from(filename);
   for (auto& pair : tensor_map) {
