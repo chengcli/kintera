@@ -11,7 +11,6 @@ namespace kintera {
 void save_tensors(const std::map<std::string, torch::Tensor>& tensor_map,
                   const std::string& filename);
 
-void load_tensors(std::map<std::string, torch::Tensor>& tensor_map,
-                  const std::string& filename);
+std::map<std::string, torch::Tensor> load_tensors(const std::string& filename);
 
 }  // namespace kintera
