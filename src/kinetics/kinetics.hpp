@@ -128,6 +128,11 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
   forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc);
 
+  //! Compute kinetic rate with extra data (e.g. actinic flux for photolysis)
+  std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
+  forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
+          std::map<std::string, torch::Tensor> const& extra);
+
  private:
   // used in evaluating jacobian
   std::vector<int> _nreactions;

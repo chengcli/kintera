@@ -224,6 +224,13 @@ torch::Tensor KineticsImpl::jacobian(
 std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
 KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
                       torch::Tensor conc) {
+  return forward(temp, pres, conc, {});
+}
+
+std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
+KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
+                      torch::Tensor conc,
+                      std::map<std::string, torch::Tensor> const& extra) {
   // dimension of reaction rate constants
   auto vec1 = temp.sizes().vec();
   vec1.push_back(stoich.size(1));
@@ -242,8 +249,8 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     rc_ddT = torch::empty(vec1, temp.options());
   }
 
-  // other data passed to rate constant evaluator
-  std::map<std::string, torch::Tensor> other = {};
+  // other data passed to rate constant evaluator (includes extra for photolysis)
+  std::map<std::string, torch::Tensor> other(extra.begin(), extra.end());
   int first = 0;
   for (int i = 0; i < rc_evaluator.size(); ++i) {
     // no reaction, skip

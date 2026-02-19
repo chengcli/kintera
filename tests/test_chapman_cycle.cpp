@@ -10,6 +10,8 @@
 
 #include <kintera/constants.h>
 #include <kintera/kinetics/arrhenius.hpp>
+#include <kintera/kinetics/kinetics.hpp>
+#include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/photolysis.hpp>
 #include <kintera/kinetics/three_body.hpp>
 #include "device_testing.hpp"
@@ -536,9 +538,121 @@ TEST_P(ChapmanCycleTest, ThreeBodyRateVsConcentration) {
             << ", ratio = " << ratio << " (expected " << expected_ratio << ")\n";
 }
 
+TEST_P(ChapmanCycleTest, TimeMarching) {
+  kintera::species_initialized = false;
+  kintera::species_names = {"N2", "O2", "O", "O3"};
+
+  auto op_kinet = KineticsOptionsImpl::from_yaml("chapman_cycle.yaml");
+  ASSERT_NE(op_kinet, nullptr) << "Failed to load chapman_cycle.yaml";
+  Kinetics kinet(op_kinet);
+  kinet->to(device, dtype);
+
+  auto species = op_kinet->species();
+  int nspecies = species.size();
+
+  std::cout << "Species: ";
+  for (auto& s : species) std::cout << s << " ";
+  std::cout << "\nStoich:\n" << kinet->stoich << "\n";
+
+  int nreaction = kinet->stoich.size(1);
+  std::cout << "Reactions: " << nreaction << "\n";
+
+  // Wavelength grid matching the YAML cross-section data
+  std::vector<double> wl_vec;
+  for (int w = 100; w <= 320; w += 10) wl_vec.push_back(w);
+  auto wavelength = torch::tensor(wl_vec, torch::device(device).dtype(dtype));
+
+  // Actinic flux at those wavelengths
+  auto actinic_flux = torch::zeros_like(wavelength);
+  for (int i = 0; i < (int)wl_vec.size(); i++) {
+    double w = wl_vec[i];
+    if (w < 200)
+      actinic_flux[i] = 1.e10 * std::exp(-(200 - w) / 30);
+    else if (w < 320)
+      actinic_flux[i] = 1.e13 * std::exp(-std::pow(w - 250, 2) / 5000);
+    else
+      actinic_flux[i] = 1.e14;
+  }
+
+  std::map<std::string, torch::Tensor> extra;
+  extra["wavelength"] = wavelength;
+  extra["actinic_flux"] = actinic_flux;
+
+  // Initial conditions in mol/m^3
+  double T = 250.0, P = 0.01;  // Pa
+  double n_tot = P / (constants::Rgas * T);  // mol/m^3
+  auto temp = torch::tensor({T}, torch::device(device).dtype(dtype));
+  auto pres = torch::tensor({P}, torch::device(device).dtype(dtype));
+
+  // Scalar (0D) tensors for single-point computation
+  auto conc = torch::zeros({nspecies}, torch::device(device).dtype(dtype));
+  for (int i = 0; i < nspecies; i++) {
+    if (species[i] == "N2")  conc[i] = 0.79 * n_tot;
+    else if (species[i] == "O2")  conc[i] = 0.21 * n_tot;
+    else if (species[i] == "O")   conc[i] = 1.e-10 * n_tot;
+    else if (species[i] == "O3")  conc[i] = 1.e-8 * n_tot;
+  }
+
+  int idx_O = -1, idx_O2 = -1, idx_O3 = -1;
+  for (int i = 0; i < nspecies; i++) {
+    if (species[i] == "O") idx_O = i;
+    if (species[i] == "O2") idx_O2 = i;
+    if (species[i] == "O3") idx_O3 = i;
+  }
+
+  double dt = 1.0;
+  std::cout << "\nTime marching with Kinetics + evolve_implicit:\n";
+
+  for (int step = 0; step < 500; step++) {
+    // Kinetics::forward expects temp shape to define batch dims;
+    // for 0D, use scalars and unsqueeze conc to match
+    auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc.unsqueeze(0), extra);
+
+    // Extract single-point results (remove batch dim)
+    auto rate0 = rate.squeeze(0);
+    auto cvol = torch::ones({1}, torch::device(device).dtype(dtype));
+    auto jac = kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate, rc_ddC, rc_ddT);
+    auto jac0 = jac.squeeze(0);
+
+    auto delta = evolve_implicit(rate0, kinet->stoich, jac0, dt);
+    conc = (conc + delta).clamp_min(0.0);
+
+    double rel_change = (delta.abs() / (conc.abs() + 1e-30)).max().item<double>();
+    if (rel_change < 0.5)
+      dt = std::min(dt * 1.5, 1.e6);
+    else if (rel_change > 2.0)
+      dt = std::max(dt * 0.5, 1.e-14);
+
+    if (step % 50 == 0 || step == 499) {
+      double total = conc.sum().item<double>();
+      std::cout << "  step " << step << " dt=" << dt
+                << " O=" << conc[idx_O].item<double>() / total
+                << " O2=" << conc[idx_O2].item<double>() / total
+                << " O3=" << conc[idx_O3].item<double>() / total << "\n";
+    }
+
+    if (step > 100 && rel_change < 1e-10) {
+      std::cout << "  Converged at step " << step << "\n";
+      break;
+    }
+  }
+
+  double total = conc.sum().item<double>();
+  double mix_O  = conc[idx_O].item<double>() / total;
+  double mix_O2 = conc[idx_O2].item<double>() / total;
+  double mix_O3 = conc[idx_O3].item<double>() / total;
+
+  EXPECT_GT(mix_O, 1e-4) << "O should build up from photolysis";
+  EXPECT_GT(mix_O3, 1e-4) << "O3 should build up from O + O2 reactions";
+  EXPECT_LT(mix_O2, 0.21) << "O2 should be partially consumed";
+
+  std::cout << "Final: O=" << mix_O << " O2=" << mix_O2 << " O3=" << mix_O3 << "\n";
+}
+
 INSTANTIATE_TEST_SUITE_P(
     DeviceTests, ChapmanCycleTest,
     testing::Values(Parameters{torch::kCPU, torch::kFloat64},
+                    Parameters{torch::kMPS, torch::kFloat32},
                     Parameters{torch::kCUDA, torch::kFloat64}),
     [](const testing::TestParamInfo<ChapmanCycleTest::ParamType>& info) {
       std::string name = torch::Device(info.param.device_type).str();
