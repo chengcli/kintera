@@ -557,9 +557,9 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   int nreaction = kinet->stoich.size(1);
   std::cout << "Reactions: " << nreaction << "\n";
 
-  // Wavelength grid matching the YAML cross-section data
+  // Wavelength grid matching the YAML cross-section data (1nm spacing)
   std::vector<double> wl_vec;
-  for (int w = 100; w <= 320; w += 10) wl_vec.push_back(w);
+  for (int w = 100; w <= 320; w += 1) wl_vec.push_back(w);
   auto wavelength = torch::tensor(wl_vec, torch::device(device).dtype(dtype));
 
   // Actinic flux at those wavelengths
@@ -579,7 +579,8 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   extra["actinic_flux"] = actinic_flux;
 
   // Initial conditions in mol/m^3
-  double T = 250.0, P = 0.01;  // Pa
+  // Use very low pressure to match VULCAN's optically-thin regime
+  double T = 250.0, P = 1.e-5;  // Pa (= 1e-4 dyn/cm^2)
   double n_tot = P / (constants::Rgas * T);  // mol/m^3
   auto temp = torch::tensor({T}, torch::device(device).dtype(dtype));
   auto pres = torch::tensor({P}, torch::device(device).dtype(dtype));

@@ -46,7 +46,7 @@ def setup_all():
             f.write(f"  {wl:.1f}    {flux_ph * hc / wl:.6e}\n")
     # Atmospheric profile (very low P for optically thin)
     d2 = os.path.join(VULCAN_DIR, "atm"); os.makedirs(d2, exist_ok=True)
-    P = np.logspace(np.log10(1e-1), np.log10(1e-4), 20)
+    P = np.logspace(np.log10(1e-1), np.log10(1e-4), 10)
     with open(os.path.join(d2, "atm_chapman.txt"), "w") as f:
         f.write("# Pressure(dyne/cm2)  Temp(K)  Kzz(cm2/s)\nPressure\tTemp\tKzz\n")
         for p in P: f.write(f"{p:.6e}\t250.0\t1.0e+05\n")
