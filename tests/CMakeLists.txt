@@ -17,6 +17,7 @@ setup_test(test_ch4_photolysis)
 setup_test(test_chapman_cycle)
 setup_test(test_falloff)
 setup_test(test_diffusion)
+setup_test(test_rt)
 
 file(GLOB inputs *.inp *.dat *.yaml)
 foreach(input ${inputs})
