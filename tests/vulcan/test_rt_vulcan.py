@@ -1,7 +1,7 @@
 """
-Validate kintera's Beer-Lambert RT against VULCAN's RT output.
+Validate kintera_rt (pyharp DISORT) against VULCAN's RT output.
 
-Compares the actinic flux and J-values computed by kintera against
+Compares the actinic flux and J-values computed by kintera_rt against
 VULCAN's self-consistent RT calculation for the same atmospheric state.
 
 Usage:
@@ -11,6 +11,9 @@ import os, sys, pickle, math, subprocess
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+from kintera_rt import compute_J, compute_actinic_flux
+
 VULCAN_DIR = os.path.join(SCRIPT_DIR, "VULCAN")
 
 
@@ -45,59 +48,6 @@ def ensure_vulcan_output():
     return out
 
 
-def kintera_compute_J(y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths):
-    """
-    Compute J-values using kintera's Beer-Lambert RT.
-    y: (nz, ni), dzi: (nz-1,) interface spacing
-    cross_O2, cross_O3: (nwave,) cross-sections
-    Returns J_O2(nz,), J_O3(nz,).
-    """
-    nz = y.shape[0]
-    nwave = len(wavelengths)
-
-    # Total cross-section for each absorber at each layer
-    # O2 is species index 1, O3 is species index 2
-    n_O2 = y[:, 1]  # (nz,)
-    n_O3 = y[:, 2]  # (nz,)
-
-    # Layer thickness — use dzi (interface spacing) as approximate layer thickness
-    # For nz layers, we have nz-1 interface spacings. Use the average for each layer.
-    dz = np.zeros(nz)
-    dz[0] = dzi[0]
-    dz[-1] = dzi[-1]
-    for j in range(1, nz - 1):
-        dz[j] = (dzi[j-1] + dzi[j]) / 2.0
-
-    # Absorption coefficient: alpha = n_O2*sigma_O2 + n_O3*sigma_O3
-    # alpha: (nz, nwave)
-    alpha = (n_O2[:, None] * cross_O2[None, :] +
-             n_O3[:, None] * cross_O3[None, :])
-
-    # dtau per layer
-    dtau = alpha * dz[:, None]  # (nz, nwave)
-
-    # Cumulative tau from TOA (layer nz-1 is at top)
-    # Level 0 = TOA, level nz = surface
-    tau_levels = np.zeros((nz + 1, nwave))
-    for k in range(nz):
-        layer = nz - 1 - k
-        tau_levels[k + 1] = tau_levels[k] + dtau[layer]
-
-    # Actinic flux at layer centers
-    F_levels = stellar_flux[None, :] * np.exp(-tau_levels / cos_zen)
-    aflux = np.zeros((nz, nwave))
-    for j in range(nz):
-        k_top = nz - 1 - j
-        k_bot = nz - j
-        aflux[j] = (F_levels[k_top] + F_levels[k_bot]) / 2.0
-
-    # J = integral(sigma_diss * aflux, dlambda)
-    J_O2 = np.trapz(cross_O2[None, :] * aflux, wavelengths, axis=1)
-    J_O3 = np.trapz(cross_O3[None, :] * aflux, wavelengths, axis=1)
-
-    return J_O2, J_O3, aflux
-
-
 def test_j_values_vs_vulcan():
     """Compare kintera J-values against VULCAN's RT-computed J-values."""
     out_path = ensure_vulcan_output()
@@ -129,9 +79,11 @@ def test_j_values_vs_vulcan():
     y = var["y_ini"]  # (nz, ni) initial composition
     dzi = atm["dzi"]
 
-    # Compute J-values using kintera's Beer-Lambert
+    # Compute J-values using kintera_rt (pyharp DISORT)
     cos_zen = 1.0  # overhead sun (from VULCAN config sl_angle=0)
-    J_O2_kin, J_O3_kin, aflux_kin = kintera_compute_J(
+    J_O2_kin, J_O3_kin = compute_J(
+        y, cross_O2, cross_O3, sflux_top, dzi, cos_zen, bins)
+    aflux_kin = compute_actinic_flux(
         y, cross_O2, cross_O3, sflux_top, dzi, cos_zen, bins)
 
     print(f"\n  J-value comparison (nz={nz}):")

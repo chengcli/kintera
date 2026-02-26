@@ -5,7 +5,7 @@ kintera vs VULCAN.
 The full photochemical column with RT:
   dy/dt = chemistry(y) + photolysis(y, J(y)) + diffusion(y)
 
-kintera now computes its OWN actinic flux using Beer-Lambert RT
+kintera computes actinic flux using pyharp DISORT (via kintera_rt)
 and updates J-values during time stepping (self-consistent RT),
 matching VULCAN's approach.
 
@@ -16,6 +16,9 @@ import os, sys, subprocess, pickle, math, re
 import numpy as np
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPT_DIR)
+from kintera_rt import compute_J
+
 VULCAN_DIR = os.path.join(SCRIPT_DIR, "VULCAN")
 TREF = 300.0
 KB_CGS = 1.380649e-16
@@ -73,38 +76,6 @@ def run_vulcan_full_1d():
     return data["variable"], data["atm"], vulcan_steps
 
 
-def compute_J_beer_lambert(y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths):
-    """
-    Compute J-values using kintera's Beer-Lambert RT.
-    y: (nz, ni), cross_O2/O3: (nwave,), stellar_flux: (nwave,)
-    Returns J_O2(nz,), J_O3(nz,).
-    """
-    nz = y.shape[0]
-    n_O2, n_O3 = y[:, 1], y[:, 2]
-
-    dz = np.zeros(nz)
-    dz[0] = dzi[0]; dz[-1] = dzi[-1]
-    for j in range(1, nz-1):
-        dz[j] = (dzi[j-1] + dzi[j]) / 2.0
-
-    alpha = (n_O2[:,None] * cross_O2[None,:] + n_O3[:,None] * cross_O3[None,:])
-    dtau = alpha * dz[:,None]
-
-    tau_levels = np.zeros((nz+1, len(wavelengths)))
-    for k in range(nz):
-        layer = nz - 1 - k
-        tau_levels[k+1] = tau_levels[k] + dtau[layer]
-
-    F_levels = stellar_flux[None,:] * np.exp(-tau_levels / cos_zen)
-    aflux = np.zeros((nz, len(wavelengths)))
-    for j in range(nz):
-        aflux[j] = (F_levels[nz-1-j] + F_levels[nz-j]) / 2.0
-
-    J_O2 = np.trapz(cross_O2[None,:] * aflux, wavelengths, axis=1)
-    J_O3 = np.trapz(cross_O3[None,:] * aflux, wavelengths, axis=1)
-    return J_O2, J_O3
-
-
 def compute_chem_dydt(y, k_all, J_O2, J_O3, nz, ni):
     """Chemistry + photolysis tendency at all levels."""
     dydt = np.zeros_like(y)
@@ -155,23 +126,22 @@ def compute_diff_dydt(y, Kzz, dzi, nz, ni):
 
 def kintera_1d_photo_diff_solve(y0, k_all, cross_O2, cross_O3, stellar_flux,
                                  Kzz, dzi, wavelengths, cos_zen, nz, ni,
-                                 max_steps=3000, rt_update_frq=20):
+                                 max_steps=5000, rt_update_frq=10):
     """
     Implicit Euler for chemistry + photolysis + diffusion with
-    self-consistent RT (J updated every rt_update_frq steps).
+    self-consistent RT (J updated every rt_update_frq steps via pyharp DISORT).
     """
     y = y0.copy()
     dt = 1e-10
     eps = 1e-8
+    dt_max = 1e6
 
-    # Initial J computation
-    J_O2, J_O3 = compute_J_beer_lambert(
+    J_O2, J_O3 = compute_J(
         y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths)
 
     for step in range(max_steps):
-        # Periodically update J from current composition (self-consistent RT)
         if step > 0 and step % rt_update_frq == 0:
-            J_O2, J_O3 = compute_J_beer_lambert(
+            J_O2, J_O3 = compute_J(
                 y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths)
 
         f_chem = compute_chem_dydt(y, k_all, J_O2, J_O3, nz, ni)
@@ -203,17 +173,17 @@ def kintera_1d_photo_diff_solve(y0, k_all, cross_O2, cross_O3, stellar_flux,
         y = y_flat_new.reshape(nz, ni)
 
         rc = np.max(np.abs(delta) / (np.abs(y_flat) + 1e-30))
-        if rc < 0.5:
-            dt = min(dt * 1.5, 1e8)
-        elif rc > 2.0:
+        if rc < 0.3:
+            dt = min(dt * 1.2, dt_max)
+        elif rc > 1.0:
             dt = max(dt * 0.5, 1e-14)
 
-        if step > 200 and step % 20 == 0:
-            J_O2_c, J_O3_c = compute_J_beer_lambert(
+        if step > 500 and step % 20 == 0:
+            J_O2_c, J_O3_c = compute_J(
                 y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths)
             f2 = (compute_chem_dydt(y, k_all, J_O2_c, J_O3_c, nz, ni) +
                   compute_diff_dydt(y, Kzz, dzi, nz, ni)).flatten()
-            if np.max(np.abs(f2) / (np.abs(y.flatten()) + 1e-30)) < 1e-8:
+            if np.max(np.abs(f2) / (np.abs(y.flatten()) + 1e-30)) < 1e-6:
                 break
 
     return y, step + 1
@@ -270,7 +240,7 @@ def test_1d_full_photochem():
     vulcan_ymix = var["ymix"]
 
     # kintera solve WITH self-consistent RT
-    print(f"\n  Running kintera 1D (chem + photo + diff + Beer-Lambert RT)...")
+    print(f"\n  Running kintera 1D (chem + photo + diff + pyharp DISORT RT)...")
     y_kin, nsteps = kintera_1d_photo_diff_solve(
         y0, k_all, cross_O2, cross_O3, sflux_top,
         Kzz, dzi, bins, cos_zen, nz, ni,

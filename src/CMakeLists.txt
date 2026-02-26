@@ -37,7 +37,6 @@ file(GLOB src_files
   math/*.cpp
   units/*.cpp
   diffusion/*.cpp
-  rt/*.cpp
   )
 
 add_library(${namel}_${buildl}
