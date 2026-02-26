@@ -16,6 +16,7 @@ setup_test(test_actinic_flux)
 setup_test(test_ch4_photolysis)
 setup_test(test_chapman_cycle)
 setup_test(test_falloff)
+setup_test(test_diffusion)
 
 file(GLOB inputs *.inp *.dat *.yaml)
 foreach(input ${inputs})

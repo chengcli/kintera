@@ -36,6 +36,7 @@ file(GLOB src_files
   thermo/*.cpp
   math/*.cpp
   units/*.cpp
+  diffusion/*.cpp
   )
 
 add_library(${namel}_${buildl}
