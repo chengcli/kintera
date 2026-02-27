@@ -6,6 +6,12 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CUDA_FLAGS
     "${CMAKE_CUDA_FLAGS} --extended-lambda --expt-relaxed-constexpr")
 
+if(APPLE)
+  message(STATUS "Compiling on MacOS")
+else()
+  add_compile_definitions(HAVE_AVX512_CPU_DEFINITION=1 HAVE_AVX2_CPU_DEFINITION=1)
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
   set(CMAKE_CXX_FLAGS_RELEASE
       "-O3 -funroll-loops -funroll-all-loops -fstrict-aliasing")
