@@ -99,8 +99,6 @@ DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
  * \param[in] neq               number of equality constraints, 0 <= neq <= n3
  * \param[in,out] max_iter      in: maximum number of iterations to perform,
  *                              out: number of iterations actually performed
- * \param[in] work              workspace if not null, otherwise allocated
- *                              internally.
  *
  * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
  *         2 on failure (max_iter reached without convergence).
@@ -108,7 +106,7 @@ DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
 template <typename T>
 DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
                                int n2, int n3, int neq, int *max_iter,
-                               float reg = 0., char *work = nullptr) {
+                               float reg = 0.) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
     printf(
@@ -127,33 +125,22 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   T *aug, *ata, *atb, *rhs, *eval;
   int *ct_indx, *lu_indx, *skip_row;
 
-  if (work == nullptr) {
-    aug = (T *)malloc(size * size * sizeof(T));
-    ata = (T *)malloc(n2 * n2 * sizeof(T));
-    atb = (T *)malloc(n2 * sizeof(T));
-    rhs = (T *)malloc(size * sizeof(T));
+  aug = (T *)pmalloc(size * size * sizeof(T));
+  ata = (T *)pmalloc(n2 * n2 * sizeof(T));
+  atb = (T *)pmalloc(n2 * sizeof(T));
+  rhs = (T *)pmalloc(size * sizeof(T));
 
-    // evaluation of constraints
-    eval = (T *)malloc(n3 * sizeof(T));
+  // evaluation of constraints
+  eval = (T *)pmalloc(n3 * sizeof(T));
 
-    // index for the active set
-    ct_indx = (int *)malloc(n3 * sizeof(int));
+  // index for the active set
+  ct_indx = (int *)pmalloc(n3 * sizeof(int));
 
-    // index array for the LU decomposition
-    lu_indx = (int *)malloc(size * sizeof(int));
+  // index array for the LU decomposition
+  lu_indx = (int *)pmalloc(size * sizeof(int));
 
-    // row indices to skip
-    skip_row = (int *)malloc(size * sizeof(int));
-  } else {
-    aug = alloc_from<T>(work, size * size);
-    ata = alloc_from<T>(work, n2 * n2);
-    atb = alloc_from<T>(work, n2);
-    rhs = alloc_from<T>(work, size);
-    eval = alloc_from<T>(work, n3);
-    ct_indx = alloc_from<int>(work, n3);
-    lu_indx = alloc_from<int>(work, size);
-    skip_row = alloc_from<int>(work, size);
-  }
+  // row indices to skip
+  skip_row = (int *)pmalloc(size * sizeof(int));
 
   // populate A^T.A
   for (int i = 0; i < n2; ++i) {
@@ -225,7 +212,7 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
       printf("\n");
     }*/
 
-    ludcmp(aug, lu_indx, n2 + nactive, work, skip_row);
+    ludcmp(aug, lu_indx, n2 + nactive, skip_row);
     lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
 
     // evaluate the inactive constraints
@@ -325,15 +312,13 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
     b[i] = rhs[i];
   }
 
-  if (work == nullptr) {
-    free(aug);
-    free(ata);
-    free(atb);
-    free(rhs);
-    free(eval);
-    free(ct_indx);
-    free(lu_indx);
-  }
+  pfree(aug);
+  pfree(ata);
+  pfree(atb);
+  pfree(rhs);
+  pfree(eval);
+  pfree(ct_indx);
+  pfree(lu_indx);
 
   if (iter >= *max_iter) {
     *max_iter = iter;

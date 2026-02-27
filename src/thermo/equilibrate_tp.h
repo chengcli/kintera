@@ -15,6 +15,16 @@
 
 #include <kintera/utils/user_funcs.hpp>
 
+#ifdef __CUDACC__
+  // cumem
+  #include <cumem/allocator.cuh>
+  #define pmalloc thread_pool::pmalloc
+  #define pfree thread_pool::pfree
+#else
+  #define pmalloc malloc
+  #define pfree free
+#endif
+
 namespace kintera {
 
 /*!
@@ -39,7 +49,6 @@ namespace kintera {
  *                              convergence.
  * \param[in,out] reaction_set  active set of reactions, modified in place.
  * \param[in,out] nactive       number of active reactions, modified in place.
- * \param[in] work              workspace if not null, otherwise allocated
  * internally.
  */
 template <typename T>
@@ -47,8 +56,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
                                   T const *stoich, int nspecies, int nreaction,
                                   int ngas, user_func1 const *logsvp_func,
                                   float logsvp_eps, int *max_iter,
-                                  int *reaction_set, int *nactive,
-                                  char *work = nullptr) {
+                                  int *reaction_set, int *nactive) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
     printf("Error: Non-positive temperature or pressure.\n");
@@ -88,47 +96,25 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   T *stoich_active, *stoich_sum, *xfrac0;
   T *gain_cpy;
 
-  if (work == nullptr) {
-    logsvp = (T *)malloc(nreaction * sizeof(T));
+  logsvp = (T *)pmalloc(nreaction * sizeof(T));
 
-    // weight matrix
-    weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+  // weight matrix
+  weight = (T *)pmalloc(nreaction * nspecies * sizeof(T));
 
-    // right-hand-side vector
-    rhs = (T *)malloc(nreaction * sizeof(T));
+  // right-hand-side vector
+  rhs = (T *)pmalloc(nreaction * sizeof(T));
 
-    // active stoichiometric matrix
-    stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
+  // active stoichiometric matrix
+  stoich_active = (T *)pmalloc(nspecies * nreaction * sizeof(T));
 
-    // sum of reactant stoichiometric coefficients
-    stoich_sum = (T *)malloc(nreaction * sizeof(T));
+  // sum of reactant stoichiometric coefficients
+  stoich_sum = (T *)pmalloc(nreaction * sizeof(T));
 
-    // copy of xfrac
-    xfrac0 = (T *)malloc(nspecies * sizeof(T));
+  // copy of xfrac
+  xfrac0 = (T *)pmalloc(nspecies * sizeof(T));
 
-    // gain matrix copy
-    gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
-  } else {
-    logsvp = alloc_from<T>(work, nreaction);
-
-    // weight matrix
-    weight = alloc_from<T>(work, nreaction * nspecies);
-
-    // right-hand-side vector
-    rhs = alloc_from<T>(work, nreaction);
-
-    // active stoichiometric matrix
-    stoich_active = alloc_from<T>(work, nspecies * nreaction);
-
-    // sum of reactant stoichiometric coefficients
-    stoich_sum = alloc_from<T>(work, nreaction);
-
-    // copy of xfrac
-    xfrac0 = alloc_from<T>(work, nspecies);
-
-    // gain matrix copy
-    gain_cpy = alloc_from<T>(work, nreaction * nreaction);
-  }
+  // gain matrix copy
+  gain_cpy = (T *)pmalloc(nreaction * nreaction * sizeof(T));
 
   memset(weight, 0, nreaction * nspecies * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
@@ -245,7 +231,7 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
     kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, *nactive, *nactive,
-                          nspecies, 0, &max_kkt_iter, 0., work);
+                          nspecies, 0, &max_kkt_iter, 0.);
     if (kkt_err != 0) break;
 
     /* print rate
@@ -344,15 +330,13 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
   // save number of iterations to diag
   diag[0] = iter;
 
-  if (work == nullptr) {
-    free(logsvp);
-    free(rhs);
-    free(weight);
-    free(stoich_active);
-    free(stoich_sum);
-    free(xfrac0);
-    free(gain_cpy);
-  }
+  pfree(logsvp);
+  pfree(rhs);
+  pfree(weight);
+  pfree(stoich_active);
+  pfree(stoich_sum);
+  pfree(xfrac0);
+  pfree(gain_cpy);
 
   if (iter >= *max_iter) {
     printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);

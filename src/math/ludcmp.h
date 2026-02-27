@@ -8,8 +8,15 @@
 // base
 #include <configure.h>
 
-// kintera
-#include <kintera/utils/alloc.h>
+#ifdef __CUDACC__
+  // cumem
+  #include <cumem/allocator.cuh>
+  #define pmalloc thread_pool::pmalloc
+  #define pfree thread_pool::pfree
+#else
+  #define pmalloc malloc
+  #define pfree free
+#endif
 
 #define X(i, j) x[(i) * n + (j)]
 
@@ -30,23 +37,15 @@ namespace kintera {
  * depending on whether the number of row interchanges was even or odd,
  *                              respectively.
  * \param[in] n                 size of matrix
- * \param[in] work              workspace if not null, otherwise allocated
  * internally
  */
 template <typename T>
-DISPATCH_MACRO int ludcmp(T *x, int *indx, int n, char *work = nullptr,
-                          int *skip_row = nullptr) {
+DISPATCH_MACRO int ludcmp(T *x, int *indx, int n, int *skip_row = nullptr) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
   T *vv;
 
-  if (work == nullptr) {
-    // allocate workspace
-    vv = (T *)malloc(n * sizeof(T));
-  } else {
-    // use user-provided workspace
-    vv = alloc_from<T>(work, n);
-  }
+  vv = (T *)pmalloc(n * sizeof(T));
 
   for (i = 0; i < n; i++) indx[i] = i;
 
@@ -58,7 +57,7 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n, char *work = nullptr,
       if ((temp = fabs(X(i, j))) > big) big = temp;
     if (big == 0.0) {
       // printf("Singular matrix in routine ludcmp\n");
-      if (work == nullptr) free(vv);
+      pfree(vv);
       return 0;
     }
     vv[i] = 1.0 / big;
@@ -96,7 +95,8 @@ DISPATCH_MACRO int ludcmp(T *x, int *indx, int n, char *work = nullptr,
       for (i = j + 1; i < n; i++) X(i, j) *= dum;
     }
   }
-  if (work == nullptr) free(vv);
+
+  pfree(vv);
   return d;
 }
 

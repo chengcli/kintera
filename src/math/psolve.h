@@ -13,8 +13,15 @@
 #include "core.h"
 #include "swap.h"
 
-// kintera
-#include <kintera/utils/alloc.h>
+#ifdef __CUDACC__
+  // cumem
+  #include <cumem/allocator.cuh>
+  #define pmalloc thread_pool::pmalloc
+  #define pfree thread_pool::pfree
+#else
+  #define pmalloc malloc
+  #define pfree free
+#endif
 
 namespace kintera {
 
@@ -112,24 +119,15 @@ DISPATCH_MACRO void sort_eigenpairs_desc(T* evals, T* V, int n) {
    A: n x n, b: n, output x: n
 */
 template <typename T>
-DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
+DISPATCH_MACRO void psolve(T* b, const T* A, int n) {
   T *ATA, *V, *eval, *vi, *Avi, *b0;
 
-  if (work == nullptr) {
-    ATA = (T*)malloc(n * n * sizeof(T));
-    V = (T*)malloc(n * n * sizeof(T));
-    eval = (T*)malloc(n * sizeof(T));
-    vi = (T*)malloc(n * sizeof(T));
-    Avi = (T*)malloc(n * sizeof(T));
-    b0 = (T*)malloc(n * sizeof(T));
-  } else {
-    ATA = alloc_from<T>(work, n * n);
-    V = alloc_from<T>(work, n * n);
-    eval = alloc_from<T>(work, n);
-    vi = alloc_from<T>(work, n);
-    Avi = alloc_from<T>(work, n);
-    b0 = alloc_from<T>(work, n);
-  }
+  ATA = (T*)pmalloc(n * n * sizeof(T));
+  V = (T*)pmalloc(n * n * sizeof(T));
+  eval = (T*)pmalloc(n * sizeof(T));
+  vi = (T*)pmalloc(n * sizeof(T));
+  Avi = (T*)pmalloc(n * sizeof(T));
+  b0 = (T*)pmalloc(n * sizeof(T));
 
   matmul_ATA(ATA, A, n);
   memcpy(b0, b, n * sizeof(T));
@@ -168,14 +166,12 @@ DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
     for (int k = 0; k < n; ++k) b[k] += coeff * vi[k];
   }
 
-  if (work == nullptr) {
-    free(ATA);
-    free(V);
-    free(eval);
-    free(vi);
-    free(Avi);
-    free(b0);
-  }
+  pfree(ATA);
+  pfree(V);
+  pfree(eval);
+  pfree(vi);
+  pfree(Avi);
+  pfree(b0);
 }
 
 }  // namespace kintera
