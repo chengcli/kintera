@@ -4,7 +4,7 @@ requires = [
   "wheel",
   "build",
   "pyharp>=2.0.0",
-  "torch<=2.7.1,>=2.7.0",
+  "torch>=2.8.0",
   "ninja",
   ]
 build-backend = "setuptools.build_meta"
@@ -33,6 +33,8 @@ classifiers = [
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
   "Topic :: Scientific/Engineering :: Atmospheric Science",
   "Topic :: Scientific/Engineering :: Physics",
