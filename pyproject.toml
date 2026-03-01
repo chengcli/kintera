@@ -3,7 +3,8 @@ requires = [
   "setuptools>=61.0.0",
   "wheel",
   "build",
-  "torch<=2.7.1,>=2.7.0",
+  "pyharp>=1.10.0",
+  "torch>=2.8.0",
   "ninja",
   ]
 build-backend = "setuptools.build_meta"
@@ -21,7 +22,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
   "numpy",
-  "pyharp>=1.9.0",
+  "pyharp>=1.10.0",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
