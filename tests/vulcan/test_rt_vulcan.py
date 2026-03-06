@@ -60,31 +60,33 @@ def test_j_values_vs_vulcan():
     J_O2_vulcan = var["J_sp"][("O2", 1)]
     J_O3_vulcan = var["J_sp"][("O3", 1)]
 
-    # VULCAN's cross-sections and wavelength grid
+    # Cross-sections: dissociation (for J) and total absorption (for optical depth)
     bins = var["bins"]
     cross_O2 = var["cross_J"][("O2", 1)]
     cross_O3 = var["cross_J"][("O3", 1)]
+    abs_O2 = var["cross"]["O2"]
+    abs_O3 = var["cross"]["O3"]
 
     # VULCAN's actinic flux (for reference)
     aflux_vulcan = var["aflux"]
 
     # VULCAN sflux is in ergs/cm²/s/nm; aflux is in photons/cm²/s/nm
-    # Convert: F_photon = F_erg * lambda / hc
     hc = 1.98644582e-9  # erg nm
-    sflux_erg = var["sflux"][nz]  # sflux at TOA in ergs
-    sflux_top = sflux_erg * bins / hc  # convert to photons
+    sflux_erg = var["sflux"][nz]
+    sflux_top = sflux_erg * bins / hc
 
     # Use INITIAL composition (same as what VULCAN used to compute J)
-    # VULCAN computed J once at initialization with const_mix = {O2:0.21, ...}
-    y = var["y_ini"]  # (nz, ni) initial composition
+    y = var["y_ini"]
     dzi = atm["dzi"]
 
     # Compute J-values using kintera_rt (pyharp DISORT)
-    cos_zen = 1.0  # overhead sun (from VULCAN config sl_angle=0)
+    cos_zen = 1.0
     J_O2_kin, J_O3_kin = compute_J(
-        y, cross_O2, cross_O3, sflux_top, dzi, cos_zen, bins)
+        y, cross_O2, cross_O3, sflux_top, dzi, cos_zen, bins,
+        abs_O2=abs_O2, abs_O3=abs_O3)
     aflux_kin = compute_actinic_flux(
-        y, cross_O2, cross_O3, sflux_top, dzi, cos_zen, bins)
+        y, cross_O2, cross_O3, sflux_top, dzi, cos_zen, bins,
+        abs_O2=abs_O2, abs_O3=abs_O3)
 
     print(f"\n  J-value comparison (nz={nz}):")
     print(f"  {'lev':>3s} {'P':>10s} | {'J_O2 VUL':>11s} {'J_O2 KIN':>11s} {'err%':>7s} | "
