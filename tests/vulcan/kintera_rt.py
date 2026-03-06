@@ -29,7 +29,8 @@ def _get_disort(nz, nwave):
 
 
 def compute_actinic_flux(y, cross_O2, cross_O3, stellar_flux, dzi,
-                         cos_zen, wavelengths, absorber_ids=(1, 2)):
+                         cos_zen, wavelengths, absorber_ids=(1, 2),
+                         abs_O2=None, abs_O3=None):
     """
     Compute actinic flux using pyharp DISORT.
 
@@ -38,9 +39,9 @@ def compute_actinic_flux(y, cross_O2, cross_O3, stellar_flux, dzi,
     y : ndarray (nz, ni)
         Number densities at each layer (bottom-up ordering).
     cross_O2 : ndarray (nwave,)
-        O2 absorption cross-section [cm^2].
+        O2 photodissociation cross-section [cm^2] (used for J integration).
     cross_O3 : ndarray (nwave,)
-        O3 absorption cross-section [cm^2].
+        O3 photodissociation cross-section [cm^2] (used for J integration).
     stellar_flux : ndarray (nwave,)
         TOA stellar flux [photons/cm^2/s/nm].
     dzi : ndarray (nz-1,)
@@ -51,6 +52,12 @@ def compute_actinic_flux(y, cross_O2, cross_O3, stellar_flux, dzi,
         Wavelength grid [nm].
     absorber_ids : tuple
         Indices into y's species axis for (O2, O3).
+    abs_O2 : ndarray (nwave,), optional
+        O2 total absorption cross-section for optical depth [cm^2].
+        If None, uses cross_O2 (pure dissociation case).
+    abs_O3 : ndarray (nwave,), optional
+        O3 total absorption cross-section for optical depth [cm^2].
+        If None, uses cross_O3 (pure dissociation case).
 
     Returns
     -------
@@ -60,6 +67,11 @@ def compute_actinic_flux(y, cross_O2, cross_O3, stellar_flux, dzi,
     nz, ni = y.shape
     nwave = len(wavelengths)
 
+    if abs_O2 is None:
+        abs_O2 = cross_O2
+    if abs_O3 is None:
+        abs_O3 = cross_O3
+
     dz = np.zeros(nz)
     dz[0] = dzi[0]
     dz[-1] = dzi[-1]
@@ -68,7 +80,7 @@ def compute_actinic_flux(y, cross_O2, cross_O3, stellar_flux, dzi,
 
     n_O2 = y[:, absorber_ids[0]]
     n_O3 = y[:, absorber_ids[1]]
-    alpha = n_O2[:, None] * cross_O2[None, :] + n_O3[:, None] * cross_O3[None, :]
+    alpha = n_O2[:, None] * abs_O2[None, :] + n_O3[:, None] * abs_O3[None, :]
     dtau = alpha * dz[:, None]  # (nz, nwave)
 
     nstr = 4
@@ -104,9 +116,15 @@ def compute_actinic_flux(y, cross_O2, cross_O3, stellar_flux, dzi,
 
 
 def compute_J(y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths,
-              absorber_ids=(1, 2)):
+              absorber_ids=(1, 2), abs_O2=None, abs_O3=None):
     """
     Compute photolysis rates J_O2 and J_O3 using pyharp DISORT.
+
+    Parameters
+    ----------
+    cross_O2, cross_O3 : dissociation cross-sections (for J integration)
+    abs_O2, abs_O3 : total absorption cross-sections (for optical depth).
+        If None, uses the dissociation cross-sections.
 
     Returns
     -------
@@ -114,7 +132,8 @@ def compute_J(y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths,
     J_O3 : ndarray (nz,)
     """
     aflux = compute_actinic_flux(y, cross_O2, cross_O3, stellar_flux, dzi,
-                                 cos_zen, wavelengths, absorber_ids)
+                                 cos_zen, wavelengths, absorber_ids,
+                                 abs_O2=abs_O2, abs_O3=abs_O3)
     J_O2 = np.trapz(cross_O2[None, :] * aflux, wavelengths, axis=1)
     J_O3 = np.trapz(cross_O3[None, :] * aflux, wavelengths, axis=1)
     return J_O2, J_O3

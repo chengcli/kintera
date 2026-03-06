@@ -126,6 +126,7 @@ def compute_diff_dydt(y, Kzz, dzi, nz, ni):
 
 def kintera_1d_photo_diff_solve(y0, k_all, cross_O2, cross_O3, stellar_flux,
                                  Kzz, dzi, wavelengths, cos_zen, nz, ni,
+                                 abs_O2=None, abs_O3=None,
                                  max_steps=5000, rt_update_frq=10):
     """
     Implicit Euler for chemistry + photolysis + diffusion with
@@ -137,12 +138,14 @@ def kintera_1d_photo_diff_solve(y0, k_all, cross_O2, cross_O3, stellar_flux,
     dt_max = 1e6
 
     J_O2, J_O3 = compute_J(
-        y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths)
+        y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths,
+        abs_O2=abs_O2, abs_O3=abs_O3)
 
     for step in range(max_steps):
         if step > 0 and step % rt_update_frq == 0:
             J_O2, J_O3 = compute_J(
-                y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths)
+                y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths,
+                abs_O2=abs_O2, abs_O3=abs_O3)
 
         f_chem = compute_chem_dydt(y, k_all, J_O2, J_O3, nz, ni)
         f_diff = compute_diff_dydt(y, Kzz, dzi, nz, ni)
@@ -180,7 +183,8 @@ def kintera_1d_photo_diff_solve(y0, k_all, cross_O2, cross_O3, stellar_flux,
 
         if step > 500 and step % 20 == 0:
             J_O2_c, J_O3_c = compute_J(
-                y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths)
+                y, cross_O2, cross_O3, stellar_flux, dzi, cos_zen, wavelengths,
+                abs_O2=abs_O2, abs_O3=abs_O3)
             f2 = (compute_chem_dydt(y, k_all, J_O2_c, J_O3_c, nz, ni) +
                   compute_diff_dydt(y, Kzz, dzi, nz, ni)).flatten()
             if np.max(np.abs(f2) / (np.abs(y.flatten()) + 1e-30)) < 1e-6:
@@ -205,10 +209,12 @@ def test_1d_full_photochem():
     # Extract rate constants from VULCAN
     k_all = {i: var["k"][i] for i in [1, 2, 3, 4, 7, 8]}
 
-    # Cross-sections and wavelength grid from VULCAN
+    # Cross-sections: dissociation (for J) and total absorption (for optical depth)
     bins = var["bins"]
     cross_O2 = var["cross_J"][("O2", 1)]
     cross_O3 = var["cross_J"][("O3", 1)]
+    abs_O2 = var["cross"]["O2"]
+    abs_O3 = var["cross"]["O3"]
 
     # Stellar flux at TOA (convert ergs to photons)
     hc = 1.98644582e-9
@@ -244,6 +250,7 @@ def test_1d_full_photochem():
     y_kin, nsteps = kintera_1d_photo_diff_solve(
         y0, k_all, cross_O2, cross_O3, sflux_top,
         Kzz, dzi, bins, cos_zen, nz, ni,
+        abs_O2=abs_O2, abs_O3=abs_O3,
         max_steps=3000, rt_update_frq=20)
     kintera_ymix = y_kin / y_kin.sum(axis=1, keepdims=True)
     print(f"  kintera converged in {nsteps} steps")
