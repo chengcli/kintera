@@ -174,7 +174,8 @@ jobs:
             TORCH_CMAKE_PREFIX_PATH=$(python -c 'import torch.utils; print(torch.utils.cmake_prefix_path)')
             export LD_LIBRARY_PATH=$(python -c "import torch; print(torch.__path__[0] + '/lib')"):$(pwd)/build/lib:$LD_LIBRARY_PATH
             cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-                  -DCMAKE_PREFIX_PATH="$TORCH_CMAKE_PREFIX_PATH"
+                  -DCMAKE_PREFIX_PATH="$TORCH_CMAKE_PREFIX_PATH" \
+                  -DCUDA=ON
             cmake --build build --parallel 3
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: |
             export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH
