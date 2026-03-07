@@ -157,7 +157,7 @@ jobs:
             dnf config-manager --set-enabled codeready-builder-for-rhel-8-$(arch)-rpms
 
             yum install -y netcdf-devel
-            pip install numpy 'cmake<=3.30' 'pyharp>=1.9.0,<1.10.0' 'torch==2.7.1'
+            pip install numpy 'cmake<=3.30' 'pyharp==1.9.5' 'torch==2.7.1'
 
             # Test that pydisort imports correctly in the *same Python* that CMake will use
             python - <<'PY'
