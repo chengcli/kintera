@@ -96,6 +96,22 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   //! options with which this `KineticsImpl` was constructed
   KineticsOptions options;
 
+  // --- reverse reaction data ---
+  //! 1.0 for reversible reactions, 0.0 otherwise, shape (nreaction,)
+  torch::Tensor rev_mask;
+  //! product-only stoichiometry (positive values), shape (nspecies, nreaction)
+  torch::Tensor prod_stoich;
+  //! net mole change per reaction, shape (nreaction,)
+  torch::Tensor dn;
+  //! NASA-9 coefficients, shape (nspecies, 9)
+  torch::Tensor nasa9_coeffs_low, nasa9_coeffs_high;
+  //! NASA-9 mid-temperature, shape (nspecies,)
+  torch::Tensor nasa9_Tmid;
+  //! whether any reversible reactions exist
+  bool has_reversible_ = false;
+  //! cached raw rate constants from last forward() call (before mass-action)
+  mutable torch::Tensor last_kf_;
+
   //! Constructor to initialize the layer
   KineticsImpl() : options(KineticsOptionsImpl::create()) {}
   explicit KineticsImpl(const KineticsOptions& options_);

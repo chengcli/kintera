@@ -1,5 +1,9 @@
 // C/C++
+#include <array>
+#include <fstream>
+#include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -13,6 +17,7 @@
 #include <harp/compound.hpp>
 
 // kintera
+#include <configure.h>
 #include <kintera/utils/vectors.hpp>
 
 #include "species.hpp"
@@ -25,6 +30,60 @@ std::vector<double> species_cref_R;
 std::vector<double> species_uref_R;
 std::vector<double> species_sref_R;
 bool species_initialized = false;
+
+std::vector<std::array<double, 9>> species_nasa9_low;
+std::vector<std::array<double, 9>> species_nasa9_high;
+std::vector<double> species_nasa9_Tmid;
+bool species_has_nasa9 = false;
+
+struct Nasa9Entry {
+  std::array<double, 9> low, high;
+};
+
+static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
+  static std::unordered_map<std::string, Nasa9Entry> db;
+  if (!db.empty()) return db;
+
+  std::string path = std::string(KINTERA_ROOT_DIR) + "/data/nasa9.dat";
+  std::ifstream ifs(path);
+  TORCH_CHECK(ifs.good(), "Cannot open NASA-9 data file: ", path);
+
+  std::string line;
+  while (std::getline(ifs, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    // species name line (non-numeric first character)
+    if (!std::isdigit(line[0]) && line[0] != '-' && line[0] != ' ') {
+      std::string name = line;
+      // trim whitespace
+      while (!name.empty() && std::isspace(name.back())) name.pop_back();
+
+      // read 4 lines of 5 values = 20 coefficients
+      double vals[20];
+      int idx = 0;
+      for (int row = 0; row < 4 && std::getline(ifs, line); ++row) {
+        std::istringstream iss(line);
+        double v;
+        while (iss >> v && idx < 20) vals[idx++] = v;
+      }
+      if (idx < 20) continue;
+
+      Nasa9Entry e;
+      // low-T range (vals 0..9): a0-a6, a7(=0), a8, a9
+      // store 9 coefficients: a0-a6, a8, a9 (skip a7)
+      for (int k = 0; k < 7; ++k) e.low[k] = vals[k];
+      e.low[7] = vals[8];   // a8
+      e.low[8] = vals[9];   // a9
+
+      // high-T range (vals 10..19)
+      for (int k = 0; k < 7; ++k) e.high[k] = vals[10 + k];
+      e.high[7] = vals[18];  // a8
+      e.high[8] = vals[19];  // a9
+
+      db[name] = e;
+    }
+  }
+  return db;
+}
 
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
@@ -41,6 +100,10 @@ void init_species_from_yaml(YAML::Node const& config) {
   species_cref_R.clear();
   species_uref_R.clear();
   species_sref_R.clear();
+  species_nasa9_low.clear();
+  species_nasa9_high.clear();
+  species_nasa9_Tmid.clear();
+  species_has_nasa9 = false;
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -70,6 +133,24 @@ void init_species_from_yaml(YAML::Node const& config) {
     } else {
       species_sref_R.push_back(0.);
     }
+
+    // Look up NASA-9 thermodynamic data from data/nasa9.dat
+    std::array<double, 9> low_coeffs = {};
+    std::array<double, 9> high_coeffs = {};
+    double Tmid = 1000.0;
+
+    auto& nasa9_db = get_nasa9_db();
+    auto name = sp["name"].as<std::string>();
+    auto it = nasa9_db.find(name);
+    if (it != nasa9_db.end()) {
+      species_has_nasa9 = true;
+      low_coeffs = it->second.low;
+      high_coeffs = it->second.high;
+    }
+
+    species_nasa9_low.push_back(low_coeffs);
+    species_nasa9_high.push_back(high_coeffs);
+    species_nasa9_Tmid.push_back(Tmid);
   }
 
   species_initialized = true;

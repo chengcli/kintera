@@ -22,8 +22,8 @@ __pycache__
 # dist
 dist
 
-# test outputs
-examples/*.png
+# outputs
+*.png
 examples/*.pdf
 
 .vscode
