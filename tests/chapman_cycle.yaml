@@ -20,30 +20,24 @@ species:
     cv_R: 3.0
 
 reactions:
-  # R1: O + O2 => O3 (bimolecular Arrhenius)
-  - equation: O + O2 => O3
+  # R1: O + O2 <=> O3 (reversible via Gibbs free energy)
+  - equation: O + O2 <=> O3
     type: arrhenius
     rate-constant: {A: 1.7e-14, b: -2.4, Ea_R: 0.0}
 
-  # R1_rev: O3 => O + O2 (thermodynamic reverse, unimolecular)
-  # k_rev = k_fwd / K_eq(Gibbs) = 1.268396e-10 s^-1 at T=250K
-  - equation: O3 => O + O2
-    type: arrhenius
-    rate-constant: {A: 1.268396e-10, b: 0.0, Ea_R: 0.0}
-
-  # R2: O + O3 => 2 O2 (bimolecular Arrhenius)
-  - equation: O + O3 => 2 O2
+  # R2: O + O3 <=> 2 O2 (reversible via Gibbs free energy)
+  - equation: O + O3 <=> 2 O2
     type: arrhenius
     rate-constant: {A: 8.0e-12, b: 0.0, Ea_R: 2060.0}
 
-  # R3: O + O2 + M => O3 + M (three-body)
+  # R3: O + O2 + M <=> O3 + M (three-body, reversible)
   - equation: O + O2 + M <=> O3 + M
     type: three-body
     rate-constant: {A: 6.0e-34, b: -2.4, Ea_R: 0.0}
     efficiencies: {N2: 1.0, O2: 1.0}
 
-  # P1: O2 => 2 O (photolysis)
-  - equation: O2 => 2 O
+  # P1: O2 <=> 2 O (photolysis, reverse disabled when Kc < threshold)
+  - equation: O2 <=> 2 O
     type: photolysis
     cross-section:
       - format: YAML
@@ -270,8 +264,8 @@ reactions:
         - [319, 9.40478e-51, 0.00000e+00]
         - [320, 3.93031e-51, 0.00000e+00]
 
-  # P2: O3 => O2 + O (photolysis)
-  - equation: O3 => O2 + O
+  # P2: O3 <=> O2 + O (photolysis, reverse active via Gibbs)
+  - equation: O3 <=> O2 + O
     type: photolysis
     cross-section:
       - format: YAML

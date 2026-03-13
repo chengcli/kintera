@@ -243,7 +243,17 @@ void bind_kinetics(py::module& m) {
               torch::Tensor pres, torch::Tensor conc) {
              py::gil_scoped_release no_gil;
              return self.forward(temp, pres, conc);
-           })
+           },
+           py::arg("temp"), py::arg("pres"), py::arg("conc"))
+      .def("forward",
+           [](kintera::KineticsImpl &self, torch::Tensor temp,
+              torch::Tensor pres, torch::Tensor conc,
+              std::map<std::string, torch::Tensor> const &extra) {
+             py::gil_scoped_release no_gil;
+             return self.forward(temp, pres, conc, extra);
+           },
+           py::arg("temp"), py::arg("pres"), py::arg("conc"),
+           py::arg("extra"))
       .def("jacobian", &kintera::KineticsImpl::jacobian, py::arg("temp"),
            py::arg("conc"), py::arg("cvol"), py::arg("rate"), py::arg("rc_ddC"),
            py::arg("rc_ddT") = torch::nullopt);

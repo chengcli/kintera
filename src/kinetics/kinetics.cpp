@@ -4,12 +4,18 @@
 #include <kintera/constants.h>
 
 #include <kintera/thermo/eval_uhs.hpp>
+#include <kintera/thermo/nasa9.hpp>
 #include "lindemann_falloff.hpp"
 #include "sri_falloff.hpp"
 #include "three_body.hpp"
 #include "troe_falloff.hpp"
 
 namespace kintera {
+
+extern std::vector<std::array<double, 9>> species_nasa9_low;
+extern std::vector<std::array<double, 9>> species_nasa9_high;
+extern std::vector<double> species_nasa9_Tmid;
+extern bool species_has_nasa9;
 
 std::shared_ptr<KineticsImpl> KineticsImpl::create(KineticsOptions const& opts,
                                                    torch::nn::Module* p,
@@ -195,30 +201,125 @@ void KineticsImpl::reset() {
               << options->photolysis()->reactions().size()
               << " Photolysis reactions" << std::endl;
   }
+
+  // --- Build reverse reaction metadata ---
+  has_reversible_ = false;
+  int nrxn = reactions.size();
+
+  auto rev_mask_data = torch::zeros({nrxn}, torch::kFloat64);
+  auto prod_stoich_data =
+      torch::zeros({(int)nspecies, nrxn}, torch::kFloat64);
+  auto dn_data = torch::zeros({nrxn}, torch::kFloat64);
+
+  for (int j = 0; j < nrxn; ++j) {
+    auto const& r = reactions[j];
+    if (r.reversible()) {
+      has_reversible_ = true;
+      rev_mask_data[j] = 1.0;
+    }
+    for (int i = 0; i < (int)species.size(); ++i) {
+      auto it = r.products().find(species[i]);
+      if (it != r.products().end()) {
+        prod_stoich_data[i][j] = it->second;
+      }
+    }
+    double dn_val = 0.0;
+    for (auto const& p : r.products()) dn_val += p.second;
+    for (auto const& p : r.reactants()) dn_val -= p.second;
+    dn_data[j] = dn_val;
+  }
+
+  rev_mask = register_buffer("rev_mask", rev_mask_data);
+  prod_stoich = register_buffer("prod_stoich", prod_stoich_data);
+  dn = register_buffer("dn", dn_data);
+
+  if (species_has_nasa9 && has_reversible_) {
+    auto low = torch::zeros({(int)nspecies, 9}, torch::kFloat64);
+    auto high = torch::zeros({(int)nspecies, 9}, torch::kFloat64);
+    auto tmid = torch::zeros({(int)nspecies}, torch::kFloat64);
+
+    for (int i = 0; i < (int)nspecies; ++i) {
+      int gid = options->vapor_ids()[i];
+      for (int k = 0; k < 9; ++k) {
+        low[i][k] = species_nasa9_low[gid][k];
+        high[i][k] = species_nasa9_high[gid][k];
+      }
+      tmid[i] = species_nasa9_Tmid[gid];
+    }
+
+    nasa9_coeffs_low = register_buffer("nasa9_coeffs_low", low);
+    nasa9_coeffs_high = register_buffer("nasa9_coeffs_high", high);
+    nasa9_Tmid = register_buffer("nasa9_Tmid", tmid);
+
+    if (options->verbose()) {
+      std::cout << "[Kinetics] loaded NASA-9 thermo data for "
+                << nspecies << " species" << std::endl;
+    }
+  }
+
+  if (options->verbose()) {
+    int n_rev = rev_mask_data.sum().item<int>();
+    std::cout << "[Kinetics] " << n_rev << " reversible reactions out of "
+              << nrxn << " total" << std::endl;
+  }
 }
 
 torch::Tensor KineticsImpl::jacobian(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::Tensor rc_ddC,
     torch::optional<torch::Tensor> rc_ddT) const {
-  auto stoich_local = (-stoich).clamp_min(0.0).t();
+  auto react_st = (-stoich).clamp_min(0.0).t();  // (nrxn, nspecies)
+  auto concp_fwd =
+      conc.unsqueeze(-2).pow(react_st).prod(-1, /*keepdim=*/true);
 
-  // concentration products
-  auto concp = conc.unsqueeze(-2).pow(stoich_local).prod(-1, /*keepdim=*/true);
+  if (!has_reversible_ || !nasa9_coeffs_low.defined()) {
+    auto jac =
+        concp_fwd * rc_ddC.transpose(-1, -2) +
+        react_st * rate.unsqueeze(-1) / conc.unsqueeze(-2).clamp_min(1e-20);
 
-  // part I, concentration derivative
-  auto jacobian =
-      concp * rc_ddC.transpose(-1, -2) +
-      stoich_local * rate.unsqueeze(-1) / conc.unsqueeze(-2).clamp_min(1e-20);
-
-  // part II, add temperature derivative if provided
-  if (rc_ddT.has_value()) {
-    auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
-    jacobian -= concp * rc_ddT.value().unsqueeze(-1) * intEng.unsqueeze(-2) /
-                cvol.unsqueeze(-1).unsqueeze(-1);
+    if (rc_ddT.has_value()) {
+      auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
+      jac -= concp_fwd * rc_ddT.value().unsqueeze(-1) *
+             intEng.unsqueeze(-2) /
+             cvol.unsqueeze(-1).unsqueeze(-1);
+    }
+    return jac;
   }
 
-  return jacobian;
+  // Compute rate_f and rate_r directly using cached rate constants (k_f)
+  auto g_RT = nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high,
+                              nasa9_Tmid);
+  auto delta_g_RT = torch::matmul(g_RT, stoich);
+  auto log_standconc =
+      torch::log(torch::tensor(options->Pref(), temp.options()) /
+                 (constants::Rgas * temp));
+  auto Kc = (-delta_g_RT + dn * log_standconc.unsqueeze(-1)).exp();
+  constexpr double Kc_min = 1e-60;
+  auto kc_valid = (Kc > Kc_min).to(torch::kFloat64);
+
+  auto sm = stoich.clamp_max(0.).abs();
+  auto conc_react = conc.unsqueeze(-1).pow(sm).prod(-2);
+  auto conc_prod = conc.unsqueeze(-1).pow(prod_stoich).prod(-2);
+
+  auto rate_f = last_kf_ * conc_react;
+  auto rate_r = rev_mask * kc_valid *
+                (last_kf_ / Kc.clamp_min(Kc_min)) * conc_prod;
+
+  auto prod_st = prod_stoich.t();  // (nrxn, nspecies)
+  auto inv_conc = 1.0 / conc.unsqueeze(-2).clamp_min(1e-20);
+
+  auto jac = react_st * rate_f.unsqueeze(-1) * inv_conc -
+             prod_st * rate_r.unsqueeze(-1) * inv_conc +
+             concp_fwd * rc_ddC.transpose(-1, -2);
+
+  if (rc_ddT.has_value()) {
+    auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
+    jac -= concp_fwd * rc_ddT.value().unsqueeze(-1) *
+           intEng.unsqueeze(-2) /
+           cvol.unsqueeze(-1).unsqueeze(-1);
+  }
+
+  return jac;
 }
 
 std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
@@ -302,11 +403,35 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     first += _nreactions[i];
   }
 
-  // mark reactants
-  auto sm = stoich.clamp_max(0.).abs();
-  result *= conc.unsqueeze(-1).pow(sm).prod(-2);
+  // cache raw rate constants for use in jacobian()
+  last_kf_ = result.detach().clone();
 
-  return std::make_tuple(result.detach(), rc_ddC, rc_ddT);
+  // mass-action: multiply rate constant by product of reactant concentrations
+  auto sm = stoich.clamp_max(0.).abs();
+  auto rate_f = result * conc.unsqueeze(-1).pow(sm).prod(-2);
+
+  // compute reverse rates for reversible reactions
+  if (has_reversible_ && nasa9_coeffs_low.defined()) {
+    auto g_RT = nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high,
+                                nasa9_Tmid);
+
+    auto delta_g_RT = torch::matmul(g_RT, stoich);
+
+    auto log_standconc =
+        torch::log(torch::tensor(options->Pref(), temp.options()) /
+                   (constants::Rgas * temp));
+    auto Kc = (-delta_g_RT + dn * log_standconc.unsqueeze(-1)).exp();
+    constexpr double Kc_min = 1e-60;
+    auto kc_valid = (Kc > Kc_min).to(torch::kFloat64);
+
+    auto conc_prod = conc.unsqueeze(-1).pow(prod_stoich).prod(-2);
+    auto rate_r = rev_mask * kc_valid *
+                  (result / Kc.clamp_min(Kc_min)) * conc_prod;
+
+    rate_f = rate_f - rate_r;
+  }
+
+  return std::make_tuple(rate_f.detach(), rc_ddC, rc_ddT);
 }
 
 }  // namespace kintera
