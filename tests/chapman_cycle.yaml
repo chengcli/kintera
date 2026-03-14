@@ -20,12 +20,12 @@ species:
     cv_R: 3.0
 
 reactions:
-  # R1: O + O2 <=> O3 (reversible via Gibbs free energy)
+  # R1: O + O2 <=> O3 (reversible, Gibbs-based reverse matches VULCAN)
   - equation: O + O2 <=> O3
     type: arrhenius
     rate-constant: {A: 1.7e-14, b: -2.4, Ea_R: 0.0}
 
-  # R2: O + O3 <=> 2 O2 (reversible via Gibbs free energy)
+  # R2: O + O3 <=> 2 O2 (reversible)
   - equation: O + O3 <=> 2 O2
     type: arrhenius
     rate-constant: {A: 8.0e-12, b: 0.0, Ea_R: 2060.0}
@@ -36,8 +36,8 @@ reactions:
     rate-constant: {A: 6.0e-34, b: -2.4, Ea_R: 0.0}
     efficiencies: {N2: 1.0, O2: 1.0}
 
-  # P1: O2 <=> 2 O (photolysis, reverse disabled when Kc < threshold)
-  - equation: O2 <=> 2 O
+  # P1: O2 => 2 O (photolysis, irreversible — no Gibbs reverse for photolysis)
+  - equation: O2 => 2 O
     type: photolysis
     cross-section:
       - format: YAML
@@ -264,8 +264,8 @@ reactions:
         - [319, 9.40478e-51, 0.00000e+00]
         - [320, 3.93031e-51, 0.00000e+00]
 
-  # P2: O3 <=> O2 + O (photolysis, reverse active via Gibbs)
-  - equation: O3 <=> O2 + O
+  # P2: O3 => O2 + O (photolysis, irreversible)
+  - equation: O3 => O2 + O
     type: photolysis
     cross-section:
       - format: YAML
