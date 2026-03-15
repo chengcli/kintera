@@ -122,699 +122,907 @@ species:
 - name: O_1
   composition: {O: 1}
   cv_R: 2.5
+- name: He
+  composition: {He: 1}
+  cv_R: 2.5
 reactions:
 - equation: OH + H2 <=> H2O + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.079182e-12, b: 1.52, Ea_R: 1740.0}
 - equation: O + H2 <=> OH + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.5023e-13, b: 2.67, Ea_R: 3160.0}
 - equation: O + H2O <=> OH + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.849605e-11, b: 0.95, Ea_R: 8570.0}
 - equation: H + CH <=> H2 + C
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.31e-10, b: 0.0, Ea_R: 80.0}
 - equation: H + CH2 <=> CH + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-11, b: 0.0, Ea_R: -900.0}
 - equation: CH2 + H2 <=> H + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.646615e-13, b: 2.3, Ea_R: 3699.0}
 - equation: H + CH4 <=> CH3 + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.94e-13, b: 3.0, Ea_R: 4040.0}
 - equation: C + CH <=> C2 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.818653e-11, b: 0.5, Ea_R: 0.0}
 - equation: CH3 + C <=> H + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-10, b: 0.0, Ea_R: 0.0}
 - equation: H2 + C2H <=> H + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.183438e-12, b: 2.17, Ea_R: 478.0}
 - equation: CH + CH2 <=> H + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 9.316396e-11, b: -0.9, Ea_R: 0.0}
 - equation: H + C2H3 <=> C2H2 + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: H2 + C2H3 <=> H + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.636059e-13, b: 2.63, Ea_R: 4300.0}
 - equation: CH + CH4 <=> H + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.0e-11, b: 0.0, Ea_R: -200.0}
 - equation: CH2 + CH3 <=> H + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 7.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: H + C2H5 <=> CH3 + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.99e-11, b: 0.0, Ea_R: 0.0}
 - equation: H + C2H5 <=> C2H4 + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-12, b: 0.0, Ea_R: 0.0}
 - equation: H + C2H6 <=> C2H5 + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.297738e-13, b: 3.5, Ea_R: 2600.0}
 - equation: OH + CO <=> H + CO2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.45596e-14, b: 1.5, Ea_R: -250.0}
 - equation: CH + CH3 <=> H2 + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: C2 + O <=> C + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.05e-12, b: 0.0, Ea_R: 0.0}
 - equation: CH2 + CH2 <=> C2H2 + H + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.8e-10, b: 0.0, Ea_R: 400.0}
 - equation: CH2 + CH2 <=> CH + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.98e-10, b: 0.0, Ea_R: 5000.0}
 - equation: CH2 + CH2 <=> H + C2H3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.32e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2 + CH4 <=> CH3 + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.681e-13, b: 2.0, Ea_R: 4162.0}
 - equation: CH2 + C2H5 <=> CH3 + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3 + OH <=> CH2 + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.995e-14, b: 3.0, Ea_R: 1400.0}
 - equation: C2H + OH <=> CH2 + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: C2H2 + O <=> CH2 + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.522991e-12, b: 1.5, Ea_R: 854.0}
 - equation: CH3 + C2H <=> C2H2 + CH2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH4 + C2H <=> CH3 + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-12, b: 0.0, Ea_R: 250.0}
 - equation: CH3 + C2H3 <=> CH4 + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.51e-13, b: 0.0, Ea_R: 0.0}
 - equation: CH4 + C2H3 <=> CH3 + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.93378e-14, b: 4.02, Ea_R: 2754.0}
 - equation: CH3 + C2H5 <=> CH4 + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.876388e-12, b: -0.5, Ea_R: 0.0}
 - equation: CH3 + C2H6 <=> CH4 + C2H5
   type: arrhenius
+  reversible: true
   rate-constant: {A: 7.3872e-15, b: 4.0, Ea_R: 4170.0}
 - equation: C2H2 + OH <=> CH3 + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.5124e-18, b: 4.0, Ea_R: -1010.0}
 - equation: C2 + H2 <=> H + C2H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.1e-10, b: 0.0, Ea_R: 4000.0}
 - equation: C2 + CH4 <=> CH3 + C2H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.05e-11, b: 0.0, Ea_R: 297.0}
 - equation: C2H + CH2 <=> CH + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: C2H + C2H6 <=> C2H2 + C2H5
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.99e-12, b: 0.0, Ea_R: 0.0}
 - equation: C2H + O <=> CH + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.69e-11, b: 0.0, Ea_R: 0.0}
 - equation: C2H + OH <=> C2H2 + O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: C2H + H2O <=> C2H2 + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 7.90028e-14, b: 3.05, Ea_R: 376.0}
 - equation: C2H3 + C2H3 <=> C2H4 + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.6e-12, b: 0.0, Ea_R: 0.0}
 - equation: C2H3 + C2H5 <=> C2H4 + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 8.0e-13, b: 0.0, Ea_R: 0.0}
 - equation: C2H3 + C2H5 <=> C2H6 + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 8.0e-13, b: 0.0, Ea_R: 0.0}
 - equation: C2H4 + OH <=> C2H3 + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.686774e-13, b: 2.75, Ea_R: 2100.0}
 - equation: C2H5 + C2H5 <=> C2H4 + C2H6
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.31e-12, b: 0.0, Ea_R: 0.0}
 - equation: C2H5 + C2H4 <=> C2H3 + C2H6
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.950848e-14, b: 3.13, Ea_R: 9060.0}
 - equation: C2H6 + OH <=> C2H5 + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.540174e-12, b: 1.04, Ea_R: 913.0}
 - equation: CH + O <=> OH + C
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.52e-11, b: 0.0, Ea_R: 2381.0}
 - equation: O + CH <=> H + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.59e-11, b: 0.0, Ea_R: 0.0}
 - equation: O + CH3 <=> CH2 + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-11, b: 0.0, Ea_R: 3970.0}
 - equation: CH3 + OH <=> O + CH4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.266817e-14, b: 2.2, Ea_R: 2240.0}
 - equation: O + C2H6 <=> OH + C2H5
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.127774e-11, b: 0.6, Ea_R: 3680.0}
 - equation: OH + C <=> CO + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.818653e-11, b: 0.5, Ea_R: 0.0}
 - equation: OH + CH2 <=> H2O + CH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.442517e-13, b: 2.02, Ea_R: 3410.0}
 - equation: OH + CH4 <=> H2O + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.221178e-13, b: 2.18, Ea_R: 1231.0}
 - equation: OH + C2H3 <=> H2O + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: OH + C2H5 <=> H2O + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2OH + H <=> OH + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.6e-10, b: 0.0, Ea_R: 0.0}
 - equation: H2CO + H <=> HCO + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 8.822791e-12, b: 1.77, Ea_R: 1510.0}
 - equation: O + C2H4 <=> HCO + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.513499e-12, b: 1.55, Ea_R: 215.0}
 - equation: H2CO + CH3 <=> CH4 + HCO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 8.404242e-14, b: 2.81, Ea_R: 2950.0}
 - equation: CH3 + CH2OH <=> H2CO + CH4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.0e-12, b: 0.0, Ea_R: 0.0}
 - equation: HCO + H <=> CO + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.5e-10, b: 0.0, Ea_R: 0.0}
 - equation: HCO + OH <=> CO + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.69e-10, b: 0.0, Ea_R: 0.0}
 - equation: CO2 + CH <=> HCO + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.71e-12, b: 0.0, Ea_R: 345.1}
 - equation: CH3 + O <=> H2CO + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.4e-10, b: 0.0, Ea_R: 0.0}
 - equation: CH3O + O <=> H2CO + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3O + OH <=> H2CO + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3OH + H <=> CH3O + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.053901e-13, b: 2.685, Ea_R: 4643.0}
 - equation: CH3OH + H <=> CH3 + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 7.026318e-13, b: 2.485, Ea_R: 10380.0}
 - equation: CH2 + O <=> CO + H + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.33e-10, b: 0.0, Ea_R: 0.0}
 - equation: CH2 + OH <=> H2CO + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: CO2 + CH2 <=> H2CO + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.9e-14, b: 0.0, Ea_R: 0.0}
 - equation: CH3O + CO <=> CH3 + CO2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.61e-11, b: 0.0, Ea_R: 5940.0}
 - equation: CH3OH + H <=> CH2OH + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.237539e-13, b: 2.728, Ea_R: 2240.0}
 - equation: HCO + C2H <=> C2H2 + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-10, b: 0.0, Ea_R: 0.0}
 - equation: CH2OH + C2H <=> H2CO + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.99e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3O + C2H <=> H2CO + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3OH + C2H <=> CH2OH + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3OH + C2H <=> CH3O + C2H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.01e-12, b: 0.0, Ea_R: 0.0}
 - equation: O + C2H3 <=> C2H2 + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.507277e-12, b: 0.2, Ea_R: -215.2}
 - equation: CH + C2H4 <=> C2H2 + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.23e-10, b: 0.0, Ea_R: -173.0}
 - equation: CH2 + C2H3 <=> C2H2 + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: O + CH2 <=> CO + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 9.96e-11, b: 0.0, Ea_R: 0.0}
 - equation: HCO + CH2 <=> CO + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2OH + CH2 <=> OH + C2H4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2OH + CH2 <=> H2CO + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.01e-12, b: 0.0, Ea_R: 0.0}
 - equation: CH3O + CH2 <=> H2CO + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3OH + CH2 <=> CH3O + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.141494e-15, b: 3.1, Ea_R: 3490.0}
 - equation: CH3OH + CH2 <=> CH2OH + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.469343e-15, b: 3.2, Ea_R: 3609.0}
 - equation: HCO + CH3 <=> CO + CH4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.01e-10, b: 0.0, Ea_R: 0.0}
 - equation: CH3O + CH3 <=> H2CO + CH4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3OH + CH3 <=> CH3O + CH4
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.141494e-15, b: 3.1, Ea_R: 3490.0}
 - equation: CH3CO + H <=> HCO + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.32e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3CO + CH3 <=> CO + C2H6
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.9e-11, b: 0.0, Ea_R: 0.0}
 - equation: O + OH <=> O2 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.312807e-11, b: -0.5, Ea_R: 30.0}
 - equation: H + CH3O <=> H2CO + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.3e-11, b: 0.0, Ea_R: 0.0}
 - equation: H + H2CCO <=> CO + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.039826e-12, b: 1.45, Ea_R: 1399.0}
 - equation: O + C2H3 <=> H2CCO + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.6e-10, b: 0.0, Ea_R: 0.0}
 - equation: C2H2 + O <=> HCCO + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.5e-11, b: 0.0, Ea_R: 2280.0}
 - equation: HCCO + H <=> CO + CH2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.49e-10, b: 0.0, Ea_R: 0.0}
 - equation: O + H2CO <=> HCO + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.768682e-11, b: 0.57, Ea_R: 1390.0}
 - equation: HCO + HCO <=> H2CO + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2OH + CH3O <=> H2CO + CH3OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3O + CH3O <=> H2CO + CH3OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-10, b: 0.0, Ea_R: 0.0}
 - equation: O + CH3O <=> O2 + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.55e-11, b: 0.0, Ea_R: 239.0}
 - equation: O2 + C <=> O + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.99e-10, b: 0.0, Ea_R: 2010.0}
 - equation: O2 + CH2 <=> H2O + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.0e-13, b: 0.0, Ea_R: 0.0}
 - equation: O2 + CH3 <=> OH + H2CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.5e-13, b: 0.0, Ea_R: 4500.0}
 - equation: O2 + C2H <=> CO + HCO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 4.0e-12, b: 0.0, Ea_R: 0.0}
 - equation: O2 + C2H3 <=> H2CO + HCO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 9.0e-12, b: 0.0, Ea_R: 0.0}
 - equation: CH + H2O <=> H2CO + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.794212e-11, b: -1.22, Ea_R: -12.0}
 - equation: O + C2H5 <=> CH3CHO + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.33e-10, b: 0.0, Ea_R: 0.0}
 - equation: CH3CHO + H <=> H2 + CH3CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.64e-11, b: 0.0, Ea_R: 2120.0}
 - equation: C2H + C2H5 <=> C3H3 + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: C2H3 + C2H3 <=> CH3 + C3H3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.5e-11, b: 0.0, Ea_R: 0.0}
 - equation: C3H3 + OH <=> HCO + C2H3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 8.3e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2OH + C2H <=> OH + C3H3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2 + C2H2 <=> C3H2 + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.0e-12, b: 0.0, Ea_R: 3332.0}
 - equation: CH2 + C2H2 <=> C3H3 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.99e-11, b: 0.0, Ea_R: 3332.0}
 - equation: CH2 + C2H <=> C3H2 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH + C2H2 <=> C3H2 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.5e-10, b: 0.0, Ea_R: -252.0}
 - equation: CH3 + C2H <=> C3H3 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.64e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3 + C2H2 <=> C3H4 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.156925e-12, b: 0.86, Ea_R: 11100.0}
 - equation: CH + C3H3 <=> C4H3 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.26e-10, b: 0.0, Ea_R: -61.0}
 - equation: C2H + C2H5 <=> C4H5 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.2e-10, b: 0.0, Ea_R: 0.0}
 - equation: C2H2 + C4H5 <=> C6H6 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 9.451265e-11, b: -1.11, Ea_R: 4568.0}
 - equation: C6H5 + H2 <=> C6H6 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 9.19465e-14, b: 2.63, Ea_R: 2294.0}
 - equation: C6H5 + CH4 <=> C6H6 + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 9.96e-12, b: 0.0, Ea_R: 6201.0}
 - equation: C + C2H2 <=> C3H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.71e-10, b: 0.0, Ea_R: 16.0}
 - equation: O + C2H4 <=> H2CO + CH2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 8.186487e-13, b: 1.99, Ea_R: 1439.0}
 - equation: O + C2H3 <=> HCO + CH2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.5e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH3 + HO2 <=> CH4 + O2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.99e-12, b: 0.0, Ea_R: 0.0}
 - equation: CH3OH + OH <=> CH3O + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.66e-11, b: 0.0, Ea_R: 854.0}
 - equation: CH3OH + OH <=> CH2OH + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.16e-13, b: 2.0, Ea_R: -423.0}
 - equation: HO2 + H <=> OH + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.81e-10, b: 0.0, Ea_R: 440.0}
 - equation: HO2 + H <=> O + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.0e-11, b: 0.0, Ea_R: 866.0}
 - equation: HO2 + H <=> O2 + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 7.11e-11, b: 0.0, Ea_R: 710.0}
 - equation: CO + HO2 <=> CO2 + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.51e-10, b: 0.0, Ea_R: 11900.0}
 - equation: O + H2O2 <=> OH + HO2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.44e-12, b: 2.0, Ea_R: 2000.0}
 - equation: C2H5 + HO2 <=> C2H6 + O2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.0e-13, b: 0.0, Ea_R: 0.0}
 - equation: HCO + O2 <=> CO + HO2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.81e-12, b: 0.0, Ea_R: 0.0}
 - equation: OH + HO2 <=> H2O + O2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 8.0e-11, b: -1.0, Ea_R: 0.0}
 - equation: OH + H2O2 <=> H2O + HO2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.91e-12, b: 0.0, Ea_R: 160.0}
 - equation: H2O2 + H <=> H2 + HO2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.81e-12, b: 0.0, Ea_R: 1890.0}
 - equation: H2O2 + H <=> OH + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.69e-11, b: 0.0, Ea_R: 1800.0}
 - equation: O + HO2 <=> OH + O2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.91e-11, b: 0.0, Ea_R: -200.0}
 - equation: HO2 + CH4 <=> CH3 + H2O2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 3.01e-13, b: 0.0, Ea_R: 9350.0}
 - equation: HO2 + HO2 <=> H2O2 + O2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.3e-13, b: 0.0, Ea_R: -600.0}
 - equation: O_1 + C2H6 <=> C2H5 + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.29e-10, b: 0.0, Ea_R: 0.0}
 - equation: O_1 + H2 <=> OH + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.87e-10, b: 0.0, Ea_R: 0.0}
 - equation: O_1 + CH4 <=> OH + CH3
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.13e-10, b: 0.0, Ea_R: 0.0}
 - equation: O_1 + H2O <=> OH + OH
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.62e-10, b: 0.0, Ea_R: -65.0}
 - equation: O_1 + CO2 <=> O + CO2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 2.52e-10, b: 0.0, Ea_R: 0.0}
 - equation: O_1 + CO <=> CO2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 8.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2_1 + H2 <=> CH3 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 9.24e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2_1 + H2 <=> CH2 + H2
   type: arrhenius
+  reversible: true
   rate-constant: {A: 1.26e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2_1 + H2O <=> CH2 + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2_1 + CO <=> CH2 + CO
   type: arrhenius
+  reversible: true
   rate-constant: {A: 5.0e-11, b: 0.0, Ea_R: 0.0}
 - equation: CH2_1 + C2H2 <=> C3H3 + H
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.64e-11, b: 0.0, Ea_R: 0.0}
 - equation: OH + CH3 <=> CH2_1 + H2O
   type: arrhenius
+  reversible: true
   rate-constant: {A: 6.316962e-11, b: -1.27, Ea_R: 186.0}
 - equation: H + H + M <=> H2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 8.812335e-33, b: -0.6, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 1.103333e-08, b: -1.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 8.812335e-33, b: -0.6, Ea_R: 0.0}
+  high-P-rate-constant: {A: 1.103333e-08, b: -1.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: H + O + M <=> OH + M
-  type: lindemann-falloff
-  rate-constant: {A: 4.333333e-32, b: -1.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 1.0e-11, b: 0.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 4.333333e-32, b: -1.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 1.0e-11, b: 0.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: OH + H + M <=> H2O + M
-  type: lindemann-falloff
-  rate-constant: {A: 4.322222e-30, b: -2.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 1.581785e-10, b: 0.23, Ea_R: -57.5}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 4.322222e-30, b: -2.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 1.581785e-10, b: 0.23, Ea_R: -57.5}
   efficiencies: {}
 - equation: H + CH + M <=> CH2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 9.2e-32, b: -1.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 1.0e-12, b: 0.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 9.2e-32, b: -1.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 1.0e-12, b: 0.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: H + CH3 + M <=> CH4 + M
-  type: lindemann-falloff
-  rate-constant: {A: 6.119197e-29, b: -1.8, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 2.103869e-11, b: -0.4, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 6.119197e-29, b: -1.8, Ea_R: 0.0}
+  high-P-rate-constant: {A: 2.103869e-11, b: -0.4, Ea_R: 0.0}
   efficiencies: {}
 - equation: H + C2H2 + M <=> C2H3 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.029243e-25, b: -7.27, Ea_R: 3630.0}
-  high-pressure-rate-constant: {A: 9.13e-12, b: 0.0, Ea_R: 1220.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.029243e-25, b: -7.27, Ea_R: 3630.0}
+  high-P-rate-constant: {A: 9.13e-12, b: 0.0, Ea_R: 1220.0}
   efficiencies: {}
 - equation: H + C2H3 + M <=> C2H4 + M
-  type: lindemann-falloff
-  rate-constant: {A: 7.666667e-27, b: -1.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 2.021421e-10, b: 0.2, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 7.666667e-27, b: -1.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 2.021421e-10, b: 0.2, Ea_R: 0.0}
   efficiencies: {}
 - equation: H + C2H4 + M <=> C2H5 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.3e-29, b: 0.0, Ea_R: 380.0}
-  high-pressure-rate-constant: {A: 6.233248e-12, b: 1.49, Ea_R: 499.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.3e-29, b: 0.0, Ea_R: 380.0}
+  high-P-rate-constant: {A: 6.233248e-12, b: 1.49, Ea_R: 499.0}
   efficiencies: {}
 - equation: H + C2H5 + M <=> C2H6 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.481481e-26, b: -3.0, Ea_R: 600.0}
-  high-pressure-rate-constant: {A: 2.251686e-10, b: 0.16, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.481481e-26, b: -3.0, Ea_R: 600.0}
+  high-P-rate-constant: {A: 2.251686e-10, b: 0.16, Ea_R: 0.0}
   efficiencies: {}
 - equation: H2 + C + M <=> CH2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 6.89e-32, b: 0.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 2.06e-11, b: 0.0, Ea_R: 57.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 6.89e-32, b: 0.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 2.06e-11, b: 0.0, Ea_R: 57.0}
   efficiencies: {}
 - equation: CH + M <=> C + H + M
-  type: lindemann-falloff
-  rate-constant: {A: 3.16e-10, b: 0.0, Ea_R: 33700.0}
-  high-pressure-rate-constant: {A: 1.0e-12, b: 0.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 3.16e-10, b: 0.0, Ea_R: 33700.0}
+  high-P-rate-constant: {A: 1.0e-12, b: 0.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: CH2 + H + M <=> CH3 + M
-  type: lindemann-falloff
-  rate-constant: {A: 9.0e-32, b: 0.0, Ea_R: -550.0}
-  high-pressure-rate-constant: {A: 2.011566e-11, b: 0.15, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 9.0e-32, b: 0.0, Ea_R: -550.0}
+  high-P-rate-constant: {A: 2.011566e-11, b: 0.15, Ea_R: 0.0}
   efficiencies: {}
 - equation: CH + H2 + M <=> CH3 + M
-  type: lindemann-falloff
-  rate-constant: {A: 3.4e-31, b: 0.0, Ea_R: -736.0}
-  high-pressure-rate-constant: {A: 7.3e-11, b: 0.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 3.4e-31, b: 0.0, Ea_R: -736.0}
+  high-P-rate-constant: {A: 7.3e-11, b: 0.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: CH3 + CH3 + M <=> C2H6 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.600366e-24, b: -7.0, Ea_R: 1390.0}
-  high-pressure-rate-constant: {A: 7.261254e-11, b: -0.54, Ea_R: 68.6}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.600366e-24, b: -7.0, Ea_R: 1390.0}
+  high-P-rate-constant: {A: 7.261254e-11, b: -0.54, Ea_R: 68.6}
   efficiencies: {}
 - equation: C2H + H + M <=> C2H2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 2.638121e-26, b: -3.1, Ea_R: 721.0}
-  high-pressure-rate-constant: {A: 3.0e-10, b: 0.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 2.638121e-26, b: -3.1, Ea_R: 721.0}
+  high-P-rate-constant: {A: 3.0e-10, b: 0.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: C2H4 + M <=> C2H2 + H2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 5.8e-08, b: 0.0, Ea_R: 36000.0}
-  high-pressure-rate-constant: {A: 9.779136e+13, b: 0.44, Ea_R: 44700.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 5.8e-08, b: 0.0, Ea_R: 36000.0}
+  high-P-rate-constant: {A: 9.779136e+13, b: 0.44, Ea_R: 44700.0}
   efficiencies: {}
 - equation: C2H6 + M <=> C2H4 + H2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 3.8e-07, b: 0.0, Ea_R: 34000.0}
-  high-pressure-rate-constant: {A: 1.32e+15, b: 0.0, Ea_R: 36800.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 3.8e-07, b: 0.0, Ea_R: 34000.0}
+  high-P-rate-constant: {A: 1.32e+15, b: 0.0, Ea_R: 36800.0}
   efficiencies: {}
 - equation: CO + O + M <=> CO2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.7e-33, b: 0.0, Ea_R: 1510.0}
-  high-pressure-rate-constant: {A: 2.66e-14, b: 0.0, Ea_R: 1459.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.7e-33, b: 0.0, Ea_R: 1510.0}
+  high-P-rate-constant: {A: 2.66e-14, b: 0.0, Ea_R: 1459.0}
   efficiencies: {}
 - equation: CH2OH + M <=> H + H2CO + M
-  type: lindemann-falloff
-  rate-constant: {A: 4.798422e-05, b: -2.5, Ea_R: 17200.0}
-  high-pressure-rate-constant: {A: 1.106028e+17, b: -7.11, Ea_R: 22200.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 4.798422e-05, b: -2.5, Ea_R: 17200.0}
+  high-P-rate-constant: {A: 1.106028e+17, b: -7.11, Ea_R: 22200.0}
   efficiencies: {}
 - equation: H + CO + M <=> HCO + M
-  type: lindemann-falloff
-  rate-constant: {A: 5.29e-34, b: 0.0, Ea_R: 370.0}
-  high-pressure-rate-constant: {A: 1.96e-13, b: 0.0, Ea_R: 1369.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 5.29e-34, b: 0.0, Ea_R: 370.0}
+  high-P-rate-constant: {A: 1.96e-13, b: 0.0, Ea_R: 1369.0}
   efficiencies: {}
 - equation: H2O + CH + M <=> CH2OH + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.0e-31, b: 0.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 9.48e-12, b: 0.0, Ea_R: -380.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.0e-31, b: 0.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 9.48e-12, b: 0.0, Ea_R: -380.0}
   efficiencies: {}
 - equation: CH3O + M <=> H + H2CO + M
-  type: lindemann-falloff
-  rate-constant: {A: 2.191415e-03, b: -6.65, Ea_R: 16700.0}
-  high-pressure-rate-constant: {A: 9.403595e+13, b: -4.25, Ea_R: 13100.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 2.191415e-03, b: -6.65, Ea_R: 16700.0}
+  high-P-rate-constant: {A: 9.403595e+13, b: -4.25, Ea_R: 13100.0}
   efficiencies: {}
 - equation: CH2OH + H + M <=> CH3OH + M
-  type: lindemann-falloff
-  rate-constant: {A: 3.635527e-28, b: -4.65, Ea_R: 2557.1}
-  high-pressure-rate-constant: {A: 2.889433e-10, b: 0.04, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 3.635527e-28, b: -4.65, Ea_R: 2557.1}
+  high-P-rate-constant: {A: 2.889433e-10, b: 0.04, Ea_R: 0.0}
   efficiencies: {}
 - equation: OH + C2H2 + M <=> CH3CO + M
-  type: lindemann-falloff
-  rate-constant: {A: 5.544444e-30, b: -2.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 2.083414e-12, b: -1.9, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 5.544444e-30, b: -2.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 2.083414e-12, b: -1.9, Ea_R: 0.0}
   efficiencies: {}
 - equation: CO + CH3 + M <=> CH3CO + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.042768e-28, b: -7.5, Ea_R: 5490.0}
-  high-pressure-rate-constant: {A: 1.447538e-13, b: 2.2, Ea_R: 3033.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.042768e-28, b: -7.5, Ea_R: 5490.0}
+  high-P-rate-constant: {A: 1.447538e-13, b: 2.2, Ea_R: 3033.0}
   efficiencies: {}
 - equation: HCO + H + M <=> H2CO + M
-  type: lindemann-falloff
-  rate-constant: {A: 3.154295e-30, b: -2.57, Ea_R: 215.0}
-  high-pressure-rate-constant: {A: 7.77e-14, b: 0.0, Ea_R: -2280.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 3.154295e-30, b: -2.57, Ea_R: 215.0}
+  high-P-rate-constant: {A: 7.77e-14, b: 0.0, Ea_R: -2280.0}
   efficiencies: {}
 - equation: CO + H2 + M <=> H2CO + M
-  type: lindemann-falloff
-  rate-constant: {A: 9.449381e-29, b: -3.42, Ea_R: 42445.0}
-  high-pressure-rate-constant: {A: 3.710053e-13, b: 1.5, Ea_R: 40055.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 9.449381e-29, b: -3.42, Ea_R: 42445.0}
+  high-P-rate-constant: {A: 3.710053e-13, b: 1.5, Ea_R: 40055.0}
   efficiencies: {}
 - equation: C + C + M <=> C2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 5.298281e-31, b: -1.6, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 2.16e-11, b: 0.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 5.298281e-31, b: -1.6, Ea_R: 0.0}
+  high-P-rate-constant: {A: 2.16e-11, b: 0.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: C3H2 + H + M <=> C3H3 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.481481e-26, b: -3.0, Ea_R: 600.0}
-  high-pressure-rate-constant: {A: 2.254431e-10, b: 0.102, Ea_R: -43.7}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.481481e-26, b: -3.0, Ea_R: 600.0}
+  high-P-rate-constant: {A: 2.254431e-10, b: 0.102, Ea_R: -43.7}
   efficiencies: {}
 - equation: C3H3 + C3H3 + M <=> C6H6 + M
-  type: lindemann-falloff
-  rate-constant: {A: 3.122222e-26, b: -2.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 4.4e-11, b: 0.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 3.122222e-26, b: -2.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 4.4e-11, b: 0.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: C3H3 + H + M <=> C3H4 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.070582e-28, b: -3.3, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 1.103163e-10, b: 0.21, Ea_R: -87.1}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.070582e-28, b: -3.3, Ea_R: 0.0}
+  high-P-rate-constant: {A: 1.103163e-10, b: 0.21, Ea_R: -87.1}
   efficiencies: {}
 - equation: CH2 + C2H2 + M <=> C3H4 + M
-  type: lindemann-falloff
-  rate-constant: {A: 3.454612e-23, b: -3.21, Ea_R: 162.0}
-  high-pressure-rate-constant: {A: 4.960475e-13, b: 1.48, Ea_R: -831.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 3.454612e-23, b: -3.21, Ea_R: 162.0}
+  high-P-rate-constant: {A: 4.960475e-13, b: 1.48, Ea_R: -831.0}
   efficiencies: {}
 - equation: C6H5 + H + M <=> C6H6 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.3e-29, b: 0.0, Ea_R: 380.0}
-  high-pressure-rate-constant: {A: 1.63278e-10, b: 0.15, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.3e-29, b: 0.0, Ea_R: 380.0}
+  high-P-rate-constant: {A: 1.63278e-10, b: 0.15, Ea_R: 0.0}
   efficiencies: {}
 - equation: C2H2 + C4H3 + M <=> C6H5 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.0e-25, b: -1.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 8.59278e-12, b: -0.86, Ea_R: 3210.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.0e-25, b: -1.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 8.59278e-12, b: -0.86, Ea_R: 3210.0}
   efficiencies: {}
 - equation: C2H2 + C2H3 + M <=> C4H5 + M
-  type: lindemann-falloff
-  rate-constant: {A: 8.2e-30, b: 0.0, Ea_R: 352.0}
-  high-pressure-rate-constant: {A: 2.116527e-14, b: 1.9, Ea_R: 1060.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 8.2e-30, b: 0.0, Ea_R: 352.0}
+  high-P-rate-constant: {A: 2.116527e-14, b: 1.9, Ea_R: 1060.0}
   efficiencies: {}
 - equation: HO2 + HO2 + M <=> H2O2 + O2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 1.9e-33, b: 0.0, Ea_R: -980.0}
-  high-pressure-rate-constant: {A: 3.01e-12, b: 0.0, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 1.9e-33, b: 0.0, Ea_R: -980.0}
+  high-P-rate-constant: {A: 3.01e-12, b: 0.0, Ea_R: 0.0}
   efficiencies: {}
 - equation: OH + OH + M <=> H2O2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 5.925926e-31, b: -3.0, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 1.829962e-12, b: -0.37, Ea_R: 0.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 5.925926e-31, b: -3.0, Ea_R: 0.0}
+  high-P-rate-constant: {A: 1.829962e-12, b: -0.37, Ea_R: 0.0}
   efficiencies: {}
 - equation: H + O2 + M <=> HO2 + M
-  type: lindemann-falloff
-  rate-constant: {A: 4.089087e-32, b: -1.1, Ea_R: 0.0}
-  high-pressure-rate-constant: {A: 4.38e-11, b: 1.0, Ea_R: 224.0}
+  type: falloff
+  reversible: true
+  low-P-rate-constant: {A: 4.089087e-32, b: -1.1, Ea_R: 0.0}
+  high-P-rate-constant: {A: 4.38e-11, b: 1.0, Ea_R: 224.0}
   efficiencies: {}
 - equation: C2H + M <=> C2 + H + M
   type: three-body
+  reversible: true
   rate-constant: {A: 0.04824331885982548, b: -5.16, Ea_R: 57400.0}
   efficiencies: {}
 - equation: O + C + M <=> CO + M
   type: three-body
+  reversible: true
   rate-constant: {A: 1.905309e-29, b: -3.1, Ea_R: 2114.0}
   efficiencies: {}
 - equation: O + O + M <=> O2 + M
   type: three-body
+  reversible: true
   rate-constant: {A: 5.21e-35, b: 0.0, Ea_R: -900.0}
   efficiencies: {}
 - equation: H2O => H + OH

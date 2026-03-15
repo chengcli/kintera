@@ -92,7 +92,7 @@ def parse_equation(eq_str):
     return reactants, products
 
 
-def format_equation(reactants, products, reversible=True):
+def format_equation(reactants, products, reversible=False):
     arrow = " <=> " if reversible else " => "
     return " + ".join(reactants) + arrow + " + ".join(products)
 
@@ -209,7 +209,7 @@ def parse_network(filepath):
     return two_body, three_body, photolysis
 
 
-def collect_species(two_body, three_body, photolysis):
+def collect_species(two_body, three_body, photolysis, extra=None):
     species = set()
     for rxn in two_body + three_body:
         for sp in rxn["reactants"] + rxn["products"]:
@@ -220,6 +220,8 @@ def collect_species(two_body, three_body, photolysis):
         for sp in rxn["products"]:
             if sp != "M":
                 species.add(sp)
+    if extra:
+        species.update(extra)
     return sorted(species)
 
 
@@ -310,6 +312,7 @@ def build_yaml(two_body, three_body, photolysis, species_list,
         reactions.append({
             "equation": eq,
             "type": "arrhenius",
+            "reversible": True,
             "rate-constant": FlowDict([
                 ("A", A_corr), ("b", rxn["b"]), ("Ea_R", rxn["Ea_R"])
             ]),
@@ -325,12 +328,13 @@ def build_yaml(two_body, three_body, photolysis, species_list,
             A_inf_corr = tref_correct(rxn["A_inf"], rxn["b_inf"])
             entry = {
                 "equation": eq,
-                "type": "lindemann-falloff",
-                "rate-constant": FlowDict([
+                "type": "falloff",
+                "reversible": True,
+                "low-P-rate-constant": FlowDict([
                     ("A", A0_corr), ("b", rxn["b0"]),
                     ("Ea_R", rxn["Ea_R0"])
                 ]),
-                "high-pressure-rate-constant": FlowDict([
+                "high-P-rate-constant": FlowDict([
                     ("A", A_inf_corr), ("b", rxn["b_inf"]),
                     ("Ea_R", rxn["Ea_R_inf"])
                 ]),
@@ -340,6 +344,7 @@ def build_yaml(two_body, three_body, photolysis, species_list,
             entry = {
                 "equation": eq,
                 "type": "three-body",
+                "reversible": True,
                 "rate-constant": FlowDict([
                     ("A", A0_corr), ("b", rxn["b0"]),
                     ("Ea_R", rxn["Ea_R0"])
@@ -377,11 +382,14 @@ def main():
                         help="Directory containing photo_cross/ subdirs")
     parser.add_argument("-o", "--output", default="network.yaml",
                         help="Output YAML file")
+    parser.add_argument("--extra-species", nargs="*", default=[],
+                        help="Extra inert species to include (e.g. He)")
     args = parser.parse_args()
 
     print(f"Reading: {args.network_file}")
     two_body, three_body, photolysis = parse_network(args.network_file)
-    species_list = collect_species(two_body, three_body, photolysis)
+    species_list = collect_species(two_body, three_body, photolysis,
+                                   extra=args.extra_species)
 
     print(f"  Two-body:   {len(two_body)}")
     print(f"  Three-body: {len(three_body)}")
