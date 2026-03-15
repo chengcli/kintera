@@ -124,11 +124,11 @@ def vulcan_to_kintera_ic(vul, kintera_species):
     ns = len(kintera_species)
     vul_idx = {sp: i for i, sp in enumerate(vul["species"])}
 
-    C = np.full((nz, ns), 1e-50)
+    C = np.zeros((nz, ns))
     for i, sp in enumerate(kintera_species):
         if sp in vul_idx:
             C[:, i] = np.maximum(
-                vul["y_ini_cgs"][:, vul_idx[sp]] * 1e6 / AVO, 1e-50)
+                vul["y_ini_cgs"][:, vul_idx[sp]] * 1e6 / AVO, 0.0)
     return C
 
 

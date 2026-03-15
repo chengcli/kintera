@@ -145,11 +145,12 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
               << std::endl;
   }
 
-  // register vapors
-  for (const auto& sp : vapor_set) {
-    auto it = std::find(species_names.begin(), species_names.end(), sp);
-    int id = it - species_names.begin();
-    kinet->vapor_ids().push_back(id);
+  // register vapors: include ALL species from the YAML, not just those in
+  // reactions, so that inert species (e.g. He) are tracked for total density.
+  for (int id = 0; id < (int)species_names.size(); ++id) {
+    if (cloud_set.count(species_names[id]) == 0) {
+      kinet->vapor_ids().push_back(id);
+    }
   }
 
   // sort vapor ids

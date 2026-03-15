@@ -100,7 +100,7 @@ void KineticsImpl::reset() {
       }
       it = r.products().find(species[i]);
       if (it != r.products().end()) {
-        stoich_base[i][j] = it->second;
+        stoich_base[i][j] += it->second;
       }
     }
   }
@@ -233,6 +233,8 @@ void KineticsImpl::reset() {
   auto rev_mask_data = torch::zeros({nrxn}, torch::kFloat64);
   auto prod_stoich_data =
       torch::zeros({(int)nspecies, nrxn}, torch::kFloat64);
+  auto react_stoich_data =
+      torch::zeros({(int)nspecies, nrxn}, torch::kFloat64);
   auto dn_data = torch::zeros({nrxn}, torch::kFloat64);
 
   for (int j = 0; j < nrxn; ++j) {
@@ -245,6 +247,10 @@ void KineticsImpl::reset() {
       if (it != r.products().end()) {
         prod_stoich_data[i][j] = it->second;
       }
+      it = r.reactants().find(species[i]);
+      if (it != r.reactants().end()) {
+        react_stoich_data[i][j] = it->second;
+      }
     }
     double dn_val = 0.0;
     for (auto const& p : r.products()) dn_val += p.second;
@@ -254,6 +260,7 @@ void KineticsImpl::reset() {
 
   rev_mask = register_buffer("rev_mask", rev_mask_data);
   prod_stoich = register_buffer("prod_stoich", prod_stoich_data);
+  react_stoich = register_buffer("react_stoich", react_stoich_data);
   dn = register_buffer("dn", dn_data);
 
   if (species_has_nasa9 && has_reversible_) {
@@ -291,17 +298,26 @@ torch::Tensor KineticsImpl::jacobian(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::Tensor rc_ddC,
     torch::optional<torch::Tensor> rc_ddT) const {
-  // With the split forward/reverse representation, the augmented stoich
-  // treats reverse reactions as independent "forward" reactions with
-  // negated stoichiometry. The standard mass-action Jacobian formula
-  // applies uniformly to all entries (both forward and reverse).
-  auto react_st = (-stoich).clamp_min(0.0).t();  // (nrxn_aug, nspecies)
+  // Same concentration floor as forward() for mass-action products.
+  auto conc_safe = conc.clamp_min(1e-20);
+
+  // Build augmented reactant stoichiometry: for forward reactions use
+  // react_stoich, for reverse reactions use prod_stoich (products of the
+  // original forward reaction become reactants of the reverse).
+  torch::Tensor react_st_full;
+  if (has_reversible_) {
+    auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices_);
+    react_st_full = torch::cat({react_stoich, prod_stoich_rev}, 1);
+  } else {
+    react_st_full = react_stoich;
+  }
+  auto react_st = react_st_full.t();  // (nrxn_aug, nspecies)
   auto concp_fwd =
-      conc.unsqueeze(-2).pow(react_st).prod(-1, /*keepdim=*/true);
+      conc_safe.unsqueeze(-2).pow(react_st).prod(-1, /*keepdim=*/true);
 
   auto jac =
       concp_fwd * rc_ddC.transpose(-1, -2) +
-      react_st * rate.unsqueeze(-1) / conc.unsqueeze(-2).clamp_min(1e-20);
+      react_st * rate.unsqueeze(-1) / conc_safe.unsqueeze(-2);
 
   if (rc_ddT.has_value()) {
     auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
@@ -396,9 +412,15 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   last_kf_ = result.detach().clone();
 
+  // Floor concentrations for the mass-action rate products so that
+  // rate is non-zero when only one reactant is absent.  This keeps
+  // the Jacobian's  rate/conc  formula well-conditioned: without the
+  // floor, rate=0 makes  rate/conc = 0  instead of  k*C_other.
+  // The value must match the clamp in jacobian() for consistency.
+  auto conc_safe = conc.clamp_min(1e-20);
+
   // mass-action forward: k_f * product(C_reactant^stoich)
-  auto sm = stoich_base.clamp_max(0.).abs();
-  auto rate_f = result * conc.unsqueeze(-1).pow(sm).prod(-2);
+  auto rate_f = result * conc_safe.unsqueeze(-1).pow(react_stoich).prod(-2);
 
   // Split forward/reverse: augment rates with separate reverse entries
   if (has_reversible_ && nasa9_coeffs_low.defined()) {
@@ -415,7 +437,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     auto kf_rev = result.index_select(-1, rev_indices_);
     auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices_);
     auto conc_prod_rev =
-        conc.unsqueeze(-1).pow(prod_stoich_rev).prod(-2);
+        conc_safe.unsqueeze(-1).pow(prod_stoich_rev).prod(-2);
 
     // Reverse rate = (k_f / Kc) * product(C_product^stoich), no clamp
     auto kr_rev = kf_rev / Kc_rev.clamp_min(1e-250);

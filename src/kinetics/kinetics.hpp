@@ -108,6 +108,8 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   torch::Tensor rev_mask;
   //! product-only stoichiometry (positive values), shape (nspecies, nreaction_orig)
   torch::Tensor prod_stoich;
+  //! reactant-only stoichiometry (positive values), shape (nspecies, nreaction_orig)
+  torch::Tensor react_stoich;
   //! net mole change per reaction, shape (nreaction_orig,)
   torch::Tensor dn;
   //! NASA-9 coefficients, shape (nspecies, 9)

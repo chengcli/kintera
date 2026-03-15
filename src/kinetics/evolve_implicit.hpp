@@ -22,7 +22,12 @@ inline torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
   auto eye = torch::eye(nspecies, rate.options());
   auto SJ = stoich.matmul(jacobian);
   auto SR = stoich.matmul(rate.unsqueeze(-1)).squeeze(-1);
-  return torch::linalg_solve(eye / dt - SJ, SR);
+  auto A = eye / dt - SJ;
+  // lstsq handles singular/near-singular systems (conservation-law null
+  // space at large dt) by returning the minimum-norm solution, which is
+  // physically correct for chemistry (zero component along conserved
+  // atom-count directions).
+  return std::get<0>(torch::linalg_lstsq(A, SR.unsqueeze(-1))).squeeze(-1);
 }
 
 //! Two-stage Rosenbrock (Ros2) solver for stiff chemical kinetics.
@@ -69,12 +74,14 @@ inline std::tuple<torch::Tensor, torch::Tensor> evolve_ros2(
 
   // Stage 1:  W * k1 = S * rate1
   auto f1 = stoich.matmul(rate1.unsqueeze(-1)).squeeze(-1);
-  auto k1 = torch::linalg_solve(W, f1);
+  auto k1 =
+      std::get<0>(torch::linalg_lstsq(W, f1.unsqueeze(-1))).squeeze(-1);
 
   // Stage 2:  W * k2 = S * rate2 + (c21/dt) * k1
   auto f2 = stoich.matmul(rate2.unsqueeze(-1)).squeeze(-1);
   auto rhs2 = f2 + (c21 / dt) * k1;
-  auto k2 = torch::linalg_solve(W, rhs2);
+  auto k2 =
+      std::get<0>(torch::linalg_lstsq(W, rhs2.unsqueeze(-1))).squeeze(-1);
 
   // 2nd-order solution  (no dt multiplier — k1,k2 are already Δy)
   auto delta = m1 * k1 + m2 * k2;
