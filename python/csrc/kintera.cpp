@@ -144,4 +144,7 @@ PYBIND11_MODULE(kintera, m) {
   m.def("evolve_ros2", &kintera::evolve_ros2, py::arg("rate1"),
         py::arg("rate2"), py::arg("stoich"), py::arg("jacobian"),
         py::arg("dt"));
+
+  m.def("ros2_k1", &kintera::ros2_k1, py::arg("rate1"),
+        py::arg("stoich"), py::arg("jacobian"), py::arg("dt"));
 }
