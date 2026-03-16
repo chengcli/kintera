@@ -298,8 +298,9 @@ torch::Tensor KineticsImpl::jacobian(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::Tensor rc_ddC,
     torch::optional<torch::Tensor> rc_ddT) const {
-  // Same concentration floor as forward() for mass-action products.
-  auto conc_safe = conc.clamp_min(1e-20);
+  // Tiny floor just above IEEE 754 min-normal to avoid 0/0 in rate/conc.
+  // Must match the floor in forward() for consistency.
+  auto conc_safe = conc.clamp_min(1e-300);
 
   // Build augmented reactant stoichiometry: for forward reactions use
   // react_stoich, for reverse reactions use prod_stoich (products of the
@@ -412,12 +413,11 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   last_kf_ = result.detach().clone();
 
-  // Floor concentrations for the mass-action rate products so that
-  // rate is non-zero when only one reactant is absent.  This keeps
-  // the Jacobian's  rate/conc  formula well-conditioned: without the
-  // floor, rate=0 makes  rate/conc = 0  instead of  k*C_other.
-  // The value must match the clamp in jacobian() for consistency.
-  auto conc_safe = conc.clamp_min(1e-20);
+  // Tiny floor just above IEEE 754 min-normal so that pow() and the
+  // Jacobian's rate/conc ratio stay finite.  A large floor (e.g. 1e-20)
+  // inflates rates of trace-species reactions and destroys the Jacobian
+  // conditioning via the reverse-reaction rc_ddC / Kc amplification.
+  auto conc_safe = conc.clamp_min(1e-300);
 
   // mass-action forward: k_f * product(C_reactant^stoich)
   auto rate_f = result * conc_safe.unsqueeze(-1).pow(react_stoich).prod(-2);
