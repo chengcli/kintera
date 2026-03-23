@@ -664,8 +664,7 @@ print(f"CHO: {nsteps} steps, t={t_phys:.2e}s, {elapsed:.1f}s wall")
 
 
 def plot(kt_data, vulcan_conv=None):
-    """Plot kintera vs VULCAN mixing ratio profiles.
-    vulcan_conv: VULCAN convergence result (or None to use .vul steady-state)."""
+    """Plot kintera vs VULCAN mixing ratio profiles."""
     vul = load_vulcan_output(VUL_FILE)
     ymix_kt = kt_data["ymix"]
     P_cgs = kt_data["P_cgs"]
@@ -675,37 +674,45 @@ def plot(kt_data, vulcan_conv=None):
         vul_ymix = vulcan_conv["ymix"]
         vul_species = vulcan_conv["species"]
         vul_idx = {sp: i for i, sp in enumerate(vul_species)}
-        subtitle = (f"{vulcan_conv['nsteps']} steps, "
-                    f"t={vulcan_conv['t_phys']:.2e} s (no transport)")
+        subtitle = (f"kintera: {kt_data['nsteps']} steps, "
+                    f"{kt_data['elapsed']:.1f}s wall  |  "
+                    f"VULCAN: {vulcan_conv['nsteps']} steps (no transport)")
     else:
         vul_ymix = vul["ymix"]
         vul_species = vul["species"]
         vul_idx = {sp: i for i, sp in enumerate(vul_species)}
-        subtitle = f"kintera: {kt_data['nsteps']} steps | VULCAN: steady-state"
+        subtitle = (f"kintera: {kt_data['nsteps']} steps, "
+                    f"{kt_data['elapsed']:.1f}s wall  |  VULCAN: steady-state")
 
-    plot_species = [s for s in ["H2O", "CH4", "CO", "CO2", "H", "OH", "C2H2", "HCO", "HCN"]
+    plot_species = [s for s in
+                    ["H2", "H2O", "CH4", "CO", "CO2", "H", "OH",
+                     "O", "C2H2", "HCO", "H2CO", "O2"]
                     if s in idx]
     ncols = 4
     nrows = max(1, (len(plot_species) + ncols - 1) // ncols)
-    fig, axes = plt.subplots(nrows, ncols, figsize=(16, 4 * nrows), sharey=True)
+    fig, axes = plt.subplots(nrows, ncols, figsize=(4.5 * ncols, 4 * nrows),
+                             sharey=True)
     if nrows == 1:
         axes = axes.reshape(1, -1)
     axes_flat = axes.flatten()
 
-    fig.suptitle(f"CHO Thermal+Photo: Kintera vs VULCAN\n{subtitle}",
-                 fontsize=13, fontweight="bold")
-
-    colors = ["#3498db", "#e74c3c", "#2ecc71", "#f39c12",
-              "#9b59b6", "#1abc9c", "#e67e22", "#34495e"]
     P_bar = P_cgs / 1e6
+
+    colors = {"H2": "#2c3e50", "H2O": "#3498db", "CH4": "#e74c3c",
+              "CO": "#2ecc71", "CO2": "#f39c12", "H": "#9b59b6",
+              "OH": "#1abc9c", "O": "#e67e22", "C2H2": "#c0392b",
+              "HCO": "#2980b9", "H2CO": "#8e44ad", "O2": "#d35400"}
 
     for i, sp in enumerate(plot_species):
         ax = axes_flat[i]
+        c = colors.get(sp, "#34495e")
+
         kt_mix = ymix_kt[:, idx[sp]]
         valid = kt_mix > 1e-30
         if valid.any():
-            ax.semilogx(kt_mix[valid], P_bar[valid], "-o", color=colors[i % 8],
-                         markersize=3, label="kintera", linewidth=2)
+            ax.semilogx(kt_mix[valid], P_bar[valid], "-o", color=c,
+                        markersize=2.5, label="kintera", linewidth=1.8)
+
         v_mix_data = None
         if sp in vul_idx:
             v_mix = vul_ymix[:, vul_idx[sp]]
@@ -713,33 +720,38 @@ def plot(kt_data, vulcan_conv=None):
             v_P = vulcan_conv["P_cgs"] if vulcan_conv else vul["P_cgs"]
             if v_valid.any():
                 ax.semilogx(v_mix[v_valid], v_P[v_valid] / 1e6,
-                             "--", color="gray", label="VULCAN",
-                             linewidth=1.5, alpha=0.8)
+                            "--s", color="gray", label="VULCAN",
+                            markersize=2.5, linewidth=1.3, alpha=0.85)
                 v_mix_data = v_mix
 
-        # Set x-axis to focus on physically relevant concentrations
         all_vals = []
         if valid.any():
             all_vals.extend(kt_mix[valid].tolist())
         if v_mix_data is not None:
             all_vals.extend(v_mix_data[v_mix_data > 1e-30].tolist())
         if all_vals:
-            hi = max(all_vals) * 10
-            lo = max(min(v for v in all_vals if v > 1e-30), 1e-12) * 0.1
-            lo = max(lo, hi * 1e-8)  # at most 8 decades range
+            hi = max(all_vals) * 5
+            lo = max(min(v for v in all_vals if v > 1e-30), 1e-14) * 0.2
+            lo = max(lo, hi * 1e-8)
             ax.set_xlim(lo, hi)
 
-        ax.set_xlabel(f"{sp} mixing ratio", fontsize=11)
-        ax.invert_yaxis(); ax.set_yscale("log")
+        ax.set_xlabel("Mixing ratio", fontsize=10)
+        ax.invert_yaxis()
+        ax.set_yscale("log")
         if i % ncols == 0:
-            ax.set_ylabel("Pressure (bar)", fontsize=12)
-        ax.set_title(sp, fontsize=13, fontweight="bold")
-        ax.legend(fontsize=9); ax.grid(True, alpha=0.3)
+            ax.set_ylabel("Pressure (bar)", fontsize=11)
+        ax.set_title(sp, fontsize=13, fontweight="bold", color=c)
+        ax.legend(fontsize=8, loc="best")
+        ax.grid(True, alpha=0.25, linewidth=0.5)
+        ax.tick_params(labelsize=9)
 
     for j in range(len(plot_species), len(axes_flat)):
         axes_flat[j].set_visible(False)
 
-    plt.tight_layout()
+    fig.suptitle("CHO Thermal+Photo Chemistry: Kintera vs VULCAN\n"
+                 + subtitle,
+                 fontsize=14, fontweight="bold")
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     out = os.path.join(SCRIPT_DIR, "cho_comparison.png")
     fig.savefig(out, dpi=150, bbox_inches="tight")
     print(f"  Saved: {out}")

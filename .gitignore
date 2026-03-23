@@ -16,6 +16,9 @@ data/example.speos
 # env
 .env
 
+# so
+*.so
+
 # cache
 __pycache__
 
