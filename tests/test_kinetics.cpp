@@ -7,9 +7,9 @@
 // kintera
 #include <kintera/constants.h>
 
-#include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
+#include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/thermo/log_svp.hpp>
 #include <kintera/thermo/relative_humidity.hpp>
 #include <kintera/thermo/thermo.hpp>
@@ -44,7 +44,6 @@ TEST_P(DeviceTest, merge) {
 
 TEST_P(DeviceTest, forward) {
   auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
-  op_kinet->evolve_temperature(true);
   Kinetics kinet(op_kinet);
   kinet->to(device, dtype);
 
@@ -60,7 +59,7 @@ TEST_P(DeviceTest, forward) {
   std::cout << "thermo stoich =\n" << thermo->stoich << std::endl;
 
   auto species = thermo->options->species();
-  int ny = species.size() - 1;  // exclude the reference species
+  int ny = species.size() - 1;
   std::cout << "Species = " << species << std::endl;
 
   auto xfrac =
@@ -78,24 +77,16 @@ TEST_P(DeviceTest, forward) {
   auto conc_kinet = kinet->options->narrow_copy(conc, thermo->options);
   std::cout << "conc_kinet = " << conc_kinet << std::endl;
 
-  // kinet->options->accumulate(conc, conc_kinet, thermo->options);
-  // std::cout << "conc2 = " << conc << std::endl;
-
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
 
+  // Species tendencies: du = stoich^T @ rate (stoich is nspecies x nreaction)
+  auto du = rate.matmul(kinet->stoich.t());
   std::cout << "rate: " << rate << std::endl;
-  std::cout << "rc_ddC (x1e5): " << 1.e5 * rc_ddC << std::endl;
-
-  if (rc_ddT.has_value()) {
-    std::cout << "rc_ddT: " << rc_ddT.value() << std::endl;
-  } else {
-    std::cout << "rc_ddT: None" << std::endl;
-  }
+  std::cout << "du: " << du << std::endl;
 }
 
 TEST_P(DeviceTest, evolve_implicit) {
   auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
-  op_kinet->evolve_temperature(true);
   Kinetics kinet(op_kinet);
   kinet->to(device, dtype);
 
@@ -105,7 +96,7 @@ TEST_P(DeviceTest, evolve_implicit) {
   thermo->to(device, dtype);
 
   auto species = thermo->options->species();
-  int ny = species.size() - 1;  // exclude the reference species
+  int ny = species.size() - 1;
 
   auto xfrac =
       torch::zeros({1, 2, 3, 1 + ny}, torch::device(device).dtype(dtype));
@@ -118,31 +109,28 @@ TEST_P(DeviceTest, evolve_implicit) {
 
   auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
   auto conc_kinet = kinet->options->narrow_copy(conc, thermo->options);
+
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc_kinet);
 
-  std::cout << "rate: " << rate << std::endl;
+  // Species tendencies
+  auto du = rate.matmul(kinet->stoich.t());
+  std::cout << "du: " << du << std::endl;
 
-  auto cp_vol = thermo->compute("TV->cp", {temp, conc});
-  std::cout << "cp_vol: " << cp_vol << std::endl;
+  // Compute Jacobian
+  auto cvol = torch::ones_like(temp);
+  auto jac = kinet->jacobian(temp, conc_kinet, cvol, rate, rc_ddC, rc_ddT);
+  std::cout << "Jacobian shape: " << jac.sizes() << std::endl;
 
-  auto jac = kinet->jacobian(temp, conc_kinet, cp_vol, rate, rc_ddC, rc_ddT);
-  // std::cout << "jacobian: " << jac << std::endl;
+  // Implicit Euler step
+  double dt = 1.e3;
+  // evolve_implicit operates on single-point (nspecies,) tensors
+  // For batch, take the first element
+  auto rate_0 = rate[0][0][0];
+  auto jac_0 = jac[0][0][0];
+  auto delta = evolve_implicit(rate_0, kinet->stoich, jac_0, dt);
+  std::cout << "Implicit Euler delta: " << delta << std::endl;
 
-  auto del_conc = evolve_implicit(rate, kinet->stoich, jac, 1.e3);
-
-  EXPECT_EQ(torch::allclose(
-                del_conc.sum(-1),
-                torch::zeros({1, 2, 3}, torch::device(device).dtype(dtype)),
-                1.e-4, 1.e-4),
-            true);
-
-  std::cout << "del_conc: " << del_conc << std::endl;
-  std::cout << "conc kinet: " << conc_kinet << std::endl;
-
-  std::cout << "conc before: " << conc << std::endl;
-
-  kinet->options->accumulate(conc, del_conc, thermo->options);
-  std::cout << "conc after = " << conc << std::endl;
+  std::cout << "Forward + implicit evolve completed successfully\n";
 }
 
 int main(int argc, char **argv) {

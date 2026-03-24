@@ -1221,6 +1221,340 @@ class Evaporation:
         """
         ...
 
+class ThreeBodyOptions:
+    """Configuration options for three-body reactions: k = k0 * [M]_eff."""
+
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+    @overload
+    def Tref(self) -> float: ...
+    @overload
+    def Tref(self, value: float) -> ThreeBodyOptions: ...
+
+    @overload
+    def units(self) -> str: ...
+    @overload
+    def units(self, value: str) -> ThreeBodyOptions: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]: ...
+    @overload
+    def reactions(self, value: List[Reaction]) -> ThreeBodyOptions: ...
+
+    @overload
+    def k0_A(self) -> List[float]: ...
+    @overload
+    def k0_A(self, value: List[float]) -> ThreeBodyOptions: ...
+
+    @overload
+    def k0_b(self) -> List[float]: ...
+    @overload
+    def k0_b(self, value: List[float]) -> ThreeBodyOptions: ...
+
+    @overload
+    def k0_Ea_R(self) -> List[float]: ...
+    @overload
+    def k0_Ea_R(self, value: List[float]) -> ThreeBodyOptions: ...
+
+    @overload
+    def efficiencies(self) -> List[Composition]: ...
+    @overload
+    def efficiencies(self, value: List[Composition]) -> ThreeBodyOptions: ...
+
+
+class ThreeBody:
+    """Three-body rate kinetics model: k = k0 * [M]_eff."""
+
+    options: ThreeBodyOptions
+
+    def __init__(self, options: ThreeBodyOptions) -> None: ...
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor: ...
+
+    def pretty_print(self, os) -> None: ...
+
+
+class LindemannFalloffOptions:
+    """Configuration options for Lindemann falloff reactions: k = k0*[M]_eff / (1 + Pr)."""
+
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+    @overload
+    def Tref(self) -> float: ...
+    @overload
+    def Tref(self, value: float) -> LindemannFalloffOptions: ...
+
+    @overload
+    def units(self) -> str: ...
+    @overload
+    def units(self, value: str) -> LindemannFalloffOptions: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]: ...
+    @overload
+    def reactions(self, value: List[Reaction]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def k0_A(self) -> List[float]: ...
+    @overload
+    def k0_A(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def k0_b(self) -> List[float]: ...
+    @overload
+    def k0_b(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def k0_Ea_R(self) -> List[float]: ...
+    @overload
+    def k0_Ea_R(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def kinf_A(self) -> List[float]: ...
+    @overload
+    def kinf_A(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def kinf_b(self) -> List[float]: ...
+    @overload
+    def kinf_b(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def kinf_Ea_R(self) -> List[float]: ...
+    @overload
+    def kinf_Ea_R(self, value: List[float]) -> LindemannFalloffOptions: ...
+
+    @overload
+    def efficiencies(self) -> List[Composition]: ...
+    @overload
+    def efficiencies(self, value: List[Composition]) -> LindemannFalloffOptions: ...
+
+
+class LindemannFalloff:
+    """Lindemann falloff rate kinetics model: k = k0*[M]_eff / (1 + Pr)."""
+
+    options: LindemannFalloffOptions
+
+    def __init__(self, options: LindemannFalloffOptions) -> None: ...
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor: ...
+
+    def pretty_print(self, os) -> None: ...
+
+
+class TroeFalloffOptions:
+    """Configuration options for Troe falloff reactions: k = k_Lindemann * F_Troe."""
+
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+    @overload
+    def Tref(self) -> float: ...
+    @overload
+    def Tref(self, value: float) -> TroeFalloffOptions: ...
+
+    @overload
+    def units(self) -> str: ...
+    @overload
+    def units(self, value: str) -> TroeFalloffOptions: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]: ...
+    @overload
+    def reactions(self, value: List[Reaction]) -> TroeFalloffOptions: ...
+
+    @overload
+    def k0_A(self) -> List[float]: ...
+    @overload
+    def k0_A(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def k0_b(self) -> List[float]: ...
+    @overload
+    def k0_b(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def k0_Ea_R(self) -> List[float]: ...
+    @overload
+    def k0_Ea_R(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def kinf_A(self) -> List[float]: ...
+    @overload
+    def kinf_A(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def kinf_b(self) -> List[float]: ...
+    @overload
+    def kinf_b(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def kinf_Ea_R(self) -> List[float]: ...
+    @overload
+    def kinf_Ea_R(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def troe_A(self) -> List[float]: ...
+    @overload
+    def troe_A(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def troe_T3(self) -> List[float]: ...
+    @overload
+    def troe_T3(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def troe_T1(self) -> List[float]: ...
+    @overload
+    def troe_T1(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def troe_T2(self) -> List[float]: ...
+    @overload
+    def troe_T2(self, value: List[float]) -> TroeFalloffOptions: ...
+
+    @overload
+    def efficiencies(self) -> List[Composition]: ...
+    @overload
+    def efficiencies(self, value: List[Composition]) -> TroeFalloffOptions: ...
+
+
+class TroeFalloff:
+    """Troe falloff rate kinetics model: k = k_Lindemann * F_Troe."""
+
+    options: TroeFalloffOptions
+
+    def __init__(self, options: TroeFalloffOptions) -> None: ...
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor: ...
+
+    def pretty_print(self, os) -> None: ...
+
+
+class SRIFalloffOptions:
+    """Configuration options for SRI falloff reactions: k = k_Lindemann * F_SRI."""
+
+    def __init__(self) -> None: ...
+    def __repr__(self) -> str: ...
+
+    @overload
+    def Tref(self) -> float: ...
+    @overload
+    def Tref(self, value: float) -> SRIFalloffOptions: ...
+
+    @overload
+    def units(self) -> str: ...
+    @overload
+    def units(self, value: str) -> SRIFalloffOptions: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]: ...
+    @overload
+    def reactions(self, value: List[Reaction]) -> SRIFalloffOptions: ...
+
+    @overload
+    def k0_A(self) -> List[float]: ...
+    @overload
+    def k0_A(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def k0_b(self) -> List[float]: ...
+    @overload
+    def k0_b(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def k0_Ea_R(self) -> List[float]: ...
+    @overload
+    def k0_Ea_R(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def kinf_A(self) -> List[float]: ...
+    @overload
+    def kinf_A(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def kinf_b(self) -> List[float]: ...
+    @overload
+    def kinf_b(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def kinf_Ea_R(self) -> List[float]: ...
+    @overload
+    def kinf_Ea_R(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_A(self) -> List[float]: ...
+    @overload
+    def sri_A(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_B(self) -> List[float]: ...
+    @overload
+    def sri_B(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_C(self) -> List[float]: ...
+    @overload
+    def sri_C(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_D(self) -> List[float]: ...
+    @overload
+    def sri_D(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def sri_E(self) -> List[float]: ...
+    @overload
+    def sri_E(self, value: List[float]) -> SRIFalloffOptions: ...
+
+    @overload
+    def efficiencies(self) -> List[Composition]: ...
+    @overload
+    def efficiencies(self, value: List[Composition]) -> SRIFalloffOptions: ...
+
+
+class SRIFalloff:
+    """SRI falloff rate kinetics model: k = k_Lindemann * F_SRI."""
+
+    options: SRIFalloffOptions
+
+    def __init__(self, options: SRIFalloffOptions) -> None: ...
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor: ...
+
+    def pretty_print(self, os) -> None: ...
+
+
 class KineticsOptions(SpeciesThermo):
     """
     Configuration options for chemical kinetics calculations.
@@ -1338,6 +1672,46 @@ class KineticsOptions(SpeciesThermo):
         Returns:
             KineticsOptions: class object for method chaining
         """
+        ...
+
+    @overload
+    def three_body(self) -> ThreeBodyOptions:
+        """Get options for three-body reactions."""
+        ...
+
+    @overload
+    def three_body(self, value: ThreeBodyOptions) -> KineticsOptions:
+        """Set options for three-body reactions."""
+        ...
+
+    @overload
+    def lindemann_falloff(self) -> LindemannFalloffOptions:
+        """Get options for Lindemann falloff reactions."""
+        ...
+
+    @overload
+    def lindemann_falloff(self, value: LindemannFalloffOptions) -> KineticsOptions:
+        """Set options for Lindemann falloff reactions."""
+        ...
+
+    @overload
+    def troe_falloff(self) -> TroeFalloffOptions:
+        """Get options for Troe falloff reactions."""
+        ...
+
+    @overload
+    def troe_falloff(self, value: TroeFalloffOptions) -> KineticsOptions:
+        """Set options for Troe falloff reactions."""
+        ...
+
+    @overload
+    def sri_falloff(self) -> SRIFalloffOptions:
+        """Get options for SRI falloff reactions."""
+        ...
+
+    @overload
+    def sri_falloff(self, value: SRIFalloffOptions) -> KineticsOptions:
+        """Set options for SRI falloff reactions."""
         ...
 
     @overload
@@ -1633,6 +2007,30 @@ def evolve_implicit(
     """
     ...
 
+def evolve_ros2(
+    rate1: torch.Tensor,
+    rate2: torch.Tensor,
+    stoich: torch.Tensor,
+    jacobian: torch.Tensor,
+    dt: float
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Evolve the kinetics model via implicit integration.
+
+    This function performs implicit time integration of chemical kinetics
+    equations using the given reaction rates, stoichiometry, and Jacobian.
+
+    Args:
+        rate (torch.Tensor): The reaction rates
+        stoich (torch.Tensor): The stoichiometric matrix
+        jacobian (torch.Tensor): The Jacobian matrix
+        dt (float): The time step for the evolution
+
+    Returns:
+        torch.Tensor: The concentration differences
+    """
+    ...
+
 def relative_humidity(
     temp: torch.Tensor,
     conc: torch.Tensor,
@@ -1666,3 +2064,358 @@ class constants:
 
     Rgas: float  # Universal gas constant [J/(mol*K)]
     Avogadro: float  # Avogadro's number [1/mol]
+
+
+# ============================================================================
+# Photochemistry Module
+# ============================================================================
+
+class PhotolysisOptions:
+    """
+    Configuration options for photolysis reactions.
+
+    This class manages photolysis cross-section data, wavelength grids,
+    and branch compositions for photochemical calculations.
+    """
+
+    def __init__(self) -> None:
+        """Initialize PhotolysisOptions."""
+        ...
+
+    def __repr__(self) -> str: ...
+
+    @overload
+    def reactions(self) -> List[Reaction]:
+        """Get the list of photolysis reactions."""
+        ...
+
+    @overload
+    def reactions(self, value: List[Reaction]) -> PhotolysisOptions:
+        """Set the list of photolysis reactions."""
+        ...
+
+    @overload
+    def wavelength(self) -> List[float]:
+        """Get the wavelength grid [nm]."""
+        ...
+
+    @overload
+    def wavelength(self, value: List[float]) -> PhotolysisOptions:
+        """Set the wavelength grid [nm]."""
+        ...
+
+    @overload
+    def temperature(self) -> List[float]:
+        """Get the temperature grid [K]."""
+        ...
+
+    @overload
+    def temperature(self, value: List[float]) -> PhotolysisOptions:
+        """Set the temperature grid [K]."""
+        ...
+
+    @overload
+    def cross_section(self) -> List[float]:
+        """Get the cross-section data [cm^2 molecule^-1]."""
+        ...
+
+    @overload
+    def cross_section(self, value: List[float]) -> PhotolysisOptions:
+        """Set the cross-section data [cm^2 molecule^-1]."""
+        ...
+
+    @overload
+    def branches(self) -> List[List[Composition]]:
+        """Get the branch compositions."""
+        ...
+
+    @overload
+    def branches(self, value: List[List[Composition]]) -> PhotolysisOptions:
+        """Set the branch compositions."""
+        ...
+
+    @overload
+    def branch_names(self) -> List[List[str]]:
+        """Get the branch names."""
+        ...
+
+    @overload
+    def branch_names(self, value: List[List[str]]) -> PhotolysisOptions:
+        """Set the branch names."""
+        ...
+
+
+class Photolysis:
+    """
+    Photolysis rate evaluator module.
+
+    Computes photolysis rates by integrating cross-sections weighted by
+    actinic flux over wavelength:
+
+        k = integral(sigma(lambda, T) * F(lambda) d_lambda)
+
+    where sigma is the cross-section, F is the actinic flux, and lambda
+    is the wavelength.
+    """
+
+    options: PhotolysisOptions
+
+    def __init__(self, options: PhotolysisOptions) -> None:
+        """
+        Initialize Photolysis with options.
+
+        Args:
+            options (PhotolysisOptions): Configuration options
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        pres: torch.Tensor,
+        conc: torch.Tensor,
+        other: Dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        """
+        Compute photolysis rate constants.
+
+        Args:
+            temp (torch.Tensor): Temperature [K], shape (...)
+            pres (torch.Tensor): Pressure [Pa], shape (...)
+            conc (torch.Tensor): Concentration [mol/m^3], shape (..., nspecies)
+            other (dict): Dictionary containing:
+                - "wavelength": Wavelength grid [nm], shape (nwave,)
+                - "actinic_flux": Actinic flux [photons cm^-2 s^-1 nm^-1]
+
+        Returns:
+            torch.Tensor: Photolysis rate constants [s^-1], shape (..., nreaction)
+        """
+        ...
+
+    def interp_cross_section(
+        self,
+        rxn_idx: int,
+        wave: torch.Tensor,
+        temp: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Interpolate cross-section to given wavelength and temperature.
+
+        Args:
+            rxn_idx (int): Reaction index
+            wave (torch.Tensor): Wavelength [nm]
+            temp (torch.Tensor): Temperature [K]
+
+        Returns:
+            torch.Tensor: Interpolated cross-section [cm^2], shape (..., nbranch)
+        """
+        ...
+
+    def get_effective_stoich(
+        self,
+        rxn_idx: int,
+        wave: torch.Tensor,
+        aflux: torch.Tensor,
+        temp: torch.Tensor
+    ) -> torch.Tensor:
+        """
+        Get effective stoichiometry coefficients for a reaction.
+
+        Returns weighted stoichiometry based on branch ratios.
+
+        Args:
+            rxn_idx (int): Reaction index
+            wave (torch.Tensor): Wavelength grid [nm]
+            aflux (torch.Tensor): Actinic flux
+            temp (torch.Tensor): Temperature [K]
+
+        Returns:
+            torch.Tensor: Effective stoichiometry coefficients
+        """
+        ...
+
+
+class ActinicFluxOptions:
+    """
+    Configuration options for actinic flux.
+    """
+
+    def __init__(self) -> None:
+        """Initialize ActinicFluxOptions."""
+        ...
+
+    def __repr__(self) -> str: ...
+
+    @overload
+    def wavelength(self) -> List[float]:
+        """Get the wavelength grid [nm]."""
+        ...
+
+    @overload
+    def wavelength(self, value: List[float]) -> ActinicFluxOptions:
+        """Set the wavelength grid [nm]."""
+        ...
+
+    @overload
+    def default_flux(self) -> List[float]:
+        """Get the default flux values."""
+        ...
+
+    @overload
+    def default_flux(self, value: List[float]) -> ActinicFluxOptions:
+        """Set the default flux values."""
+        ...
+
+    @overload
+    def wave_min(self) -> float:
+        """Get minimum wavelength [nm]."""
+        ...
+
+    @overload
+    def wave_min(self, value: float) -> ActinicFluxOptions:
+        """Set minimum wavelength [nm]."""
+        ...
+
+    @overload
+    def wave_max(self) -> float:
+        """Get maximum wavelength [nm]."""
+        ...
+
+    @overload
+    def wave_max(self, value: float) -> ActinicFluxOptions:
+        """Set maximum wavelength [nm]."""
+        ...
+
+
+class ActinicFluxData:
+    """
+    Data structure for storing and interpolating actinic flux.
+
+    Actinic flux F(lambda) represents the rate at which photons of
+    wavelength lambda are available to drive photochemical reactions.
+    Units are typically photons cm^-2 s^-1 nm^-1.
+    """
+
+    wavelength: torch.Tensor  # Wavelength grid [nm], shape (nwave,)
+    flux: torch.Tensor  # Actinic flux, shape (nwave, ...)
+
+    @overload
+    def __init__(self) -> None:
+        """Create empty ActinicFluxData."""
+        ...
+
+    @overload
+    def __init__(self, wavelength: torch.Tensor, flux: torch.Tensor) -> None:
+        """
+        Create ActinicFluxData with wavelength and flux tensors.
+
+        Args:
+            wavelength (torch.Tensor): Wavelength grid [nm], shape (nwave,)
+            flux (torch.Tensor): Actinic flux, shape (nwave, ...)
+        """
+        ...
+
+    def __repr__(self) -> str: ...
+
+    def is_valid(self) -> bool:
+        """Check if flux data is valid."""
+        ...
+
+    def nwave(self) -> int:
+        """Get number of wavelength points."""
+        ...
+
+    def interpolate_to(self, new_wavelength: torch.Tensor) -> torch.Tensor:
+        """
+        Interpolate flux to new wavelength grid.
+
+        Args:
+            new_wavelength (torch.Tensor): Target wavelength grid [nm]
+
+        Returns:
+            torch.Tensor: Interpolated flux at new wavelengths
+        """
+        ...
+
+    def to_map(self) -> Dict[str, torch.Tensor]:
+        """
+        Get flux as a map for passing to forward().
+
+        Returns:
+            dict: Dictionary with "wavelength" and "actinic_flux" keys
+        """
+        ...
+
+
+def create_actinic_flux(
+    options: ActinicFluxOptions,
+    device: torch.device = ...,
+    dtype: torch.dtype = ...
+) -> ActinicFluxData:
+    """
+    Create ActinicFluxData from options.
+
+    Args:
+        options (ActinicFluxOptions): Configuration options
+        device (torch.device): Target device (default: CPU)
+        dtype (torch.dtype): Data type (default: float64)
+
+    Returns:
+        ActinicFluxData: Created flux data
+    """
+    ...
+
+
+def create_uniform_flux(
+    wave_min: float,
+    wave_max: float,
+    nwave: int,
+    flux_value: float,
+    device: torch.device = ...,
+    dtype: torch.dtype = ...
+) -> ActinicFluxData:
+    """
+    Create uniform actinic flux for testing.
+
+    Args:
+        wave_min (float): Minimum wavelength [nm]
+        wave_max (float): Maximum wavelength [nm]
+        nwave (int): Number of wavelength points
+        flux_value (float): Uniform flux value
+        device (torch.device): Target device (default: CPU)
+        dtype (torch.dtype): Data type (default: float64)
+
+    Returns:
+        ActinicFluxData: Created flux data
+    """
+    ...
+
+
+def create_solar_flux(
+    wave_min: float,
+    wave_max: float,
+    nwave: int,
+    peak_flux: float = 1.e14,
+    device: torch.device = ...,
+    dtype: torch.dtype = ...
+) -> ActinicFluxData:
+    """
+    Create solar-like actinic flux (simplified model).
+
+    Creates a simplified solar actinic flux profile that peaks
+    in the visible range and decreases towards UV.
+
+    Args:
+        wave_min (float): Minimum wavelength [nm]
+        wave_max (float): Maximum wavelength [nm]
+        nwave (int): Number of wavelength points
+        peak_flux (float): Peak flux value (default: 1e14)
+        device (torch.device): Target device (default: CPU)
+        dtype (torch.dtype): Data type (default: float64)
+
+    Returns:
+        ActinicFluxData: Created flux data
+    """
+    ...

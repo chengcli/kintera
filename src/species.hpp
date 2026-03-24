@@ -1,6 +1,7 @@
 #pragma once
 
 // C/C++
+#include <array>
 #include <string>
 #include <vector>
 
@@ -76,6 +77,13 @@ extern std::vector<double> species_weights;
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
+
+//! NASA-9 thermodynamic polynomial data (9 coefficients per range, 2 ranges)
+//! Each inner vector has 9 elements: a0..a6, a8, a9 (a7 is skipped)
+extern std::vector<std::array<double, 9>> species_nasa9_low;
+extern std::vector<std::array<double, 9>> species_nasa9_high;
+extern std::vector<double> species_nasa9_Tmid;
+extern bool species_has_nasa9;
 
 }  // namespace kintera
 

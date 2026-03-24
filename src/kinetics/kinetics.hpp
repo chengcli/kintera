@@ -13,6 +13,11 @@
 #include "arrhenius.hpp"
 #include "coagulation.hpp"
 #include "evaporation.hpp"
+#include "lindemann_falloff.hpp"
+#include "photolysis.hpp"
+#include "sri_falloff.hpp"
+#include "three_body.hpp"
+#include "troe_falloff.hpp"
 
 // arg
 #include <kintera/add_arg.h>
@@ -25,6 +30,11 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     op->arrhenius() = ArrheniusOptionsImpl::create();
     op->coagulation() = CoagulationOptionsImpl::create();
     op->evaporation() = EvaporationOptionsImpl::create();
+    op->three_body() = ThreeBodyOptionsImpl::create();
+    op->lindemann_falloff() = LindemannFalloffOptionsImpl::create();
+    op->troe_falloff() = TroeFalloffOptionsImpl::create();
+    op->sri_falloff() = SRIFalloffOptionsImpl::create();
+    op->photolysis() = PhotolysisOptionsImpl::create();
     return op;
   }
 
@@ -57,6 +67,11 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(ArrheniusOptions, arrhenius);
   ADD_ARG(CoagulationOptions, coagulation);
   ADD_ARG(EvaporationOptions, evaporation);
+  ADD_ARG(ThreeBodyOptions, three_body);
+  ADD_ARG(LindemannFalloffOptions, lindemann_falloff);
+  ADD_ARG(TroeFalloffOptions, troe_falloff);
+  ADD_ARG(SRIFalloffOptions, sri_falloff);
+  ADD_ARG(PhotolysisOptions, photolysis);
 
   ADD_ARG(bool, evolve_temperature) = false;
   ADD_ARG(bool, verbose) = false;
@@ -88,6 +103,32 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   //! options with which this `KineticsImpl` was constructed
   KineticsOptions options;
 
+  // --- reverse reaction data ---
+  //! 1.0 for reversible reactions, 0.0 otherwise, shape (nreaction_orig,)
+  torch::Tensor rev_mask;
+  //! product-only stoichiometry (positive values), shape (nspecies, nreaction_orig)
+  torch::Tensor prod_stoich;
+  //! reactant-only stoichiometry (positive values), shape (nspecies, nreaction_orig)
+  torch::Tensor react_stoich;
+  //! net mole change per reaction, shape (nreaction_orig,)
+  torch::Tensor dn;
+  //! NASA-9 coefficients, shape (nspecies, 9)
+  torch::Tensor nasa9_coeffs_low, nasa9_coeffs_high;
+  //! NASA-9 mid-temperature, shape (nspecies,)
+  torch::Tensor nasa9_Tmid;
+  //! whether any reversible reactions exist
+  bool has_reversible_ = false;
+  //! cached raw rate constants from last forward() call (before mass-action)
+  mutable torch::Tensor last_kf_;
+
+  // --- split forward/reverse data ---
+  //! number of reversible reactions
+  int n_reversible_ = 0;
+  //! number of original reactions (before augmentation)
+  int n_reactions_orig_ = 0;
+  //! indices of reversible reactions in the original reaction list
+  torch::Tensor rev_indices_;
+
   //! Constructor to initialize the layer
   KineticsImpl() : options(KineticsOptionsImpl::create()) {}
   explicit KineticsImpl(const KineticsOptions& options_);
@@ -112,6 +153,11 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
    */
   std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
   forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc);
+
+  //! Compute kinetic rate with extra data (e.g. actinic flux for photolysis)
+  std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
+  forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
+          std::map<std::string, torch::Tensor> const& extra);
 
  private:
   // used in evaluating jacobian

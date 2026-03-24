@@ -16,8 +16,21 @@ data/example.speos
 # env
 .env
 
+# so
+*.so
+
 # cache
 __pycache__
 
 # dist
 dist
+
+# outputs
+*.png
+examples/*.pdf
+
+# vulcan test temp
+tests/vulcan/cho/_*.py
+tests/vulcan/cho/_*.pkl
+
+.vscode

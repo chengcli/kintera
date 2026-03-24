@@ -95,11 +95,62 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
               << std::endl;
   }
 
-  // register vapors
-  for (const auto& sp : vapor_set) {
-    auto it = std::find(species_names.begin(), species_names.end(), sp);
-    int id = it - species_names.begin();
-    kinet->vapor_ids().push_back(id);
+  // add three-body reactions
+  kinet->three_body() = ThreeBodyOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->three_body());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Three-Body reactions",
+                     kinet->three_body()->reactions().size())
+              << std::endl;
+  }
+
+  // add Lindemann falloff reactions
+  kinet->lindemann_falloff() = LindemannFalloffOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->lindemann_falloff());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Lindemann Falloff reactions",
+                     kinet->lindemann_falloff()->reactions().size())
+              << std::endl;
+  }
+
+  // add Troe falloff reactions
+  kinet->troe_falloff() = TroeFalloffOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->troe_falloff());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Troe Falloff reactions",
+                     kinet->troe_falloff()->reactions().size())
+              << std::endl;
+  }
+
+  // add SRI falloff reactions
+  kinet->sri_falloff() = SRIFalloffOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->sri_falloff());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} SRI Falloff reactions",
+                     kinet->sri_falloff()->reactions().size())
+              << std::endl;
+  }
+
+  // add photolysis reactions
+  kinet->photolysis() = PhotolysisOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->photolysis());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Photolysis reactions",
+                     kinet->photolysis()->reactions().size())
+              << std::endl;
+  }
+
+  // register vapors: include ALL species from the YAML, not just those in
+  // reactions, so that inert species (e.g. He) are tracked for total density.
+  for (int id = 0; id < (int)species_names.size(); ++id) {
+    if (cloud_set.count(species_names[id]) == 0) {
+      kinet->vapor_ids().push_back(id);
+    }
   }
 
   // sort vapor ids
@@ -144,7 +195,12 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   std::vector<Reaction> reactions;
   reactions.reserve(arrhenius()->reactions().size() +
                     coagulation()->reactions().size() +
-                    evaporation()->reactions().size());
+                    evaporation()->reactions().size() +
+                    three_body()->reactions().size() +
+                    lindemann_falloff()->reactions().size() +
+                    troe_falloff()->reactions().size() +
+                    sri_falloff()->reactions().size() +
+                    photolysis()->reactions().size());
 
   for (const auto& reaction : arrhenius()->reactions()) {
     reactions.push_back(reaction);
@@ -155,6 +211,26 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   }
 
   for (const auto& reaction : evaporation()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : three_body()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : lindemann_falloff()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : troe_falloff()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : sri_falloff()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : photolysis()->reactions()) {
     reactions.push_back(reaction);
   }
 
