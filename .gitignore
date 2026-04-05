@@ -39,5 +39,6 @@ examples/*.pdf
 # vulcan test temp
 tests/vulcan/cho/_*.py
 tests/vulcan/cho/_*.pkl
+tests/vulcan/VULCAN/
 
 .vscode

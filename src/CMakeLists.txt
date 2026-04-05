@@ -30,7 +30,6 @@ string(TOUPPER ${namel} nameu)
 
 file(GLOB src_files
   *.cpp
-  xsection/*.cpp
   utils/*.cpp
   kinetics/*.cpp
   thermo/*.cpp
