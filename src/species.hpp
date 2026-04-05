@@ -23,6 +23,7 @@ namespace kintera {
 
 void init_species_from_yaml(std::string filename);
 void init_species_from_yaml(YAML::Node const& config);
+void init_species_from_kinetics_base(std::string const& master_input_path);
 
 struct SpeciesThermoImpl {
   static std::shared_ptr<SpeciesThermoImpl> create() {

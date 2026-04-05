@@ -3,6 +3,7 @@
 
 // kintera
 #include "kinetics.hpp"
+#include "kinetics_base_reader.hpp"
 #include "kinetics_formatter.hpp"
 
 namespace kintera {
@@ -235,6 +236,15 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   }
 
   return reactions;
+}
+
+KineticsOptions KineticsOptionsImpl::from_kinetics_base(
+    std::string const& master_input_path,
+    std::string const& photo_catalog_path, std::string const& cross_dir,
+    bool verbose) {
+  return kinetics_options_from_kinetics_base(master_input_path,
+                                             photo_catalog_path, cross_dir,
+                                             verbose);
 }
 
 }  // namespace kintera

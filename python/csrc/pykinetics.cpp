@@ -217,6 +217,12 @@ void bind_kinetics(py::module& m) {
                   py::overload_cast<std::string const&, bool>(
                       &kintera::KineticsOptionsImpl::from_yaml),
                   py::arg("filename"), py::arg("verbose") = false)
+      .def_static("from_kinetics_base",
+                  &kintera::KineticsOptionsImpl::from_kinetics_base,
+                  py::arg("master_input_path"),
+                  py::arg("photo_catalog_path") = "",
+                  py::arg("cross_dir") = "",
+                  py::arg("verbose") = false)
       .def("reactions", &kintera::KineticsOptionsImpl::reactions)
       .ADD_OPTION(double, kintera::KineticsOptionsImpl, Tref)
       .ADD_OPTION(double, kintera::KineticsOptionsImpl, Pref)

@@ -50,6 +50,12 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     if (evaporation()) op->evaporation() = evaporation()->clone();
     return op;
   }
+
+  static std::shared_ptr<KineticsOptionsImpl> from_kinetics_base(
+      std::string const& master_input_path,
+      std::string const& photo_catalog_path = "",
+      std::string const& cross_dir = "", bool verbose = false);
+
   void report(std::ostream& os) const {
     os << "-- kinetics options --\n";
     os << "* Tref = " << Tref() << " K\n"
