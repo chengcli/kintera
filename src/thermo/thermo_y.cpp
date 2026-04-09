@@ -375,12 +375,12 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
     auto time_stamp = std::to_string(std::time(nullptr));
 
     // save torch tensor data to file with time stamp
-    auto filename = "thermo_y_pres_to_temp_" + time_stamp + ".pt";
+    //auto filename = "thermo_y_pres_to_temp_" + time_stamp + ".pt";
 
-    std::map<std::string, torch::Tensor> data;
-    data["pres"] = pres;
-    data["ivol"] = ivol;
-    save_tensors(data, filename);
+    //std::map<std::string, torch::Tensor> data;
+    //data["pres"] = pres;
+    //data["ivol"] = ivol;
+    //save_tensors(data, filename);
   }
 }
 
@@ -418,12 +418,12 @@ void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
     auto time_stamp = std::to_string(std::time(nullptr));
 
     // save torch tensor data to file with time stamp
-    auto filename = "thermo_y_intEng_to_temp_" + time_stamp + ".pt";
+    //auto filename = "thermo_y_intEng_to_temp_" + time_stamp + ".pt";
 
-    std::map<std::string, torch::Tensor> data;
-    data["ivol"] = ivol;
-    data["intEng"] = intEng;
-    save_tensors(data, filename);
+    //std::map<std::string, torch::Tensor> data;
+    //data["ivol"] = ivol;
+    //data["intEng"] = intEng;
+    //save_tensors(data, filename);
   }
 }
 

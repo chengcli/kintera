@@ -3,8 +3,8 @@ requires = [
   "setuptools>=61.0.0",
   "wheel",
   "build",
-  "pyharp>=2.0.0",
-  "torch<=2.7.1,>=2.7.0",
+  "pyharp>=2.2.0",
+  "torch==2.10.0",
   "ninja",
   ]
 build-backend = "setuptools.build_meta"
@@ -22,7 +22,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
   "numpy",
-  "pyharp>=2.0.0",
+  "pyharp>=2.2.0",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
@@ -30,9 +30,10 @@ classifiers = [
   "Natural Language :: English",
   "Programming Language :: C",
   "Programming Language :: C++",
-  "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: Implementation :: CPython",
   "Topic :: Scientific/Engineering :: Atmospheric Science",
   "Topic :: Scientific/Engineering :: Physics",
@@ -45,10 +46,6 @@ Documentation = "https://kintera.readthedocs.io"
 
 [tool.setuptools.dynamic.version]
 attr = "kintera.__version__"
-
-#[project.scripts]
-#fetch-kinetics= "pyharp.api.fetch_sonora:main"
-#fetch-cia-legacy = "pyharp.api.fetch_cia_legacy:main"
 
 [tool.setuptools]
 packages = ["kintera", "kintera.api"]
