@@ -22,9 +22,9 @@ extern std::vector<std::string> func1_names;
 extern user_func2 func2_table_cpu[];
 extern std::vector<std::string> func2_names;
 
-void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
-                             at::Tensor const &stoich,
-                             std::vector<std::string> const &logsvp_func,
+void call_equilibrate_tp_cpu(at::TensorIterator& iter, int ngas,
+                             at::Tensor const& stoich,
+                             std::vector<std::string> const& logsvp_func,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
 
@@ -38,16 +38,16 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
 
     iter.for_each(
-        [&](char **data, const int64_t *strides, int64_t n) {
+        [&](char** data, const int64_t* strides, int64_t n) {
           for (int i = 0; i < n; i++) {
-            auto gain = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
-            auto diag = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
-            auto xfrac = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
-            auto temp = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
-            auto pres = reinterpret_cast<scalar_t *>(data[4] + i * strides[4]);
+            auto gain = reinterpret_cast<scalar_t*>(data[0] + i * strides[0]);
+            auto diag = reinterpret_cast<scalar_t*>(data[1] + i * strides[1]);
+            auto xfrac = reinterpret_cast<scalar_t*>(data[2] + i * strides[2]);
+            auto temp = reinterpret_cast<scalar_t*>(data[3] + i * strides[3]);
+            auto pres = reinterpret_cast<scalar_t*>(data[4] + i * strides[4]);
             auto reaction_set =
-                reinterpret_cast<int *>(data[5] + i * strides[5]);
-            auto nactive = reinterpret_cast<int *>(data[6] + i * strides[6]);
+                reinterpret_cast<int*>(data[5] + i * strides[5]);
+            auto nactive = reinterpret_cast<int*>(data[6] + i * strides[6]);
             int max_iter_i = max_iter;
             equilibrate_tp(gain, diag, xfrac, *temp, *pres, stoich_ptr,
                            nspecies, nreaction, ngas, logsvp_ptrs, logsvp_eps,
@@ -58,12 +58,12 @@ void call_equilibrate_tp_cpu(at::TensorIterator &iter, int ngas,
   });
 }
 
-void call_equilibrate_uv_cpu(at::TensorIterator &iter, int ngas,
-                             at::Tensor const &stoich,
-                             at::Tensor const &intEng_offset,
-                             at::Tensor const &cv_const,
-                             std::vector<std::string> const &logsvp_func,
-                             std::vector<std::string> const &intEng_extra_func,
+void call_equilibrate_uv_cpu(at::TensorIterator& iter, int ngas,
+                             at::Tensor const& stoich,
+                             at::Tensor const& intEng_offset,
+                             at::Tensor const& cv_const,
+                             std::vector<std::string> const& logsvp_func,
+                             std::vector<std::string> const& intEng_extra_func,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
 
@@ -73,7 +73,7 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, int ngas,
 
   // transform the name of logsvp_func by appending "_ddT"
   auto logsvp_ddT_func = logsvp_func;
-  for (auto &name : logsvp_ddT_func) name += "_ddT";
+  for (auto& name : logsvp_ddT_func) name += "_ddT";
 
   auto f1b = get_host_func(logsvp_ddT_func, func1_names, func1_table_cpu);
   auto logsvp_ddT_ptrs = f1b.data();
@@ -84,7 +84,7 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, int ngas,
 
   // transform the name of intEng_extra_func by appending "_ddT"
   auto intEng_extra_ddT_func = intEng_extra_func;
-  for (auto &name : intEng_extra_ddT_func) {
+  for (auto& name : intEng_extra_ddT_func) {
     if (!name.empty()) name += "_ddT";
   }
 
@@ -102,17 +102,16 @@ void call_equilibrate_uv_cpu(at::TensorIterator &iter, int ngas,
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
 
     iter.for_each(
-        [&](char **data, const int64_t *strides, int64_t n) {
+        [&](char** data, const int64_t* strides, int64_t n) {
           for (int i = 0; i < n; i++) {
-            auto gain = reinterpret_cast<scalar_t *>(data[0] + i * strides[0]);
-            auto diag = reinterpret_cast<scalar_t *>(data[1] + i * strides[1]);
-            auto conc = reinterpret_cast<scalar_t *>(data[2] + i * strides[2]);
-            auto temp = reinterpret_cast<scalar_t *>(data[3] + i * strides[3]);
-            auto intEng =
-                reinterpret_cast<scalar_t *>(data[4] + i * strides[4]);
+            auto gain = reinterpret_cast<scalar_t*>(data[0] + i * strides[0]);
+            auto diag = reinterpret_cast<scalar_t*>(data[1] + i * strides[1]);
+            auto conc = reinterpret_cast<scalar_t*>(data[2] + i * strides[2]);
+            auto temp = reinterpret_cast<scalar_t*>(data[3] + i * strides[3]);
+            auto intEng = reinterpret_cast<scalar_t*>(data[4] + i * strides[4]);
             auto reaction_set =
-                reinterpret_cast<int *>(data[5] + i * strides[5]);
-            auto nactive = reinterpret_cast<int *>(data[6] + i * strides[6]);
+                reinterpret_cast<int*>(data[5] + i * strides[5]);
+            auto nactive = reinterpret_cast<int*>(data[6] + i * strides[6]);
 
             int max_iter_i = max_iter;
             equilibrate_uv(gain, diag, temp, conc, *intEng, stoich_ptr,

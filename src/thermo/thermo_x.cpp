@@ -13,26 +13,26 @@ namespace kintera {
 
 extern std::vector<double> species_weights;
 
-std::shared_ptr<ThermoXImpl> ThermoXImpl::create(ThermoOptions const &opts,
-                                                 torch::nn::Module *p,
-                                                 std::string const &name) {
+std::shared_ptr<ThermoXImpl> ThermoXImpl::create(ThermoOptions const& opts,
+                                                 torch::nn::Module* p,
+                                                 std::string const& name) {
   TORCH_CHECK(p, "[ThermoX] Parent module is null");
   TORCH_CHECK(opts, "[ThermoX] Options pointer is null");
   return p->register_module(name, ThermoX(opts));
 }
 
-ThermoXImpl::ThermoXImpl(const ThermoOptions &options_) : options(options_) {
+ThermoXImpl::ThermoXImpl(const ThermoOptions& options_) : options(options_) {
   populate_thermo(options);
   reset();
 }
 
-ThermoXImpl::ThermoXImpl(const ThermoOptions &options1,
-                         const SpeciesThermo &options2)
+ThermoXImpl::ThermoXImpl(const ThermoOptions& options1,
+                         const SpeciesThermo& options2)
     : options(options1) {
   populate_thermo(options1);
   populate_thermo(options2);
   auto merged = merge_thermo(options1, options2);
-  static_cast<SpeciesThermoImpl &>(*options) = (*merged);
+  static_cast<SpeciesThermoImpl&>(*options) = (*merged);
   reset();
 }
 
@@ -100,7 +100,7 @@ void ThermoXImpl::reset() {
       torch::zeros({(int)nspecies, (int)reactions.size()}, torch::kFloat64));
 
   for (int j = 0; j < reactions.size(); ++j) {
-    auto const &r = reactions[j];
+    auto const& r = reactions[j];
     for (int i = 0; i < nspecies; ++i) {
       auto it = r.reactants().find(species[i]);
       if (it != r.reactants().end()) {
@@ -118,12 +118,12 @@ void ThermoXImpl::reset() {
   }
 }
 
-void ThermoXImpl::pretty_print(std::ostream &os) const {
+void ThermoXImpl::pretty_print(std::ostream& os) const {
   os << fmt::format("ThermoX({})", options) << std::endl;
 }
 
 torch::Tensor ThermoXImpl::compute(std::string ab,
-                                   std::vector<torch::Tensor> const &args) {
+                                   std::vector<torch::Tensor> const& args) {
   if (ab == "X->Y") {
     auto X = args[0];
     int ny = X.size(-1) - 1;
@@ -189,7 +189,7 @@ torch::Tensor ThermoXImpl::compute(std::string ab,
 }
 
 torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
-                                   torch::Tensor const &xfrac, bool warm_start,
+                                   torch::Tensor const& xfrac, bool warm_start,
                                    torch::optional<torch::Tensor> diag) {
   if (options->reactions().size() == 0) {  // no-op
     return torch::Tensor();
@@ -246,7 +246,7 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
 }
 
 void ThermoXImpl::_xfrac_to_yfrac(torch::Tensor xfrac,
-                                  torch::Tensor &out) const {
+                                  torch::Tensor& out) const {
   int ny = xfrac.size(-1) - 1;
   auto vec = xfrac.sizes().vec();
   // (..., ny + 1) -> (ny, ...)
@@ -261,7 +261,7 @@ void ThermoXImpl::_xfrac_to_yfrac(torch::Tensor xfrac,
 }
 
 void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
-                                   torch::Tensor entropy, torch::Tensor &out) {
+                                   torch::Tensor entropy, torch::Tensor& out) {
   int iter = 0;
   while (iter++ < options->max_iter()) {
     auto conc = compute("TPX->V", {out, pres, xfrac});
@@ -293,7 +293,7 @@ void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
 
 void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
                                  torch::Tensor xfrac,
-                                 torch::Tensor &out) const {
+                                 torch::Tensor& out) const {
   int ngas = options->vapor_ids().size();
   int ncloud = options->cloud_ids().size();
 

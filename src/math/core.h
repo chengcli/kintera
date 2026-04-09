@@ -16,7 +16,7 @@ namespace kintera {
  * \param[in] n            number of rows and columns in matrix M
  */
 template <typename T>
-DISPATCH_MACRO void set_identity(T *M, int n) {
+DISPATCH_MACRO void set_identity(T* M, int n) {
   memset(M, 0, n * n * sizeof(T));
   for (int i = 0; i < n; ++i) M[i * n + i] = 1.0;
 }
@@ -29,7 +29,7 @@ DISPATCH_MACRO void set_identity(T *M, int n) {
  * \return dot product of a and b
  */
 template <typename T>
-DISPATCH_MACRO T vvdot(const T *a, const T *b, int n) {
+DISPATCH_MACRO T vvdot(const T* a, const T* b, int n) {
   T s = 0.0;
   for (int i = 0; i < n; ++i) s += a[i] * b[i];
   return s;
@@ -42,7 +42,7 @@ DISPATCH_MACRO T vvdot(const T *a, const T *b, int n) {
  * \return 2-norm of a
  */
 template <typename T>
-DISPATCH_MACRO T norm2(const T *a, int n) {
+DISPATCH_MACRO T norm2(const T* a, int n) {
   return sqrt(vvdot(a, a, n));
 }
 
@@ -52,7 +52,7 @@ DISPATCH_MACRO T norm2(const T *a, int n) {
  * \param[in] n               number of elements in vector a
  */
 template <typename T>
-DISPATCH_MACRO void normalize(T *a, int n) {
+DISPATCH_MACRO void normalize(T* a, int n) {
   T nrm = norm2(a, n);
   if (nrm > 0)
     for (int i = 0; i < n; ++i) a[i] /= nrm;
@@ -67,7 +67,7 @@ DISPATCH_MACRO void normalize(T *a, int n) {
  * \param[in] m           number of columns in matrix A
  */
 template <typename T>
-DISPATCH_MACRO void mvdot(T *y, const T *A, const T *x, int n, int m) {
+DISPATCH_MACRO void mvdot(T* y, const T* A, const T* x, int n, int m) {
   // y = A x, A is n×m
   for (int i = 0; i < n; i++) {
     T sum = 0.0;
@@ -87,7 +87,7 @@ DISPATCH_MACRO void mvdot(T *y, const T *A, const T *x, int n, int m) {
  * \param[in] m           number of rows in matrix A
  */
 template <typename T>
-DISPATCH_MACRO void mvdot_t(T *y, const T *A, const T *x, int n, int m) {
+DISPATCH_MACRO void mvdot_t(T* y, const T* A, const T* x, int n, int m) {
   // y = A^T x, A is m×n
   for (int i = 0; i < n; i++) {
     T sum = 0.0;
@@ -109,7 +109,7 @@ DISPATCH_MACRO void mvdot_t(T *y, const T *A, const T *x, int n, int m) {
  * \param[in] n3              number of columns in matrix b
  */
 template <typename T>
-DISPATCH_MACRO void mmdot(T *r, T const *a, T const *b, int n1, int n2,
+DISPATCH_MACRO void mmdot(T* r, T const* a, T const* b, int n1, int n2,
                           int n3) {
   // Perform matrix multiplication
   for (int i = 0; i < n1; ++i) {
@@ -133,7 +133,7 @@ DISPATCH_MACRO void mmdot(T *r, T const *a, T const *b, int n1, int n2,
  * \param[in] n3              number of rows in matrix b
  */
 template <typename T>
-DISPATCH_MACRO void mmdot_t(T *r, T const *a, T const *b, int n1, int n2,
+DISPATCH_MACRO void mmdot_t(T* r, T const* a, T const* b, int n1, int n2,
                             int n3) {
   // Perform matrix multiplication
   for (int i = 0; i < n1; ++i) {
@@ -154,7 +154,7 @@ DISPATCH_MACRO void mmdot_t(T *r, T const *a, T const *b, int n1, int n2,
  * \param[in] n               number of rows and columns in matrix A
  */
 template <typename T>
-DISPATCH_MACRO void matmul_ATA(T *ATA, const T *A, int n) {
+DISPATCH_MACRO void matmul_ATA(T* ATA, const T* A, int n) {
   // ATA = A^T * A (n x n)
   for (int i = 0; i < n; ++i)
     for (int j = 0; j < n; ++j) {

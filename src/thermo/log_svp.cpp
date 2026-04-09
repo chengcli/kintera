@@ -11,7 +11,7 @@ namespace kintera {
 std::vector<std::string> LogSVPFunc::_logsvp = {};
 std::vector<std::string> LogSVPFunc::_logsvp_ddT = {};
 
-torch::Tensor LogSVPFunc::grad(torch::Tensor const &temp, bool expanded) {
+torch::Tensor LogSVPFunc::grad(torch::Tensor const& temp, bool expanded) {
   auto vec = temp.sizes().vec();
   if (!expanded) {
     vec.push_back(_logsvp_ddT.size());
@@ -38,7 +38,7 @@ torch::Tensor LogSVPFunc::grad(torch::Tensor const &temp, bool expanded) {
   return logsvp_ddT;
 }
 
-torch::Tensor LogSVPFunc::call(torch::Tensor const &temp, bool expanded) {
+torch::Tensor LogSVPFunc::call(torch::Tensor const& temp, bool expanded) {
   auto vec = temp.sizes().vec();
   if (!expanded) {
     vec.push_back(_logsvp.size());
@@ -65,14 +65,14 @@ torch::Tensor LogSVPFunc::call(torch::Tensor const &temp, bool expanded) {
   return logsvp;
 }
 
-torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext *ctx,
-                                  torch::Tensor const &temp) {
+torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext* ctx,
+                                  torch::Tensor const& temp) {
   ctx->save_for_backward({temp});
   return call(temp, true);
 }
 
 std::vector<torch::Tensor> LogSVPFunc::backward(
-    torch::autograd::AutogradContext *ctx,
+    torch::autograd::AutogradContext* ctx,
     std::vector<torch::Tensor> grad_outputs) {
   auto saved = ctx->get_saved_variables();
   auto logsvp_ddT = grad(/*temp=*/saved[0], true);

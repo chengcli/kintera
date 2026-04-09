@@ -20,8 +20,8 @@ namespace kintera {
  * \param[in] n size of matrix
  */
 template <typename T>
-DISPATCH_MACRO void lubksb(T *b, T const *a, int const *indx, int n,
-                           int *skip_row = nullptr) {
+DISPATCH_MACRO void lubksb(T* b, T const* a, int const* indx, int n,
+                           int* skip_row = nullptr) {
   int i, ip, j;
   int ii = -1;
   T sum;

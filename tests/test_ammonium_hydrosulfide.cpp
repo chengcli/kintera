@@ -22,7 +22,7 @@
 
 class TestAmmoniumHydrosulfide : public testing::Test {
  protected:
-  ParameterInput *pinput;
+  ParameterInput* pinput;
 
   virtual void SetUp() {
     // code here will execute just before the test ensues
@@ -115,7 +115,7 @@ TEST_F(TestAmmoniumHydrosulfide, equilibrium2) {
   EXPECT_NEAR(rates[2], 0.00376944377451, 1e-6);
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   Application::Start(argc, argv);
 
   testing::InitGoogleTest(&argc, argv);

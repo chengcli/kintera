@@ -43,12 +43,12 @@ namespace kintera {
  * internally.
  */
 template <typename T>
-DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
-                                  T const *stoich, int nspecies, int nreaction,
-                                  int ngas, user_func1 const *logsvp_func,
-                                  float logsvp_eps, int *max_iter,
-                                  int *reaction_set, int *nactive,
-                                  char *work = nullptr) {
+DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
+                                  T const* stoich, int nspecies, int nreaction,
+                                  int ngas, user_func1 const* logsvp_func,
+                                  float logsvp_eps, int* max_iter,
+                                  int* reaction_set, int* nactive,
+                                  char* work = nullptr) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
     printf("Error: Non-positive temperature or pressure.\n");
@@ -86,28 +86,28 @@ DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
 
   T *logsvp, *weight, *rhs;
   T *stoich_active, *stoich_sum, *xfrac0;
-  T *gain_cpy;
+  T* gain_cpy;
 
   if (work == nullptr) {
-    logsvp = (T *)malloc(nreaction * sizeof(T));
+    logsvp = (T*)malloc(nreaction * sizeof(T));
 
     // weight matrix
-    weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+    weight = (T*)malloc(nreaction * nspecies * sizeof(T));
 
     // right-hand-side vector
-    rhs = (T *)malloc(nreaction * sizeof(T));
+    rhs = (T*)malloc(nreaction * sizeof(T));
 
     // active stoichiometric matrix
-    stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
+    stoich_active = (T*)malloc(nspecies * nreaction * sizeof(T));
 
     // sum of reactant stoichiometric coefficients
-    stoich_sum = (T *)malloc(nreaction * sizeof(T));
+    stoich_sum = (T*)malloc(nreaction * sizeof(T));
 
     // copy of xfrac
-    xfrac0 = (T *)malloc(nspecies * sizeof(T));
+    xfrac0 = (T*)malloc(nspecies * sizeof(T));
 
     // gain matrix copy
-    gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+    gain_cpy = (T*)malloc(nreaction * nreaction * sizeof(T));
   } else {
     logsvp = alloc_from<T>(work, nreaction);
 

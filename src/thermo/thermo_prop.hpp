@@ -23,8 +23,8 @@ namespace kintera {
  * dependencies.
  */
 template <typename T>
-T thermo_prop(T temp, T const *conc, int nspecies, T const *offset,
-              T const *first_derivative, user_func1 const *extra) {
+T thermo_prop(T temp, T const* conc, int nspecies, T const* offset,
+              T const* first_derivative, user_func1 const* extra) {
   T prop = 0.;
   for (int i = 0; i < nspecies; i++) {
     T propi = offset[i] + first_derivative[i] * temp;

@@ -34,15 +34,15 @@ namespace kintera {
  * internally
  */
 template <typename T>
-DISPATCH_MACRO int ludcmp(T *x, int *indx, int n, char *work = nullptr,
-                          int *skip_row = nullptr) {
+DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
+                          int* skip_row = nullptr) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
-  T *vv;
+  T* vv;
 
   if (work == nullptr) {
     // allocate workspace
-    vv = (T *)malloc(n * sizeof(T));
+    vv = (T*)malloc(n * sizeof(T));
   } else {
     // use user-provided workspace
     vv = alloc_from<T>(work, n);
