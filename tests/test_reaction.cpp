@@ -10,7 +10,7 @@ TEST_P(DeviceTest, reaction) {
   std::cout << fmt::format("{}", reaction) << std::endl;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

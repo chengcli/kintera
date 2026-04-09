@@ -10,7 +10,7 @@ namespace kintera {
 void KineticsImpl::_jacobian_mass_action(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::optional<torch::Tensor> logrc_ddT, int begin,
-    int end, torch::Tensor &out) const {
+    int end, torch::Tensor& out) const {
   auto stoich_local = (-stoich.slice(1, begin, end)).clamp_min(0.0).t();
 
   // forward reaction mask

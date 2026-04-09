@@ -13,26 +13,26 @@ namespace kintera {
 
 extern std::vector<double> species_weights;
 
-std::shared_ptr<ThermoYImpl> ThermoYImpl::create(ThermoOptions const &opts,
-                                                 torch::nn::Module *p,
-                                                 std::string const &name) {
+std::shared_ptr<ThermoYImpl> ThermoYImpl::create(ThermoOptions const& opts,
+                                                 torch::nn::Module* p,
+                                                 std::string const& name) {
   TORCH_CHECK(p, "[ThermoY] Parent module is null");
   TORCH_CHECK(opts, "[ThermoY] Options pointer is null");
   return p->register_module(name, ThermoY(opts));
 }
 
-ThermoYImpl::ThermoYImpl(const ThermoOptions &options_) : options(options_) {
+ThermoYImpl::ThermoYImpl(const ThermoOptions& options_) : options(options_) {
   populate_thermo(options);
   reset();
 }
 
-ThermoYImpl::ThermoYImpl(const ThermoOptions &options1,
-                         const SpeciesThermo &options2)
+ThermoYImpl::ThermoYImpl(const ThermoOptions& options1,
+                         const SpeciesThermo& options2)
     : options(options1) {
   populate_thermo(options1);
   populate_thermo(options2);
   auto merged = merge_thermo(options1, options2);
-  static_cast<SpeciesThermoImpl &>(*options) = (*merged);
+  static_cast<SpeciesThermoImpl&>(*options) = (*merged);
   reset();
 }
 
@@ -110,7 +110,7 @@ void ThermoYImpl::reset() {
       torch::zeros({(int)nspecies, (int)reactions.size()}, torch::kFloat64));
 
   for (int j = 0; j < reactions.size(); ++j) {
-    auto const &r = reactions[j];
+    auto const& r = reactions[j];
     for (int i = 0; i < nspecies; ++i) {
       auto it = r.reactants().find(species[i]);
       if (it != r.reactants().end()) {
@@ -129,12 +129,12 @@ void ThermoYImpl::reset() {
   }
 }
 
-void ThermoYImpl::pretty_print(std::ostream &os) const {
+void ThermoYImpl::pretty_print(std::ostream& os) const {
   os << fmt::format("ThermoY({})", options) << std::endl;
 }
 
 torch::Tensor ThermoYImpl::compute(std::string ab,
-                                   std::vector<torch::Tensor> const &args) {
+                                   std::vector<torch::Tensor> const& args) {
   if (ab == "V->Y") {
     auto V = args[0];
     int ny = V.size(-1) - 1;
@@ -231,7 +231,7 @@ torch::Tensor ThermoYImpl::compute(std::string ab,
 }
 
 torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
-                                   torch::Tensor const &yfrac, bool warm_start,
+                                   torch::Tensor const& yfrac, bool warm_start,
                                    torch::optional<torch::Tensor> diag) {
   if (options->reactions().size() == 0) {  // no-op
     return torch::Tensor();
@@ -299,7 +299,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   return gain.view(vec);
 }
 
-void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor &out) const {
+void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor& out) const {
   int ny = ivol.size(-1) - 1;
   auto vec = ivol.sizes().vec();
   // (..., ny + 1) -> (ny, ...)
@@ -313,7 +313,7 @@ void ThermoYImpl::_ivol_to_yfrac(torch::Tensor ivol, torch::Tensor &out) const {
 }
 
 void ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac,
-                                  torch::Tensor &out) const {
+                                  torch::Tensor& out) const {
   int ny = yfrac.size(0);
   auto vec = yfrac.sizes().vec();
   // (ny, ...) -> (..., ny + 1)
@@ -332,7 +332,7 @@ void ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac,
 }
 
 void ThermoYImpl::_yfrac_to_ivol(torch::Tensor rho, torch::Tensor yfrac,
-                                 torch::Tensor &out) const {
+                                 torch::Tensor& out) const {
   int ny = yfrac.size(0);
   auto vec = yfrac.sizes().vec();
   // (ny, ...) -> (..., ny + 1)
@@ -347,7 +347,7 @@ void ThermoYImpl::_yfrac_to_ivol(torch::Tensor rho, torch::Tensor yfrac,
 }
 
 void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
-                                torch::Tensor &out) const {
+                                torch::Tensor& out) const {
   int ngas = options->vapor_ids().size();
 
   // kg/m^3 -> mol/m^3
@@ -375,17 +375,17 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
     auto time_stamp = std::to_string(std::time(nullptr));
 
     // save torch tensor data to file with time stamp
-    //auto filename = "thermo_y_pres_to_temp_" + time_stamp + ".pt";
+    // auto filename = "thermo_y_pres_to_temp_" + time_stamp + ".pt";
 
-    //std::map<std::string, torch::Tensor> data;
-    //data["pres"] = pres;
-    //data["ivol"] = ivol;
-    //save_tensors(data, filename);
+    // std::map<std::string, torch::Tensor> data;
+    // data["pres"] = pres;
+    // data["ivol"] = ivol;
+    // save_tensors(data, filename);
   }
 }
 
 void ThermoYImpl::_cv_vol(torch::Tensor ivol, torch::Tensor temp,
-                          torch::Tensor &out) const {
+                          torch::Tensor& out) const {
   // kg/m^3 -> mol/m^3
   auto conc = ivol * inv_mu;
   auto cv = eval_cv_R(temp, conc, options) * constants::Rgas;
@@ -393,7 +393,7 @@ void ThermoYImpl::_cv_vol(torch::Tensor ivol, torch::Tensor temp,
 }
 
 void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
-                                  torch::Tensor &out) const {
+                                  torch::Tensor& out) const {
   // kg/m^3 -> mol/m^3
   auto u0_sum = (ivol * u0).sum(-1);
   auto cv0_sum = (ivol * cv0).sum(-1);
@@ -418,17 +418,17 @@ void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
     auto time_stamp = std::to_string(std::time(nullptr));
 
     // save torch tensor data to file with time stamp
-    //auto filename = "thermo_y_intEng_to_temp_" + time_stamp + ".pt";
+    // auto filename = "thermo_y_intEng_to_temp_" + time_stamp + ".pt";
 
-    //std::map<std::string, torch::Tensor> data;
-    //data["ivol"] = ivol;
-    //data["intEng"] = intEng;
-    //save_tensors(data, filename);
+    // std::map<std::string, torch::Tensor> data;
+    // data["ivol"] = ivol;
+    // data["intEng"] = intEng;
+    // save_tensors(data, filename);
   }
 }
 
 void ThermoYImpl::_temp_to_pres(torch::Tensor ivol, torch::Tensor temp,
-                                torch::Tensor &out) const {
+                                torch::Tensor& out) const {
   int ngas = options->vapor_ids().size();
 
   // kg/m^3 -> mol/m^3

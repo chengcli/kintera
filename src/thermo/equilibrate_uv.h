@@ -56,12 +56,12 @@ namespace kintera {
  */
 template <typename T>
 DISPATCH_MACRO int equilibrate_uv(
-    T *gain, T *diag, T *temp, T *conc, T h0, T const *stoich, int nspecies,
-    int nreaction, int ngas, T const *intEng_offset, T const *cv_const,
-    user_func1 const *logsvp_func, user_func1 const *logsvp_func_ddT,
-    user_func2 const *intEng_R_extra, user_func2 const *cv_R_extra,
-    float logsvp_eps, int *max_iter, int *reaction_set, int *nactive,
-    char *work = nullptr) {
+    T* gain, T* diag, T* temp, T* conc, T h0, T const* stoich, int nspecies,
+    int nreaction, int ngas, T const* intEng_offset, T const* cv_const,
+    user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
+    user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
+    float logsvp_eps, int* max_iter, int* reaction_set, int* nactive,
+    char* work = nullptr) {
   // check positive temperature
   if (*temp <= 0) {
     printf("Error: Non-positive temperature = %g.\n", *temp);
@@ -95,28 +95,28 @@ DISPATCH_MACRO int equilibrate_uv(
 
   T *intEng, *intEng_ddT, *logsvp, *logsvp_ddT, *weight, *rhs;
   T *stoich_active, *conc0;
-  T *gain_cpy;
+  T* gain_cpy;
 
   if (work == nullptr) {
-    intEng = (T *)malloc(nspecies * sizeof(T));
-    intEng_ddT = (T *)malloc(nspecies * sizeof(T));
-    logsvp = (T *)malloc(nreaction * sizeof(T));
-    logsvp_ddT = (T *)malloc(nreaction * sizeof(T));
+    intEng = (T*)malloc(nspecies * sizeof(T));
+    intEng_ddT = (T*)malloc(nspecies * sizeof(T));
+    logsvp = (T*)malloc(nreaction * sizeof(T));
+    logsvp_ddT = (T*)malloc(nreaction * sizeof(T));
 
     // weight matrix
-    weight = (T *)malloc(nreaction * nspecies * sizeof(T));
+    weight = (T*)malloc(nreaction * nspecies * sizeof(T));
 
     // right-hand-side vector
-    rhs = (T *)malloc(nreaction * sizeof(T));
+    rhs = (T*)malloc(nreaction * sizeof(T));
 
     // active stoichiometric matrix
-    stoich_active = (T *)malloc(nspecies * nreaction * sizeof(T));
+    stoich_active = (T*)malloc(nspecies * nreaction * sizeof(T));
 
     // concentration copy
-    conc0 = (T *)malloc(nspecies * sizeof(T));
+    conc0 = (T*)malloc(nspecies * sizeof(T));
 
     // gain matrix copy
-    gain_cpy = (T *)malloc(nreaction * nreaction * sizeof(T));
+    gain_cpy = (T*)malloc(nreaction * nreaction * sizeof(T));
   } else {
     intEng = alloc_from<T>(work, nspecies);
     intEng_ddT = alloc_from<T>(work, nspecies);

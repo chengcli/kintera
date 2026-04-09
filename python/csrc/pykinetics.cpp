@@ -14,7 +14,7 @@
 
 namespace py = pybind11;
 
-void bind_kinetics(py::module &m) {
+void bind_kinetics(py::module& m) {
   ////////////// Arrhenius //////////////
   auto pyArrheniusOptions =
       py::class_<kintera::ArrheniusOptionsImpl, kintera::ArrheniusOptions>(
@@ -22,7 +22,7 @@ void bind_kinetics(py::module &m) {
 
   pyArrheniusOptions.def(py::init<>())
       .def("__repr__",
-           [](const kintera::ArrheniusOptions &self) {
+           [](const kintera::ArrheniusOptions& self) {
              std::stringstream ss;
              self->report(ss);
              return fmt::format("ArrheniusOptions({})", ss.str());
@@ -44,7 +44,7 @@ void bind_kinetics(py::module &m) {
                  kintera::CoagulationOptions>(m, "CoagulationOptions");
 
   pyCoagulationOptions.def(py::init<>())
-      .def("__repr__", [](const kintera::CoagulationOptions &self) {
+      .def("__repr__", [](const kintera::CoagulationOptions& self) {
         std::stringstream ss;
         self->report(ss);
         return fmt::format("CoagulationOptions({})", ss.str());
@@ -58,7 +58,7 @@ void bind_kinetics(py::module &m) {
 
   pyEvaporationOptions.def(py::init<>())
       .def("__repr__",
-           [](const kintera::EvaporationOptions &self) {
+           [](const kintera::EvaporationOptions& self) {
              std::stringstream ss;
              self->report(ss);
              return fmt::format("EvaporationOptions({})", ss.str());
@@ -82,13 +82,13 @@ void bind_kinetics(py::module &m) {
 
   pyKineticsOptions.def(py::init<>())
       .def("__repr__",
-           [](const kintera::KineticsOptions &self) {
+           [](const kintera::KineticsOptions& self) {
              std::stringstream ss;
              self->report(ss);
              return fmt::format("KineticsOptions({})", ss.str());
            })
       .def_static("from_yaml",
-                  py::overload_cast<std::string const &, bool>(
+                  py::overload_cast<std::string const&, bool>(
                       &kintera::KineticsOptionsImpl::from_yaml),
                   py::arg("filename"), py::arg("verbose") = false)
       .def("reactions", &kintera::KineticsOptionsImpl::reactions)
@@ -105,7 +105,7 @@ void bind_kinetics(py::module &m) {
   ADD_KINTERA_MODULE(Kinetics, KineticsOptions, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"))
       .def("forward_nogil",
-           [](kintera::KineticsImpl &self, torch::Tensor temp,
+           [](kintera::KineticsImpl& self, torch::Tensor temp,
               torch::Tensor pres, torch::Tensor conc) {
              py::gil_scoped_release no_gil;
              return self.forward(temp, pres, conc);

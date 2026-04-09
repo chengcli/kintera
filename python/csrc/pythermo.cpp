@@ -14,14 +14,14 @@
 
 namespace py = pybind11;
 
-void bind_thermo(py::module &m) {
+void bind_thermo(py::module& m) {
   auto pyNucleationOptions =
       py::class_<kintera::NucleationOptionsImpl, kintera::NucleationOptions>(
           m, "NucleationOptions");
 
   pyNucleationOptions.def(py::init<>())
       .def("__repr__",
-           [](const kintera::NucleationOptions &self) {
+           [](const kintera::NucleationOptions& self) {
              std::stringstream ss;
              self->report(ss);
              return fmt::format("NucleationOptions({})", ss.str());
@@ -39,13 +39,13 @@ void bind_thermo(py::module &m) {
 
   pyThermoOptions.def(py::init<>())
       .def("__repr__",
-           [](const kintera::ThermoOptions &self) {
+           [](const kintera::ThermoOptions& self) {
              std::stringstream ss;
              self->report(ss);
              return fmt::format("ThermoOptions({})", ss.str());
            })
       .def_static("from_yaml",
-                  py::overload_cast<std::string const &, bool>(
+                  py::overload_cast<std::string const&, bool>(
                       &kintera::ThermoOptionsImpl::from_yaml),
                   py::arg("filename"), py::arg("verbose") = false)
       .def("reactions", &kintera::ThermoOptionsImpl::reactions)
@@ -74,7 +74,7 @@ void bind_thermo(py::module &m) {
            py::arg("conc") = py::none())
       .def(
           "extrapolate_dlnp",
-          [](kintera::ThermoXImpl &self, torch::Tensor temp, torch::Tensor pres,
+          [](kintera::ThermoXImpl& self, torch::Tensor temp, torch::Tensor pres,
              torch::Tensor xfrac, double dlnp, double ds_dlnp, bool rainout,
              bool verbose) {
             kintera::ExtrapOptions opts;
@@ -87,7 +87,7 @@ void bind_thermo(py::module &m) {
 
       .def(
           "extrapolate_dz",
-          [](kintera::ThermoXImpl &self, torch::Tensor temp, torch::Tensor pres,
+          [](kintera::ThermoXImpl& self, torch::Tensor temp, torch::Tensor pres,
              torch::Tensor xfrac, double dz, double grav, double ds_dz,
              bool rainout, bool verbose) {
             kintera::ExtrapOptions opts;

@@ -20,7 +20,7 @@
 namespace kintera {
 
 // Compute bitmask hash for a set of integers [0..n-1]
-DISPATCH_MACRO uint64_t hash_set(const int *arr, int size, int n) {
+DISPATCH_MACRO uint64_t hash_set(const int* arr, int size, int n) {
   uint64_t mask = 0;
   for (int i = 0; i < size; i++) {
     int x = arr[i];
@@ -32,8 +32,8 @@ DISPATCH_MACRO uint64_t hash_set(const int *arr, int size, int n) {
 }
 
 template <typename T>
-DISPATCH_MACRO void populate_aug(T *aug, T const *ata, T const *c, int n2,
-                                 int nact, int const *ct_indx, float reg = 0.) {
+DISPATCH_MACRO void populate_aug(T* aug, T const* ata, T const* c, int n2,
+                                 int nact, int const* ct_indx, float reg = 0.) {
   // populate A^T.A (upper left block)
   for (int i = 0; i < n2; ++i) {
     for (int j = 0; j < n2; ++j) {
@@ -66,8 +66,8 @@ DISPATCH_MACRO void populate_aug(T *aug, T const *ata, T const *c, int n2,
 }
 
 template <typename T>
-DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
-                                 int nact, int const *ct_indx) {
+DISPATCH_MACRO void populate_rhs(T* rhs, T const* atb, T const* d, int n2,
+                                 int nact, int const* ct_indx) {
   // populate A^T.b (upper part)
   for (int i = 0; i < n2; ++i) {
     rhs[i] = atb[i];
@@ -106,9 +106,9 @@ DISPATCH_MACRO void populate_rhs(T *rhs, T const *atb, T const *d, int n2,
  *         2 on failure (max_iter reached without convergence).
  */
 template <typename T>
-DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
-                               int n2, int n3, int neq, int *max_iter,
-                               float reg = 0., char *work = nullptr) {
+DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
+                               int n2, int n3, int neq, int* max_iter,
+                               float reg = 0., char* work = nullptr) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
     printf(
@@ -128,22 +128,22 @@ DISPATCH_MACRO int leastsq_kkt(T *b, T const *a, T const *c, T const *d, int n1,
   int *ct_indx, *lu_indx, *skip_row;
 
   if (work == nullptr) {
-    aug = (T *)malloc(size * size * sizeof(T));
-    ata = (T *)malloc(n2 * n2 * sizeof(T));
-    atb = (T *)malloc(n2 * sizeof(T));
-    rhs = (T *)malloc(size * sizeof(T));
+    aug = (T*)malloc(size * size * sizeof(T));
+    ata = (T*)malloc(n2 * n2 * sizeof(T));
+    atb = (T*)malloc(n2 * sizeof(T));
+    rhs = (T*)malloc(size * sizeof(T));
 
     // evaluation of constraints
-    eval = (T *)malloc(n3 * sizeof(T));
+    eval = (T*)malloc(n3 * sizeof(T));
 
     // index for the active set
-    ct_indx = (int *)malloc(n3 * sizeof(int));
+    ct_indx = (int*)malloc(n3 * sizeof(int));
 
     // index array for the LU decomposition
-    lu_indx = (int *)malloc(size * sizeof(int));
+    lu_indx = (int*)malloc(size * sizeof(int));
 
     // row indices to skip
-    skip_row = (int *)malloc(size * sizeof(int));
+    skip_row = (int*)malloc(size * sizeof(int));
   } else {
     aug = alloc_from<T>(work, size * size);
     ata = alloc_from<T>(work, n2 * n2);

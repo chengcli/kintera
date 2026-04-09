@@ -25,9 +25,9 @@ extern std::vector<double> species_sref_R;
 
 }  // namespace kintera
 
-void bind_thermo(py::module &m);
-void bind_constants(py::module &m);
-void bind_kinetics(py::module &m);
+void bind_thermo(py::module& m);
+void bind_constants(py::module& m);
+void bind_kinetics(py::module& m);
 
 PYBIND11_MODULE(kintera, m) {
   m.attr("__name__") = "kintera";
@@ -39,7 +39,7 @@ PYBIND11_MODULE(kintera, m) {
 
   pySpeciesThermo.def(py::init<>())
       .def("__repr__",
-           [](const kintera::SpeciesThermo &self) {
+           [](const kintera::SpeciesThermo& self) {
              return fmt::format("SpeciesThermo({})", self);
            })
       .def("species", &kintera::SpeciesThermoImpl::species)
@@ -54,9 +54,9 @@ PYBIND11_MODULE(kintera, m) {
   auto pyReaction = py::class_<kintera::Reaction>(m, "Reaction");
 
   pyReaction.def(py::init<>())
-      .def(py::init<const std::string &>())
+      .def(py::init<const std::string&>())
       .def("__repr__",
-           [](const kintera::Reaction &self) {
+           [](const kintera::Reaction& self) {
              return fmt::format("Reaction({})", self);
            })
       .def("equation", &kintera::Reaction::equation)
@@ -67,47 +67,44 @@ PYBIND11_MODULE(kintera, m) {
   bind_constants(m);
   bind_kinetics(m);
 
-  m.def("species_names", []() -> const std::vector<std::string> & {
+  m.def("species_names", []() -> const std::vector<std::string>& {
     return kintera::species_names;
   });
 
-  m.def("set_species_names", [](const std::vector<std::string> &names) {
+  m.def("set_species_names", [](const std::vector<std::string>& names) {
     kintera::species_names = names;
     return kintera::species_names;
   });
 
-  m.def("species_weights", []() -> const std::vector<double> & {
+  m.def("species_weights", []() -> const std::vector<double>& {
     return kintera::species_weights;
   });
 
-  m.def("set_species_weights", [](const std::vector<double> &weights) {
+  m.def("set_species_weights", [](const std::vector<double>& weights) {
     kintera::species_weights = weights;
     return kintera::species_weights;
   });
 
-  m.def("species_cref_R", []() -> const std::vector<double> & {
-    return kintera::species_cref_R;
-  });
+  m.def("species_cref_R",
+        []() -> const std::vector<double>& { return kintera::species_cref_R; });
 
-  m.def("set_species_cref_R", [](const std::vector<double> &cref_R) {
+  m.def("set_species_cref_R", [](const std::vector<double>& cref_R) {
     kintera::species_cref_R = cref_R;
     return kintera::species_cref_R;
   });
 
-  m.def("species_uref_R", []() -> const std::vector<double> & {
-    return kintera::species_uref_R;
-  });
+  m.def("species_uref_R",
+        []() -> const std::vector<double>& { return kintera::species_uref_R; });
 
-  m.def("set_species_uref_R", [](const std::vector<double> &uref_R) {
+  m.def("set_species_uref_R", [](const std::vector<double>& uref_R) {
     kintera::species_uref_R = uref_R;
     return kintera::species_uref_R;
   });
 
-  m.def("species_sref_R", []() -> const std::vector<double> & {
-    return kintera::species_sref_R;
-  });
+  m.def("species_sref_R",
+        []() -> const std::vector<double>& { return kintera::species_sref_R; });
 
-  m.def("set_species_sref_R", [](const std::vector<double> &sref_R) {
+  m.def("set_species_sref_R", [](const std::vector<double>& sref_R) {
     kintera::species_sref_R = sref_R;
     return kintera::species_sref_R;
   });

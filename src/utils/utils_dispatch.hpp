@@ -6,8 +6,8 @@
 
 namespace at::native {
 
-using fn_iter = void (*)(at::TensorIterator &iter,
-                         std::vector<std::string> const &funcs);
+using fn_iter = void (*)(at::TensorIterator& iter,
+                         std::vector<std::string> const& funcs);
 
 DECLARE_DISPATCH(fn_iter, call_func1);
 DECLARE_DISPATCH(fn_iter, call_func2);
