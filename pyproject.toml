@@ -1,6 +1,7 @@
 [build-system]
 requires = [
   "setuptools>=61.0.0",
+  "setuptools-scm>=8",
   "wheel",
   "build",
   "pyharp>=2.2.0",
@@ -44,12 +45,12 @@ classifiers = [
 Homepage = "https://github.com/chengcli/kintera"
 Documentation = "https://kintera.readthedocs.io"
 
-[tool.setuptools.dynamic.version]
-attr = "kintera.__version__"
-
 [tool.setuptools]
 packages = ["kintera", "kintera.api"]
 include-package-data = false
 
 [tool.setuptools.package-data]
 "kintera" = ["kintera/**/*", "lib/*.so", "lib/*.dylib", "*.pyi", "py.typed"]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0"

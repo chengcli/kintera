@@ -1,7 +1,12 @@
+from importlib.metadata import PackageNotFoundError, version
+
 import torch
 import pydisort
 import pyharp
 
 from .kintera import *
 
-__version__ = "2.1.0"
+try:
+    __version__ = version("kintera")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
