@@ -64,7 +64,7 @@ jobs:
           else
             pip install 'torch==2.10.0'
           fi
-          pip install --no-deps 'pyharp>=2.2.0'
+          pip install 'pyharp>=2.2.0'
 
       - name: Install NetCDF
         run: |
