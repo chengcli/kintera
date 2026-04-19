@@ -59,11 +59,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           pip install wheel numpy pytest
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            pip install 'torch==2.10.0' --index-url https://download.pytorch.org/whl/cpu
-          else
-            pip install 'torch==2.10.0'
-          fi
+          pip install 'torch==2.10.0'
           pip install 'pyharp>=2.2.0'
 
       - name: Install NetCDF
