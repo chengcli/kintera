@@ -19,16 +19,14 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
     // go through reactants
     for (auto& [name, _] : react.reactants()) {
       auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name,
-                  " not found in species list");
+      if (it == species_names.end()) continue;  // skip background/bath species
       vapor_set.insert(name);
     }
 
     // go through products
     for (auto& [name, _] : react.products()) {
       auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name,
-                  " not found in species list");
+      if (it == species_names.end()) continue;  // skip background/bath species
       vapor_set.insert(name);
     }
   }

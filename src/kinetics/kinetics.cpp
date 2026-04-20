@@ -123,6 +123,30 @@ void KineticsImpl::reset() {
               << options->evaporation()->reactions().size()
               << " Evaporation reactions" << std::endl;
   }
+
+  // register TabulatedRate rates
+  rc_evaluator.push_back(
+      torch::nn::AnyModule(TabulatedRate(options->tabulated())));
+  register_module("tabulated", rc_evaluator.back().ptr());
+  _nreactions.push_back(options->tabulated()->reactions().size());
+
+  if (options->verbose()) {
+    std::cout << "[Kinetics] registered "
+              << options->tabulated()->reactions().size()
+              << " Tabulated reactions" << std::endl;
+  }
+
+  // register ThreeBody rates
+  rc_evaluator.push_back(
+      torch::nn::AnyModule(ThreeBody(options->three_body())));
+  register_module("three_body", rc_evaluator.back().ptr());
+  _nreactions.push_back(options->three_body()->reactions().size());
+
+  if (options->verbose()) {
+    std::cout << "[Kinetics] registered "
+              << options->three_body()->reactions().size()
+              << " Three-body reactions" << std::endl;
+  }
 }
 
 torch::Tensor KineticsImpl::jacobian(

@@ -8,6 +8,7 @@
 #include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
+#include <kintera/kinetics/tabulated_rate.hpp>
 
 // python
 #include "pyoptions.hpp"
@@ -75,6 +76,27 @@ void bind_kinetics(py::module& m) {
   ADD_KINTERA_MODULE(Evaporation, EvaporationOptions, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"));
 
+  ////////////// TabulatedRate //////////////
+  auto pyTabulatedRateOptions =
+      py::class_<kintera::TabulatedRateOptionsImpl,
+                 kintera::TabulatedRateOptions>(m, "TabulatedRateOptions");
+
+  pyTabulatedRateOptions.def(py::init<>())
+      .def("__repr__",
+           [](const kintera::TabulatedRateOptions& self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("TabulatedRateOptions({})", ss.str());
+           })
+      .ADD_OPTION(std::vector<kintera::Reaction>,
+                  kintera::TabulatedRateOptionsImpl, reactions)
+      .ADD_OPTION(std::vector<std::string>, kintera::TabulatedRateOptionsImpl,
+                  files)
+      .ADD_OPTION(bool, kintera::TabulatedRateOptionsImpl, log_interpolation);
+
+  ADD_KINTERA_MODULE(TabulatedRate, TabulatedRateOptions, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"), py::arg("other"));
+
   ////////////// Kinetics //////////////
   auto pyKineticsOptions =
       py::class_<kintera::KineticsOptionsImpl, kintera::SpeciesThermoImpl,
@@ -100,6 +122,8 @@ void bind_kinetics(py::module& m) {
                   coagulation)
       .ADD_OPTION(kintera::EvaporationOptions, kintera::KineticsOptionsImpl,
                   evaporation)
+      .ADD_OPTION(kintera::TabulatedRateOptions, kintera::KineticsOptionsImpl,
+                  tabulated)
       .ADD_OPTION(bool, kintera::KineticsOptionsImpl, evolve_temperature);
 
   ADD_KINTERA_MODULE(Kinetics, KineticsOptions, py::arg("temp"),

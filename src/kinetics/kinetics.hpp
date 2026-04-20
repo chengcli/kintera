@@ -13,6 +13,8 @@
 #include "arrhenius.hpp"
 #include "coagulation.hpp"
 #include "evaporation.hpp"
+#include "tabulated_rate.hpp"
+#include "three_body.hpp"
 
 // arg
 #include <kintera/add_arg.h>
@@ -25,6 +27,8 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     op->arrhenius() = ArrheniusOptionsImpl::create();
     op->coagulation() = CoagulationOptionsImpl::create();
     op->evaporation() = EvaporationOptionsImpl::create();
+    op->tabulated() = TabulatedRateOptionsImpl::create();
+    op->three_body() = ThreeBodyOptionsImpl::create();
     return op;
   }
 
@@ -38,6 +42,8 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     if (arrhenius()) op->arrhenius() = arrhenius()->clone();
     if (coagulation()) op->coagulation() = coagulation()->clone();
     if (evaporation()) op->evaporation() = evaporation()->clone();
+    if (tabulated()) op->tabulated() = tabulated()->clone();
+    if (three_body()) op->three_body() = three_body()->clone();
     return op;
   }
   void report(std::ostream& os) const {
@@ -57,6 +63,8 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(ArrheniusOptions, arrhenius);
   ADD_ARG(CoagulationOptions, coagulation);
   ADD_ARG(EvaporationOptions, evaporation);
+  ADD_ARG(TabulatedRateOptions, tabulated);
+  ADD_ARG(ThreeBodyOptions, three_body);
 
   ADD_ARG(bool, evolve_temperature) = false;
   ADD_ARG(bool, verbose) = false;

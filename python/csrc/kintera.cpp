@@ -133,4 +133,8 @@ PYBIND11_MODULE(kintera, m) {
 
   m.def("evolve_implicit", &kintera::evolve_implicit, py::arg("rate"),
         py::arg("stoich"), py::arg("jacobian"), py::arg("dt"));
+
+  m.def("evolve_implicit_subcycle", &kintera::evolve_implicit_subcycle,
+        py::arg("rate"), py::arg("stoich"), py::arg("jacobian"), py::arg("dt"),
+        py::arg("nsubsteps") = 1);
 }

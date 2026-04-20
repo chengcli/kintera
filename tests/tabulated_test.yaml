@@ -1,0 +1,34 @@
+reference-state:
+  Tref: 300.
+  Pref: 1.e5
+
+species:
+  - name: dry
+    composition: {H: 2}
+    cv_R: 2.5
+
+  - name: A
+    composition: {C: 1, H: 4}
+    cv_R: 3.0
+    u0_R: 0.
+
+  - name: B
+    composition: {C: 1, O: 1}
+    cv_R: 2.5
+    u0_R: 0.
+
+  - name: C
+    composition: {H: 2, O: 1}
+    cv_R: 3.0
+    u0_R: 0.
+
+reactions:
+  - equation: A => B + C
+    type: tabulated
+    rate-constant:
+      file: data/rate_1d_arrhenius.dat
+
+  - equation: B + C => A
+    type: tabulated
+    rate-constant:
+      file: data/rate_2d_tp.dat

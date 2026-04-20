@@ -95,6 +95,26 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
               << std::endl;
   }
 
+  // add tabulated reactions
+  kinet->tabulated() = TabulatedRateOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->tabulated());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Tabulated reactions",
+                     kinet->tabulated()->reactions().size())
+              << std::endl;
+  }
+
+  // add three-body reactions
+  kinet->three_body() = ThreeBodyOptionsImpl::from_yaml(config["reactions"]);
+  add_to_vapor_cloud(vapor_set, cloud_set, kinet->three_body());
+  if (kinet->verbose()) {
+    std::cout << fmt::format(
+                     "[KineticsOptions] registered {} Three-body reactions",
+                     kinet->three_body()->reactions().size())
+              << std::endl;
+  }
+
   // register vapors
   for (const auto& sp : vapor_set) {
     auto it = std::find(species_names.begin(), species_names.end(), sp);
@@ -142,9 +162,10 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
 
 std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   std::vector<Reaction> reactions;
-  reactions.reserve(arrhenius()->reactions().size() +
-                    coagulation()->reactions().size() +
-                    evaporation()->reactions().size());
+  reactions.reserve(
+      arrhenius()->reactions().size() + coagulation()->reactions().size() +
+      evaporation()->reactions().size() + tabulated()->reactions().size() +
+      three_body()->reactions().size());
 
   for (const auto& reaction : arrhenius()->reactions()) {
     reactions.push_back(reaction);
@@ -155,6 +176,14 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   }
 
   for (const auto& reaction : evaporation()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : tabulated()->reactions()) {
+    reactions.push_back(reaction);
+  }
+
+  for (const auto& reaction : three_body()->reactions()) {
     reactions.push_back(reaction);
   }
 

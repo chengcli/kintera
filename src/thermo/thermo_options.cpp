@@ -86,10 +86,13 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
   std::set<std::string> vapor_set;
   std::set<std::string> cloud_set;
 
-  // add reference species
-  vapor_set.insert(species_names[0]);
+  // Register all species from the species list as vapors
+  // (species[0] is the reference/dry species, all others are vapors)
+  for (const auto& name : species_names) {
+    vapor_set.insert(name);
+  }
 
-  // register reactions
+  // register reactions (nucleation only — for phase equilibrium)
   if (config["reactions"]) {
     // add nucleation reactions
     thermo->nucleation() =

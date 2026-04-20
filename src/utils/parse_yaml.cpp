@@ -8,6 +8,7 @@
 
 // kintera
 #include <kintera/kinetics/arrhenius.hpp>
+#include <kintera/kinetics/three_body.hpp>
 #include <kintera/reaction.hpp>
 
 namespace kintera {
@@ -58,8 +59,13 @@ std::map<Reaction, torch::nn::AnyModule> parse_reactions_yaml(
       auto op = ArrheniusOptionsImpl::from_yaml(rxn_node["rate-constant"]);
       reaction_rates[reaction] = torch::nn::AnyModule(Arrhenius(op));
     } else if (type == "three-body") {
-      printf("Three-body reaction not implemented\n");
-      continue;
+      // Wrap single reaction into a list for ThreeBody::from_yaml
+      YAML::Node rxn_list;
+      rxn_list.push_back(rxn_node);
+      auto op = ThreeBodyOptionsImpl::from_yaml(rxn_list);
+      if (!op->reactions().empty()) {
+        reaction_rates[reaction] = torch::nn::AnyModule(ThreeBody(op));
+      }
     } else if (type == "falloff") {
       printf("Falloff reaction not implemented\n");
       continue;
