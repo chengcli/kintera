@@ -4,8 +4,8 @@ requires = [
   "setuptools-scm>=8",
   "wheel",
   "build",
-  "pyharp>=2.2.0",
-  "torch==2.10.0",
+  "pyharp>=2.0.0,<2.1.0",
+  "torch>=2.7.0,<2.8.0",
   "ninja",
   ]
 build-backend = "setuptools.build_meta"
@@ -20,10 +20,10 @@ authors = [
 ]
 license = { text = "LICENSE" }
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.9"
 dependencies = [
   "numpy",
-  "pyharp>=2.2.0",
+  "pyharp>=2.0.0,<2.1.0",
 ]
 classifiers = [
   "Development Status :: 3 - Alpha",
