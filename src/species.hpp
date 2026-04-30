@@ -5,6 +5,9 @@
 #include <string>
 #include <vector>
 
+// c10
+#include <c10/core/TensorOptions.h>
+
 // kintera
 #include <kintera/utils/user_funcs.hpp>
 
@@ -14,10 +17,6 @@
 namespace at {
 class Tensor;
 }  // namespace at
-
-namespace c10 {
-struct TensorOptions;
-}  // namespace c10
 
 namespace YAML {
 class Node;
