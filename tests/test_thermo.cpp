@@ -191,6 +191,10 @@ TEST_P(DeviceTest, eng_pres) {
 }
 
 TEST_P(DeviceTest, equilibrate_tp) {
+  if (device.type() == torch::kMPS) {
+    GTEST_SKIP() << "equilibrate_tp has no MPS backend.";
+  }
+
   auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   op_thermo->max_iter(15);
 
@@ -220,6 +224,10 @@ TEST_P(DeviceTest, equilibrate_tp) {
 }
 
 TEST_P(DeviceTest, equilibrate_tp_large) {
+  if (device.type() == torch::kMPS) {
+    GTEST_SKIP() << "equilibrate_tp has no MPS backend.";
+  }
+
   auto op_thermo = ThermoOptionsImpl::from_yaml("earth.yaml");
   op_thermo->max_iter(15);
 
@@ -250,6 +258,10 @@ TEST_P(DeviceTest, equilibrate_tp_large) {
 }
 
 TEST_P(DeviceTest, equilibrate_uv) {
+  if (device.type() == torch::kMPS) {
+    GTEST_SKIP() << "equilibrate_uv has no MPS backend.";
+  }
+
   auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   op_thermo->max_iter(10);
 
@@ -291,6 +303,10 @@ TEST_P(DeviceTest, equilibrate_uv) {
 }
 
 TEST_P(DeviceTest, equilibrate_uv_large) {
+  if (device.type() == torch::kMPS) {
+    GTEST_SKIP() << "equilibrate_uv has no MPS backend.";
+  }
+
   auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   op_thermo->max_iter(10);
 
