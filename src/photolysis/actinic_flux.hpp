@@ -2,7 +2,6 @@
 
 // C/C++
 #include <memory>
-#include <utility>
 #include <vector>
 
 // torch
@@ -68,11 +67,6 @@ struct ActinicFluxData {
       return torch::zeros_like(new_wavelength);
     }
     return interpn({new_wavelength}, {wavelength}, flux);
-  }
-
-  //! Get `(wavelength, flux)` tensors for passing to photolysis forward()
-  std::pair<torch::Tensor, torch::Tensor> to_map() const {
-    return {wavelength, flux};
   }
 };
 

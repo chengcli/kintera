@@ -79,17 +79,16 @@ TEST_P(ActinicFluxTest, InterpolateFlux) {
   EXPECT_LT(interp_flux[0].item<double>(), 2.e14);
 }
 
-TEST_P(ActinicFluxTest, ToMap) {
+TEST_P(ActinicFluxTest, DirectFields) {
   auto wavelength =
       torch::tensor({100., 200., 300.}, torch::device(device).dtype(dtype));
   auto flux_vals =
       torch::tensor({1.e14, 2.e14, 1.e14}, torch::device(device).dtype(dtype));
 
   ActinicFluxData flux(wavelength, flux_vals);
-  auto [wavelength_out, flux_out] = flux.to_map();
 
-  EXPECT_EQ(wavelength_out.size(0), 3);
-  EXPECT_EQ(flux_out.size(0), 3);
+  EXPECT_EQ(flux.wavelength.size(0), 3);
+  EXPECT_EQ(flux.flux.size(0), 3);
 }
 
 TEST_P(ActinicFluxTest, FluxOptions) {

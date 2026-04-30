@@ -105,7 +105,6 @@ void bind_photolysis(py::module& m) {
       .def("nwave", &kintera::ActinicFluxData::nwave)
       .def("interpolate_to", &kintera::ActinicFluxData::interpolate_to,
            py::arg("new_wavelength"))
-      .def("to_map", &kintera::ActinicFluxData::to_map)
       .def("__repr__", [](const kintera::ActinicFluxData& self) {
         return fmt::format("ActinicFluxData(nwave={}, valid={})", self.nwave(),
                            self.is_valid());

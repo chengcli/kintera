@@ -99,18 +99,16 @@ def test_create_solar_flux():
     assert flux.nwave() == 71
 
 
-def test_actinic_flux_to_map():
-    """Test ActinicFluxData.to_map() method."""
+def test_actinic_flux_fields():
+    """Test ActinicFluxData field access."""
     from kintera import ActinicFluxData
 
     wavelength = torch.tensor([100.0, 200.0, 300.0])
     flux_vals = torch.tensor([1e14, 2e14, 1e14])
     flux = ActinicFluxData(wavelength, flux_vals)
 
-    wavelength_out, flux_out = flux.to_map()
-
-    assert wavelength_out.shape[0] == 3
-    assert flux_out.shape[0] == 3
+    assert flux.wavelength.shape[0] == 3
+    assert flux.flux.shape[0] == 3
 
 
 def test_actinic_flux_interpolation():
