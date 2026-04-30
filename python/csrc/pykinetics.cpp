@@ -250,8 +250,29 @@ void bind_kinetics(py::module& m) {
                   sri_falloff)
       .ADD_OPTION(bool, kintera::KineticsOptionsImpl, evolve_temperature);
 
-  ADD_KINTERA_MODULE(Kinetics, KineticsOptions, py::arg("temp"),
-                     py::arg("pres"), py::arg("conc"))
+  torch::python::bind_module<kintera::KineticsImpl>(m, "Kinetics")
+      .def(py::init<>(), R"(Construct a new default module.)")
+      .def(py::init<kintera::KineticsOptions>(), "Construct a Kinetics module",
+           py::arg("options"))
+      .def_readonly("options", &kintera::KineticsImpl::options)
+      .def("__repr__",
+           [](const kintera::KineticsImpl& a) {
+             std::stringstream ss;
+             a.options->report(ss);
+             return fmt::format("Kinetics(\n{})", ss.str());
+           })
+      .def("module",
+           [](kintera::KineticsImpl& self, std::string name) {
+             return self.named_modules()[name];
+           })
+      .def("buffer",
+           [](kintera::KineticsImpl& self, std::string name) {
+             return self.named_buffers()[name];
+           })
+      .def("forward",
+           py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor>(
+               &kintera::KineticsImpl::forward),
+           py::arg("temp"), py::arg("pres"), py::arg("conc"))
       .def(
           "forward_nogil",
           [](kintera::KineticsImpl& self, torch::Tensor temp,
