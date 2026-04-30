@@ -100,6 +100,9 @@ void init_species_from_yaml(YAML::Node const& config) {
   species_cref_R.clear();
   species_uref_R.clear();
   species_sref_R.clear();
+  species_nasa9_low.clear();
+  species_nasa9_high.clear();
+  species_nasa9_Tmid.clear();
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -142,6 +145,12 @@ void init_species_from_yaml(YAML::Node const& config) {
       low_coeffs = it->second.low;
       high_coeffs = it->second.high;
     }
+
+    // Keep the canonical species registry populated so option builders can
+    // copy per-species NASA-9 data into SpeciesThermo-owned storage.
+    species_nasa9_low.push_back(low_coeffs);
+    species_nasa9_high.push_back(high_coeffs);
+    species_nasa9_Tmid.push_back(Tmid);
   }
 
   species_initialized = true;
