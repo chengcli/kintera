@@ -1,8 +1,4 @@
-# JINKELA: Joint INtegrated Kinetics for Exoplanetary and pLanetary Atmospheres
-
-*A fork of [KINTERA](https://github.com/chengcli/kintera)*
-
-**Atmospheric Chemistry and Thermodynamics Library**
+**Kintera: Atmospheric Chemistry and Thermodynamics Library**
 
 KINTERA is a library for atmospheric chemistry and equation of state calculations, combining C++ performance with Python accessibility through pybind11 bindings.
 
@@ -310,3 +306,4 @@ See [LICENSE](LICENSE) file for details.
 ## Authors
 
 - **Cheng Li** - [chengcli@umich.edu](mailto:chengcli@umich.edu)
+- **Sihe Chen**
