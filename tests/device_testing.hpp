@@ -43,6 +43,7 @@ TEST_P(DeviceTest, BaseFixturePlaceholder) {
   GTEST_SKIP() << "Base DeviceTest placeholder.";
 }
 
+#ifndef DEVICE_TESTING_SKIP_DEFAULT_INSTANTIATION
 INSTANTIATE_TEST_SUITE_P(
     DeviceAndDtype, DeviceTest,
     testing::Values(Parameters{torch::kCPU, torch::kFloat32},
@@ -57,3 +58,4 @@ INSTANTIATE_TEST_SUITE_P(
       std::replace(name.begin(), name.end(), '.', '_');
       return name;
     });
+#endif
