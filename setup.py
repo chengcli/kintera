@@ -51,16 +51,11 @@ lib_dirs.append(f"{nc_home}/lib")
 libraries = parse_library_names(f"{current_dir}/build/lib")
 
 if sys.platform == "darwin":
-    import torch as _t
-    _torch_lib = os.path.join(os.path.dirname(_t.__file__), "lib")
     extra_link_args = [
-        "-Wl,-headerpad_max_install_names",
         "-Wl,-rpath,@loader_path/lib",
         "-Wl,-rpath,@loader_path/../torch/lib",
         "-Wl,-rpath,@loader_path/../pydisort/lib",
         "-Wl,-rpath,@loader_path/../pyharp/lib",
-        f"-Wl,-rpath,{_torch_lib}",
-        "-Wl,-rpath,/opt/homebrew/Caskroom/miniconda/base/lib",
     ]
 else:
     # ubuntu system has an aggressive linker that removes unused shared libs
