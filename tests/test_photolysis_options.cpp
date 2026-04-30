@@ -41,7 +41,6 @@ TEST_F(PhotolysisOptionsTest, ParseYAMLInlineData) {
   type: photolysis
   cross-section:
     - format: YAML
-      temperature-range: [0., 300.]
       data:
         - [20., 1.e-18]
         - [100., 2.e-18]
@@ -58,6 +57,7 @@ TEST_F(PhotolysisOptionsTest, ParseYAMLInlineData) {
   EXPECT_DOUBLE_EQ(opts->wavelength()[0], 20.);
   EXPECT_DOUBLE_EQ(opts->wavelength()[1], 100.);
   EXPECT_DOUBLE_EQ(opts->wavelength()[2], 180.);
+  EXPECT_TRUE(opts->temperature().empty());
 }
 
 TEST_F(PhotolysisOptionsTest, ParseBranchReactions) {
@@ -72,7 +72,6 @@ TEST_F(PhotolysisOptionsTest, ParseBranchReactions) {
     - "CH:1 H2:1 H:1"
   cross-section:
     - format: YAML
-      temperature-range: [0., 300.]
       data:
         - [100., 1.e-18, 0.5e-18, 0.3e-18, 0.15e-18, 0.05e-18]
         - [150., 2.e-18, 1.0e-18, 0.6e-18, 0.30e-18, 0.10e-18]
@@ -86,6 +85,89 @@ TEST_F(PhotolysisOptionsTest, ParseBranchReactions) {
   // 5 branches from YAML + 1 photoabsorption = 6 total
   EXPECT_GE(opts->branch_names().size(), 1);
   EXPECT_GE(opts->branch_names()[0].size(), 5);
+}
+
+TEST_F(PhotolysisOptionsTest, ParseMultiTemperatureCrossSections) {
+  std::string yaml_str = R"(
+- equation: N2 => N2
+  type: photolysis
+  cross-section:
+    - format: YAML
+      temperature: 250.
+      data:
+        - [100., 1.e-18]
+        - [200., 2.e-18]
+    - format: YAML
+      temperature: 350.
+      data:
+        - [100., 3.e-18]
+        - [200., 4.e-18]
+)";
+
+  YAML::Node root = YAML::Load(yaml_str);
+  auto opts = PhotolysisOptionsImpl::from_yaml(root);
+
+  ASSERT_NE(opts, nullptr);
+  ASSERT_EQ(opts->temperature().size(), 2);
+  EXPECT_DOUBLE_EQ(opts->temperature()[0], 250.);
+  EXPECT_DOUBLE_EQ(opts->temperature()[1], 350.);
+  EXPECT_EQ(opts->branches().size(), 1);
+  EXPECT_EQ(opts->branches()[0].size(), 1);
+  EXPECT_EQ(opts->cross_section().size(), 4);
+}
+
+TEST_F(PhotolysisOptionsTest, MultiTemperatureBlocksRequireTemperature) {
+  std::string yaml_str = R"(
+- equation: N2 => N2
+  type: photolysis
+  cross-section:
+    - format: YAML
+      data:
+        - [100., 1.e-18]
+        - [200., 2.e-18]
+    - format: YAML
+      temperature: 350.
+      data:
+        - [100., 3.e-18]
+        - [200., 4.e-18]
+)";
+
+  YAML::Node root = YAML::Load(yaml_str);
+  EXPECT_THROW(PhotolysisOptionsImpl::from_yaml(root), c10::Error);
+}
+
+TEST_F(PhotolysisOptionsTest, MultiTemperatureReactionsMustShareGrid) {
+  std::string yaml_str = R"(
+- equation: N2 => N2
+  type: photolysis
+  cross-section:
+    - format: YAML
+      temperature: 250.
+      data:
+        - [100., 1.e-18]
+        - [200., 2.e-18]
+    - format: YAML
+      temperature: 350.
+      data:
+        - [100., 3.e-18]
+        - [200., 4.e-18]
+- equation: CH4 => CH4
+  type: photolysis
+  cross-section:
+    - format: YAML
+      temperature: 260.
+      data:
+        - [100., 1.e-18]
+        - [200., 2.e-18]
+    - format: YAML
+      temperature: 360.
+      data:
+        - [100., 3.e-18]
+        - [200., 4.e-18]
+)";
+
+  YAML::Node root = YAML::Load(yaml_str);
+  EXPECT_THROW(PhotolysisOptionsImpl::from_yaml(root), c10::Error);
 }
 
 // Test module creation
@@ -164,6 +246,32 @@ TEST_P(PhotolysisModuleTest, InterpolateCrossSection) {
   // Interpolated values should be between neighboring stored values
   EXPECT_GT(xs[0][0].item<double>(), 1.e-18);
   EXPECT_LT(xs[0][0].item<double>(), 2.e-18);
+}
+
+TEST_P(PhotolysisModuleTest, InterpolateCrossSectionUsesTemperature) {
+  auto opts = PhotolysisOptionsImpl::create();
+  opts->wavelength() = {100., 200.};
+  opts->temperature() = {250., 350.};
+  opts->reactions().push_back(Reaction("N2 => N2"));
+  opts->cross_section() = {
+      1.e-18, 2.e-18,  // 250 K slab
+      3.e-18, 4.e-18   // 350 K slab
+  };
+  opts->branches().push_back({parse_comp_string("N2:1")});
+
+  Photolysis module(opts);
+  module->to(device, dtype);
+
+  auto query_wave = torch::tensor({150.}, torch::device(device).dtype(dtype));
+  auto temp_low = torch::tensor({250.}, torch::device(device).dtype(dtype));
+  auto temp_high = torch::tensor({350.}, torch::device(device).dtype(dtype));
+
+  auto xs_low = module->interp_cross_section(0, query_wave, temp_low);
+  auto xs_high = module->interp_cross_section(0, query_wave, temp_high);
+
+  EXPECT_LT(xs_low[0][0].item<double>(), xs_high[0][0].item<double>());
+  EXPECT_NEAR(xs_low[0][0].item<double>(), 1.5e-18, 1e-24);
+  EXPECT_NEAR(xs_high[0][0].item<double>(), 3.5e-18, 1e-24);
 }
 
 INSTANTIATE_TEST_SUITE_P(

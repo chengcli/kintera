@@ -56,6 +56,9 @@ struct PhotolysisOptionsImpl {
   //! Temperature grid [K] for temperature-dependent cross-sections
   ADD_ARG(std::vector<double>, temperature) = {};
 
+  //! Number of temperature slabs provided for each reaction
+  ADD_ARG(std::vector<int>, cross_section_nslabs) = {};
+
   //! Cross-section data [cm^2 molecule^-1]
   //! Shape: (ntemp, nwave, nbranch) flattened
   ADD_ARG(std::vector<double>, cross_section) = {};
@@ -90,7 +93,7 @@ class PhotolysisImpl : public torch::nn::Cloneable<PhotolysisImpl> {
   //! Wavelength grid [nm], shape (nwave,)
   torch::Tensor wavelength;
 
-  //! Temperature grid [K], shape (ntemp,)
+  //! Shared temperature grid [K], shape (ntemp,)
   torch::Tensor temp_grid;
 
   //! Cross-section data [cm^2 molecule^-1], shape (nreaction, ntemp, nwave,

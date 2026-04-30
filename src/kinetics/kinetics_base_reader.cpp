@@ -736,10 +736,10 @@ KineticsOptions kinetics_options_from_kinetics_base(
   if (!photo_catalog_path.empty()) {
     auto catalog = parse_kinetics_base_catalog(photo_catalog_path);
 
-    // Build absorption cross-section cache (type=0) keyed by parent species
-    std::map<std::string, KBCrossSection const*> absorption_cache;
-    std::vector<KBCrossSectionFile> loaded_files;
-    loaded_files.reserve(catalog.size());
+    // Build absorption cross-section cache (type=0) keyed by parent species.
+    // Keep the whole file so multi-temperature branching ratios can select the
+    // matching absorption slab.
+    std::map<std::string, KBCrossSectionFile const*> absorption_cache;
 
     for (auto const& [cat_eq, fname] : catalog) {
       // Parse the catalog equation the same way as reactions
@@ -790,11 +790,124 @@ KineticsOptions kinetics_options_from_kinetics_base(
           for (char c : parent)
             if (c != ' ') parent_key += c;
           if (absorption_cache.count(parent_key) == 0) {
-            absorption_cache[parent_key] = &csf.datasets[0];
+            absorption_cache[parent_key] = &csf;
           }
         }
       }
     }
+
+    if (photo->wavelength().empty()) {
+      for (auto const& [_, csf] : file_cache) {
+        if (!csf.datasets.empty()) {
+          photo->wavelength() = csf.datasets[0].wavelengths_nm;
+          break;
+        }
+      }
+    }
+
+    auto assign_shared_wavelength = [&](std::vector<double> const& wl) {
+      if (photo->wavelength().empty()) {
+        photo->wavelength() = wl;
+      }
+    };
+
+    auto interpolate_to_shared_wavelength =
+        [&](std::vector<double> const& wl, std::vector<double> const& vals) {
+          assign_shared_wavelength(wl);
+          if (wl.size() == photo->wavelength().size()) {
+            bool same_grid = true;
+            for (size_t j = 0; j < wl.size(); ++j) {
+              if (std::abs(photo->wavelength()[j] - wl[j]) >= 1e-12) {
+                same_grid = false;
+                break;
+              }
+            }
+            if (same_grid) {
+              return vals;
+            }
+          }
+
+          std::vector<double> out(photo->wavelength().size(), 0.0);
+          if (wl.empty() || vals.empty()) return out;
+
+          for (size_t i = 0; i < photo->wavelength().size(); ++i) {
+            double target = photo->wavelength()[i];
+            if (target < wl.front() || target > wl.back()) continue;
+            if (target == wl.front()) {
+              out[i] = vals.front();
+              continue;
+            }
+            if (target == wl.back()) {
+              out[i] = vals.back();
+              continue;
+            }
+
+            auto upper = std::lower_bound(wl.begin(), wl.end(), target);
+            if (upper == wl.end()) {
+              out[i] = vals.back();
+              continue;
+            }
+            if (*upper == target) {
+              out[i] = vals[upper - wl.begin()];
+              continue;
+            }
+            auto lower = upper - 1;
+            size_t j = lower - wl.begin();
+            double frac = (target - wl[j]) / (wl[j + 1] - wl[j]);
+            out[i] = vals[j] + frac * (vals[j + 1] - vals[j]);
+          }
+
+          return out;
+        };
+
+    auto interpolate_on_grid = [](std::vector<double> const& source_wl,
+                                  std::vector<double> const& source_vals,
+                                  double target) {
+      if (source_wl.empty() || source_vals.empty()) return 0.0;
+      if (target <= source_wl.front()) return source_vals.front();
+      if (target >= source_wl.back()) return source_vals.back();
+
+      auto upper = std::lower_bound(source_wl.begin(), source_wl.end(), target);
+      if (upper == source_wl.end()) return source_vals.back();
+      if (*upper == target) return source_vals[upper - source_wl.begin()];
+
+      auto lower = upper - 1;
+      size_t j = lower - source_wl.begin();
+      double frac = (target - source_wl[j]) / (source_wl[j + 1] - source_wl[j]);
+      return source_vals[j] + frac * (source_vals[j + 1] - source_vals[j]);
+    };
+
+    auto assign_or_check_temperature = [&](std::vector<double> const& temps) {
+      if (temps.size() <= 1) return;
+      if (photo->temperature().empty()) {
+        photo->temperature() = temps;
+        return;
+      }
+      TORCH_CHECK(photo->temperature() == temps,
+                  "All KINETICS-base photolysis reactions must use the same "
+                  "temperature grid");
+    };
+
+    auto find_absorption_dataset =
+        [&](std::string const& parent_key,
+            KBCrossSection const& branch_dataset) -> KBCrossSection const* {
+      auto abs_it = absorption_cache.find(parent_key);
+      if (abs_it == absorption_cache.end()) return nullptr;
+
+      auto const& datasets = abs_it->second->datasets;
+      if (datasets.empty()) return nullptr;
+      if (datasets.size() == 1) return &datasets[0];
+
+      for (auto const& abs_ds : datasets) {
+        if (std::abs(abs_ds.temperature - branch_dataset.temperature) < 1e-12) {
+          return &abs_ds;
+        }
+      }
+
+      TORCH_CHECK(false,
+                  "No matching absorption cross-section temperature for ",
+                  parent_key, " at T=", branch_dataset.temperature);
+    };
 
     // Process photolysis reactions
     for (auto const& rxn : master.photolysis) {
@@ -843,60 +956,60 @@ KineticsOptions kinetics_options_from_kinetics_base(
       if (cat_it != catalog_map.end()) fname = cat_it->second;
 
       std::vector<Composition> branch_comps;
+      int nbranch = std::max((int)branch_strs.size(), 1);
+      bool have_cross_section_data = false;
       if (!fname.empty()) {
         auto file_it = file_cache.find(fname);
         if (file_it != file_cache.end() && !file_it->second.datasets.empty()) {
-          auto const& ds = file_it->second.datasets[0];
-          auto wl = ds.wavelengths_nm;
-          auto vals = ds.values;
+          auto const& datasets = file_it->second.datasets;
+          std::vector<double> temps;
+          temps.reserve(datasets.size());
+          for (auto const& ds : datasets) {
+            temps.push_back(ds.temperature);
+          }
+          assign_or_check_temperature(temps);
+          photo->cross_section_nslabs().push_back(datasets.size());
 
-          // Handle branching ratios: multiply by parent absorption
-          if (ds.type == 2) {
-            std::string parent_key;
-            if (!rxn.reactants.empty()) {
-              parent_key = to_upper(rxn.reactants[0]);
-            }
-            auto abs_it = absorption_cache.find(parent_key);
-            if (abs_it != absorption_cache.end()) {
-              auto const* abs_ds = abs_it->second;
-              for (size_t j = 0; j < vals.size(); ++j) {
-                // Linear interpolation
-                double wl_ang = wl[j] / 0.1;  // nm -> Angstrom for matching
+          for (auto const& ds : datasets) {
+            auto wl = ds.wavelengths_nm;
+            auto vals = ds.values;
+            vals = interpolate_to_shared_wavelength(wl, vals);
+            auto const& shared_wl = photo->wavelength();
+
+            // Handle branching ratios: multiply by parent absorption.
+            if (ds.type == 2) {
+              std::string parent_key;
+              if (!rxn.reactants.empty()) {
+                parent_key = to_upper(rxn.reactants[0]);
+              }
+              auto const* abs_ds = find_absorption_dataset(parent_key, ds);
+              if (abs_ds != nullptr) {
                 auto const& abs_wl = abs_ds->wavelengths_nm;
                 auto const& abs_vals = abs_ds->values;
-                double abs_val = 0.0;
-                if (!abs_wl.empty()) {
-                  if (wl[j] <= abs_wl.front()) {
-                    abs_val = abs_vals.front();
-                  } else if (wl[j] >= abs_wl.back()) {
-                    abs_val = abs_vals.back();
-                  } else {
-                    for (size_t k = 0; k + 1 < abs_wl.size(); ++k) {
-                      if (wl[j] >= abs_wl[k] && wl[j] <= abs_wl[k + 1]) {
-                        double frac =
-                            (wl[j] - abs_wl[k]) / (abs_wl[k + 1] - abs_wl[k]);
-                        abs_val = abs_vals[k] +
-                                  frac * (abs_vals[k + 1] - abs_vals[k]);
-                        break;
-                      }
-                    }
-                  }
+                for (size_t j = 0; j < vals.size(); ++j) {
+                  double abs_val =
+                      interpolate_on_grid(abs_wl, abs_vals, shared_wl[j]);
+                  vals[j] *= abs_val;
                 }
-                vals[j] *= abs_val;
+              }
+            }
+
+            for (size_t j = 0; j < shared_wl.size(); ++j) {
+              for (int bi = 0; bi < nbranch; ++bi) {
+                photo->cross_section().push_back(vals[j]);
               }
             }
           }
+          have_cross_section_data = true;
+        }
+      }
 
-          if (photo->wavelength().empty()) {
-            photo->wavelength() = wl;
-          }
-
-          int nbranch = std::max((int)branch_strs.size(), 1);
-          for (size_t j = 0; j < wl.size(); ++j) {
-            for (int bi = 0; bi < nbranch; ++bi) {
-              photo->cross_section().push_back(bi == 0 ? vals[j] : vals[j]);
-            }
-          }
+      if (!have_cross_section_data) {
+        photo->cross_section_nslabs().push_back(1);
+        if (!photo->wavelength().empty()) {
+          photo->cross_section().insert(photo->cross_section().end(),
+                                        photo->wavelength().size() * nbranch,
+                                        0.0);
         }
       }
 
