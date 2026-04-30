@@ -219,7 +219,7 @@ bool SpeciesThermoImpl::has_nasa9() const {
 
 static at::Tensor nasa9_coeffs_to_tensor(
     std::vector<std::array<double, 9>> const& coeffs,
-    at::TensorOptions const& options) {
+    c10::TensorOptions const& options) {
   auto tensor = torch::empty({static_cast<long>(coeffs.size()), 9},
                              torch::dtype(torch::kFloat64));
   if (!coeffs.empty()) {
@@ -234,17 +234,17 @@ static at::Tensor nasa9_coeffs_to_tensor(
 }
 
 at::Tensor SpeciesThermoImpl::nasa9_coeffs_low_tensor(
-    at::TensorOptions const& options) const {
+    c10::TensorOptions const& options) const {
   return nasa9_coeffs_to_tensor(nasa9_low(), options);
 }
 
 at::Tensor SpeciesThermoImpl::nasa9_coeffs_high_tensor(
-    at::TensorOptions const& options) const {
+    c10::TensorOptions const& options) const {
   return nasa9_coeffs_to_tensor(nasa9_high(), options);
 }
 
 at::Tensor SpeciesThermoImpl::nasa9_Tmid_tensor(
-    at::TensorOptions const& options) const {
+    c10::TensorOptions const& options) const {
   auto tensor = torch::empty({static_cast<long>(nasa9_Tmid().size())},
                              torch::dtype(torch::kFloat64));
   if (!nasa9_Tmid().empty()) {

@@ -13,8 +13,11 @@
 
 namespace at {
 class Tensor;
-class TensorOptions;
 }  // namespace at
+
+namespace c10 {
+struct TensorOptions;
+}  // namespace c10
 
 namespace YAML {
 class Node;
@@ -45,11 +48,11 @@ struct SpeciesThermoImpl {
                   std::shared_ptr<SpeciesThermoImpl> const& other) const;
   bool has_nasa9() const;
   at::Tensor nasa9_coeffs_low_tensor(
-      at::TensorOptions const& options = at::TensorOptions()) const;
+      c10::TensorOptions const& options = c10::TensorOptions()) const;
   at::Tensor nasa9_coeffs_high_tensor(
-      at::TensorOptions const& options = at::TensorOptions()) const;
+      c10::TensorOptions const& options = c10::TensorOptions()) const;
   at::Tensor nasa9_Tmid_tensor(
-      at::TensorOptions const& options = at::TensorOptions()) const;
+      c10::TensorOptions const& options = c10::TensorOptions()) const;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);
