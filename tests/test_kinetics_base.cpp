@@ -229,13 +229,10 @@ TEST_P(DeviceTest, KineticsBaseForward) {
   auto temp = 300.0 * torch::ones({1}, torch::device(device).dtype(dtype));
   auto pres = 1.0e5 * torch::ones({1}, torch::device(device).dtype(dtype));
 
-  int nwave = 10;
-  auto wave =
-      torch::linspace(100, 300, nwave, torch::device(device).dtype(dtype));
-  auto aflux = torch::ones({nwave}, torch::device(device).dtype(dtype)) * 1e14;
+  auto wave = kinet->photolysis_evaluator->wavelength.to(device, dtype);
+  auto aflux = torch::ones_like(wave) * 1e14;
 
   std::map<std::string, torch::Tensor> extra;
-  extra["wavelength"] = wave;
   extra["actinic_flux"] = aflux;
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc, extra);

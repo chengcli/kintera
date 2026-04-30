@@ -422,11 +422,13 @@ torch::Tensor PhotolysisImpl::get_effective_stoich(int rxn_idx,
   return (branch_frac.unsqueeze(-1) * branch_stoich[rxn_idx]).sum(0);
 }
 
-torch::Tensor PhotolysisImpl::forward(torch::Tensor T, torch::Tensor wave,
+torch::Tensor PhotolysisImpl::forward(torch::Tensor T,
                                       torch::Tensor actinic_flux) {
   if (_nreaction == 0) {
     return torch::empty({0}, T.options());
   }
+
+  auto const& wave = wavelength;
 
   auto out_shape = T.sizes().vec();
   out_shape.push_back(_nreaction);

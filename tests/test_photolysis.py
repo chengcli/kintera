@@ -1,11 +1,5 @@
 """
-Checkpoint Test 4: Python integration tests for photolysis module.
-
-Tests the Python bindings for:
-- PhotolysisOptions
-- Photolysis module
-- ActinicFluxOptions
-- ActinicFluxData
+Python integration tests for photolysis module.
 """
 
 import pytest
@@ -13,44 +7,40 @@ import torch
 
 
 def test_import_photolysis():
-    """Test that photolysis classes can be imported."""
     from kintera import (
         PhotolysisOptions,
         Photolysis,
         ActinicFluxOptions,
-        ActinicFluxData,
+        create_actinic_flux,
         create_uniform_flux,
         create_solar_flux,
+        interpolate_actinic_flux,
     )
 
-    # Verify classes exist
     assert PhotolysisOptions is not None
     assert Photolysis is not None
     assert ActinicFluxOptions is not None
-    assert ActinicFluxData is not None
+    assert create_actinic_flux is not None
+    assert create_uniform_flux is not None
+    assert create_solar_flux is not None
+    assert interpolate_actinic_flux is not None
 
 
 def test_photolysis_options_creation():
-    """Test PhotolysisOptions creation and configuration."""
     from kintera import PhotolysisOptions
 
     opts = PhotolysisOptions()
-
-    # Set wavelength grid
     opts.wavelength([100.0, 150.0, 200.0])
     assert opts.wavelength() == [100.0, 150.0, 200.0]
 
-    # Set temperature grid
     opts.temperature([200.0, 300.0])
     assert opts.temperature() == [200.0, 300.0]
 
 
 def test_actinic_flux_options():
-    """Test ActinicFluxOptions creation and configuration."""
     from kintera import ActinicFluxOptions
 
     opts = ActinicFluxOptions()
-
     opts.wavelength([100.0, 200.0, 300.0])
     opts.default_flux([1e14, 2e14, 1e14])
     opts.wave_min(50.0)
@@ -61,79 +51,53 @@ def test_actinic_flux_options():
     assert opts.wave_max() == 400.0
 
 
-def test_actinic_flux_data():
-    """Test ActinicFluxData creation and methods."""
-    from kintera import ActinicFluxData
-
-    # Test empty flux
-    flux = ActinicFluxData()
-    assert not flux.is_valid()
-    assert flux.nwave() == 0
-
-    # Test with tensors
-    wavelength = torch.tensor([100.0, 200.0, 300.0])
-    flux_vals = torch.tensor([1e14, 2e14, 1e14])
-    flux = ActinicFluxData(wavelength, flux_vals)
-
-    assert flux.is_valid()
-    assert flux.nwave() == 3
-
-
 def test_create_uniform_flux():
-    """Test create_uniform_flux helper function."""
     from kintera import create_uniform_flux
 
-    flux = create_uniform_flux(100.0, 300.0, 21, 1e14)
+    wavelength = torch.linspace(100.0, 300.0, 21)
+    flux = create_uniform_flux(wavelength, 1e14)
 
-    assert flux.is_valid()
-    assert flux.nwave() == 21
+    assert flux.shape[0] == 21
 
 
 def test_create_solar_flux():
-    """Test create_solar_flux helper function."""
     from kintera import create_solar_flux
 
-    flux = create_solar_flux(100.0, 800.0, 71, 1e14)
+    wavelength = torch.linspace(100.0, 800.0, 71)
+    flux = create_solar_flux(wavelength, 1e14)
 
-    assert flux.is_valid()
-    assert flux.nwave() == 71
+    assert flux.shape[0] == 71
 
 
-def test_actinic_flux_fields():
-    """Test ActinicFluxData field access."""
-    from kintera import ActinicFluxData
+def test_create_actinic_flux():
+    from kintera import ActinicFluxOptions, create_actinic_flux
 
-    wavelength = torch.tensor([100.0, 200.0, 300.0])
-    flux_vals = torch.tensor([1e14, 2e14, 1e14])
-    flux = ActinicFluxData(wavelength, flux_vals)
+    opts = ActinicFluxOptions()
+    opts.wavelength([100.0, 200.0, 300.0])
+    opts.default_flux([1e14, 2e14, 1e14])
 
-    assert flux.wavelength.shape[0] == 3
-    assert flux.flux.shape[0] == 3
+    target = torch.tensor([150.0, 250.0])
+    flux = create_actinic_flux(opts, target)
+
+    assert flux.shape[0] == 2
 
 
 def test_actinic_flux_interpolation():
-    """Test ActinicFluxData interpolation."""
-    from kintera import ActinicFluxData
+    from kintera import interpolate_actinic_flux
 
     wavelength = torch.tensor([100.0, 200.0, 300.0])
     flux_vals = torch.tensor([1e14, 2e14, 1e14])
-    flux = ActinicFluxData(wavelength, flux_vals)
-
-    # Interpolate to midpoints
     new_wave = torch.tensor([150.0, 250.0])
-    interp_flux = flux.interpolate_to(new_wave)
+    interp_flux = interpolate_actinic_flux(wavelength, flux_vals, new_wave)
 
     assert interp_flux.shape[0] == 2
-    # Interpolated values should be between neighbors
     assert interp_flux[0].item() > 1e14
     assert interp_flux[0].item() < 2e14
 
 
 def test_photolysis_module_creation():
-    """Test Photolysis module creation."""
     from kintera import PhotolysisOptions, Photolysis, Reaction, set_species_names
 
-    # Initialize species
     set_species_names(["N2", "O2"])
 
     opts = PhotolysisOptions()
@@ -150,10 +114,14 @@ def test_photolysis_module_creation():
 
 
 def test_photolysis_forward():
-    """Test Photolysis.forward() method."""
-    from kintera import PhotolysisOptions, Photolysis, Reaction, set_species_names
+    from kintera import (
+        PhotolysisOptions,
+        Photolysis,
+        Reaction,
+        set_species_names,
+        create_uniform_flux,
+    )
 
-    # Initialize species
     set_species_names(["N2", "O2"])
 
     opts = PhotolysisOptions()
@@ -165,15 +133,13 @@ def test_photolysis_forward():
 
     module = Photolysis(opts)
 
-    # Create inputs
     temp = torch.tensor([250.0])
-    wave = torch.tensor([100.0, 150.0, 200.0])
-    aflux = torch.ones(3)
+    actinic_flux = create_uniform_flux(module.wavelength, 1.0)
 
-    rate = module.forward(temp, wave, aflux)
+    rate = module.forward(temp, actinic_flux)
 
     assert rate.dim() == 2
-    assert rate.size(-1) == 1  # One reaction
+    assert rate.size(-1) == 1
 
 
 if __name__ == "__main__":

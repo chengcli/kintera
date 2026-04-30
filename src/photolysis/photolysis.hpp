@@ -114,14 +114,12 @@ class PhotolysisImpl : public torch::nn::Cloneable<PhotolysisImpl> {
 
   //! Compute photolysis rate constants
   /*!
-   * \param T temperature [K], shape (...)
-   * \param wave wavelength grid [nm], shape (nwave,)
-   * \param actinic_flux actinic flux [photons cm^-2 s^-1 nm^-1],
-   *        shape (nwave, ...) or (..., nwave)
-   * \return photolysis rate constants [s^-1], shape (..., nreaction)
+   * \param T temperature [K], shape `batch`
+   * \param actinic_flux actinic flux [photons cm^-2 s^-1 nm^-1] sampled on
+   *        `wavelength`, shape `(nwave)` or `(nwave, *batch)`
+   * \return photolysis rate constants [s^-1], shape `(*batch, nreaction)`
    */
-  torch::Tensor forward(torch::Tensor T, torch::Tensor wave,
-                        torch::Tensor actinic_flux);
+  torch::Tensor forward(torch::Tensor T, torch::Tensor actinic_flux);
 
   //! Get effective stoichiometry coefficients for a reaction
   /*!

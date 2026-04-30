@@ -199,7 +199,7 @@ TEST_P(ChapmanCycleTest, PhotolysisRatesInRange) {
   conc[0][IDX_O] = 1.e-10 * n_tot;
   conc[0][IDX_O3] = 1.e-8 * n_tot;
 
-  auto rc = photolysis->forward(temp, wave, flux);
+  auto rc = photolysis->forward(temp, flux);
   auto du = apply_mass_action(rc, conc, stoich);
 
   EXPECT_LT(du[0][IDX_O2].item<double>(), 0.0);
@@ -270,7 +270,7 @@ TEST_P(ChapmanCycleTest, MassConservation) {
   int nsteps = 100000;
 
   for (int step = 0; step < nsteps; step++) {
-    auto rc_photo = photolysis->forward(temp, wave, flux);
+    auto rc_photo = photolysis->forward(temp, flux);
     auto du_photo = apply_mass_action(rc_photo, conc, stoich_photo);
 
     auto rc_arr = arrhenius->forward(temp, pres, conc, {});
@@ -322,7 +322,7 @@ TEST_P(ChapmanCycleTest, SteadyStateOzone) {
   double prev_O3 = 0.0;
 
   for (int step = 0; step < nsteps; step++) {
-    auto rc_photo = photolysis->forward(temp, wave, flux);
+    auto rc_photo = photolysis->forward(temp, flux);
     auto du_photo = apply_mass_action(rc_photo, conc, stoich_photo);
 
     auto rc_arr = arrhenius->forward(temp, pres, conc, {});
@@ -488,8 +488,8 @@ TEST_P(ChapmanCycleTest, FullChapmanWithThreeBody) {
   conc[0][IDX_O] = 1.e-10 * n_tot;
   conc[0][IDX_O3] = 1.e-8 * n_tot;
 
-  auto du_photo = apply_mass_action(photolysis->forward(temp, wave, flux), conc,
-                                    stoich_photo);
+  auto du_photo =
+      apply_mass_action(photolysis->forward(temp, flux), conc, stoich_photo);
   auto du_tb = apply_mass_action(three_body->forward(temp, pres, conc, {}),
                                  conc, stoich_tb);
   auto du_arr = apply_mass_action(arrhenius->forward(temp, pres, conc, {}),

@@ -68,7 +68,7 @@ void bind_photolysis(py::module& m) {
              return self.named_buffers()[name];
            })
       .def("forward", &kintera::PhotolysisImpl::forward, py::arg("temp"),
-           py::arg("wavelength"), py::arg("actinic_flux"))
+           py::arg("actinic_flux"))
       .def("interp_cross_section",
            &kintera::PhotolysisImpl::interp_cross_section, py::arg("rxn_idx"),
            py::arg("wave"), py::arg("temp"))
@@ -84,7 +84,7 @@ void bind_photolysis(py::module& m) {
   pyActinicFluxOptions.def(py::init<>())
       .def("__repr__",
            [](const kintera::ActinicFluxOptions& self) {
-             return fmt::format("ActinicFluxOptions(nwave={})",
+             return fmt::format("ActinicFluxOptions(nsrc={})",
                                 self->wavelength().size());
            })
       .ADD_OPTION(std::vector<double>, kintera::ActinicFluxOptionsImpl,
@@ -94,68 +94,20 @@ void bind_photolysis(py::module& m) {
       .ADD_OPTION(double, kintera::ActinicFluxOptionsImpl, wave_min)
       .ADD_OPTION(double, kintera::ActinicFluxOptionsImpl, wave_max);
 
-  ////////////// ActinicFluxData //////////////
-  py::class_<kintera::ActinicFluxData>(m, "ActinicFluxData")
-      .def(py::init<>())
-      .def(py::init<torch::Tensor, torch::Tensor>(), py::arg("wavelength"),
-           py::arg("flux"))
-      .def_readwrite("wavelength", &kintera::ActinicFluxData::wavelength)
-      .def_readwrite("flux", &kintera::ActinicFluxData::flux)
-      .def("is_valid", &kintera::ActinicFluxData::is_valid)
-      .def("nwave", &kintera::ActinicFluxData::nwave)
-      .def("interpolate_to", &kintera::ActinicFluxData::interpolate_to,
-           py::arg("new_wavelength"))
-      .def("__repr__", [](const kintera::ActinicFluxData& self) {
-        return fmt::format("ActinicFluxData(nwave={}, valid={})", self.nwave(),
-                           self.is_valid());
-      });
-
   ////////////// Helper functions //////////////
   m.def(
       "create_actinic_flux",
-      [](kintera::ActinicFluxOptions const& opts, torch::Device device,
-         torch::Dtype dtype) {
-        return kintera::create_actinic_flux(opts, device, dtype);
+      [](kintera::ActinicFluxOptions const& opts, torch::Tensor wavelength) {
+        return kintera::create_actinic_flux(opts, wavelength);
       },
-      py::arg("options"), py::arg("device") = torch::kCPU,
-      py::arg("dtype") = torch::kFloat64);
+      py::arg("options"), py::arg("wavelength"));
 
-  m.def(
-      "create_uniform_flux",
-      [](double wave_min, double wave_max, int nwave, double flux_value) {
-        return kintera::create_uniform_flux(wave_min, wave_max, nwave,
-                                            flux_value);
-      },
-      py::arg("wave_min"), py::arg("wave_max"), py::arg("nwave"),
-      py::arg("flux_value"));
+  m.def("interpolate_actinic_flux", &kintera::interpolate_actinic_flux,
+        py::arg("wavelength"), py::arg("flux"), py::arg("new_wavelength"));
 
-  m.def(
-      "create_uniform_flux",
-      [](double wave_min, double wave_max, int nwave, double flux_value,
-         torch::Device device, torch::Dtype dtype) {
-        return kintera::create_uniform_flux(wave_min, wave_max, nwave,
-                                            flux_value, device, dtype);
-      },
-      py::arg("wave_min"), py::arg("wave_max"), py::arg("nwave"),
-      py::arg("flux_value"), py::arg("device") = torch::kCPU,
-      py::arg("dtype") = torch::kFloat64);
+  m.def("create_uniform_flux", &kintera::create_uniform_flux,
+        py::arg("wavelength"), py::arg("flux_value"));
 
-  m.def(
-      "create_solar_flux",
-      [](double wave_min, double wave_max, int nwave, double peak_flux) {
-        return kintera::create_solar_flux(wave_min, wave_max, nwave, peak_flux);
-      },
-      py::arg("wave_min"), py::arg("wave_max"), py::arg("nwave"),
-      py::arg("peak_flux") = 1.e14);
-
-  m.def(
-      "create_solar_flux",
-      [](double wave_min, double wave_max, int nwave, double peak_flux,
-         torch::Device device, torch::Dtype dtype) {
-        return kintera::create_solar_flux(wave_min, wave_max, nwave, peak_flux,
-                                          device, dtype);
-      },
-      py::arg("wave_min"), py::arg("wave_max"), py::arg("nwave"),
-      py::arg("peak_flux") = 1.e14, py::arg("device") = torch::kCPU,
-      py::arg("dtype") = torch::kFloat64);
+  m.def("create_solar_flux", &kintera::create_solar_flux, py::arg("wavelength"),
+        py::arg("peak_flux") = 1.e14);
 }

@@ -105,9 +105,9 @@ def test_kinetics_forward_with_xsec(master_path, catalog_path, cross_dir):
     pres = 1.0e5 * torch.ones(1)
     conc = 1e18 * torch.ones(1, nspecies)
 
-    wave = torch.linspace(100, 300, 10)
-    aflux = 1e14 * torch.ones(10)
-    extra = {"wavelength": wave, "actinic_flux": aflux}
+    wave = kinet.module("photolysis").buffer("wavelength")
+    aflux = 1e14 * torch.ones_like(wave)
+    extra = {"actinic_flux": aflux}
 
     rate, rc_ddC, rc_ddT = kinet.forward(temp, pres, conc, extra)
 

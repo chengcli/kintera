@@ -52,13 +52,9 @@ TEST_P(CH4PhotolysisTest, SingleBranchPhotolysis) {
 
   // Test inputs
   auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
-  auto pres = torch::tensor({1.e5}, torch::device(device).dtype(dtype));
-  auto conc = torch::zeros({1, 8}, torch::device(device).dtype(dtype));
-  conc[0][7] = 1.e3;  // N2 concentration
-
   // Uniform actinic flux
-  auto flux_data = create_uniform_flux(100., 200., 6, 1.e14, device, dtype);
-  auto rate = module->forward(temp, flux_data.wavelength, flux_data.flux);
+  auto actinic_flux = create_uniform_flux(module->wavelength, 1.e14);
+  auto rate = module->forward(temp, actinic_flux);
 
   EXPECT_EQ(rate.dim(), 2);
   EXPECT_EQ(rate.size(-1), 1);
@@ -108,12 +104,8 @@ TEST_P(CH4PhotolysisTest, MultiBranchPhotolysis) {
   module->to(device, dtype);
 
   auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
-  auto pres = torch::tensor({1.e5}, torch::device(device).dtype(dtype));
-  auto conc = torch::zeros({1, 8}, torch::device(device).dtype(dtype));
-  conc[0][0] = 1.e3;  // CH4 concentration
-
-  auto flux_data = create_solar_flux(100., 160., 4, 1.e14, device, dtype);
-  auto rate = module->forward(temp, flux_data.wavelength, flux_data.flux);
+  auto actinic_flux = create_solar_flux(module->wavelength, 1.e14);
+  auto rate = module->forward(temp, actinic_flux);
 
   EXPECT_GT(rate[0][0].item<double>(), 0.);
 }
@@ -237,16 +229,13 @@ TEST_P(CH4PhotolysisTest, VaryingActinicFlux) {
   module->to(device, dtype);
 
   auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
-  auto pres = torch::tensor({1.e5}, torch::device(device).dtype(dtype));
-  auto conc = torch::zeros({1, 8}, torch::device(device).dtype(dtype));
-
   // Test 1: Uniform flux
-  auto flux1 = create_uniform_flux(100., 300., 5, 1.e14, device, dtype);
-  auto rate1 = module->forward(temp, flux1.wavelength, flux1.flux);
+  auto flux1 = create_uniform_flux(module->wavelength, 1.e14);
+  auto rate1 = module->forward(temp, flux1);
 
   // Test 2: Solar-like flux (peaks at visible, low in UV)
-  auto flux2 = create_solar_flux(100., 300., 5, 1.e14, device, dtype);
-  auto rate2 = module->forward(temp, flux2.wavelength, flux2.flux);
+  auto flux2 = create_solar_flux(module->wavelength, 1.e14);
+  auto rate2 = module->forward(temp, flux2);
 
   // Both should give positive rates
   EXPECT_GT(rate1[0][0].item<double>(), 0.);

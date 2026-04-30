@@ -378,12 +378,9 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
   }
 
   if (n_photolysis_reactions_ > 0) {
-    TORCH_CHECK(other.count("wavelength"),
-                "Kinetics photolysis requires 'wavelength' in extra");
     TORCH_CHECK(other.count("actinic_flux"),
                 "Kinetics photolysis requires 'actinic_flux' in extra");
 
-    auto wave = other.at("wavelength");
     auto actinic_flux = other.at("actinic_flux");
     torch::Tensor rate;
 
@@ -396,7 +393,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
       auto temp1 = temp.unsqueeze(-1).expand(vec1);
       temp1.requires_grad_(true);
 
-      rate = photolysis_evaluator->forward(temp1, wave, actinic_flux);
+      rate = photolysis_evaluator->forward(temp1, actinic_flux);
       rate.backward(torch::ones_like(rate));
 
       if (conc1.grad().defined()) {
@@ -412,7 +409,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
         rc_ddT.value().narrow(-1, first, n_photolysis_reactions_).fill_(0.);
       }
     } else {
-      rate = photolysis_evaluator->forward(temp, wave, actinic_flux);
+      rate = photolysis_evaluator->forward(temp, actinic_flux);
 
       if (rate.requires_grad()) {
         rate.backward(torch::ones_like(rate));

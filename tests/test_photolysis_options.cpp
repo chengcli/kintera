@@ -204,14 +204,9 @@ TEST_P(PhotolysisModuleTest, ForwardWithSimpleFlux) {
 
   // Create test inputs
   auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
-  auto pres = torch::tensor({1.e5}, torch::device(device).dtype(dtype));
-  auto conc = torch::zeros({1, 8}, torch::device(device).dtype(dtype));
-
-  auto wave =
-      torch::tensor({100., 150., 200.}, torch::device(device).dtype(dtype));
   auto aflux = torch::ones({3}, torch::device(device).dtype(dtype));
 
-  auto rate = module->forward(temp, wave, aflux);
+  auto rate = module->forward(temp, aflux);
 
   EXPECT_EQ(rate.dim(), 2);
   EXPECT_EQ(rate.size(-1), 1);  // one reaction
