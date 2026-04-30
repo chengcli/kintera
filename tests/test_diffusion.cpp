@@ -1,12 +1,12 @@
 //! @file test_diffusion.cpp
 //! @brief Tests for the eddy diffusion (Kzz) transport module
 
-#include <cmath>
-
 #include <gtest/gtest.h>
 #include <torch/torch.h>
 
+#include <cmath>
 #include <kintera/diffusion/diffusion.hpp>
+
 #include "device_testing.hpp"
 
 using namespace kintera;
@@ -17,9 +17,9 @@ class DiffusionTest : public DeviceTest {
  protected:
   int nz = 20;
   int nspecies = 2;
-  double Kzz_val = 1.e5;   // cm^2/s
-  double dz_val = 1.e5;    // cm (1 km)
-  double n_bg = 1.e12;     // background number density
+  double Kzz_val = 1.e5;  // cm^2/s
+  double dz_val = 1.e5;   // cm (1 km)
+  double n_bg = 1.e12;    // background number density
 
   torch::Tensor make_uniform_grid() {
     return torch::full({nz - 1}, dz_val, torch::device(device).dtype(dtype));
@@ -34,7 +34,8 @@ class DiffusionTest : public DeviceTest {
     double z_mid = nz / 2.0;
     double sigma = nz / 6.0;
     for (int j = 0; j < nz; j++) {
-      double gauss = 0.01 * n_bg * std::exp(-std::pow(j - z_mid, 2) / (2 * sigma * sigma));
+      double gauss =
+          0.01 * n_bg * std::exp(-std::pow(j - z_mid, 2) / (2 * sigma * sigma));
       y[j][0] = gauss;
       y[j][1] = n_bg - gauss;
     }
@@ -85,8 +86,8 @@ TEST_P(DiffusionTest, MassConservation) {
     double net = total_tend[s].item<double>();
     double scale = y.select(1, s).abs().sum().item<double>() / nz;
     double rel = std::abs(net) / (scale + 1e-30);
-    EXPECT_LT(rel, 1e-10)
-        << "Species " << s << " net tendency = " << net << " (not conserved)";
+    EXPECT_LT(rel, 1e-10) << "Species " << s << " net tendency = " << net
+                          << " (not conserved)";
   }
 }
 
@@ -96,7 +97,7 @@ TEST_P(DiffusionTest, UniformProfileNoFlux) {
 
   // Uniform mixing ratio -> zero diffusion tendency
   auto y = torch::full({nz, nspecies}, n_bg / nspecies,
-                        torch::device(device).dtype(dtype));
+                       torch::device(device).dtype(dtype));
 
   auto tend = diffusion_tendency(y, Kzz, dzi);
 
@@ -128,14 +129,16 @@ TEST_P(DiffusionTest, GaussianSmooths) {
       << "Gaussian should smooth out over time";
 
   // Total mass should be approximately conserved
-  double initial_total = make_gaussian_profile().select(1, 0).sum().item<double>();
+  double initial_total =
+      make_gaussian_profile().select(1, 0).sum().item<double>();
   double final_total = y.select(1, 0).sum().item<double>();
-  double conservation_err = std::abs(final_total - initial_total) / initial_total;
+  double conservation_err =
+      std::abs(final_total - initial_total) / initial_total;
   EXPECT_LT(conservation_err, 0.01)
       << "Mass conservation error: " << conservation_err * 100 << "%";
 
-  std::cout << "Gaussian smoothing: peak " << initial_peak << " -> " << final_peak
-            << " (ratio " << final_peak / initial_peak << ")\n";
+  std::cout << "Gaussian smoothing: peak " << initial_peak << " -> "
+            << final_peak << " (ratio " << final_peak / initial_peak << ")\n";
   std::cout << "Mass conservation error: " << conservation_err * 100 << "%\n";
 }
 
@@ -156,8 +159,7 @@ TEST_P(DiffusionTest, TendencySignCorrect) {
   // At the edges (far from peak), tendency should be positive
   // (material diffuses outward)
   double tend_at_edge = tend[1][0].item<double>();
-  EXPECT_GT(tend_at_edge, 0.0)
-      << "Diffusion should add material at the edges";
+  EXPECT_GT(tend_at_edge, 0.0) << "Diffusion should add material at the edges";
 }
 
 INSTANTIATE_TEST_SUITE_P(

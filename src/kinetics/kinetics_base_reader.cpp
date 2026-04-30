@@ -98,14 +98,13 @@ static bool has_composition(std::string const& line,
   return false;
 }
 
-static KBSpecies parse_species_line(std::string const& line,
-                                    std::map<std::string, double> const& elem_masses) {
+static KBSpecies parse_species_line(
+    std::string const& line, std::map<std::string, double> const& elem_masses) {
   KBSpecies sp;
 
   auto comment_pos = line.find('!');
-  std::string data_part = (comment_pos != std::string::npos)
-                              ? line.substr(0, comment_pos)
-                              : line;
+  std::string data_part =
+      (comment_pos != std::string::npos) ? line.substr(0, comment_pos) : line;
 
   // Extract species name: first non-whitespace token
   std::istringstream iss(data_part);
@@ -148,10 +147,8 @@ static KBSpecies parse_species_line(std::string const& line,
     sp.n_nasa9_ranges = std::stoi(nt_m[1].str());
 
     std::regex tr_re(R"(TR\s*=\s*([\d.Ee+-]+))");
-    std::regex ta_re(
-        R"(TA\s*=\s*((?:\s*[-+]?\d+\.?\d*[eE][-+]?\d+){7}))");
-    std::regex tb_re(
-        R"(TB\s*=\s*((?:\s*[-+]?\d+\.?\d*[eE][-+]?\d+){2}))");
+    std::regex ta_re(R"(TA\s*=\s*((?:\s*[-+]?\d+\.?\d*[eE][-+]?\d+){7}))");
+    std::regex tb_re(R"(TB\s*=\s*((?:\s*[-+]?\d+\.?\d*[eE][-+]?\d+){2}))");
 
     std::vector<double> tr_vals;
     for (std::sregex_iterator it(data_part.begin(), data_part.end(), tr_re);
@@ -172,15 +169,15 @@ static KBSpecies parse_species_line(std::string const& line,
     }
 
     // Store first range as "low", second as "high"
-    if (ta_vals.size() >= 1 && ta_vals[0].size() == 7 &&
-        tb_vals.size() >= 1 && tb_vals[0].size() == 2) {
+    if (ta_vals.size() >= 1 && ta_vals[0].size() == 7 && tb_vals.size() >= 1 &&
+        tb_vals[0].size() == 2) {
       for (int k = 0; k < 7; ++k) sp.nasa9_low[k] = ta_vals[0][k];
       sp.nasa9_low[7] = tb_vals[0][0];
       sp.nasa9_low[8] = tb_vals[0][1];
     }
 
-    if (ta_vals.size() >= 2 && ta_vals[1].size() == 7 &&
-        tb_vals.size() >= 2 && tb_vals[1].size() == 2) {
+    if (ta_vals.size() >= 2 && ta_vals[1].size() == 7 && tb_vals.size() >= 2 &&
+        tb_vals[1].size() == 2) {
       for (int k = 0; k < 7; ++k) sp.nasa9_high[k] = ta_vals[1][k];
       sp.nasa9_high[7] = tb_vals[1][0];
       sp.nasa9_high[8] = tb_vals[1][1];
@@ -230,8 +227,7 @@ static ParsedReactionLine extract_equation_and_rates(std::string const& line) {
     auto pos = static_cast<size_t>(it->position());
     if (pos > 0) {
       char prev = after_eq[pos - 1];
-      if (prev != ' ' && prev != '\t' && prev != '+' && prev != ',')
-        continue;
+      if (prev != ' ' && prev != '\t' && prev != '+' && prev != ',') continue;
     }
     rate_start = eq_pos + 1 + pos;
     break;
@@ -242,8 +238,7 @@ static ParsedReactionLine extract_equation_and_rates(std::string const& line) {
     std::string rate_str = data_part.substr(rate_start);
     result.rate_nums = extract_sci_numbers(rate_str);
     // Also capture plain decimal numbers in the rate section
-    std::regex all_num_re(
-        R"([-+]?\d+\.?\d*[eE][-+]?\d+|[-+]?\d+\.\d*|\d+)");
+    std::regex all_num_re(R"([-+]?\d+\.?\d*[eE][-+]?\d+|[-+]?\d+\.\d*|\d+)");
     std::vector<double> all_nums;
     std::sregex_iterator rit(rate_str.begin(), rate_str.end(), all_num_re);
     for (; rit != std::sregex_iterator(); ++rit) {
@@ -362,8 +357,7 @@ KBMasterData parse_kinetics_base_master(std::string const& filepath) {
 
     bool is_photo =
         (parsed.rate_nums.size() >= 3 &&
-         std::all_of(parsed.rate_nums.begin(),
-                     parsed.rate_nums.begin() + 3,
+         std::all_of(parsed.rate_nums.begin(), parsed.rate_nums.begin() + 3,
                      [](double x) { return std::abs(x) < 1e-30; }) &&
          !has_M) ||
         parsed.rate_nums.size() < 3;
@@ -593,9 +587,8 @@ static std::string collapse_whitespace(std::string const& s) {
 }
 
 KineticsOptions kinetics_options_from_kinetics_base(
-    std::string const& master_input_path,
-    std::string const& photo_catalog_path, std::string const& cross_dir,
-    bool verbose) {
+    std::string const& master_input_path, std::string const& photo_catalog_path,
+    std::string const& cross_dir, bool verbose) {
   auto master = parse_kinetics_base_master(master_input_path);
 
   if (!species_initialized) {
@@ -709,12 +702,11 @@ KineticsOptions kinetics_options_from_kinetics_base(
     for (auto const& [name, coeff] : reaction.reactants())
       if (name != "M") sum_stoich += coeff;
 
-    auto unit_low = fmt::format("molecule^{} * cm^{} * s^-1",
-                                1. - (sum_stoich + 1.),
-                                -3. * (1. - (sum_stoich + 1.)));
-    auto unit_high =
-        fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
-                     -3. * (1. - sum_stoich));
+    auto unit_low =
+        fmt::format("molecule^{} * cm^{} * s^-1", 1. - (sum_stoich + 1.),
+                    -3. * (1. - (sum_stoich + 1.)));
+    auto unit_high = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
+                                 -3. * (1. - sum_stoich));
 
     reaction.falloff_type("none");
 
@@ -774,8 +766,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
         }
         return result;
       };
-      std::string compact = build_side_key(cat_r) + "=" +
-                             build_side_key(cat_p);
+      std::string compact = build_side_key(cat_r) + "=" + build_side_key(cat_p);
       catalog_map[compact] = fname;
     }
 
@@ -783,8 +774,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
     std::map<std::string, KBCrossSectionFile> file_cache;
     for (auto const& [cat_eq, fname] : catalog) {
       if (file_cache.count(fname)) continue;
-      std::string fpath =
-          cross_dir.empty() ? fname : (cross_dir + "/" + fname);
+      std::string fpath = cross_dir.empty() ? fname : (cross_dir + "/" + fname);
       auto csf = parse_kinetics_base_cross_section(fpath);
       if (!csf.datasets.empty()) {
         file_cache[fname] = std::move(csf);
@@ -800,8 +790,8 @@ KineticsOptions kinetics_options_from_kinetics_base(
         // Extract parent species from equation
         auto eq_pos = cat_eq.find('=');
         if (eq_pos != std::string::npos) {
-          std::string parent = collapse_whitespace(
-              trim(cat_eq.substr(0, eq_pos)));
+          std::string parent =
+              collapse_whitespace(trim(cat_eq.substr(0, eq_pos)));
           // Remove spaces
           std::string parent_key;
           for (char c : parent)
@@ -852,8 +842,8 @@ KineticsOptions kinetics_options_from_kinetics_base(
         }
         return result;
       };
-      std::string rxn_key = build_side_key2(rxn.reactants) + "=" +
-                             build_side_key2(rxn.products);
+      std::string rxn_key =
+          build_side_key2(rxn.reactants) + "=" + build_side_key2(rxn.products);
 
       auto cat_it = catalog_map.find(rxn_key);
       std::string fname;
@@ -890,10 +880,10 @@ KineticsOptions kinetics_options_from_kinetics_base(
                   } else {
                     for (size_t k = 0; k + 1 < abs_wl.size(); ++k) {
                       if (wl[j] >= abs_wl[k] && wl[j] <= abs_wl[k + 1]) {
-                        double frac = (wl[j] - abs_wl[k]) /
-                                      (abs_wl[k + 1] - abs_wl[k]);
-                        abs_val =
-                            abs_vals[k] + frac * (abs_vals[k + 1] - abs_vals[k]);
+                        double frac =
+                            (wl[j] - abs_wl[k]) / (abs_wl[k + 1] - abs_wl[k]);
+                        abs_val = abs_vals[k] +
+                                  frac * (abs_vals[k + 1] - abs_vals[k]);
                         break;
                       }
                     }
@@ -925,8 +915,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
         while (bss >> token) {
           auto colon = token.find(':');
           if (colon != std::string::npos) {
-            comp[token.substr(0, colon)] =
-                std::stod(token.substr(colon + 1));
+            comp[token.substr(0, colon)] = std::stod(token.substr(colon + 1));
           }
         }
         branch_comps.push_back(comp);
@@ -964,8 +953,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
         while (bss >> token) {
           auto colon = token.find(':');
           if (colon != std::string::npos) {
-            comp[token.substr(0, colon)] =
-                std::stod(token.substr(colon + 1));
+            comp[token.substr(0, colon)] = std::stod(token.substr(colon + 1));
           }
         }
         branch_comps.push_back(comp);

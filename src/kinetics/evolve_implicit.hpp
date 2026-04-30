@@ -43,7 +43,8 @@ inline torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
 //! @param rate1    reaction rates at C,          shape (..., nreaction)
 //! @param rate2    reaction rates at C + (1/γ)*k1, shape (..., nreaction)
 //! @param stoich   stoichiometric matrix,        shape (nspecies, nreaction)
-//! @param jacobian reaction-space Jacobian at C, shape (..., nreaction, nspecies)
+//! @param jacobian reaction-space Jacobian at C, shape (..., nreaction,
+//! nspecies)
 //! @param dt       time step
 //! @return tuple(delta, error)
 //!         delta – 2nd-order concentration change, shape (..., nspecies)
@@ -64,7 +65,7 @@ inline std::tuple<torch::Tensor, torch::Tensor> evolve_ros2(
   constexpr double m1 = 1.5 / gamma;            // ≈ 0.8787
   constexpr double m2 = 0.5 / gamma;            // ≈ 0.2929
   constexpr double e1 = m1 - 1.0;               // ≈ -0.1213
-  constexpr double e2 = m2;                      // ≈  0.2929
+  constexpr double e2 = m2;                     // ≈  0.2929
 
   auto nspecies = stoich.size(0);
   auto eye = torch::eye(nspecies, rate1.options());
@@ -93,7 +94,7 @@ inline std::tuple<torch::Tensor, torch::Tensor> evolve_ros2(
 //! First stage of Ros2 — returns k1 so the caller can evaluate
 //! rate2 at C + (1/gamma)*k1 before calling evolve_ros2.
 inline torch::Tensor ros2_k1(torch::Tensor rate1, torch::Tensor stoich,
-                              torch::Tensor jacobian, double dt) {
+                             torch::Tensor jacobian, double dt) {
   constexpr double gamma = 1.7071067811865476;
   auto nspecies = stoich.size(0);
   auto eye = torch::eye(nspecies, rate1.options());

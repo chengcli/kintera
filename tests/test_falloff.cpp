@@ -27,7 +27,7 @@ using namespace kintera;
 namespace kintera {
 extern std::vector<std::string> species_names;
 extern bool species_initialized;
-}
+}  // namespace kintera
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(DeviceTest);
 
@@ -37,7 +37,8 @@ class FalloffEndToEndTest : public DeviceTest {
     DeviceTest::SetUp();
     // Reset species state so each test's from_yaml properly reinitializes
     kintera::species_initialized = false;
-    kintera::species_names = {"H2O2", "O", "H2O", "OH", "AR", "H2", "N2", "O2", "H", "HO2"};
+    kintera::species_names = {"H2O2", "O",  "H2O", "OH", "AR",
+                              "H2",   "N2", "O2",  "H",  "HO2"};
   }
 };
 
@@ -159,13 +160,22 @@ reactions:
   auto kinet_opts = KineticsOptionsImpl::from_yaml(config);
 
   auto vapor_ids = kinet_opts->vapor_ids();
-  int ar_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "AR") - kintera::species_names.begin();
-  int h2_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "H2") - kintera::species_names.begin();
-  int h2o_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "H2O") - kintera::species_names.begin();
+  int ar_idx = std::find(kintera::species_names.begin(),
+                         kintera::species_names.end(), "AR") -
+               kintera::species_names.begin();
+  int h2_idx = std::find(kintera::species_names.begin(),
+                         kintera::species_names.end(), "H2") -
+               kintera::species_names.begin();
+  int h2o_idx = std::find(kintera::species_names.begin(),
+                          kintera::species_names.end(), "H2O") -
+                kintera::species_names.begin();
 
-  EXPECT_TRUE(std::find(vapor_ids.begin(), vapor_ids.end(), ar_idx) != vapor_ids.end());
-  EXPECT_TRUE(std::find(vapor_ids.begin(), vapor_ids.end(), h2_idx) != vapor_ids.end());
-  EXPECT_TRUE(std::find(vapor_ids.begin(), vapor_ids.end(), h2o_idx) != vapor_ids.end());
+  EXPECT_TRUE(std::find(vapor_ids.begin(), vapor_ids.end(), ar_idx) !=
+              vapor_ids.end());
+  EXPECT_TRUE(std::find(vapor_ids.begin(), vapor_ids.end(), h2_idx) !=
+              vapor_ids.end());
+  EXPECT_TRUE(std::find(vapor_ids.begin(), vapor_ids.end(), h2o_idx) !=
+              vapor_ids.end());
 }
 
 // ============================================================================
@@ -186,18 +196,25 @@ TEST_P(FalloffEndToEndTest, module_initialization) {
 )";
 
   YAML::Node root = YAML::Load(yaml_str);
-  
+
   // Test three-body module
   auto three_body_opts = ThreeBodyOptionsImpl::from_yaml(root);
   ThreeBody three_body_module(three_body_opts);
   three_body_module->to(device, dtype);
   EXPECT_EQ(three_body_module->efficiency_matrix.size(0), 1);
-  EXPECT_EQ(three_body_module->efficiency_matrix.size(1), kintera::species_names.size());
+  EXPECT_EQ(three_body_module->efficiency_matrix.size(1),
+            kintera::species_names.size());
   EXPECT_EQ(three_body_module->k0_A.size(0), 1);
 
-  int ar_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "AR") - kintera::species_names.begin();
-  int h2_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "H2") - kintera::species_names.begin();
-  int h2o_idx = std::find(kintera::species_names.begin(), kintera::species_names.end(), "H2O") - kintera::species_names.begin();
+  int ar_idx = std::find(kintera::species_names.begin(),
+                         kintera::species_names.end(), "AR") -
+               kintera::species_names.begin();
+  int h2_idx = std::find(kintera::species_names.begin(),
+                         kintera::species_names.end(), "H2") -
+               kintera::species_names.begin();
+  int h2o_idx = std::find(kintera::species_names.begin(),
+                          kintera::species_names.end(), "H2O") -
+                kintera::species_names.begin();
 
   auto eff0 = three_body_module->efficiency_matrix[0];
   EXPECT_DOUBLE_EQ(eff0[ar_idx].item<double>(), 0.83);
@@ -218,7 +235,8 @@ TEST_P(FalloffEndToEndTest, module_initialization) {
 // Section 3: Rate Calculations (Forward) — standalone module tests
 // ============================================================================
 
-// Helper: build a simple stoich matrix from a Reaction for a module with 1 reaction
+// Helper: build a simple stoich matrix from a Reaction for a module with 1
+// reaction
 static torch::Tensor make_stoich(const Reaction& rxn, int nspecies) {
   auto stoich = torch::zeros({nspecies, 1}, torch::kFloat64);
   for (int i = 0; i < nspecies; i++) {
@@ -439,7 +457,7 @@ reactions:
 
 // Helper: compute the species Jacobian d(du)/d(w) via autograd
 static torch::Tensor compute_jacobian(Kinetics& kinet, torch::Tensor w,
-                                       torch::Tensor temp, double dt) {
+                                      torch::Tensor temp, double dt) {
   int nspecies = w.size(-1);
   auto w_ad = w.clone().requires_grad_(true);
   auto du = torch::zeros_like(w_ad);
@@ -449,7 +467,8 @@ static torch::Tensor compute_jacobian(Kinetics& kinet, torch::Tensor w,
   for (int i = 0; i < nspecies; i++) {
     if (w_ad.grad().defined()) w_ad.grad().zero_();
     // Use .select(-1, i).sum() to reduce to scalar for backward()
-    result.select(-1, i).sum().backward(/*grad_tensors=*/{}, /*retain_graph=*/true);
+    result.select(-1, i).sum().backward(/*grad_tensors=*/{},
+                                        /*retain_graph=*/true);
     jac[i] = w_ad.grad().clone();
   }
   return jac;
@@ -728,7 +747,7 @@ reactions:
   auto temp = torch::tensor({500.0}, dtype).to(device);
   auto species = kinet_opts->species();
   int nspecies = species.size();
-  
+
   auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
   auto du = torch::zeros({nspecies}, dtype).to(device);
 

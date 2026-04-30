@@ -56,8 +56,8 @@ inline torch::Tensor nasa9_gibbs_RT(torch::Tensor temp,
   auto h_RT = -a0 * invT2 + a1 * lnT * invT + a2 + a3 * T / 2.0 +
               a4 * T2 / 3.0 + a5 * T3 / 4.0 + a6 * T4 / 5.0 + a8 * invT;
 
-  auto s_R = -a0 * invT2 / 2.0 - a1 * invT + a2 * lnT + a3 * T +
-             a4 * T2 / 2.0 + a5 * T3 / 3.0 + a6 * T4 / 4.0 + a9;
+  auto s_R = -a0 * invT2 / 2.0 - a1 * invT + a2 * lnT + a3 * T + a4 * T2 / 2.0 +
+             a5 * T3 / 3.0 + a6 * T4 / 4.0 + a9;
 
   return h_RT - s_R;  // (..., nspecies)
 }

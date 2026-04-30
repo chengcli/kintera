@@ -100,8 +100,8 @@ ThreeBodyOptions ThreeBodyOptionsImpl::from_yaml(
     double k0_A_val = 0., k0_b_val = 0., k0_Ea_R_val = 0.;
 
     TORCH_CHECK(rxn_node["rate-constant"], "'rate-constant' not defined");
-    parse_arrhenius_params(rxn_node["rate-constant"], sum_stoich, us,
-                           k0_A_val, k0_b_val, k0_Ea_R_val);
+    parse_arrhenius_params(rxn_node["rate-constant"], sum_stoich, us, k0_A_val,
+                           k0_b_val, k0_Ea_R_val);
 
     Composition eff;
     if (rxn_node["efficiencies"]) {
@@ -133,9 +133,12 @@ void ThreeBodyImpl::reset() {
   int nspecies = species_names.size();
   TORCH_CHECK(nspecies > 0, "species_names not initialized");
 
-  k0_A = register_buffer("k0_A", torch::tensor(options->k0_A(), torch::kFloat64));
-  k0_b = register_buffer("k0_b", torch::tensor(options->k0_b(), torch::kFloat64));
-  k0_Ea_R = register_buffer("k0_Ea_R", torch::tensor(options->k0_Ea_R(), torch::kFloat64));
+  k0_A =
+      register_buffer("k0_A", torch::tensor(options->k0_A(), torch::kFloat64));
+  k0_b =
+      register_buffer("k0_b", torch::tensor(options->k0_b(), torch::kFloat64));
+  k0_Ea_R = register_buffer("k0_Ea_R",
+                            torch::tensor(options->k0_Ea_R(), torch::kFloat64));
 
   // Build efficiency matrix: (nreaction, nspecies), default efficiency = 1.0
   std::vector<double> eff_matrix_data(nreaction * nspecies, 1.0);
@@ -152,15 +155,16 @@ void ThreeBodyImpl::reset() {
   }
 
   efficiency_matrix = register_buffer(
-      "efficiency_matrix",
-      torch::tensor(eff_matrix_data, torch::kFloat64).view({nreaction, nspecies}));
+      "efficiency_matrix", torch::tensor(eff_matrix_data, torch::kFloat64)
+                               .view({nreaction, nspecies}));
 }
 
 void ThreeBodyImpl::pretty_print(std::ostream& os) const {
   os << "Three-Body Rate: " << std::endl;
 
   for (size_t i = 0; i < options->reactions().size(); i++) {
-    os << "(" << i + 1 << ") " << options->reactions()[i].equation() << std::endl;
+    os << "(" << i + 1 << ") " << options->reactions()[i].equation()
+       << std::endl;
     os << "    k0: A = " << options->k0_A()[i] << ", b = " << options->k0_b()[i]
        << ", Ea_R = " << options->k0_Ea_R()[i] << " K" << std::endl;
 
@@ -183,8 +187,9 @@ torch::Tensor ThreeBodyImpl::compute_k0(torch::Tensor T) const {
   return k0_A * (T / Tref).pow(k0_b) * torch::exp(-k0_Ea_R / T);
 }
 
-torch::Tensor ThreeBodyImpl::forward(torch::Tensor T, torch::Tensor P, torch::Tensor C,
-                                      std::map<std::string, torch::Tensor> const& other) {
+torch::Tensor ThreeBodyImpl::forward(
+    torch::Tensor T, torch::Tensor P, torch::Tensor C,
+    std::map<std::string, torch::Tensor> const& other) {
   int nreaction = options->reactions().size();
   if (nreaction == 0) {
     auto out_shape = T.sizes().vec();
@@ -206,12 +211,14 @@ torch::Tensor ThreeBodyImpl::forward(torch::Tensor T, torch::Tensor P, torch::Te
     auto C_actual = C.select(last_dim, 0);  // (..., nspecies)
     nspecies_kinetics = C_actual.size(-1);
 
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, std::min(nspecies_kinetics, nspecies_full));
+    auto eff_matrix_kinetics = efficiency_matrix.narrow(
+        1, 0, std::min(nspecies_kinetics, nspecies_full));
     auto eff_T = eff_matrix_kinetics.transpose(0, 1);
     M_eff = torch::matmul(C_actual, eff_T);
   } else {
     nspecies_kinetics = C.size(-1);
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, std::min(nspecies_kinetics, nspecies_full));
+    auto eff_matrix_kinetics = efficiency_matrix.narrow(
+        1, 0, std::min(nspecies_kinetics, nspecies_full));
     auto eff_T = eff_matrix_kinetics.transpose(0, 1);
     M_eff = torch::matmul(C, eff_T);
   }

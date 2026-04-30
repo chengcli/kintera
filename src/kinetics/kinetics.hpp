@@ -112,9 +112,11 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   // --- reverse reaction data ---
   //! 1.0 for reversible reactions, 0.0 otherwise, shape (nreaction_orig,)
   torch::Tensor rev_mask;
-  //! product-only stoichiometry (positive values), shape (nspecies, nreaction_orig)
+  //! product-only stoichiometry (positive values), shape (nspecies,
+  //! nreaction_orig)
   torch::Tensor prod_stoich;
-  //! reactant-only stoichiometry (positive values), shape (nspecies, nreaction_orig)
+  //! reactant-only stoichiometry (positive values), shape (nspecies,
+  //! nreaction_orig)
   torch::Tensor react_stoich;
   //! net mole change per reaction, shape (nreaction_orig,)
   torch::Tensor dn;

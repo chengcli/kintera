@@ -1,19 +1,19 @@
 //! @file test_chapman_cycle.cpp
 //! @brief Chapman cycle benchmark: photolysis + three-body reactions
 
-#include <algorithm>
-#include <cmath>
-
 #include <gtest/gtest.h>
+#include <kintera/constants.h>
 #include <torch/torch.h>
 #include <yaml-cpp/yaml.h>
 
-#include <kintera/constants.h>
+#include <algorithm>
+#include <cmath>
 #include <kintera/kinetics/arrhenius.hpp>
-#include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/evolve_implicit.hpp>
+#include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/photolysis.hpp>
 #include <kintera/kinetics/three_body.hpp>
+
 #include "device_testing.hpp"
 
 using namespace kintera;
@@ -21,7 +21,7 @@ using namespace kintera;
 namespace kintera {
 extern std::vector<std::string> species_names;
 extern bool species_initialized;
-}
+}  // namespace kintera
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(DeviceTest);
 
@@ -31,7 +31,7 @@ constexpr int IDX_O = 2;
 constexpr int IDX_O3 = 3;
 
 static torch::Tensor build_stoich(const std::vector<Reaction>& rxns,
-                                   int nspecies) {
+                                  int nspecies) {
   int nreaction = rxns.size();
   auto stoich = torch::zeros({nspecies, nreaction}, torch::kFloat64);
   for (int j = 0; j < nreaction; j++) {
@@ -47,9 +47,8 @@ static torch::Tensor build_stoich(const std::vector<Reaction>& rxns,
 
 // Compute species tendencies from rate constants via mass-action kinetics.
 // rc: (..., nreaction), conc: (..., nspecies), stoich: (nspecies, nreaction)
-static torch::Tensor apply_mass_action(torch::Tensor rc,
-                                        torch::Tensor conc,
-                                        torch::Tensor stoich) {
+static torch::Tensor apply_mass_action(torch::Tensor rc, torch::Tensor conc,
+                                       torch::Tensor stoich) {
   auto react_order = stoich.clamp_max(0.0).abs();
   auto conc_prod = conc.unsqueeze(-1).pow(react_order).prod(-2);
   auto rates = rc * conc_prod;
@@ -70,8 +69,8 @@ class ChapmanCycleTest : public DeviceTest {
     opts->reactions().push_back(Reaction("O2 => 2 O"));
     opts->reactions().push_back(Reaction("O3 => O2 + O"));
 
-    opts->wavelength() = {120., 140., 160., 180., 200., 220., 240., 260.,
-                          280., 300., 320.};
+    opts->wavelength() = {120., 140., 160., 180., 200., 220.,
+                          240., 260., 280., 300., 320.};
     opts->temperature() = {200., 300.};
 
     int nwave = opts->wavelength().size();
@@ -140,7 +139,8 @@ class ChapmanCycleTest : public DeviceTest {
     return opts;
   }
 
-  // Three-body: O + O2 + M -> O3 + M, A in molecule,cm,s units (no YAML conversion)
+  // Three-body: O + O2 + M -> O3 + M, A in molecule,cm,s units (no YAML
+  // conversion)
   ThreeBodyOptions createThreeBodyOptions() {
     auto opts = ThreeBodyOptionsImpl::create();
     auto rxn = Reaction("O + O2 + M <=> O3 + M");
@@ -182,7 +182,8 @@ TEST_P(ChapmanCycleTest, PhotolysisRatesInRange) {
   auto photo_opts = createPhotolysisOptions();
   Photolysis photolysis(photo_opts);
   int nspecies = kintera::species_names.size();
-  auto stoich = build_stoich(photo_opts->reactions(), nspecies).to(device, dtype);
+  auto stoich =
+      build_stoich(photo_opts->reactions(), nspecies).to(device, dtype);
   photolysis->to(device, dtype);
 
   auto [wave, flux] = createActinicFlux(photo_opts->wavelength());
@@ -242,8 +243,10 @@ TEST_P(ChapmanCycleTest, MassConservation) {
   Photolysis photolysis(photo_opts);
   Arrhenius arrhenius(arr_opts);
   int nspecies = kintera::species_names.size();
-  auto stoich_photo = build_stoich(photo_opts->reactions(), nspecies).to(device, dtype);
-  auto stoich_arr = build_stoich(arr_opts->reactions(), nspecies).to(device, dtype);
+  auto stoich_photo =
+      build_stoich(photo_opts->reactions(), nspecies).to(device, dtype);
+  auto stoich_arr =
+      build_stoich(arr_opts->reactions(), nspecies).to(device, dtype);
 
   auto [wave, flux] = createActinicFlux(photo_opts->wavelength());
   photolysis->to(device, dtype);
@@ -269,7 +272,8 @@ TEST_P(ChapmanCycleTest, MassConservation) {
   photo_other["wavelength"] = wave;
   photo_other["actinic_flux"] = flux;
 
-  // Small dt required for stability: O atom equilibrium timescale ~ J/k ~ 1e-3 s
+  // Small dt required for stability: O atom equilibrium timescale ~ J/k ~ 1e-3
+  // s
   double dt = 1.e-5;
   int nsteps = 100000;
 
@@ -300,8 +304,10 @@ TEST_P(ChapmanCycleTest, SteadyStateOzone) {
   Photolysis photolysis(photo_opts);
   Arrhenius arrhenius(arr_opts);
   int nspecies = kintera::species_names.size();
-  auto stoich_photo = build_stoich(photo_opts->reactions(), nspecies).to(device, dtype);
-  auto stoich_arr = build_stoich(arr_opts->reactions(), nspecies).to(device, dtype);
+  auto stoich_photo =
+      build_stoich(photo_opts->reactions(), nspecies).to(device, dtype);
+  auto stoich_arr =
+      build_stoich(arr_opts->reactions(), nspecies).to(device, dtype);
 
   auto [wave, flux] = createActinicFlux(photo_opts->wavelength());
   photolysis->to(device, dtype);
@@ -404,9 +410,12 @@ TEST_P(ChapmanCycleTest, ThreeBodyTemperatureDependence) {
   auto t250 = torch::tensor({250.0}, torch::device(device).dtype(dtype));
   auto t300 = torch::tensor({300.0}, torch::device(device).dtype(dtype));
 
-  auto du200 = apply_mass_action(three_body->forward(t200, pres, conc, {}), conc, stoich);
-  auto du250 = apply_mass_action(three_body->forward(t250, pres, conc, {}), conc, stoich);
-  auto du300 = apply_mass_action(three_body->forward(t300, pres, conc, {}), conc, stoich);
+  auto du200 = apply_mass_action(three_body->forward(t200, pres, conc, {}),
+                                 conc, stoich);
+  auto du250 = apply_mass_action(three_body->forward(t250, pres, conc, {}),
+                                 conc, stoich);
+  auto du300 = apply_mass_action(three_body->forward(t300, pres, conc, {}),
+                                 conc, stoich);
 
   // With b = -2.4 < 0, rate increases as T decreases
   double du_O3_200 = du200[0][IDX_O3].item<double>();
@@ -416,7 +425,8 @@ TEST_P(ChapmanCycleTest, ThreeBodyTemperatureDependence) {
   EXPECT_GT(du_O3_200, du_O3_250);
   EXPECT_GT(du_O3_250, du_O3_300);
 
-  std::cout << "du[O3](200K) = " << du_O3_200 << ", du[O3](250K) = " << du_O3_250
+  std::cout << "du[O3](200K) = " << du_O3_200
+            << ", du[O3](250K) = " << du_O3_250
             << ", du[O3](300K) = " << du_O3_300 << "\n";
 }
 
@@ -436,13 +446,15 @@ TEST_P(ChapmanCycleTest, ThreeBodyEfficiencyScaling) {
   C1[0][IDX_O2] = 0.1;
   C1[0][IDX_O] = 0.1;
 
-  auto du1 = apply_mass_action(three_body->forward(temp, pres, C1, {}), C1, stoich);
+  auto du1 =
+      apply_mass_action(three_body->forward(temp, pres, C1, {}), C1, stoich);
 
   auto C2 = torch::zeros({1, nspecies}, torch::device(device).dtype(dtype));
   C2[0][IDX_O2] = 1.1;
   C2[0][IDX_O] = 0.1;
 
-  auto du2 = apply_mass_action(three_body->forward(temp, pres, C2, {}), C2, stoich);
+  auto du2 =
+      apply_mass_action(three_body->forward(temp, pres, C2, {}), C2, stoich);
 
   double du1_O3 = du1[0][IDX_O3].item<double>();
   double du2_O3 = du2[0][IDX_O3].item<double>();
@@ -464,9 +476,12 @@ TEST_P(ChapmanCycleTest, FullChapmanWithThreeBody) {
   Arrhenius arrhenius(arr_opts);
 
   int nspecies = kintera::species_names.size();
-  auto stoich_photo = build_stoich(photo_opts->reactions(), nspecies).to(device, dtype);
-  auto stoich_tb = build_stoich(tb_opts->reactions(), nspecies).to(device, dtype);
-  auto stoich_arr = build_stoich(arr_opts->reactions(), nspecies).to(device, dtype);
+  auto stoich_photo =
+      build_stoich(photo_opts->reactions(), nspecies).to(device, dtype);
+  auto stoich_tb =
+      build_stoich(tb_opts->reactions(), nspecies).to(device, dtype);
+  auto stoich_arr =
+      build_stoich(arr_opts->reactions(), nspecies).to(device, dtype);
 
   auto [wave, flux] = createActinicFlux(photo_opts->wavelength());
 
@@ -491,10 +506,10 @@ TEST_P(ChapmanCycleTest, FullChapmanWithThreeBody) {
 
   auto du_photo = apply_mass_action(
       photolysis->forward(temp, pres, conc, photo_other), conc, stoich_photo);
-  auto du_tb = apply_mass_action(
-      three_body->forward(temp, pres, conc, {}), conc, stoich_tb);
-  auto du_arr = apply_mass_action(
-      arrhenius->forward(temp, pres, conc, {}), conc, stoich_arr);
+  auto du_tb = apply_mass_action(three_body->forward(temp, pres, conc, {}),
+                                 conc, stoich_tb);
+  auto du_arr = apply_mass_action(arrhenius->forward(temp, pres, conc, {}),
+                                  conc, stoich_arr);
 
   auto du = du_photo + du_tb + du_arr;
 
@@ -524,8 +539,10 @@ TEST_P(ChapmanCycleTest, ThreeBodyRateVsConcentration) {
   C2[0][IDX_O2] = 0.5;
   C2[0][IDX_O] = 0.1;
 
-  auto du1 = apply_mass_action(three_body->forward(temp, pres, C1, {}), C1, stoich);
-  auto du2 = apply_mass_action(three_body->forward(temp, pres, C2, {}), C2, stoich);
+  auto du1 =
+      apply_mass_action(three_body->forward(temp, pres, C1, {}), C1, stoich);
+  auto du2 =
+      apply_mass_action(three_body->forward(temp, pres, C2, {}), C2, stoich);
 
   // k_eff = k0 * [M], [M]_1 = 1.0 + 0.5 = 1.5, [M]_2 = 2.0 + 0.5 = 2.5
   double du1_O3 = du1[0][IDX_O3].item<double>();
@@ -535,7 +552,8 @@ TEST_P(ChapmanCycleTest, ThreeBodyRateVsConcentration) {
   EXPECT_NEAR(ratio, expected_ratio, expected_ratio * 0.05);
 
   std::cout << "du1[O3] = " << du1_O3 << ", du2[O3] = " << du2_O3
-            << ", ratio = " << ratio << " (expected " << expected_ratio << ")\n";
+            << ", ratio = " << ratio << " (expected " << expected_ratio
+            << ")\n";
 }
 
 TEST_P(ChapmanCycleTest, TimeMarching) {
@@ -580,17 +598,21 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
 
   // Initial conditions in mol/m^3
   // Stratospheric conditions: sufficient pressure for three-body recombination
-  double T = 250.0, P = 1000.0;  // Pa (~30 km altitude)
+  double T = 250.0, P = 1000.0;              // Pa (~30 km altitude)
   double n_tot = P / (constants::Rgas * T);  // mol/m^3
   auto temp = torch::tensor({T}, torch::device(device).dtype(dtype));
   auto pres = torch::tensor({P}, torch::device(device).dtype(dtype));
 
   auto conc = torch::zeros({nspecies}, torch::device(device).dtype(dtype));
   for (int i = 0; i < nspecies; i++) {
-    if (species[i] == "N2")  conc[i] = 0.79 * n_tot;
-    else if (species[i] == "O2")  conc[i] = 0.21 * n_tot;
-    else if (species[i] == "O")   conc[i] = 1.e-10 * n_tot;
-    else if (species[i] == "O3")  conc[i] = 1.e-8 * n_tot;
+    if (species[i] == "N2")
+      conc[i] = 0.79 * n_tot;
+    else if (species[i] == "O2")
+      conc[i] = 0.21 * n_tot;
+    else if (species[i] == "O")
+      conc[i] = 1.e-10 * n_tot;
+    else if (species[i] == "O3")
+      conc[i] = 1.e-8 * n_tot;
   }
 
   int idx_O = -1, idx_O2 = -1, idx_O3 = -1;
@@ -604,17 +626,20 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   std::cout << "\nTime marching with Kinetics + evolve_implicit:\n";
 
   for (int step = 0; step < 1000; step++) {
-    auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc.unsqueeze(0), extra);
+    auto [rate, rc_ddC, rc_ddT] =
+        kinet->forward(temp, pres, conc.unsqueeze(0), extra);
 
     auto rate0 = rate.squeeze(0);
     auto cvol = torch::ones({1}, torch::device(device).dtype(dtype));
-    auto jac = kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate, rc_ddC, rc_ddT);
+    auto jac =
+        kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate, rc_ddC, rc_ddT);
     auto jac0 = jac.squeeze(0);
 
     auto delta = evolve_implicit(rate0, kinet->stoich, jac0, dt);
 
     auto conc_trial = (conc + delta).clamp_min(0.0);
-    double rel_change = (delta.abs() / (conc.abs() + 1e-30)).max().item<double>();
+    double rel_change =
+        (delta.abs() / (conc.abs() + 1e-30)).max().item<double>();
 
     if (rel_change > 2.0) {
       dt = std::max(dt * 0.25, 1.e-14);
@@ -644,7 +669,7 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   }
 
   double total = conc.sum().item<double>();
-  double mix_O  = conc[idx_O].item<double>() / total;
+  double mix_O = conc[idx_O].item<double>() / total;
   double mix_O2 = conc[idx_O2].item<double>() / total;
   double mix_O3 = conc[idx_O3].item<double>() / total;
 
@@ -652,7 +677,8 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   EXPECT_GT(mix_O3, 1e-4) << "O3 should build up from O + O2 reactions";
   EXPECT_LT(mix_O2, 0.21) << "O2 should be partially consumed";
 
-  std::cout << "Final: O=" << mix_O << " O2=" << mix_O2 << " O3=" << mix_O3 << "\n";
+  std::cout << "Final: O=" << mix_O << " O2=" << mix_O2 << " O3=" << mix_O3
+            << "\n";
 }
 
 // ============================================================================
@@ -744,10 +770,14 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
 
   auto conc = torch::zeros({nspecies}, torch::device(device).dtype(dtype));
   for (int i = 0; i < nspecies; i++) {
-    if (species[i] == "N2") conc[i] = 0.79 * n_tot;
-    else if (species[i] == "O2") conc[i] = 0.21 * n_tot;
-    else if (species[i] == "O") conc[i] = 1.e-10 * n_tot;
-    else if (species[i] == "O3") conc[i] = 1.e-8 * n_tot;
+    if (species[i] == "N2")
+      conc[i] = 0.79 * n_tot;
+    else if (species[i] == "O2")
+      conc[i] = 0.21 * n_tot;
+    else if (species[i] == "O")
+      conc[i] = 1.e-10 * n_tot;
+    else if (species[i] == "O3")
+      conc[i] = 1.e-8 * n_tot;
   }
 
   int idx_O = -1, idx_O2 = -1, idx_O3 = -1;
@@ -766,13 +796,15 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
 
     auto rate0 = rate.squeeze(0);
     auto cvol = torch::ones({1}, torch::device(device).dtype(dtype));
-    auto jac = kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate, rc_ddC, rc_ddT);
+    auto jac =
+        kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate, rc_ddC, rc_ddT);
     auto jac0 = jac.squeeze(0);
 
     auto delta = evolve_implicit(rate0, kinet->stoich, jac0, dt);
 
     auto conc_trial = (conc + delta).clamp_min(0.0);
-    double rel_change = (delta.abs() / (conc.abs() + 1e-30)).max().item<double>();
+    double rel_change =
+        (delta.abs() / (conc.abs() + 1e-30)).max().item<double>();
 
     if (rel_change > 2.0) {
       dt = std::max(dt * 0.25, 1.e-14);

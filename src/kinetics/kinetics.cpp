@@ -5,6 +5,7 @@
 
 #include <kintera/thermo/eval_uhs.hpp>
 #include <kintera/thermo/nasa9.hpp>
+
 #include "lindemann_falloff.hpp"
 #include "sri_falloff.hpp"
 #include "three_body.hpp"
@@ -108,8 +109,7 @@ void KineticsImpl::reset() {
   // Augment stoich with negated columns for reversible reactions
   if (has_reversible_) {
     auto rev_cols = -stoich_base.index_select(1, rev_indices_);
-    stoich = register_buffer("stoich",
-                             torch::cat({stoich_base, rev_cols}, 1));
+    stoich = register_buffer("stoich", torch::cat({stoich_base, rev_cols}, 1));
   } else {
     stoich = register_buffer("stoich", stoich_base);
   }
@@ -231,10 +231,8 @@ void KineticsImpl::reset() {
   int nrxn = n_reactions_orig_;
 
   auto rev_mask_data = torch::zeros({nrxn}, torch::kFloat64);
-  auto prod_stoich_data =
-      torch::zeros({(int)nspecies, nrxn}, torch::kFloat64);
-  auto react_stoich_data =
-      torch::zeros({(int)nspecies, nrxn}, torch::kFloat64);
+  auto prod_stoich_data = torch::zeros({(int)nspecies, nrxn}, torch::kFloat64);
+  auto react_stoich_data = torch::zeros({(int)nspecies, nrxn}, torch::kFloat64);
   auto dn_data = torch::zeros({nrxn}, torch::kFloat64);
 
   for (int j = 0; j < nrxn; ++j) {
@@ -282,8 +280,8 @@ void KineticsImpl::reset() {
     nasa9_Tmid = register_buffer("nasa9_Tmid", tmid);
 
     if (options->verbose()) {
-      std::cout << "[Kinetics] loaded NASA-9 thermo data for "
-                << nspecies << " species" << std::endl;
+      std::cout << "[Kinetics] loaded NASA-9 thermo data for " << nspecies
+                << " species" << std::endl;
     }
   }
 
@@ -316,14 +314,12 @@ torch::Tensor KineticsImpl::jacobian(
   auto concp_fwd =
       conc_safe.unsqueeze(-2).pow(react_st).prod(-1, /*keepdim=*/true);
 
-  auto jac =
-      concp_fwd * rc_ddC.transpose(-1, -2) +
-      react_st * rate.unsqueeze(-1) / conc_safe.unsqueeze(-2);
+  auto jac = concp_fwd * rc_ddC.transpose(-1, -2) +
+             react_st * rate.unsqueeze(-1) / conc_safe.unsqueeze(-2);
 
   if (rc_ddT.has_value()) {
     auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
-    jac -= concp_fwd * rc_ddT.value().unsqueeze(-1) *
-           intEng.unsqueeze(-2) /
+    jac -= concp_fwd * rc_ddT.value().unsqueeze(-1) * intEng.unsqueeze(-2) /
            cvol.unsqueeze(-1).unsqueeze(-1);
   }
   return jac;
@@ -424,8 +420,8 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   // Split forward/reverse: augment rates with separate reverse entries
   if (has_reversible_ && nasa9_coeffs_low.defined()) {
-    auto g_RT = nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high,
-                                nasa9_Tmid);
+    auto g_RT =
+        nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high, nasa9_Tmid);
     auto delta_g_RT = torch::matmul(g_RT, stoich_base);
     auto log_standconc =
         torch::log(torch::tensor(options->Pref(), temp.options()) /
@@ -436,8 +432,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     auto Kc_rev = Kc.index_select(-1, rev_indices_);
     auto kf_rev = result.index_select(-1, rev_indices_);
     auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices_);
-    auto conc_prod_rev =
-        conc_safe.unsqueeze(-1).pow(prod_stoich_rev).prod(-2);
+    auto conc_prod_rev = conc_safe.unsqueeze(-1).pow(prod_stoich_rev).prod(-2);
 
     // Reverse rate = (k_f / Kc) * product(C_product^stoich), no clamp
     auto kr_rev = kf_rev / Kc_rev.clamp_min(1e-250);

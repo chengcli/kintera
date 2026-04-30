@@ -162,4 +162,3 @@ TORCH_MODULE(Photolysis);
 }  // namespace kintera
 
 #undef ADD_ARG
-

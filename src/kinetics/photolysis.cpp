@@ -1,15 +1,15 @@
 //! @file photolysis.cpp
 //! @brief Photolysis rate module implementation
 
-#include <yaml-cpp/yaml.h>
+#include "photolysis.hpp"
+
 #include <fmt/format.h>
+#include <yaml-cpp/yaml.h>
 
 #include <kintera/math/interpolation.hpp>
 #include <kintera/units/units.hpp>
 #include <kintera/utils/find_resource.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
-
-#include "photolysis.hpp"
 
 namespace kintera {
 
@@ -403,15 +403,18 @@ torch::Tensor PhotolysisImpl::forward(
   // Handle different aflux dimensions
   if (aflux.dim() == 1) {
     // aflux: (nwave,), xs_diss_stacked: (..., nwave, nreaction)
-    auto integrand = xs_diss_stacked * aflux.unsqueeze(-1);  // (..., nwave, nreaction)
+    auto integrand =
+        xs_diss_stacked * aflux.unsqueeze(-1);  // (..., nwave, nreaction)
     auto rates = torch::trapezoid(integrand, wave, -2);  // (..., nreaction)
     result.copy_(rates);
   } else if (aflux.dim() == 2) {
-    // aflux: (nwave, nspatial) or similar, xs_diss_stacked: (..., nwave, nreaction)
-    // Need to broadcast properly
+    // aflux: (nwave, nspatial) or similar, xs_diss_stacked: (..., nwave,
+    // nreaction) Need to broadcast properly
     auto aflux_exp = aflux.unsqueeze(-1);  // (nwave, nspatial, 1)
-    auto integrand = xs_diss_stacked.unsqueeze(-2) * aflux_exp;  // (..., nwave, nspatial, nreaction)
-    auto rates = torch::trapezoid(integrand, wave, -3);  // (..., nspatial, nreaction)
+    auto integrand = xs_diss_stacked.unsqueeze(-2) *
+                     aflux_exp;  // (..., nwave, nspatial, nreaction)
+    auto rates =
+        torch::trapezoid(integrand, wave, -3);  // (..., nspatial, nreaction)
     // Reshape to match result shape
     result.copy_(rates.view(result.sizes()));
   } else {
@@ -421,10 +424,12 @@ torch::Tensor PhotolysisImpl::forward(
     for (int d = 1; d < aflux.dim(); d++) {
       xs_exp = xs_exp.unsqueeze(-2);
     }
-    // Broadcast: xs_exp (..., nwave, 1, ..., 1, nreaction), aflux (..., nwave, ...)
+    // Broadcast: xs_exp (..., nwave, 1, ..., 1, nreaction), aflux (..., nwave,
+    // ...)
     auto integrand = xs_exp * aflux.unsqueeze(-1);
     // Find wavelength dimension (should be -aflux.dim() or similar)
-    int wave_dim = xs_diss_stacked.dim() - 1;  // Last dimension before nreaction
+    int wave_dim =
+        xs_diss_stacked.dim() - 1;  // Last dimension before nreaction
     auto rates = torch::trapezoid(integrand, wave, wave_dim);
     result.copy_(rates.view(result.sizes()));
   }

@@ -14,7 +14,8 @@ namespace kintera {
 extern std::vector<std::string> species_names;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
-                        std::set<std::string>& cloud_set, SRIFalloffOptions op) {
+                        std::set<std::string>& cloud_set,
+                        SRIFalloffOptions op) {
   for (auto& react : op->reactions()) {
     for (auto& [name, _] : react.reactants()) {
       if (name == "M" || name == "(+M)") continue;
@@ -102,13 +103,15 @@ SRIFalloffOptions SRIFalloffOptionsImpl::from_yaml(
     double k0_A_val = 0., k0_b_val = 0., k0_Ea_R_val = 0.;
     double kinf_A_val = 0., kinf_b_val = 0., kinf_Ea_R_val = 0.;
 
-    TORCH_CHECK(rxn_node["low-P-rate-constant"], "'low-P-rate-constant' not defined");
-    TORCH_CHECK(rxn_node["high-P-rate-constant"], "'high-P-rate-constant' not defined");
+    TORCH_CHECK(rxn_node["low-P-rate-constant"],
+                "'low-P-rate-constant' not defined");
+    TORCH_CHECK(rxn_node["high-P-rate-constant"],
+                "'high-P-rate-constant' not defined");
 
-    parse_arrhenius_params(rxn_node["low-P-rate-constant"], sum_stoich + 1.,
-                           us, k0_A_val, k0_b_val, k0_Ea_R_val);
-    parse_arrhenius_params(rxn_node["high-P-rate-constant"], sum_stoich,
-                           us, kinf_A_val, kinf_b_val, kinf_Ea_R_val);
+    parse_arrhenius_params(rxn_node["low-P-rate-constant"], sum_stoich + 1., us,
+                           k0_A_val, k0_b_val, k0_Ea_R_val);
+    parse_arrhenius_params(rxn_node["high-P-rate-constant"], sum_stoich, us,
+                           kinf_A_val, kinf_b_val, kinf_Ea_R_val);
 
     auto sri = rxn_node["SRI"];
     double sri_A_val = sri["A"].as<double>();
@@ -157,19 +160,30 @@ void SRIFalloffImpl::reset() {
   int nspecies = species_names.size();
   TORCH_CHECK(nspecies > 0, "species_names not initialized");
 
-  k0_A = register_buffer("k0_A", torch::tensor(options->k0_A(), torch::kFloat64));
-  k0_b = register_buffer("k0_b", torch::tensor(options->k0_b(), torch::kFloat64));
-  k0_Ea_R = register_buffer("k0_Ea_R", torch::tensor(options->k0_Ea_R(), torch::kFloat64));
+  k0_A =
+      register_buffer("k0_A", torch::tensor(options->k0_A(), torch::kFloat64));
+  k0_b =
+      register_buffer("k0_b", torch::tensor(options->k0_b(), torch::kFloat64));
+  k0_Ea_R = register_buffer("k0_Ea_R",
+                            torch::tensor(options->k0_Ea_R(), torch::kFloat64));
 
-  kinf_A = register_buffer("kinf_A", torch::tensor(options->kinf_A(), torch::kFloat64));
-  kinf_b = register_buffer("kinf_b", torch::tensor(options->kinf_b(), torch::kFloat64));
-  kinf_Ea_R = register_buffer("kinf_Ea_R", torch::tensor(options->kinf_Ea_R(), torch::kFloat64));
+  kinf_A = register_buffer("kinf_A",
+                           torch::tensor(options->kinf_A(), torch::kFloat64));
+  kinf_b = register_buffer("kinf_b",
+                           torch::tensor(options->kinf_b(), torch::kFloat64));
+  kinf_Ea_R = register_buffer(
+      "kinf_Ea_R", torch::tensor(options->kinf_Ea_R(), torch::kFloat64));
 
-  sri_A = register_buffer("sri_A", torch::tensor(options->sri_A(), torch::kFloat64));
-  sri_B = register_buffer("sri_B", torch::tensor(options->sri_B(), torch::kFloat64));
-  sri_C = register_buffer("sri_C", torch::tensor(options->sri_C(), torch::kFloat64));
-  sri_D = register_buffer("sri_D", torch::tensor(options->sri_D(), torch::kFloat64));
-  sri_E = register_buffer("sri_E", torch::tensor(options->sri_E(), torch::kFloat64));
+  sri_A = register_buffer("sri_A",
+                          torch::tensor(options->sri_A(), torch::kFloat64));
+  sri_B = register_buffer("sri_B",
+                          torch::tensor(options->sri_B(), torch::kFloat64));
+  sri_C = register_buffer("sri_C",
+                          torch::tensor(options->sri_C(), torch::kFloat64));
+  sri_D = register_buffer("sri_D",
+                          torch::tensor(options->sri_D(), torch::kFloat64));
+  sri_E = register_buffer("sri_E",
+                          torch::tensor(options->sri_E(), torch::kFloat64));
 
   // Build efficiency matrix: (nreaction, nspecies), default efficiency = 1.0
   std::vector<double> eff_matrix_data(nreaction * nspecies, 1.0);
@@ -186,22 +200,25 @@ void SRIFalloffImpl::reset() {
   }
 
   efficiency_matrix = register_buffer(
-      "efficiency_matrix",
-      torch::tensor(eff_matrix_data, torch::kFloat64).view({nreaction, nspecies}));
+      "efficiency_matrix", torch::tensor(eff_matrix_data, torch::kFloat64)
+                               .view({nreaction, nspecies}));
 }
 
 void SRIFalloffImpl::pretty_print(std::ostream& os) const {
   os << "SRI Falloff Rate: " << std::endl;
 
   for (size_t i = 0; i < options->reactions().size(); i++) {
-    os << "(" << i + 1 << ") " << options->reactions()[i].equation() << std::endl;
+    os << "(" << i + 1 << ") " << options->reactions()[i].equation()
+       << std::endl;
     os << "    k0: A = " << options->k0_A()[i] << ", b = " << options->k0_b()[i]
        << ", Ea_R = " << options->k0_Ea_R()[i] << " K" << std::endl;
-    os << "    kinf: A = " << options->kinf_A()[i] << ", b = " << options->kinf_b()[i]
+    os << "    kinf: A = " << options->kinf_A()[i]
+       << ", b = " << options->kinf_b()[i]
        << ", Ea_R = " << options->kinf_Ea_R()[i] << " K" << std::endl;
-    os << "    SRI: A = " << options->sri_A()[i] << ", B = " << options->sri_B()[i]
-       << ", C = " << options->sri_C()[i] << ", D = " << options->sri_D()[i]
-       << ", E = " << options->sri_E()[i] << std::endl;
+    os << "    SRI: A = " << options->sri_A()[i]
+       << ", B = " << options->sri_B()[i] << ", C = " << options->sri_C()[i]
+       << ", D = " << options->sri_D()[i] << ", E = " << options->sri_E()[i]
+       << std::endl;
 
     const auto& eff = options->efficiencies()[i];
     if (!eff.empty()) {
@@ -227,21 +244,22 @@ torch::Tensor SRIFalloffImpl::compute_kinf(torch::Tensor T) const {
   return kinf_A * (T / Tref).pow(kinf_b) * torch::exp(-kinf_Ea_R / T);
 }
 
-torch::Tensor SRIFalloffImpl::compute_falloff_factor(torch::Tensor T, torch::Tensor Pr) const {
+torch::Tensor SRIFalloffImpl::compute_falloff_factor(torch::Tensor T,
+                                                     torch::Tensor Pr) const {
   auto temp = T;
-  
+
   // Clamp Pr for numerical stability
   auto Pr_clamped = Pr.clamp(1e-300, 1e300);
   auto log10_Pr = torch::log10(Pr_clamped);
   auto log10_Pr_sq = log10_Pr * log10_Pr;
   auto denom = 1.0 + log10_Pr_sq;
-  
+
   // Vectorized F_cent calculation for all reactions
   // F_cent = A*exp(-B/T) + exp(-T/C) + D*exp(-E/T) [for 5-param, where E != 0]
   // F_cent = A*exp(-B/T) + exp(-T/C) [for 3-param, where D=1.0, E=0.0]
   auto F_cent = sri_A.unsqueeze(0) * torch::exp(-sri_B.unsqueeze(0) / temp) +
                 torch::exp(-temp / sri_C.unsqueeze(0));
-  
+
   // Handle 5-param SRI: add D*exp(-E/T) term where E != 0
   // Create mask for 5-param reactions (E != 0)
   auto is_5param = torch::abs(sri_E) > 1e-10;
@@ -253,20 +271,22 @@ torch::Tensor SRIFalloffImpl::compute_falloff_factor(torch::Tensor T, torch::Ten
     mask_shape.push_back(1);
   }
   mask_shape.push_back(out_shape.back());
-  auto is_5param_broadcast = is_5param.toType(torch::kFloat64).unsqueeze(0).expand(out_shape);
+  auto is_5param_broadcast =
+      is_5param.toType(torch::kFloat64).unsqueeze(0).expand(out_shape);
   F_cent = F_cent + is_5param_broadcast * E_exp_term;
-  
+
   // Clamp F_cent for numerical stability
   F_cent = F_cent.clamp(1e-300, 1e300);
-  
+
   // Vectorized F calculation: F = F_cent^(1/(1 + log10(Pr)^2))
   auto F = F_cent.pow(1.0 / denom);
-  
+
   return F;
 }
 
-torch::Tensor SRIFalloffImpl::forward(torch::Tensor T, torch::Tensor P, torch::Tensor C,
-                                       std::map<std::string, torch::Tensor> const& other) {
+torch::Tensor SRIFalloffImpl::forward(
+    torch::Tensor T, torch::Tensor P, torch::Tensor C,
+    std::map<std::string, torch::Tensor> const& other) {
   int nreaction = options->reactions().size();
   if (nreaction == 0) {
     auto out_shape = T.sizes().vec();
@@ -289,12 +309,14 @@ torch::Tensor SRIFalloffImpl::forward(torch::Tensor T, torch::Tensor P, torch::T
     auto C_actual = C.select(last_dim, 0);  // (..., nspecies)
     nspecies_kinetics = C_actual.size(-1);
 
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, std::min(nspecies_kinetics, nspecies_full));
+    auto eff_matrix_kinetics = efficiency_matrix.narrow(
+        1, 0, std::min(nspecies_kinetics, nspecies_full));
     auto eff_T = eff_matrix_kinetics.transpose(0, 1);
     M_eff = torch::matmul(C_actual, eff_T);
   } else {
     nspecies_kinetics = C.size(-1);
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, std::min(nspecies_kinetics, nspecies_full));
+    auto eff_matrix_kinetics = efficiency_matrix.narrow(
+        1, 0, std::min(nspecies_kinetics, nspecies_full));
     auto eff_T = eff_matrix_kinetics.transpose(0, 1);
     M_eff = torch::matmul(C, eff_T);
   }

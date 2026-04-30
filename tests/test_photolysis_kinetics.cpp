@@ -55,8 +55,7 @@ TEST_P(PhotolysisKineticsTest, PhotolysisReactionsInKinetics) {
   kinet_opts->photolysis()->temperature() = {200., 300.};
   kinet_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
   kinet_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
-  kinet_opts->photolysis()->branches().push_back(
-      {parse_comp_string("N2:1")});
+  kinet_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
 
   // Add an Arrhenius reaction
   kinet_opts->arrhenius()->reactions().push_back(Reaction("CH4 => CH3 + H"));
@@ -84,8 +83,7 @@ TEST_P(PhotolysisKineticsTest, KineticsModuleWithPhotolysis) {
   kinet_opts->photolysis()->temperature() = {200., 300.};
   kinet_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
   kinet_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
-  kinet_opts->photolysis()->branches().push_back(
-      {parse_comp_string("N2:1")});
+  kinet_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
 
   // Create kinetics module
   Kinetics kinet(kinet_opts);
@@ -116,8 +114,7 @@ TEST_P(PhotolysisKineticsTest, StoichiometryMatrixIncludesPhotolysis) {
   kinet_opts->photolysis()->temperature() = {200., 300.};
   kinet_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
   kinet_opts->photolysis()->cross_section() = {1.e-18, 1.e-18};
-  kinet_opts->photolysis()->branches().push_back(
-      {parse_comp_string("N2:1")});
+  kinet_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
 
   Kinetics kinet(kinet_opts);
   kinet->to(device, dtype);
@@ -142,4 +139,3 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

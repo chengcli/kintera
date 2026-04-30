@@ -18,7 +18,7 @@ torch::Tensor diffusion_tendency(torch::Tensor y, torch::Tensor Kzz,
 //! \param Kzz    eddy diffusion coefficient at interfaces (nz-1,)
 //! \param dzi    interface grid spacing (nz-1,)
 //! \return       (A, B, C) each of shape (nz,)
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-diffusion_coefficients(torch::Tensor y, torch::Tensor Kzz, torch::Tensor dzi);
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> diffusion_coefficients(
+    torch::Tensor y, torch::Tensor Kzz, torch::Tensor dzi);
 
 }  // namespace kintera

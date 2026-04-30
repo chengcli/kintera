@@ -70,9 +70,9 @@ class ThreeBodyImpl : public torch::nn::Cloneable<ThreeBodyImpl> {
   torch::Tensor k0_b;
   torch::Tensor k0_Ea_R;
 
-  //! Efficiency matrix: efficiency[i][j] = efficiency of species j for reaction i
-  //! Shape: (nreaction, nspecies)
-  //! Default efficiency = 1.0 if species not in efficiency map
+  //! Efficiency matrix: efficiency[i][j] = efficiency of species j for reaction
+  //! i Shape: (nreaction, nspecies) Default efficiency = 1.0 if species not in
+  //! efficiency map
   torch::Tensor efficiency_matrix;
 
   //! options with which this `ThreeBodyImpl` was constructed

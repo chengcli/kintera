@@ -64,7 +64,8 @@ struct TroeFalloffOptionsImpl {
   ADD_ARG(std::vector<double>, troe_A) = {};
   ADD_ARG(std::vector<double>, troe_T3) = {};
   ADD_ARG(std::vector<double>, troe_T1) = {};
-  ADD_ARG(std::vector<double>, troe_T2) = {};  // 0.0 for 3-param, non-zero for 4-param
+  ADD_ARG(std::vector<double>, troe_T2) = {
+  };  // 0.0 for 3-param, non-zero for 4-param
 
   // Per-reaction third-body efficiencies
   ADD_ARG(std::vector<Composition>, efficiencies) = {};
@@ -72,7 +73,8 @@ struct TroeFalloffOptionsImpl {
 using TroeFalloffOptions = std::shared_ptr<TroeFalloffOptionsImpl>;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
-                        std::set<std::string>& cloud_set, TroeFalloffOptions op);
+                        std::set<std::string>& cloud_set,
+                        TroeFalloffOptions op);
 
 class TroeFalloffImpl : public torch::nn::Cloneable<TroeFalloffImpl> {
  public:
@@ -86,9 +88,9 @@ class TroeFalloffImpl : public torch::nn::Cloneable<TroeFalloffImpl> {
   torch::Tensor kinf_b;
   torch::Tensor kinf_Ea_R;
 
-  //! Efficiency matrix: efficiency[i][j] = efficiency of species j for reaction i
-  //! Shape: (nreaction, nspecies)
-  //! Default efficiency = 1.0 if species not in efficiency map
+  //! Efficiency matrix: efficiency[i][j] = efficiency of species j for reaction
+  //! i Shape: (nreaction, nspecies) Default efficiency = 1.0 if species not in
+  //! efficiency map
   torch::Tensor efficiency_matrix;
 
   //! Troe parameters, shape (nreaction,)

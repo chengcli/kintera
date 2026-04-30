@@ -9,9 +9,8 @@
 
 namespace kintera {
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-diffusion_coefficients(torch::Tensor y, torch::Tensor Kzz,
-                       torch::Tensor dzi) {
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> diffusion_coefficients(
+    torch::Tensor y, torch::Tensor Kzz, torch::Tensor dzi) {
   int nz = y.size(0);
   auto opts = y.options();
   auto n_tot = y.sum(-1);  // (nz,)
@@ -25,10 +24,10 @@ diffusion_coefficients(torch::Tensor y, torch::Tensor Kzz,
   auto C = torch::zeros({nz}, opts);
 
   A[0] = -D[0] / dzi[0] / n_tot[0];
-  B[0] =  D[0] / dzi[0] / n_tot[1];
+  B[0] = D[0] / dzi[0] / n_tot[1];
 
   A[nz - 1] = -D[nz - 2] / dzi[nz - 2] / n_tot[nz - 1];
-  C[nz - 1] =  D[nz - 2] / dzi[nz - 2] / n_tot[nz - 2];
+  C[nz - 1] = D[nz - 2] / dzi[nz - 2] / n_tot[nz - 2];
 
   if (nz > 2) {
     auto dzi_lo = dzi.slice(0, 0, nz - 2);  // dzi[j-1], j=1..nz-2
@@ -38,7 +37,7 @@ diffusion_coefficients(torch::Tensor y, torch::Tensor Kzz,
     auto D_lo = D.slice(0, 0, nz - 2);  // D[j-1]
     auto D_hi = D.slice(0, 1, nz - 1);  // D[j]
 
-    auto n_j   = n_tot.slice(0, 1, nz - 1);
+    auto n_j = n_tot.slice(0, 1, nz - 1);
     auto n_jp1 = n_tot.slice(0, 2, nz);
     auto n_jm1 = n_tot.slice(0, 0, nz - 2);
 

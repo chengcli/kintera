@@ -64,8 +64,10 @@ struct SRIFalloffOptionsImpl {
   ADD_ARG(std::vector<double>, sri_A) = {};
   ADD_ARG(std::vector<double>, sri_B) = {};
   ADD_ARG(std::vector<double>, sri_C) = {};
-  ADD_ARG(std::vector<double>, sri_D) = {};  // 1.0 for 3-param, variable for 5-param
-  ADD_ARG(std::vector<double>, sri_E) = {};  // 0.0 for 3-param, variable for 5-param
+  ADD_ARG(std::vector<double>, sri_D) = {
+  };  // 1.0 for 3-param, variable for 5-param
+  ADD_ARG(std::vector<double>, sri_E) = {
+  };  // 0.0 for 3-param, variable for 5-param
 
   // Per-reaction third-body efficiencies
   ADD_ARG(std::vector<Composition>, efficiencies) = {};
@@ -87,9 +89,9 @@ class SRIFalloffImpl : public torch::nn::Cloneable<SRIFalloffImpl> {
   torch::Tensor kinf_b;
   torch::Tensor kinf_Ea_R;
 
-  //! Efficiency matrix: efficiency[i][j] = efficiency of species j for reaction i
-  //! Shape: (nreaction, nspecies)
-  //! Default efficiency = 1.0 if species not in efficiency map
+  //! Efficiency matrix: efficiency[i][j] = efficiency of species j for reaction
+  //! i Shape: (nreaction, nspecies) Default efficiency = 1.0 if species not in
+  //! efficiency map
   torch::Tensor efficiency_matrix;
 
   //! SRI parameters, shape (nreaction,)

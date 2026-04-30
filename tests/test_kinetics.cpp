@@ -7,9 +7,9 @@
 // kintera
 #include <kintera/constants.h>
 
+#include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
-#include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/thermo/log_svp.hpp>
 #include <kintera/thermo/relative_humidity.hpp>
 #include <kintera/thermo/thermo.hpp>

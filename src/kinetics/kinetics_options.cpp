@@ -107,17 +107,20 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
   }
 
   // add Lindemann falloff reactions
-  kinet->lindemann_falloff() = LindemannFalloffOptionsImpl::from_yaml(config["reactions"]);
+  kinet->lindemann_falloff() =
+      LindemannFalloffOptionsImpl::from_yaml(config["reactions"]);
   add_to_vapor_cloud(vapor_set, cloud_set, kinet->lindemann_falloff());
   if (kinet->verbose()) {
-    std::cout << fmt::format(
-                     "[KineticsOptions] registered {} Lindemann Falloff reactions",
-                     kinet->lindemann_falloff()->reactions().size())
-              << std::endl;
+    std::cout
+        << fmt::format(
+               "[KineticsOptions] registered {} Lindemann Falloff reactions",
+               kinet->lindemann_falloff()->reactions().size())
+        << std::endl;
   }
 
   // add Troe falloff reactions
-  kinet->troe_falloff() = TroeFalloffOptionsImpl::from_yaml(config["reactions"]);
+  kinet->troe_falloff() =
+      TroeFalloffOptionsImpl::from_yaml(config["reactions"]);
   add_to_vapor_cloud(vapor_set, cloud_set, kinet->troe_falloff());
   if (kinet->verbose()) {
     std::cout << fmt::format(
@@ -194,14 +197,12 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
 
 std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   std::vector<Reaction> reactions;
-  reactions.reserve(arrhenius()->reactions().size() +
-                    coagulation()->reactions().size() +
-                    evaporation()->reactions().size() +
-                    three_body()->reactions().size() +
-                    lindemann_falloff()->reactions().size() +
-                    troe_falloff()->reactions().size() +
-                    sri_falloff()->reactions().size() +
-                    photolysis()->reactions().size());
+  reactions.reserve(
+      arrhenius()->reactions().size() + coagulation()->reactions().size() +
+      evaporation()->reactions().size() + three_body()->reactions().size() +
+      lindemann_falloff()->reactions().size() +
+      troe_falloff()->reactions().size() + sri_falloff()->reactions().size() +
+      photolysis()->reactions().size());
 
   for (const auto& reaction : arrhenius()->reactions()) {
     reactions.push_back(reaction);
@@ -239,12 +240,10 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
 }
 
 KineticsOptions KineticsOptionsImpl::from_kinetics_base(
-    std::string const& master_input_path,
-    std::string const& photo_catalog_path, std::string const& cross_dir,
-    bool verbose) {
-  return kinetics_options_from_kinetics_base(master_input_path,
-                                             photo_catalog_path, cross_dir,
-                                             verbose);
+    std::string const& master_input_path, std::string const& photo_catalog_path,
+    std::string const& cross_dir, bool verbose) {
+  return kinetics_options_from_kinetics_base(
+      master_input_path, photo_catalog_path, cross_dir, verbose);
 }
 
 }  // namespace kintera

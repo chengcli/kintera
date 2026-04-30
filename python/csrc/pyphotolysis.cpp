@@ -13,7 +13,7 @@
 
 namespace py = pybind11;
 
-void bind_photolysis(py::module &m) {
+void bind_photolysis(py::module& m) {
   ////////////// PhotolysisOptions //////////////
   auto pyPhotolysisOptions =
       py::class_<kintera::PhotolysisOptionsImpl, kintera::PhotolysisOptions>(
@@ -21,7 +21,7 @@ void bind_photolysis(py::module &m) {
 
   pyPhotolysisOptions.def(py::init<>())
       .def("__repr__",
-           [](const kintera::PhotolysisOptions &self) {
+           [](const kintera::PhotolysisOptions& self) {
              std::stringstream ss;
              self->report(ss);
              return fmt::format("PhotolysisOptions({})", ss.str());
@@ -50,11 +50,12 @@ void bind_photolysis(py::module &m) {
   ////////////// Photolysis Module //////////////
   ADD_KINTERA_MODULE(Photolysis, PhotolysisOptions, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"))
-      .def("interp_cross_section", &kintera::PhotolysisImpl::interp_cross_section,
-           py::arg("rxn_idx"), py::arg("wave"), py::arg("temp"))
-      .def("get_effective_stoich", &kintera::PhotolysisImpl::get_effective_stoich,
-           py::arg("rxn_idx"), py::arg("wave"), py::arg("aflux"),
-           py::arg("temp"));
+      .def("interp_cross_section",
+           &kintera::PhotolysisImpl::interp_cross_section, py::arg("rxn_idx"),
+           py::arg("wave"), py::arg("temp"))
+      .def("get_effective_stoich",
+           &kintera::PhotolysisImpl::get_effective_stoich, py::arg("rxn_idx"),
+           py::arg("wave"), py::arg("aflux"), py::arg("temp"));
 
   ////////////// ActinicFluxOptions //////////////
   auto pyActinicFluxOptions =
@@ -63,7 +64,7 @@ void bind_photolysis(py::module &m) {
 
   pyActinicFluxOptions.def(py::init<>())
       .def("__repr__",
-           [](const kintera::ActinicFluxOptions &self) {
+           [](const kintera::ActinicFluxOptions& self) {
              return fmt::format("ActinicFluxOptions(nwave={})",
                                 self->wavelength().size());
            })
@@ -86,7 +87,7 @@ void bind_photolysis(py::module &m) {
       .def("interpolate_to", &kintera::ActinicFluxData::interpolate_to,
            py::arg("new_wavelength"))
       .def("to_map", &kintera::ActinicFluxData::to_map)
-      .def("__repr__", [](const kintera::ActinicFluxData &self) {
+      .def("__repr__", [](const kintera::ActinicFluxData& self) {
         return fmt::format("ActinicFluxData(nwave={}, valid={})", self.nwave(),
                            self.is_valid());
       });
@@ -94,7 +95,7 @@ void bind_photolysis(py::module &m) {
   ////////////// Helper functions //////////////
   m.def(
       "create_actinic_flux",
-      [](kintera::ActinicFluxOptions const &opts, torch::Device device,
+      [](kintera::ActinicFluxOptions const& opts, torch::Device device,
          torch::Dtype dtype) {
         return kintera::create_actinic_flux(opts, device, dtype);
       },
@@ -123,4 +124,3 @@ void bind_photolysis(py::module &m) {
       py::arg("peak_flux") = 1.e14, py::arg("device") = torch::kCPU,
       py::arg("dtype") = torch::kFloat64);
 }
-

@@ -18,6 +18,7 @@
 
 // kintera
 #include <configure.h>
+
 #include <kintera/utils/vectors.hpp>
 
 #include "species.hpp"
@@ -71,8 +72,8 @@ static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
       // low-T range (vals 0..9): a0-a6, a7(=0), a8, a9
       // store 9 coefficients: a0-a6, a8, a9 (skip a7)
       for (int k = 0; k < 7; ++k) e.low[k] = vals[k];
-      e.low[7] = vals[8];   // a8
-      e.low[8] = vals[9];   // a9
+      e.low[7] = vals[8];  // a8
+      e.low[8] = vals[9];  // a9
 
       // high-T range (vals 10..19)
       for (int k = 0; k < 7; ++k) e.high[k] = vals[10 + k];

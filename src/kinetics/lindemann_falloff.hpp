@@ -66,7 +66,8 @@ struct LindemannFalloffOptionsImpl {
 using LindemannFalloffOptions = std::shared_ptr<LindemannFalloffOptionsImpl>;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
-                        std::set<std::string>& cloud_set, LindemannFalloffOptions op);
+                        std::set<std::string>& cloud_set,
+                        LindemannFalloffOptions op);
 
 class LindemannFalloffImpl : public torch::nn::Cloneable<LindemannFalloffImpl> {
  public:
@@ -80,9 +81,9 @@ class LindemannFalloffImpl : public torch::nn::Cloneable<LindemannFalloffImpl> {
   torch::Tensor kinf_b;
   torch::Tensor kinf_Ea_R;
 
-  //! Efficiency matrix: efficiency[i][j] = efficiency of species j for reaction i
-  //! Shape: (nreaction, nspecies)
-  //! Default efficiency = 1.0 if species not in efficiency map
+  //! Efficiency matrix: efficiency[i][j] = efficiency of species j for reaction
+  //! i Shape: (nreaction, nspecies) Default efficiency = 1.0 if species not in
+  //! efficiency map
   torch::Tensor efficiency_matrix;
 
   //! options with which this `LindemannFalloffImpl` was constructed

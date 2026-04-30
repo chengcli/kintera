@@ -104,8 +104,8 @@ TEST_P(CH4PhotolysisTest, MultiBranchPhotolysis) {
   opts->cross_section() = xs_data;
 
   std::vector<Composition> branches;
-  branches.push_back(parse_comp_string("CH4:1"));       // photoabsorption
-  branches.push_back(parse_comp_string("CH3:1 H:1"));   // CH3 + H
+  branches.push_back(parse_comp_string("CH4:1"));          // photoabsorption
+  branches.push_back(parse_comp_string("CH3:1 H:1"));      // CH3 + H
   branches.push_back(parse_comp_string("(1)CH2:1 H2:1"));  // singlet CH2 + H2
   branches.push_back(parse_comp_string("(3)CH2:1 H:2"));   // triplet CH2 + 2H
   branches.push_back(parse_comp_string("H2:1 H:1"));       // H2 + H
@@ -281,4 +281,3 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-

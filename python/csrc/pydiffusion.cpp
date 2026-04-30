@@ -6,7 +6,7 @@
 
 namespace py = pybind11;
 
-void bind_diffusion(py::module &m) {
+void bind_diffusion(py::module& m) {
   m.def("diffusion_tendency", &kintera::diffusion_tendency, py::arg("y"),
         py::arg("Kzz"), py::arg("dzi"));
 

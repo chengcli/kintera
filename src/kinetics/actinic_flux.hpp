@@ -9,6 +9,7 @@
 
 // kintera
 #include <kintera/add_arg.h>
+
 #include <kintera/math/interpolation.hpp>
 
 namespace kintera {
@@ -95,20 +96,20 @@ struct ActinicFluxOptionsImpl {
 using ActinicFluxOptions = std::shared_ptr<ActinicFluxOptionsImpl>;
 
 //! Create ActinicFluxData from options
-inline ActinicFluxData create_actinic_flux(ActinicFluxOptions const& opts,
-                                           torch::Device device = torch::kCPU,
-                                           torch::Dtype dtype = torch::kFloat64) {
+inline ActinicFluxData create_actinic_flux(
+    ActinicFluxOptions const& opts, torch::Device device = torch::kCPU,
+    torch::Dtype dtype = torch::kFloat64) {
   if (opts->wavelength().empty()) {
     return ActinicFluxData();
   }
 
-  auto wavelength = torch::tensor(opts->wavelength(),
-                                  torch::device(device).dtype(dtype));
+  auto wavelength =
+      torch::tensor(opts->wavelength(), torch::device(device).dtype(dtype));
 
   torch::Tensor flux;
   if (!opts->default_flux().empty()) {
-    flux = torch::tensor(opts->default_flux(),
-                         torch::device(device).dtype(dtype));
+    flux =
+        torch::tensor(opts->default_flux(), torch::device(device).dtype(dtype));
   } else {
     // Default to unit flux
     flux = torch::ones_like(wavelength);
@@ -118,10 +119,9 @@ inline ActinicFluxData create_actinic_flux(ActinicFluxOptions const& opts,
 }
 
 //! Create simple uniform actinic flux for testing
-inline ActinicFluxData create_uniform_flux(double wave_min, double wave_max,
-                                           int nwave, double flux_value,
-                                           torch::Device device = torch::kCPU,
-                                           torch::Dtype dtype = torch::kFloat64) {
+inline ActinicFluxData create_uniform_flux(
+    double wave_min, double wave_max, int nwave, double flux_value,
+    torch::Device device = torch::kCPU, torch::Dtype dtype = torch::kFloat64) {
   auto wavelength = torch::linspace(wave_min, wave_max, nwave,
                                     torch::device(device).dtype(dtype));
   auto flux = flux_value * torch::ones_like(wavelength);
@@ -149,8 +149,8 @@ inline ActinicFluxData create_solar_flux(double wave_min, double wave_max,
   // Peak around 500 nm for solar-like spectrum
   auto peak_wave = 500.0;
   auto width = 200.0;
-  auto flux = peak_flux *
-              torch::exp(-torch::pow((wavelength - peak_wave) / width, 2));
+  auto flux =
+      peak_flux * torch::exp(-torch::pow((wavelength - peak_wave) / width, 2));
 
   return ActinicFluxData(wavelength, flux);
 }
@@ -158,4 +158,3 @@ inline ActinicFluxData create_solar_flux(double wave_min, double wave_max,
 }  // namespace kintera
 
 #undef ADD_ARG
-
