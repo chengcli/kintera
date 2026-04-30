@@ -11,8 +11,8 @@
 #include <kintera/kinetics/arrhenius.hpp>
 #include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
-#include <kintera/kinetics/photolysis.hpp>
 #include <kintera/kinetics/three_body.hpp>
+#include <kintera/photolysis/photolysis.hpp>
 
 #include "device_testing.hpp"
 

@@ -5,8 +5,8 @@
 #include <pybind11/stl.h>
 
 // kintera
-#include <kintera/kinetics/actinic_flux.hpp>
-#include <kintera/kinetics/photolysis.hpp>
+#include <kintera/photolysis/actinic_flux.hpp>
+#include <kintera/photolysis/photolysis.hpp>
 
 // python
 #include "pyoptions.hpp"

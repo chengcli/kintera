@@ -9,7 +9,7 @@
 #include <torch/torch.h>
 
 // kintera
-#include <kintera/kinetics/photolysis.hpp>
+#include <kintera/photolysis/photolysis.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
 
 // tests

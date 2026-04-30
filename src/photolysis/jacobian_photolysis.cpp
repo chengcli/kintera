@@ -1,7 +1,7 @@
 //! @file jacobian_photolysis.cpp
 //! @brief Jacobian computation for photolysis reactions
 
-#include "jacobian.hpp"
+#include "jacobian_photolysis.hpp"
 
 namespace kintera {
 

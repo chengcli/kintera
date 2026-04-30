@@ -32,6 +32,7 @@ file(GLOB src_files
   *.cpp
   utils/*.cpp
   kinetics/*.cpp
+  photolysis/*.cpp
   thermo/*.cpp
   math/*.cpp
   units/*.cpp

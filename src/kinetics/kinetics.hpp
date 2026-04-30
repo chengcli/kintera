@@ -8,13 +8,13 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
+#include <kintera/photolysis/photolysis.hpp>
 #include <kintera/species.hpp>
 
 #include "arrhenius.hpp"
 #include "coagulation.hpp"
 #include "evaporation.hpp"
 #include "lindemann_falloff.hpp"
-#include "photolysis.hpp"
 #include "sri_falloff.hpp"
 #include "three_body.hpp"
 #include "troe_falloff.hpp"
