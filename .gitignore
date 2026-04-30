@@ -41,4 +41,8 @@ tests/vulcan/cho/_*.py
 tests/vulcan/cho/_*.pkl
 tests/vulcan/VULCAN/
 
-.vscode
+# vscode
+.vscode/*
+
+# library
+*.so
