@@ -175,12 +175,17 @@ std::vector<std::string> SpeciesThermoImpl::species() const {
 
 at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
                                           SpeciesThermo const& other) const {
-  auto indices =
-      locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
-                     merge_vectors(other->vapor_ids(), other->cloud_ids()));
+  auto source_ids = merge_vectors(vapor_ids(), cloud_ids());
+  auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
+  std::vector<int64_t> indices;
+  indices.reserve(source_ids.size());
 
-  TORCH_CHECK(indices.size() == vapor_ids().size() + cloud_ids().size(),
-              "Missing indices for some species in other's thermo data.");
+  for (auto species_id : source_ids) {
+    auto it = std::find(other_ids.begin(), other_ids.end(), species_id);
+    TORCH_CHECK(it != other_ids.end(),
+                "Missing indices for some species in other's thermo data.");
+    indices.push_back(std::distance(other_ids.begin(), it));
+  }
 
   auto id =
       torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
@@ -191,12 +196,17 @@ at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
 void SpeciesThermoImpl::accumulate(at::Tensor& data,
                                    at::Tensor const& other_data,
                                    SpeciesThermo const& other) const {
-  auto indices =
-      locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
-                     merge_vectors(other->vapor_ids(), other->cloud_ids()));
+  auto source_ids = merge_vectors(vapor_ids(), cloud_ids());
+  auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
+  std::vector<int64_t> indices;
+  indices.reserve(source_ids.size());
 
-  TORCH_CHECK(indices.size() == vapor_ids().size() + cloud_ids().size(),
-              "Missing indices for some species in other's thermo data.");
+  for (auto species_id : source_ids) {
+    auto it = std::find(other_ids.begin(), other_ids.end(), species_id);
+    TORCH_CHECK(it != other_ids.end(),
+                "Missing indices for some species in other's thermo data.");
+    indices.push_back(std::distance(other_ids.begin(), it));
+  }
 
   auto id =
       torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));

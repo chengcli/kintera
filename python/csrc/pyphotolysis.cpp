@@ -104,6 +104,15 @@ void bind_photolysis(py::module& m) {
 
   m.def(
       "create_uniform_flux",
+      [](double wave_min, double wave_max, int nwave, double flux_value) {
+        return kintera::create_uniform_flux(wave_min, wave_max, nwave,
+                                            flux_value);
+      },
+      py::arg("wave_min"), py::arg("wave_max"), py::arg("nwave"),
+      py::arg("flux_value"));
+
+  m.def(
+      "create_uniform_flux",
       [](double wave_min, double wave_max, int nwave, double flux_value,
          torch::Device device, torch::Dtype dtype) {
         return kintera::create_uniform_flux(wave_min, wave_max, nwave,
@@ -112,6 +121,14 @@ void bind_photolysis(py::module& m) {
       py::arg("wave_min"), py::arg("wave_max"), py::arg("nwave"),
       py::arg("flux_value"), py::arg("device") = torch::kCPU,
       py::arg("dtype") = torch::kFloat64);
+
+  m.def(
+      "create_solar_flux",
+      [](double wave_min, double wave_max, int nwave, double peak_flux) {
+        return kintera::create_solar_flux(wave_min, wave_max, nwave, peak_flux);
+      },
+      py::arg("wave_min"), py::arg("wave_max"), py::arg("nwave"),
+      py::arg("peak_flux") = 1.e14);
 
   m.def(
       "create_solar_flux",

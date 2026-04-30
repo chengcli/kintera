@@ -39,6 +39,10 @@ class DeviceTest : public testing::TestWithParam<Parameters> {
   }
 };
 
+TEST_P(DeviceTest, BaseFixturePlaceholder) {
+  GTEST_SKIP() << "Base DeviceTest placeholder.";
+}
+
 INSTANTIATE_TEST_SUITE_P(
     DeviceAndDtype, DeviceTest,
     testing::Values(Parameters{torch::kCPU, torch::kFloat32},
