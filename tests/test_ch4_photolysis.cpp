@@ -54,6 +54,7 @@ TEST_P(CH4PhotolysisTest, SingleBranchPhotolysis) {
   auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
   // Uniform actinic flux
   auto actinic_flux = create_uniform_flux(module->wavelength, 1.e14);
+  module->update_xs_diss_stacked(temp);
   auto rate = module->forward(temp, actinic_flux);
 
   EXPECT_EQ(rate.dim(), 2);
@@ -105,6 +106,7 @@ TEST_P(CH4PhotolysisTest, MultiBranchPhotolysis) {
 
   auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
   auto actinic_flux = create_solar_flux(module->wavelength, 1.e14);
+  module->update_xs_diss_stacked(temp);
   auto rate = module->forward(temp, actinic_flux);
 
   EXPECT_GT(rate[0][0].item<double>(), 0.);
@@ -231,10 +233,12 @@ TEST_P(CH4PhotolysisTest, VaryingActinicFlux) {
   auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
   // Test 1: Uniform flux
   auto flux1 = create_uniform_flux(module->wavelength, 1.e14);
+  module->update_xs_diss_stacked(temp);
   auto rate1 = module->forward(temp, flux1);
 
   // Test 2: Solar-like flux (peaks at visible, low in UV)
   auto flux2 = create_solar_flux(module->wavelength, 1.e14);
+  module->update_xs_diss_stacked(temp);
   auto rate2 = module->forward(temp, flux2);
 
   // Both should give positive rates

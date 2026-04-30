@@ -95,6 +95,10 @@ class PhotolysisImpl : public torch::nn::Cloneable<PhotolysisImpl> {
   //! Shared temperature grid [K], shape (ntemp,)
   torch::Tensor temp_grid;
 
+  //! Cached dissociative cross-sections on `wavelength`, shape
+  //! `(*batch, nwave, nreaction)`
+  torch::Tensor xs_diss_stacked;
+
   //! Cross-section data [cm^2 molecule^-1], shape (nreaction, ntemp, nwave,
   //! nbranch)
   std::vector<torch::Tensor> cross_section;
@@ -112,12 +116,21 @@ class PhotolysisImpl : public torch::nn::Cloneable<PhotolysisImpl> {
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
-  //! Compute photolysis rate constants
+  //! Refresh the cached dissociative cross-sections for a temperature tensor.
   /*!
    * \param T temperature [K], shape `batch`
+   */
+  void update_xs_diss_stacked(torch::Tensor T);
+
+  //! Compute photolysis rate constants
+  /*!
+   * \param T temperature [K], shape `(*nspatial)`
    * \param actinic_flux actinic flux [photons cm^-2 s^-1 nm^-1] sampled on
-   *        `wavelength`, shape `(nwave)` or `(nwave, *batch)`
-   * \return photolysis rate constants [s^-1], shape `(*batch, nreaction)`
+   *        `wavelength`, shape `(nwave)` or `(nwave, *nspatial)`
+   * \return photolysis rate constants [s^-1], shape `(*nspatial, nreaction)`
+   *
+   * Call `update_xs_diss_stacked(T)` after temperature changes and before
+   * calling `forward()`.
    */
   torch::Tensor forward(torch::Tensor T, torch::Tensor actinic_flux);
 

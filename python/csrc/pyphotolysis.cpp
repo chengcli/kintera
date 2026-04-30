@@ -69,6 +69,8 @@ void bind_photolysis(py::module& m) {
            })
       .def("forward", &kintera::PhotolysisImpl::forward, py::arg("temp"),
            py::arg("actinic_flux"))
+      .def("update_xs_diss_stacked",
+           &kintera::PhotolysisImpl::update_xs_diss_stacked, py::arg("temp"))
       .def("interp_cross_section",
            &kintera::PhotolysisImpl::interp_cross_section, py::arg("rxn_idx"),
            py::arg("wave"), py::arg("temp"))

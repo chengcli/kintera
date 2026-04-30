@@ -199,6 +199,7 @@ TEST_P(ChapmanCycleTest, PhotolysisRatesInRange) {
   conc[0][IDX_O] = 1.e-10 * n_tot;
   conc[0][IDX_O3] = 1.e-8 * n_tot;
 
+  photolysis->update_xs_diss_stacked(temp);
   auto rc = photolysis->forward(temp, flux);
   auto du = apply_mass_action(rc, conc, stoich);
 
@@ -269,6 +270,7 @@ TEST_P(ChapmanCycleTest, MassConservation) {
   double dt = 1.e-5;
   int nsteps = 100000;
 
+  photolysis->update_xs_diss_stacked(temp);
   for (int step = 0; step < nsteps; step++) {
     auto rc_photo = photolysis->forward(temp, flux);
     auto du_photo = apply_mass_action(rc_photo, conc, stoich_photo);
@@ -321,6 +323,7 @@ TEST_P(ChapmanCycleTest, SteadyStateOzone) {
   int nsteps = 100000;
   double prev_O3 = 0.0;
 
+  photolysis->update_xs_diss_stacked(temp);
   for (int step = 0; step < nsteps; step++) {
     auto rc_photo = photolysis->forward(temp, flux);
     auto du_photo = apply_mass_action(rc_photo, conc, stoich_photo);
@@ -488,6 +491,7 @@ TEST_P(ChapmanCycleTest, FullChapmanWithThreeBody) {
   conc[0][IDX_O] = 1.e-10 * n_tot;
   conc[0][IDX_O3] = 1.e-8 * n_tot;
 
+  photolysis->update_xs_diss_stacked(temp);
   auto du_photo =
       apply_mass_action(photolysis->forward(temp, flux), conc, stoich_photo);
   auto du_tb = apply_mass_action(three_body->forward(temp, pres, conc, {}),
@@ -577,7 +581,6 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   }
 
   std::map<std::string, torch::Tensor> extra;
-  extra["wavelength"] = wavelength;
   extra["actinic_flux"] = actinic_flux;
 
   // Initial conditions in mol/m^3
@@ -609,6 +612,7 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   double dt = 1.0;
   std::cout << "\nTime marching with Kinetics + evolve_implicit:\n";
 
+  kinet->photolysis_evaluator->update_xs_diss_stacked(temp);
   for (int step = 0; step < 1000; step++) {
     auto [rate, rc_ddC, rc_ddT] =
         kinet->forward(temp, pres, conc.unsqueeze(0), extra);
@@ -696,9 +700,9 @@ TEST_P(ChapmanCycleTest, ForwardRatesAndJacobianConsistent) {
   auto actinic_flux = torch::zeros_like(wavelength);
 
   std::map<std::string, torch::Tensor> extra;
-  extra["wavelength"] = wavelength;
   extra["actinic_flux"] = actinic_flux;
 
+  kinet->photolysis_evaluator->update_xs_diss_stacked(temp);
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc, extra);
 
   int nrxn_aug = kinet->stoich.size(1);
@@ -744,7 +748,6 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
   }
 
   std::map<std::string, torch::Tensor> extra;
-  extra["wavelength"] = wavelength;
   extra["actinic_flux"] = actinic_flux;
 
   double T = 250.0, P = 1000.0;
@@ -774,6 +777,7 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
   double dt = 1.0;
   bool converged = false;
 
+  kinet->photolysis_evaluator->update_xs_diss_stacked(temp);
   for (int step = 0; step < 1000; step++) {
     auto [rate, rc_ddC, rc_ddT] =
         kinet->forward(temp, pres, conc.unsqueeze(0), extra);

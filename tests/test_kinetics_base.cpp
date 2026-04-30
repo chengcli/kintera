@@ -235,6 +235,7 @@ TEST_P(DeviceTest, KineticsBaseForward) {
   std::map<std::string, torch::Tensor> extra;
   extra["actinic_flux"] = aflux;
 
+  kinet->photolysis_evaluator->update_xs_diss_stacked(temp);
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc, extra);
 
   std::cout << "Rate shape: " << rate.sizes() << std::endl;

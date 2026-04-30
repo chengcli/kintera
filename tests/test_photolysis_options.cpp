@@ -206,6 +206,7 @@ TEST_P(PhotolysisModuleTest, ForwardWithSimpleFlux) {
   auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
   auto aflux = torch::ones({3}, torch::device(device).dtype(dtype));
 
+  module->update_xs_diss_stacked(temp);
   auto rate = module->forward(temp, aflux);
 
   EXPECT_EQ(rate.dim(), 2);
@@ -213,6 +214,27 @@ TEST_P(PhotolysisModuleTest, ForwardWithSimpleFlux) {
   // Rate should be integral of cross-section * flux
   // For constant flux = 1, this is the trapezoid integral of cross-sections
   EXPECT_GT(rate[0][0].item<double>(), 0.);
+}
+
+TEST_P(PhotolysisModuleTest, ForwardWithMultiDimensionalFlux) {
+  auto opts = PhotolysisOptionsImpl::create();
+  opts->wavelength() = {100., 150., 200.};
+  opts->temperature() = {200., 300.};
+  opts->reactions().push_back(Reaction("N2 => N2"));
+  opts->cross_section() = {1.e-18, 2.e-18, 1.e-18};
+  opts->branches().push_back({parse_comp_string("N2:1")});
+
+  Photolysis module(opts);
+  module->to(device, dtype);
+
+  auto temp = torch::full({2, 3}, 250., torch::device(device).dtype(dtype));
+  auto aflux = torch::ones({3, 2, 3}, torch::device(device).dtype(dtype));
+
+  module->update_xs_diss_stacked(temp);
+  auto rate = module->forward(temp, aflux);
+
+  EXPECT_EQ(rate.sizes(), torch::IntArrayRef({2, 3, 1}));
+  EXPECT_TRUE(rate.isfinite().all().item<bool>());
 }
 
 TEST_P(PhotolysisModuleTest, InterpolateCrossSection) {

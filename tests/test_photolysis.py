@@ -136,6 +136,7 @@ def test_photolysis_forward():
     temp = torch.tensor([250.0])
     actinic_flux = create_uniform_flux(module.wavelength, 1.0)
 
+    module.update_xs_diss_stacked(temp)
     rate = module.forward(temp, actinic_flux)
 
     assert rate.dim() == 2

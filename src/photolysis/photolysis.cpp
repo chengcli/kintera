@@ -8,8 +8,9 @@
 
 #include <kintera/math/interpolation.hpp>
 #include <kintera/units/units.hpp>
-#include <kintera/utils/find_resource.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
+
+#include "load_xsection.hpp"
 
 namespace kintera {
 
@@ -32,128 +33,6 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
       vapor_set.insert(name);
     }
   }
-}
-
-//! Load cross-section from KINETICS7 format file
-static std::tuple<std::vector<double>, std::vector<double>,
-                  std::vector<Composition>>
-load_xsection_kin7(std::string const& filename,
-                   std::vector<std::string> const& branch_strs) {
-  auto full_path = find_resource(filename);
-  FILE* file = fopen(full_path.c_str(), "r");
-  TORCH_CHECK(file, "Could not open file: ", full_path);
-
-  std::vector<double> wavelength;
-  std::vector<double> xsection;
-  std::vector<Composition> branches;
-
-  for (auto const& s : branch_strs) {
-    branches.push_back(parse_comp_string(s));
-  }
-
-  int nbranch = branches.size();
-  int min_is = 9999, max_ie = 0;
-
-  char* line = NULL;
-  size_t len = 0;
-  ssize_t read;
-
-  while ((read = getline(&line, &len, file)) != -1) {
-    if (line[0] == '\n') continue;
-
-    char equation[61];
-    int is, ie, nwave;
-    float temp;
-
-    int num =
-        sscanf(line, "%60c%4d%4d%4d%6f", equation, &is, &ie, &nwave, &temp);
-    min_is = std::min(min_is, is);
-    max_ie = std::max(max_ie, ie);
-
-    TORCH_CHECK(num == 5, "Header format error in file '", filename, "'");
-
-    if (wavelength.size() == 0) {
-      wavelength.resize(nwave);
-      xsection.resize(nwave * nbranch, 0.0);
-    }
-
-    int ncols = 7;
-    int nrows = ceil(1. * nwave / ncols);
-
-    equation[60] = '\0';
-    auto product = parse_comp_string(equation);
-
-    auto it = std::find(branches.begin(), branches.end(), product);
-
-    if (it == branches.end()) {
-      for (int i = 0; i < nrows; i++) getline(&line, &len, file);
-    } else {
-      for (int i = 0; i < nrows; i++) {
-        getline(&line, &len, file);
-        for (int j = 0; j < ncols; j++) {
-          float wave, cross;
-          int num = sscanf(line + 17 * j, "%7f%10f", &wave, &cross);
-          TORCH_CHECK(num == 2, "Cross-section format error in file '",
-                      filename, "'");
-          int b = it - branches.begin();
-          int k = i * ncols + j;
-
-          if (k >= nwave) break;
-          wavelength[k] = wave * 0.1;  // Angstrom -> nm
-          xsection[k * nbranch + b] = cross;
-        }
-      }
-    }
-  }
-
-  // Trim unused wavelength range
-  if (min_is < max_ie && min_is > 0) {
-    wavelength = std::vector<double>(wavelength.begin() + min_is - 1,
-                                     wavelength.begin() + max_ie);
-    xsection = std::vector<double>(xsection.begin() + (min_is - 1) * nbranch,
-                                   xsection.begin() + max_ie * nbranch);
-  }
-
-  // First branch is total absorption; subtract others to get pure absorption
-  for (size_t i = 0; i < wavelength.size(); i++) {
-    for (int j = 1; j < nbranch; j++) {
-      xsection[i * nbranch] -= xsection[i * nbranch + j];
-    }
-    xsection[i * nbranch] = std::max(xsection[i * nbranch], 0.);
-  }
-
-  free(line);
-  fclose(file);
-
-  return {wavelength, xsection, branches};
-}
-
-//! Load cross-section from YAML inline data
-static std::tuple<std::vector<double>, std::vector<double>,
-                  std::vector<Composition>>
-load_xsection_yaml(YAML::Node const& data_node,
-                   std::vector<std::string> const& branch_strs) {
-  std::vector<double> wavelength;
-  std::vector<double> xsection;
-  std::vector<Composition> branches;
-
-  for (auto const& s : branch_strs) {
-    branches.push_back(parse_comp_string(s));
-  }
-
-  int nbranch = std::max((int)branches.size(), 1);
-
-  for (auto const& entry : data_node) {
-    auto row = entry.as<std::vector<double>>();
-    TORCH_CHECK(row.size() >= 2, "YAML data row must have at least 2 values");
-
-    wavelength.push_back(row[0]);
-    for (int b = 0; b < nbranch; b++) {
-      xsection.push_back(b + 1 < (int)row.size() ? row[b + 1] : row[1]);
-    }
-  }
-
-  return {wavelength, xsection, branches};
 }
 
 PhotolysisOptions PhotolysisOptionsImpl::from_yaml(
@@ -275,6 +154,7 @@ void PhotolysisImpl::reset() {
   _nbranches.clear();
   cross_section.clear();
   branch_stoich.clear();
+  xs_diss_stacked = torch::Tensor();
 
   if (_nreaction == 0) return;
 
@@ -422,25 +302,15 @@ torch::Tensor PhotolysisImpl::get_effective_stoich(int rxn_idx,
   return (branch_frac.unsqueeze(-1) * branch_stoich[rxn_idx]).sum(0);
 }
 
-torch::Tensor PhotolysisImpl::forward(torch::Tensor T,
-                                      torch::Tensor actinic_flux) {
+void PhotolysisImpl::update_xs_diss_stacked(torch::Tensor T) {
   if (_nreaction == 0) {
-    return torch::empty({0}, T.options());
+    xs_diss_stacked = torch::empty({0}, T.options());
+    return;
   }
 
   auto const& wave = wavelength;
 
-  auto out_shape = T.sizes().vec();
-  out_shape.push_back(_nreaction);
-
-  // Find max branches for padding
-  int max_branches = 0;
-  for (int r = 0; r < _nreaction; r++) {
-    max_branches = std::max(max_branches, _nbranches[r]);
-  }
-
-  // Process all reactions: compute cross-sections
-  std::vector<torch::Tensor> xs_diss_list;
+  xs_diss_stacked = torch::Tensor();
   for (int r = 0; r < _nreaction; r++) {
     auto xs = interp_cross_section(r, wave, T);  // (..., nwave, nbranch)
 
@@ -451,45 +321,47 @@ torch::Tensor PhotolysisImpl::forward(torch::Tensor T,
     } else {
       xs_diss = xs.select(-1, 0);
     }
-    xs_diss_list.push_back(xs_diss);  // (..., nwave)
-  }
 
-  // Stack all xs_diss: (..., nwave, nreaction)
-  auto xs_diss_stacked = torch::stack(xs_diss_list, -1);
-
-  // Vectorized integration for all reactions
-  // Handle different aflux dimensions
-  if (actinic_flux.dim() == 1) {
-    // aflux: (nwave,), xs_diss_stacked: (..., nwave, nreaction)
-    auto integrand = xs_diss_stacked *
-                     actinic_flux.unsqueeze(-1);  // (..., nwave, nreaction)
-    auto rates = torch::trapezoid(integrand, wave, -2);  // (..., nreaction)
-    return rates.view(out_shape);
-  } else if (actinic_flux.dim() == 2) {
-    // aflux: (nwave, nspatial) or similar, xs_diss_stacked: (..., nwave,
-    // nreaction) Need to broadcast properly
-    auto aflux_exp = actinic_flux.unsqueeze(-1);  // (nwave, nspatial, 1)
-    auto integrand = xs_diss_stacked.unsqueeze(-2) *
-                     aflux_exp;  // (..., nwave, nspatial, nreaction)
-    auto rates =
-        torch::trapezoid(integrand, wave, -3);  // (..., nspatial, nreaction)
-    return rates.view(out_shape);
-  } else {
-    // Higher dimensional aflux: need to handle broadcasting
-    // Expand xs_diss_stacked to match aflux dimensions
-    auto xs_exp = xs_diss_stacked;
-    for (int d = 1; d < actinic_flux.dim(); d++) {
-      xs_exp = xs_exp.unsqueeze(-2);
+    if (!xs_diss_stacked.defined()) {
+      auto xs_shape = xs_diss.sizes().vec();
+      xs_shape.push_back(_nreaction);
+      xs_diss_stacked = torch::empty(xs_shape, xs_diss.options());
     }
-    // Broadcast: xs_exp (..., nwave, 1, ..., 1, nreaction), aflux (..., nwave,
-    // ...)
-    auto integrand = xs_exp * actinic_flux.unsqueeze(-1);
-    // Find wavelength dimension (should be -aflux.dim() or similar)
-    int wave_dim =
-        xs_diss_stacked.dim() - 1;  // Last dimension before nreaction
-    auto rates = torch::trapezoid(integrand, wave, wave_dim);
-    return rates.view(out_shape);
+    xs_diss_stacked.select(-1, r).copy_(xs_diss);  // (..., nwave, nreaction)
   }
+}
+
+torch::Tensor PhotolysisImpl::forward(torch::Tensor T,
+                                      torch::Tensor actinic_flux) {
+  if (_nreaction == 0) {
+    return torch::empty({0}, T.options());
+  }
+
+  TORCH_CHECK(xs_diss_stacked.defined() && xs_diss_stacked.numel() > 0,
+              "Photolysis cache is empty; call update_xs_diss_stacked(T) "
+              "before forward()");
+
+  auto const& wave = wavelength;
+  TORCH_CHECK(actinic_flux.size(0) == wave.size(0),
+              "Actinic flux wavelength dimension must match photolysis "
+              "wavelength grid");
+  TORCH_CHECK(xs_diss_stacked.size(-2) == wave.size(0),
+              "Cached photolysis cross-sections do not match the wavelength "
+              "grid; call update_xs_diss_stacked(T) with the current module "
+              "state");
+  TORCH_CHECK(xs_diss_stacked.size(-1) == _nreaction,
+              "Cached photolysis cross-sections do not match the reaction "
+              "count; call update_xs_diss_stacked(T) with the current module "
+              "state");
+
+  auto out_shape = T.sizes().vec();
+  out_shape.push_back(_nreaction);
+
+  auto actinic_flux_batch_last =
+      actinic_flux.dim() == 1 ? actinic_flux : actinic_flux.movedim(0, -1);
+  auto integrand = xs_diss_stacked * actinic_flux_batch_last.unsqueeze(-1);
+  auto rates = torch::trapezoid(integrand, wave, -2);
+  return rates.view(out_shape);
 }
 
 }  // namespace kintera
