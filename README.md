@@ -39,16 +39,16 @@ The library is written in C++17 with Python bindings, leveraging PyTorch for ten
 
 ### System Requirements
 
-- **C++ Compiler**: Support for C++17 (GCC 7+, Clang 5+, or MSVC 2017+)
+- **C++ Compiler**: Support for C++17 (GCC 9+, Clang 5+, or MSVC 2017+)
 - **CMake**: Version 3.18 or higher
-- **Python**: Version 3.9 or higher
+- **Python**: Version 3.10 or higher
 - **NetCDF**: NetCDF C library
 
 ### Python Dependencies
 
 - `numpy`
-- `torch` (version 2.7.0-2.7.1)
-- `pyharp` (version 1.7.2+)
+- `torch` (version 2.10.0)
+- `pyharp` (version 2.2.0+
 - `pytest` (for testing)
 
 ### Platform-Specific Setup
@@ -73,7 +73,7 @@ brew install cmake netcdf
 
 ```bash
 # 1. Install Python dependencies
-pip install numpy 'torch==2.7.1' 'pyharp>=1.7.1'
+pip install numpy 'torch==2.10.0' 'pyharp>=2.2.0'
 
 # 2. Clone the repository
 git clone https://github.com/chengcli/kintera.git
