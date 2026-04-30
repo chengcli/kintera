@@ -15,9 +15,9 @@
 #include <torch/torch.h>
 
 // kintera
+#include <kintera/kinetics/kinetics.hpp>
 #include <kintera/units/units.hpp>
 
-#include "kinetics.hpp"
 #include "kinetics_base_reader.hpp"
 
 namespace kintera {

@@ -8,8 +8,8 @@
 #include <configure.h>
 
 #include <kintera/kinetics/kinetics.hpp>
-#include <kintera/kinetics/kinetics_base_reader.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
+#include <kintera/photolysis/kinetics_base_reader.hpp>
 
 // tests
 #include "device_testing.hpp"

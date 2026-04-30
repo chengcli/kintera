@@ -28,7 +28,7 @@ string(TOUPPER ${CMAKE_BUILD_TYPE} buildu)
 set(namel kintera)
 string(TOUPPER ${namel} nameu)
 
-file(GLOB src_files
+file(GLOB src_files CONFIGURE_DEPENDS
   *.cpp
   utils/*.cpp
   kinetics/*.cpp
@@ -64,7 +64,7 @@ add_library(kintera::kintera ALIAS ${namel}_${buildl})
 
 # CUDA source codes
 if (CUDAToolkit_FOUND)
-  file(GLOB cu_src_files
+  file(GLOB cu_src_files CONFIGURE_DEPENDS
     *.cu
     utils/*.cu
     thermo/*.cu
