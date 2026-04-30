@@ -422,20 +422,12 @@ torch::Tensor PhotolysisImpl::get_effective_stoich(int rxn_idx,
   return (branch_frac.unsqueeze(-1) * branch_stoich[rxn_idx]).sum(0);
 }
 
-torch::Tensor PhotolysisImpl::forward(
-    torch::Tensor T, torch::Tensor P, torch::Tensor C,
-    std::map<std::string, torch::Tensor> const& other) {
+torch::Tensor PhotolysisImpl::forward(torch::Tensor T, torch::Tensor wave,
+                                      torch::Tensor actinic_flux) {
   if (_nreaction == 0) {
     return torch::empty({0}, T.options());
   }
 
-  TORCH_CHECK(other.count("wavelength"),
-              "Photolysis requires 'wavelength' in other");
-  TORCH_CHECK(other.count("actinic_flux"),
-              "Photolysis requires 'actinic_flux' in other");
-
-  auto wave = other.at("wavelength");
-  auto aflux = other.at("actinic_flux");
   auto out_shape = T.sizes().vec();
   out_shape.push_back(_nreaction);
 
@@ -465,16 +457,16 @@ torch::Tensor PhotolysisImpl::forward(
 
   // Vectorized integration for all reactions
   // Handle different aflux dimensions
-  if (aflux.dim() == 1) {
+  if (actinic_flux.dim() == 1) {
     // aflux: (nwave,), xs_diss_stacked: (..., nwave, nreaction)
-    auto integrand =
-        xs_diss_stacked * aflux.unsqueeze(-1);  // (..., nwave, nreaction)
+    auto integrand = xs_diss_stacked *
+                     actinic_flux.unsqueeze(-1);  // (..., nwave, nreaction)
     auto rates = torch::trapezoid(integrand, wave, -2);  // (..., nreaction)
     return rates.view(out_shape);
-  } else if (aflux.dim() == 2) {
+  } else if (actinic_flux.dim() == 2) {
     // aflux: (nwave, nspatial) or similar, xs_diss_stacked: (..., nwave,
     // nreaction) Need to broadcast properly
-    auto aflux_exp = aflux.unsqueeze(-1);  // (nwave, nspatial, 1)
+    auto aflux_exp = actinic_flux.unsqueeze(-1);  // (nwave, nspatial, 1)
     auto integrand = xs_diss_stacked.unsqueeze(-2) *
                      aflux_exp;  // (..., nwave, nspatial, nreaction)
     auto rates =
@@ -484,12 +476,12 @@ torch::Tensor PhotolysisImpl::forward(
     // Higher dimensional aflux: need to handle broadcasting
     // Expand xs_diss_stacked to match aflux dimensions
     auto xs_exp = xs_diss_stacked;
-    for (int d = 1; d < aflux.dim(); d++) {
+    for (int d = 1; d < actinic_flux.dim(); d++) {
       xs_exp = xs_exp.unsqueeze(-2);
     }
     // Broadcast: xs_exp (..., nwave, 1, ..., 1, nreaction), aflux (..., nwave,
     // ...)
-    auto integrand = xs_exp * aflux.unsqueeze(-1);
+    auto integrand = xs_exp * actinic_flux.unsqueeze(-1);
     // Find wavelength dimension (should be -aflux.dim() or similar)
     int wave_dim =
         xs_diss_stacked.dim() - 1;  // Last dimension before nreaction

@@ -1,8 +1,8 @@
 #pragma once
 
 // C/C++
-#include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
 // torch
@@ -70,9 +70,9 @@ struct ActinicFluxData {
     return interpn({new_wavelength}, {wavelength}, flux);
   }
 
-  //! Get flux as a map for passing to forward()
-  std::map<std::string, torch::Tensor> to_map() const {
-    return {{"wavelength", wavelength}, {"actinic_flux", flux}};
+  //! Get `(wavelength, flux)` tensors for passing to photolysis forward()
+  std::pair<torch::Tensor, torch::Tensor> to_map() const {
+    return {wavelength, flux};
   }
 };
 

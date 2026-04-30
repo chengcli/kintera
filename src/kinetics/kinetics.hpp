@@ -106,6 +106,9 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   //! rate constant evaluator
   std::vector<torch::nn::AnyModule> rc_evaluator;
 
+  //! photolysis evaluator
+  Photolysis photolysis_evaluator;
+
   //! options with which this `KineticsImpl` was constructed
   KineticsOptions options;
 
@@ -183,6 +186,7 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
  private:
   // used in evaluating jacobian
   std::vector<int> _nreactions;
+  int n_photolysis_reactions_ = 0;
 
   void _jacobian_mass_action(torch::Tensor temp, torch::Tensor conc,
                              torch::Tensor cvol, torch::Tensor rate,

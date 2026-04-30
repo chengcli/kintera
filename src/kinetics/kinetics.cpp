@@ -211,14 +211,12 @@ void KineticsImpl::reset() {
   }
 
   // register Photolysis rates
-  rc_evaluator.push_back(
-      torch::nn::AnyModule(Photolysis(options->photolysis())));
-  register_module("photolysis", rc_evaluator.back().ptr());
-  _nreactions.push_back(options->photolysis()->reactions().size());
+  photolysis_evaluator = Photolysis(options->photolysis());
+  register_module("photolysis", photolysis_evaluator);
+  n_photolysis_reactions_ = options->photolysis()->reactions().size();
 
   if (options->verbose()) {
-    std::cout << "[Kinetics] registered "
-              << options->photolysis()->reactions().size()
+    std::cout << "[Kinetics] registered " << n_photolysis_reactions_
               << " Photolysis reactions" << std::endl;
   }
 
@@ -377,6 +375,58 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
     result.narrow(-1, first, _nreactions[i]) = rate;
     first += _nreactions[i];
+  }
+
+  if (n_photolysis_reactions_ > 0) {
+    TORCH_CHECK(other.count("wavelength"),
+                "Kinetics photolysis requires 'wavelength' in extra");
+    TORCH_CHECK(other.count("actinic_flux"),
+                "Kinetics photolysis requires 'actinic_flux' in extra");
+
+    auto wave = other.at("wavelength");
+    auto actinic_flux = other.at("actinic_flux");
+    torch::Tensor rate;
+
+    vec2.back() = n_photolysis_reactions_;
+    auto conc1 = conc.unsqueeze(-1).expand(vec2).clone();
+    conc1.requires_grad_(true);
+
+    if (options->evolve_temperature()) {
+      vec1.back() = n_photolysis_reactions_;
+      auto temp1 = temp.unsqueeze(-1).expand(vec1);
+      temp1.requires_grad_(true);
+
+      rate = photolysis_evaluator->forward(temp1, wave, actinic_flux);
+      rate.backward(torch::ones_like(rate));
+
+      if (conc1.grad().defined()) {
+        rc_ddC.narrow(-1, first, n_photolysis_reactions_) = conc1.grad();
+      } else {
+        rc_ddC.narrow(-1, first, n_photolysis_reactions_).fill_(0.);
+      }
+
+      if (temp1.grad().defined()) {
+        rc_ddT.value().narrow(-1, first, n_photolysis_reactions_) =
+            temp1.grad();
+      } else {
+        rc_ddT.value().narrow(-1, first, n_photolysis_reactions_).fill_(0.);
+      }
+    } else {
+      rate = photolysis_evaluator->forward(temp, wave, actinic_flux);
+
+      if (rate.requires_grad()) {
+        rate.backward(torch::ones_like(rate));
+      }
+
+      if (conc1.grad().defined()) {
+        rc_ddC.narrow(-1, first, n_photolysis_reactions_) = conc1.grad();
+      } else {
+        rc_ddC.narrow(-1, first, n_photolysis_reactions_).fill_(0.);
+      }
+    }
+
+    result.narrow(-1, first, n_photolysis_reactions_) = rate;
+    first += n_photolysis_reactions_;
   }
 
   last_kf_ = result.detach().clone();

@@ -199,11 +199,7 @@ TEST_P(ChapmanCycleTest, PhotolysisRatesInRange) {
   conc[0][IDX_O] = 1.e-10 * n_tot;
   conc[0][IDX_O3] = 1.e-8 * n_tot;
 
-  std::map<std::string, torch::Tensor> other;
-  other["wavelength"] = wave;
-  other["actinic_flux"] = flux;
-
-  auto rc = photolysis->forward(temp, pres, conc, other);
+  auto rc = photolysis->forward(temp, wave, flux);
   auto du = apply_mass_action(rc, conc, stoich);
 
   EXPECT_LT(du[0][IDX_O2].item<double>(), 0.0);
@@ -268,17 +264,13 @@ TEST_P(ChapmanCycleTest, MassConservation) {
                      conc[0][IDX_O].item<double>() +
                      3.0 * conc[0][IDX_O3].item<double>();
 
-  std::map<std::string, torch::Tensor> photo_other;
-  photo_other["wavelength"] = wave;
-  photo_other["actinic_flux"] = flux;
-
   // Small dt required for stability: O atom equilibrium timescale ~ J/k ~ 1e-3
   // s
   double dt = 1.e-5;
   int nsteps = 100000;
 
   for (int step = 0; step < nsteps; step++) {
-    auto rc_photo = photolysis->forward(temp, pres, conc, photo_other);
+    auto rc_photo = photolysis->forward(temp, wave, flux);
     auto du_photo = apply_mass_action(rc_photo, conc, stoich_photo);
 
     auto rc_arr = arrhenius->forward(temp, pres, conc, {});
@@ -325,16 +317,12 @@ TEST_P(ChapmanCycleTest, SteadyStateOzone) {
   conc[0][IDX_O] = 1.e-10 * n_tot;
   conc[0][IDX_O3] = 1.e-8 * n_tot;
 
-  std::map<std::string, torch::Tensor> photo_other;
-  photo_other["wavelength"] = wave;
-  photo_other["actinic_flux"] = flux;
-
   double dt = 1.e-4;
   int nsteps = 100000;
   double prev_O3 = 0.0;
 
   for (int step = 0; step < nsteps; step++) {
-    auto rc_photo = photolysis->forward(temp, pres, conc, photo_other);
+    auto rc_photo = photolysis->forward(temp, wave, flux);
     auto du_photo = apply_mass_action(rc_photo, conc, stoich_photo);
 
     auto rc_arr = arrhenius->forward(temp, pres, conc, {});
@@ -500,12 +488,8 @@ TEST_P(ChapmanCycleTest, FullChapmanWithThreeBody) {
   conc[0][IDX_O] = 1.e-10 * n_tot;
   conc[0][IDX_O3] = 1.e-8 * n_tot;
 
-  std::map<std::string, torch::Tensor> photo_other;
-  photo_other["wavelength"] = wave;
-  photo_other["actinic_flux"] = flux;
-
-  auto du_photo = apply_mass_action(
-      photolysis->forward(temp, pres, conc, photo_other), conc, stoich_photo);
+  auto du_photo = apply_mass_action(photolysis->forward(temp, wave, flux), conc,
+                                    stoich_photo);
   auto du_tb = apply_mass_action(three_body->forward(temp, pres, conc, {}),
                                  conc, stoich_tb);
   auto du_arr = apply_mass_action(arrhenius->forward(temp, pres, conc, {}),

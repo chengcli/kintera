@@ -211,10 +211,7 @@ TEST_P(PhotolysisModuleTest, ForwardWithSimpleFlux) {
       torch::tensor({100., 150., 200.}, torch::device(device).dtype(dtype));
   auto aflux = torch::ones({3}, torch::device(device).dtype(dtype));
 
-  std::map<std::string, torch::Tensor> other = {{"wavelength", wave},
-                                                {"actinic_flux", aflux}};
-
-  auto rate = module->forward(temp, pres, conc, other);
+  auto rate = module->forward(temp, wave, aflux);
 
   EXPECT_EQ(rate.dim(), 2);
   EXPECT_EQ(rate.size(-1), 1);  // one reaction

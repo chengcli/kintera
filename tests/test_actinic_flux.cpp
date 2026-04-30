@@ -86,12 +86,10 @@ TEST_P(ActinicFluxTest, ToMap) {
       torch::tensor({1.e14, 2.e14, 1.e14}, torch::device(device).dtype(dtype));
 
   ActinicFluxData flux(wavelength, flux_vals);
-  auto map = flux.to_map();
+  auto [wavelength_out, flux_out] = flux.to_map();
 
-  EXPECT_EQ(map.count("wavelength"), 1);
-  EXPECT_EQ(map.count("actinic_flux"), 1);
-  EXPECT_EQ(map.at("wavelength").size(0), 3);
-  EXPECT_EQ(map.at("actinic_flux").size(0), 3);
+  EXPECT_EQ(wavelength_out.size(0), 3);
+  EXPECT_EQ(flux_out.size(0), 3);
 }
 
 TEST_P(ActinicFluxTest, FluxOptions) {

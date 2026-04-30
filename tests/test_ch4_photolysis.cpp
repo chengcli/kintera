@@ -58,9 +58,9 @@ TEST_P(CH4PhotolysisTest, SingleBranchPhotolysis) {
 
   // Uniform actinic flux
   auto flux_data = create_uniform_flux(100., 200., 6, 1.e14, device, dtype);
-  auto other = flux_data.to_map();
+  auto [wave, aflux] = flux_data.to_map();
 
-  auto rate = module->forward(temp, pres, conc, other);
+  auto rate = module->forward(temp, wave, aflux);
 
   EXPECT_EQ(rate.dim(), 2);
   EXPECT_EQ(rate.size(-1), 1);
@@ -115,9 +115,9 @@ TEST_P(CH4PhotolysisTest, MultiBranchPhotolysis) {
   conc[0][0] = 1.e3;  // CH4 concentration
 
   auto flux_data = create_solar_flux(100., 160., 4, 1.e14, device, dtype);
-  auto other = flux_data.to_map();
+  auto [wave, aflux] = flux_data.to_map();
 
-  auto rate = module->forward(temp, pres, conc, other);
+  auto rate = module->forward(temp, wave, aflux);
 
   EXPECT_GT(rate[0][0].item<double>(), 0.);
 }
@@ -246,11 +246,13 @@ TEST_P(CH4PhotolysisTest, VaryingActinicFlux) {
 
   // Test 1: Uniform flux
   auto flux1 = create_uniform_flux(100., 300., 5, 1.e14, device, dtype);
-  auto rate1 = module->forward(temp, pres, conc, flux1.to_map());
+  auto [wave1, aflux1] = flux1.to_map();
+  auto rate1 = module->forward(temp, wave1, aflux1);
 
   // Test 2: Solar-like flux (peaks at visible, low in UV)
   auto flux2 = create_solar_flux(100., 300., 5, 1.e14, device, dtype);
-  auto rate2 = module->forward(temp, pres, conc, flux2.to_map());
+  auto [wave2, aflux2] = flux2.to_map();
+  auto rate2 = module->forward(temp, wave2, aflux2);
 
   // Both should give positive rates
   EXPECT_GT(rate1[0][0].item<double>(), 0.);

@@ -48,8 +48,27 @@ void bind_photolysis(py::module& m) {
                   kintera::PhotolysisOptionsImpl, branch_names);
 
   ////////////// Photolysis Module //////////////
-  ADD_KINTERA_MODULE(Photolysis, PhotolysisOptions, py::arg("temp"),
-                     py::arg("pres"), py::arg("conc"), py::arg("other"))
+  torch::python::bind_module<kintera::PhotolysisImpl>(m, "Photolysis")
+      .def(py::init<>(), R"(Construct a new default module.)")
+      .def(py::init<kintera::PhotolysisOptions>(),
+           "Construct a Photolysis module", py::arg("options"))
+      .def_readonly("options", &kintera::PhotolysisImpl::options)
+      .def("__repr__",
+           [](const kintera::PhotolysisImpl& a) {
+             std::stringstream ss;
+             a.options->report(ss);
+             return fmt::format("Photolysis(\n{})", ss.str());
+           })
+      .def("module",
+           [](kintera::PhotolysisImpl& self, std::string name) {
+             return self.named_modules()[name];
+           })
+      .def("buffer",
+           [](kintera::PhotolysisImpl& self, std::string name) {
+             return self.named_buffers()[name];
+           })
+      .def("forward", &kintera::PhotolysisImpl::forward, py::arg("temp"),
+           py::arg("wavelength"), py::arg("actinic_flux"))
       .def("interp_cross_section",
            &kintera::PhotolysisImpl::interp_cross_section, py::arg("rxn_idx"),
            py::arg("wave"), py::arg("temp"))

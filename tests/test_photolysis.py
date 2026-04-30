@@ -107,11 +107,10 @@ def test_actinic_flux_to_map():
     flux_vals = torch.tensor([1e14, 2e14, 1e14])
     flux = ActinicFluxData(wavelength, flux_vals)
 
-    flux_map = flux.to_map()
+    wavelength_out, flux_out = flux.to_map()
 
-    assert "wavelength" in flux_map
-    assert "actinic_flux" in flux_map
-    assert flux_map["wavelength"].shape[0] == 3
+    assert wavelength_out.shape[0] == 3
+    assert flux_out.shape[0] == 3
 
 
 def test_actinic_flux_interpolation():
@@ -170,15 +169,10 @@ def test_photolysis_forward():
 
     # Create inputs
     temp = torch.tensor([250.0])
-    pres = torch.tensor([1e5])
-    conc = torch.zeros(1, 2)
-
     wave = torch.tensor([100.0, 150.0, 200.0])
     aflux = torch.ones(3)
 
-    other = {"wavelength": wave, "actinic_flux": aflux}
-
-    rate = module.forward(temp, pres, conc, other)
+    rate = module.forward(temp, wave, aflux)
 
     assert rate.dim() == 2
     assert rate.size(-1) == 1  # One reaction

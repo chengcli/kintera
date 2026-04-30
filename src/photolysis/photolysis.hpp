@@ -1,7 +1,6 @@
 #pragma once
 
 // C/C++
-#include <map>
 #include <memory>
 #include <set>
 #include <vector>
@@ -116,18 +115,13 @@ class PhotolysisImpl : public torch::nn::Cloneable<PhotolysisImpl> {
   //! Compute photolysis rate constants
   /*!
    * \param T temperature [K], shape (...)
-   * \param P pressure [Pa], shape (...)
-   * \param C concentration [mol/m^3], shape (..., nspecies) - unused but
-   *          kept for interface compatibility
-   * \param other map containing:
-   *        - "wavelength": wavelength grid [nm], shape (nwave,)
-   *        - "actinic_flux": actinic flux [photons cm^-2 s^-1 nm^-1],
-   *                          shape (nwave, ...) or (..., nwave)
-   *        - "stoich": stoichiometry matrix for updating branch weights
+   * \param wave wavelength grid [nm], shape (nwave,)
+   * \param actinic_flux actinic flux [photons cm^-2 s^-1 nm^-1],
+   *        shape (nwave, ...) or (..., nwave)
    * \return photolysis rate constants [s^-1], shape (..., nreaction)
    */
-  torch::Tensor forward(torch::Tensor T, torch::Tensor P, torch::Tensor C,
-                        std::map<std::string, torch::Tensor> const& other);
+  torch::Tensor forward(torch::Tensor T, torch::Tensor wave,
+                        torch::Tensor actinic_flux);
 
   //! Get effective stoichiometry coefficients for a reaction
   /*!
