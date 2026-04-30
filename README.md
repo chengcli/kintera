@@ -1,4 +1,4 @@
-**Kintera: Atmospheric Chemistry and Thermodynamics Library**
+# Kintera: Atmospheric Chemistry and Thermodynamics Library
 
 KINTERA is a library for atmospheric chemistry and equation of state calculations, combining C++ performance with Python accessibility through pybind11 bindings.
 
@@ -94,11 +94,12 @@ KINTERA includes a complete photochemistry module for modeling photolysis reacti
 ### Architecture
 
 ```
-src/kinetics/
-├── photolysis.hpp        # PhotolysisOptions and PhotolysisImpl definitions
-├── photolysis.cpp        # Implementation with YAML parsing and rate computation
-├── actinic_flux.hpp      # ActinicFluxData structure and helper functions
-└── jacobian_photolysis.cpp  # Jacobian for implicit time integration
+src/photolysis/
+├── photolysis.hpp           # PhotolysisOptions and PhotolysisImpl definitions
+├── photolysis.cpp           # Implementation with YAML parsing and rate computation
+├── actinic_flux.hpp         # ActinicFluxData structure and helper functions
+├── jacobian_photolysis.hpp  # Photolysis Jacobian declarations
+└── jacobian_photolysis.cpp  # Species-space Jacobian helper implementation
 ```
 
 ### Key Components
@@ -108,7 +109,14 @@ src/kinetics/
 | `PhotolysisOptions` | Configuration: wavelength grid, cross-sections, branches |
 | `Photolysis` | PyTorch module computing rates via wavelength integration |
 | `ActinicFluxData` | Wavelength/flux tensor storage with interpolation |
-| `jacobian_photolysis()` | Jacobian computation for implicit solvers |
+| `jacobian_photolysis_species()` | Species-space Jacobian helper for implicit solvers |
+
+### Thermochemistry Data
+
+NASA-9 polynomial data is stored with `SpeciesThermoImpl` as structured
+per-species coefficient tables and converted to tensors on demand when
+reversible kinetics needs equilibrium constants. `KineticsImpl` no longer owns
+separate cached NASA-9 buffers.
 
 ### Rate Calculation
 
@@ -146,8 +154,8 @@ reactions:
 ### C++ Usage
 
 ```cpp
-#include <kintera/kinetics/photolysis.hpp>
-#include <kintera/kinetics/actinic_flux.hpp>
+#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photolysis/actinic_flux.hpp>
 
 // Create options
 auto opts = PhotolysisOptionsImpl::create();
@@ -209,8 +217,7 @@ KINTERA includes comprehensive C++ and Python tests.
 ### Running All Tests
 
 ```bash
-cd build/tests
-ctest
+ctest --test-dir build/tests --output-on-failure
 ```
 
 ### Photochemistry Tests
@@ -218,13 +225,18 @@ ctest
 Run photochemistry-specific tests:
 
 ```bash
-# C++ tests
-cd build/tests
-ctest -R photolysis
+# Focused C++ tests
+./build/tests/test_photolysis_options.release
+./build/tests/test_ch4_photolysis.release
 
 # Python tests
 pytest tests/test_photolysis.py -v
 ```
+
+### Device Coverage
+
+Parameterized C++ tests are generated for CPU and CUDA builds. MPS test
+instantiations have been removed from the default test matrix.
 
 ### Test Coverage
 
@@ -263,9 +275,11 @@ rm -rf .cache build
 ```
 kintera/
 ├── src/
-│   ├── kinetics/       # Kinetics modules (Arrhenius, photolysis, etc.)
+│   ├── kinetics/       # Kinetics modules (Arrhenius, falloff, three-body, etc.)
+│   ├── photolysis/     # Photolysis, actinic flux, and Jacobian helpers
+│   ├── diffusion/      # Diffusion operators
+│   ├── units/          # Unit conversion helpers
 │   ├── thermo/         # Thermodynamics
-│   ├── xsection/       # Cross-section loading
 │   └── math/           # Interpolation utilities
 ├── python/
 │   ├── csrc/           # pybind11 bindings
