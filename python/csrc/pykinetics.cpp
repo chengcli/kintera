@@ -269,18 +269,6 @@ void bind_kinetics(py::module& m) {
            [](kintera::KineticsImpl& self, std::string name) {
              return self.named_buffers()[name];
            })
-      .def("forward",
-           py::overload_cast<torch::Tensor, torch::Tensor, torch::Tensor>(
-               &kintera::KineticsImpl::forward),
-           py::arg("temp"), py::arg("pres"), py::arg("conc"))
-      .def(
-          "forward_nogil",
-          [](kintera::KineticsImpl& self, torch::Tensor temp,
-             torch::Tensor pres, torch::Tensor conc) {
-            py::gil_scoped_release no_gil;
-            return self.forward(temp, pres, conc);
-          },
-          py::arg("temp"), py::arg("pres"), py::arg("conc"))
       .def(
           "forward",
           [](kintera::KineticsImpl& self, torch::Tensor temp,
@@ -289,7 +277,18 @@ void bind_kinetics(py::module& m) {
             py::gil_scoped_release no_gil;
             return self.forward(temp, pres, conc, extra);
           },
-          py::arg("temp"), py::arg("pres"), py::arg("conc"), py::arg("extra"))
+          py::arg("temp"), py::arg("pres"), py::arg("conc"),
+          py::arg("extra") = std::map<std::string, torch::Tensor>{})
+      .def(
+          "forward_nogil",
+          [](kintera::KineticsImpl& self, torch::Tensor temp,
+             torch::Tensor pres, torch::Tensor conc,
+             std::map<std::string, torch::Tensor> const& extra) {
+            py::gil_scoped_release no_gil;
+            return self.forward(temp, pres, conc, extra);
+          },
+          py::arg("temp"), py::arg("pres"), py::arg("conc"),
+          py::arg("extra") = std::map<std::string, torch::Tensor>{})
       .def("jacobian", &kintera::KineticsImpl::jacobian, py::arg("temp"),
            py::arg("conc"), py::arg("cvol"), py::arg("rate"), py::arg("rc_ddC"),
            py::arg("rc_ddT") = torch::nullopt);
