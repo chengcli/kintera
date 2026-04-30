@@ -212,7 +212,7 @@ kinet.buffer("photolysis.wavelength")  # named buffer
 | `temp` | `(...)` | K | Temperature |
 | `pres` | `(...)` | Pa | Pressure |
 | `conc` | `(..., nspecies)` | mol/m³ | Species concentrations |
-| `extra` | dict | — | Optional; e.g. `{"wavelength": ..., "actinic_flux": ...}` for photolysis |
+| `extra` | dict | — | Optional; use `{"actinic_flux": flux}` for photolysis, where `flux` is sampled on `photolysis.wavelength` |
 
 **Returns from `forward`:**
 
@@ -226,7 +226,7 @@ kinet.buffer("photolysis.wavelength")  # named buffer
 
 ## Rate Modules
 
-All rate modules share a common `forward` signature:
+Thermal rate modules share a common `forward` signature:
 
 ```cpp
 // C++
@@ -237,6 +237,13 @@ Tensor forward(Tensor T, Tensor P, Tensor C,
 ```python
 # Python
 result = module.forward(temp, pres, conc, other)   # other: Dict[str, Tensor]
+```
+
+`Photolysis` is separate and uses:
+
+```python
+photolysis.update_xs_diss_stacked(temp)
+rate = photolysis.forward(temp, actinic_flux)
 ```
 
 ### Arrhenius
@@ -317,6 +324,12 @@ Photolysis rate constants from cross-section data and actinic flux.
 Extra methods:
 
 ```python
+# Refresh the cached dissociative cross-sections for the current temperature
+photolysis.update_xs_diss_stacked(temp)
+
+# Evaluate rates on the module wavelength grid
+rate = photolysis.forward(temp, actinic_flux)
+
 # Interpolate cross-section onto a wavelength/temperature grid
 sigma = photolysis.interp_cross_section(rxn_idx, wave, temp)
 
@@ -344,20 +357,6 @@ Inherits from `ArrheniusOptions` with no additional parameters.
 
 ## Actinic Flux
 
-### `ActinicFluxData`
-
-Holds wavelength + flux arrays with interpolation support.
-
-```python
-aflux = kt.ActinicFluxData(wavelength_tensor, flux_tensor)
-aflux.wavelength        # Tensor — [nm]
-aflux.flux              # Tensor — [photons cm⁻² s⁻¹ nm⁻¹]
-aflux.is_valid()        # bool
-aflux.nwave()           # int
-aflux.interpolate_to(new_wavelength)  # -> ActinicFluxData
-aflux.to_map()          # -> Dict[str, Tensor]  (for passing as `extra`)
-```
-
 ### `ActinicFluxOptions`
 
 | Option | Type | Description |
@@ -370,16 +369,18 @@ aflux.to_map()          # -> Dict[str, Tensor]  (for passing as `extra`)
 ### Factory Functions
 
 ```python
-# From options
-aflux = kt.create_actinic_flux(options, device=torch.device("cpu"), dtype=torch.float64)
+# From options onto a target wavelength grid
+aflux = kt.create_actinic_flux(options, wavelength)
 
-# Uniform flux across a wavelength range
-aflux = kt.create_uniform_flux(wave_min, wave_max, nwave, flux_value,
-                                device="cpu", dtype=torch.float64)
+# Uniform flux on an existing wavelength grid
+aflux = kt.create_uniform_flux(wavelength, flux_value)
 
-# Simplified solar spectrum
-aflux = kt.create_solar_flux(wave_min, wave_max, nwave, peak_flux=1e14,
-                              device="cpu", dtype=torch.float64)
+# Simplified solar spectrum on an existing wavelength grid
+aflux = kt.create_solar_flux(wavelength, peak_flux=1e14)
+
+# Interpolate a flux field to a new wavelength grid
+aflux_new = kt.interpolate_actinic_flux(src_wavelength, src_flux,
+                                        new_wavelength)
 ```
 
 ---
@@ -477,8 +478,10 @@ conc = torch.tensor([[1e18, 1e16]])  # [mol/m³], shape (1, nspecies)
 cvol = torch.tensor([1.0])           # volume per layer
 
 # 3. (Optional) Actinic flux for photolysis
-aflux = kt.create_solar_flux(100.0, 800.0, 200)
-extra = aflux.to_map()
+phot = kinet.module("photolysis")
+aflux = kt.create_solar_flux(phot.wavelength)
+phot.update_xs_diss_stacked(T)
+extra = {"actinic_flux": aflux}
 
 # 4. Forward pass
 rate, rc_ddC, rc_ddT = kinet.forward(T, P, conc, extra)

@@ -118,7 +118,7 @@ class PhotolysisImpl : public torch::nn::Cloneable<PhotolysisImpl> {
 
   //! Refresh the cached dissociative cross-sections for a temperature tensor.
   /*!
-   * \param T temperature [K], shape `batch`
+   * \param T temperature [K], shape `(*nspatial)`
    */
   void update_xs_diss_stacked(torch::Tensor T);
 

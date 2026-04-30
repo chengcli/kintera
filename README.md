@@ -97,7 +97,9 @@ KINTERA includes a complete photochemistry module for modeling photolysis reacti
 src/photolysis/
 ├── photolysis.hpp           # PhotolysisOptions and PhotolysisImpl definitions
 ├── photolysis.cpp           # Implementation with YAML parsing and rate computation
-├── actinic_flux.hpp         # ActinicFluxData structure and helper functions
+├── actinic_flux.hpp         # Actinic flux helper functions
+├── load_xsection_kin7.cpp   # KINETICS7 cross-section loader
+├── load_xsection_yaml.cpp   # YAML cross-section loader
 ├── jacobian_photolysis.hpp  # Photolysis Jacobian declarations
 └── jacobian_photolysis.cpp  # Species-space Jacobian helper implementation
 ```
@@ -108,7 +110,7 @@ src/photolysis/
 |-----------|-------------|
 | `PhotolysisOptions` | Configuration: wavelength grid, cross-sections, branches |
 | `Photolysis` | PyTorch module computing rates via wavelength integration |
-| `ActinicFluxData` | Wavelength/flux tensor storage with interpolation |
+| `actinic_flux.hpp` helpers | Flux construction and wavelength interpolation helpers |
 | `jacobian_photolysis_species()` | Species-space Jacobian helper for implicit solvers |
 
 ### Thermochemistry Data
@@ -145,7 +147,7 @@ reactions:
       filename: "CH4.dat2"
     # Or inline YAML format:
     - format: YAML
-      temperature-range: [0., 300.]
+      temperature: 300.
       data:
         - [100., 1.e-18, 0.5e-18]
         - [150., 2.e-18, 1.0e-18]
@@ -167,11 +169,14 @@ opts->cross_section() = {1.e-18, 2.e-18, 1.e-18};
 Photolysis module(opts);
 module->to(torch::kCUDA, torch::kFloat64);
 
-// Create actinic flux
-auto flux = create_solar_flux(100., 200., 11, 1.e14);
+auto temp = torch::tensor({300.0}, module->wavelength.options());
 
-// Compute photolysis rates
-auto rate = module->forward(temp, pres, conc, flux.to_map());
+// Create actinic flux on the module wavelength grid
+auto flux = create_solar_flux(module->wavelength, 1.e14);
+
+// Refresh the temperature-dependent cache before forward()
+module->update_xs_diss_stacked(temp);
+auto rate = module->forward(temp, flux);
 ```
 
 ### Python Usage
@@ -195,9 +200,13 @@ opts.cross_section([1e-18, 2e-18, 1e-18])
 # Create module
 module = Photolysis(opts)
 
-# Create flux and compute rates
-flux = create_solar_flux(100., 200., 11, 1e14)
-rate = module.forward(temp, pres, conc, flux.to_map())
+temp = torch.tensor([300.0], dtype=module.wavelength.dtype,
+                    device=module.wavelength.device)
+
+# Create flux on the module wavelength grid and compute rates
+flux = create_solar_flux(module.wavelength, 1e14)
+module.update_xs_diss_stacked(temp)
+rate = module.forward(temp, flux)
 ```
 
 ### Cross-Section File Formats
