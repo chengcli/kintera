@@ -370,10 +370,8 @@ torch::Tensor PhotolysisImpl::forward(
 
   auto wave = other.at("wavelength");
   auto aflux = other.at("actinic_flux");
-
   auto out_shape = T.sizes().vec();
   out_shape.push_back(_nreaction);
-  auto result = torch::zeros(out_shape, T.options());
 
   // Find max branches for padding
   int max_branches = 0;
@@ -406,7 +404,7 @@ torch::Tensor PhotolysisImpl::forward(
     auto integrand =
         xs_diss_stacked * aflux.unsqueeze(-1);  // (..., nwave, nreaction)
     auto rates = torch::trapezoid(integrand, wave, -2);  // (..., nreaction)
-    result.copy_(rates);
+    return rates.view(out_shape);
   } else if (aflux.dim() == 2) {
     // aflux: (nwave, nspatial) or similar, xs_diss_stacked: (..., nwave,
     // nreaction) Need to broadcast properly
@@ -415,8 +413,7 @@ torch::Tensor PhotolysisImpl::forward(
                      aflux_exp;  // (..., nwave, nspatial, nreaction)
     auto rates =
         torch::trapezoid(integrand, wave, -3);  // (..., nspatial, nreaction)
-    // Reshape to match result shape
-    result.copy_(rates.view(result.sizes()));
+    return rates.view(out_shape);
   } else {
     // Higher dimensional aflux: need to handle broadcasting
     // Expand xs_diss_stacked to match aflux dimensions
@@ -431,10 +428,8 @@ torch::Tensor PhotolysisImpl::forward(
     int wave_dim =
         xs_diss_stacked.dim() - 1;  // Last dimension before nreaction
     auto rates = torch::trapezoid(integrand, wave, wave_dim);
-    result.copy_(rates.view(result.sizes()));
+    return rates.view(out_shape);
   }
-
-  return result;
 }
 
 }  // namespace kintera

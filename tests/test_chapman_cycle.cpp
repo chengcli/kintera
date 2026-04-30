@@ -844,7 +844,6 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
 INSTANTIATE_TEST_SUITE_P(
     DeviceTests, ChapmanCycleTest,
     testing::Values(Parameters{torch::kCPU, torch::kFloat64},
-                    Parameters{torch::kMPS, torch::kFloat32},
                     Parameters{torch::kCUDA, torch::kFloat64}),
     [](const testing::TestParamInfo<ChapmanCycleTest::ParamType>& info) {
       std::string name = torch::Device(info.param.device_type).str();

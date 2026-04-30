@@ -120,10 +120,6 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   torch::Tensor react_stoich;
   //! net mole change per reaction, shape (nreaction_orig,)
   torch::Tensor dn;
-  //! NASA-9 coefficients, shape (nspecies, 9)
-  torch::Tensor nasa9_coeffs_low, nasa9_coeffs_high;
-  //! NASA-9 mid-temperature, shape (nspecies,)
-  torch::Tensor nasa9_Tmid;
   //! whether any reversible reactions exist
   bool has_reversible_ = false;
   //! cached raw rate constants from last forward() call (before mass-action)
@@ -142,6 +138,23 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   explicit KineticsImpl(const KineticsOptions& options_);
   void reset() override;
 
+  //! Compute the reaction-space Jacobian of mass-action rates.
+  /*!
+   * \param temp   temperature [K], shape (...)
+   * \param conc   species concentrations [mol/m^3], shape (..., nspecies)
+   * \param cvol   volumetric heat capacity [J/(m^3 K)], shape (...)
+   * \param rate   reaction rates after mass-action multiplication
+   *               [mol/(m^3 s)], shape (..., nreaction_aug)
+   * \param rc_ddC derivative of the raw rate constants with respect to
+   *               concentration, shape (..., nspecies, nreaction_aug)
+   * \param rc_ddT optional derivative of the raw rate constants with respect
+   *               to temperature [mol/(m^3 K s)], shape (..., nreaction_aug)
+   * \return       reaction-space Jacobian d(rate_i)/dC_j,
+   *               shape (..., nreaction_aug, nspecies)
+   *
+   * Here `nreaction_aug` is the number of forward reactions plus any
+   * appended reverse reactions when reversible chemistry is enabled.
+   */
   torch::Tensor jacobian(torch::Tensor temp, torch::Tensor conc,
                          torch::Tensor cvol, torch::Tensor rate,
                          torch::Tensor rc_ddC,

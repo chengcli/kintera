@@ -5,9 +5,9 @@
 
 namespace kintera {
 
-torch::Tensor jacobian_photolysis(torch::Tensor rate, torch::Tensor stoich,
-                                  torch::Tensor conc, torch::Tensor rc_ddC,
-                                  torch::optional<torch::Tensor> rc_ddT) {
+torch::Tensor jacobian_photolysis_species(
+    torch::Tensor rate, torch::Tensor stoich, torch::Tensor conc,
+    torch::Tensor rc_ddC, torch::optional<torch::Tensor> rc_ddT) {
   // For first-order photolysis: A + hν -> products
   // Rate law: d[A]/dt = -k[A], where k is the photolysis rate constant
   // Jacobian: J[i,j] = d(d[i]/dt)/d[j] = stoich[i,r] * k[r] * order[j,r] / [j]

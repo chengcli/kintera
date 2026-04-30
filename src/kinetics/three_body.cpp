@@ -203,19 +203,30 @@ torch::Tensor ThreeBodyImpl::forward(
 
   torch::Tensor M_eff;
   int nspecies_kinetics, nspecies_full = efficiency_matrix.size(1);
+  bool has_reaction_axis =
+      C.dim() >= 3 && C.size(-1) == nreaction && C.size(-2) == nspecies_full;
 
-  if (C.dim() >= 2 && C.size(-1) == nreaction) {
-    // C has shape (..., nspecies, nreaction)
-    // Extract concentration: C[..., :, 0] -> (..., nspecies)
+  if (has_reaction_axis) {
+    // KineticsImpl expands concentration to (..., nspecies, nreaction) so
+    // autograd can accumulate d(rate_i)/dC_j for each reaction independently.
+    // Detect that layout by matching both trailing dimensions:
+    // (..., nspecies_full, nreaction). This avoids confusing a normal
+    // concentration tensor (..., nspecies) with the expanded autodiff form
+    // when nspecies happens to equal nreaction.
+    // The last axis is just a repeated reaction index, so any slice along it
+    // contains the physical species concentrations.
     int last_dim = C.dim() - 1;
     auto C_actual = C.select(last_dim, 0);  // (..., nspecies)
     nspecies_kinetics = C_actual.size(-1);
 
+    // Build effective third-body concentration for each reaction:
+    // M_eff_r = sum_s C_s * efficiency[r, s]
     auto eff_matrix_kinetics = efficiency_matrix.narrow(
         1, 0, std::min(nspecies_kinetics, nspecies_full));
     auto eff_T = eff_matrix_kinetics.transpose(0, 1);
     M_eff = torch::matmul(C_actual, eff_T);
   } else {
+    // Standard path: C already has shape (..., nspecies).
     nspecies_kinetics = C.size(-1);
     auto eff_matrix_kinetics = efficiency_matrix.narrow(
         1, 0, std::min(nspecies_kinetics, nspecies_full));

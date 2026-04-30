@@ -13,6 +13,7 @@
 
 namespace at {
 class Tensor;
+class TensorOptions;
 }  // namespace at
 
 namespace YAML {
@@ -20,6 +21,9 @@ class Node;
 }  // namespace YAML
 
 namespace kintera {
+
+using Nasa9CoeffArray = std::array<double, 9>;
+using Nasa9CoeffTable = std::vector<Nasa9CoeffArray>;
 
 void init_species_from_yaml(std::string filename);
 void init_species_from_yaml(YAML::Node const& config);
@@ -39,6 +43,13 @@ struct SpeciesThermoImpl {
                          std::shared_ptr<SpeciesThermoImpl> const& other) const;
   void accumulate(at::Tensor& data, at::Tensor const& other_data,
                   std::shared_ptr<SpeciesThermoImpl> const& other) const;
+  bool has_nasa9() const;
+  at::Tensor nasa9_coeffs_low_tensor(
+      at::TensorOptions const& options = at::TensorOptions()) const;
+  at::Tensor nasa9_coeffs_high_tensor(
+      at::TensorOptions const& options = at::TensorOptions()) const;
+  at::Tensor nasa9_Tmid_tensor(
+      at::TensorOptions const& options = at::TensorOptions()) const;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);
@@ -63,6 +74,14 @@ struct SpeciesThermoImpl {
   //! concentration is stored here, with first 'ngas' entries being
   //! valid numbers. The rests are no-ops.
   ADD_ARG(std::vector<std::string>, czh_ddC);
+
+  //! NASA-9 low-temperature coefficients, one 9-coefficient record per species.
+  ADD_ARG(Nasa9CoeffTable, nasa9_low);
+  //! NASA-9 high-temperature coefficients, one 9-coefficient record per
+  //! species.
+  ADD_ARG(Nasa9CoeffTable, nasa9_high);
+  //! NASA-9 range mid-point temperature [K], one value per species.
+  ADD_ARG(std::vector<double>, nasa9_Tmid);
 };
 using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
@@ -79,13 +98,6 @@ extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 extern bool species_initialized;
-
-//! NASA-9 thermodynamic polynomial data (9 coefficients per range, 2 ranges)
-//! Each inner vector has 9 elements: a0..a6, a8, a9 (a7 is skipped)
-extern std::vector<std::array<double, 9>> species_nasa9_low;
-extern std::vector<std::array<double, 9>> species_nasa9_high;
-extern std::vector<double> species_nasa9_Tmid;
-extern bool species_has_nasa9;
 
 }  // namespace kintera
 

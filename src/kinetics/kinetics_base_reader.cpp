@@ -32,7 +32,6 @@ extern bool species_initialized;
 extern std::vector<std::array<double, 9>> species_nasa9_low;
 extern std::vector<std::array<double, 9>> species_nasa9_high;
 extern std::vector<double> species_nasa9_Tmid;
-extern bool species_has_nasa9;
 
 static std::string trim(std::string const& s) {
   auto start = s.find_first_not_of(" \t\r\n");
@@ -181,7 +180,6 @@ static KBSpecies parse_species_line(
       for (int k = 0; k < 7; ++k) sp.nasa9_high[k] = ta_vals[1][k];
       sp.nasa9_high[7] = tb_vals[1][0];
       sp.nasa9_high[8] = tb_vals[1][1];
-      species_has_nasa9 = true;
     }
 
     if (tr_vals.size() >= 2) {
@@ -526,7 +524,6 @@ void init_species_from_kinetics_base(std::string const& master_input_path) {
   species_nasa9_low.clear();
   species_nasa9_high.clear();
   species_nasa9_Tmid.clear();
-  species_has_nasa9 = false;
 
   for (auto const& sp : data.species) {
     species_names.push_back(sp.name);
@@ -537,8 +534,6 @@ void init_species_from_kinetics_base(std::string const& master_input_path) {
     species_nasa9_low.push_back(sp.nasa9_low);
     species_nasa9_high.push_back(sp.nasa9_high);
     species_nasa9_Tmid.push_back(sp.nasa9_Tmid);
-
-    if (sp.n_nasa9_ranges >= 2) species_has_nasa9 = true;
   }
 
   species_initialized = true;
@@ -601,7 +596,6 @@ KineticsOptions kinetics_options_from_kinetics_base(
     species_nasa9_low.clear();
     species_nasa9_high.clear();
     species_nasa9_Tmid.clear();
-    species_has_nasa9 = false;
 
     for (auto const& sp : master.species) {
       species_names.push_back(sp.name);
@@ -612,7 +606,6 @@ KineticsOptions kinetics_options_from_kinetics_base(
       species_nasa9_low.push_back(sp.nasa9_low);
       species_nasa9_high.push_back(sp.nasa9_high);
       species_nasa9_Tmid.push_back(sp.nasa9_Tmid);
-      if (sp.n_nasa9_ranges >= 2) species_has_nasa9 = true;
     }
     species_initialized = true;
   }
@@ -981,6 +974,9 @@ KineticsOptions kinetics_options_from_kinetics_base(
     kinet->cref_R().push_back(species_cref_R[id]);
     kinet->uref_R().push_back(species_uref_R[id]);
     kinet->sref_R().push_back(species_sref_R[id]);
+    kinet->nasa9_low().push_back(species_nasa9_low[id]);
+    kinet->nasa9_high().push_back(species_nasa9_high[id]);
+    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
   }
 
   return kinet;

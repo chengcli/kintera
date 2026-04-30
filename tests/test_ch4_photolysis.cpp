@@ -161,7 +161,7 @@ TEST_P(CH4PhotolysisTest, PhotolysisJacobian) {
   auto conc = torch::tensor({1.e3, 0.}, torch::device(device).dtype(dtype));
   auto rc_ddC = torch::zeros({2, 1}, torch::device(device).dtype(dtype));
 
-  auto jac = jacobian_photolysis(rate, stoich, conc, rc_ddC);
+  auto jac = jacobian_photolysis_species(rate, stoich, conc, rc_ddC);
 
   EXPECT_EQ(jac.dim(), 2);
   EXPECT_EQ(jac.size(0), 2);

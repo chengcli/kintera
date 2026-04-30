@@ -261,6 +261,54 @@ TEST_P(FalloffEndToEndTest, forward_three_body) {
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
 }
 
+TEST_P(FalloffEndToEndTest,
+       forward_three_body_distinguishes_species_and_reaction_axes) {
+  std::string yaml_str = R"(
+- equation: H2O2 + M <=> O + H2O + M
+  type: three-body
+  rate-constant: {A: 1.2e+11, b: -1.0, Ea_R: 0.0}
+  efficiencies: {H2O2: 2.0, O: 3.0}
+- equation: O + M <=> H + M
+  type: three-body
+  rate-constant: {A: 2.5e+12, b: 0.5, Ea_R: 0.0}
+  efficiencies: {H2O2: 5.0, O: 7.0}
+)";
+
+  YAML::Node root = YAML::Load(yaml_str);
+  auto opts = ThreeBodyOptionsImpl::from_yaml(root);
+  ThreeBody module(opts);
+  module->to(device, dtype);
+
+  constexpr int nreaction = 2;
+  auto temp = torch::tensor({300.0}, dtype).to(device);
+  auto pres = torch::tensor({101325.0}, dtype).to(device);
+  auto conc = torch::tensor({{1.0e-3, 2.0e-3}}, dtype).to(device);
+
+  auto rate = module->forward(temp, pres, conc, {});
+
+  auto temp_expanded = temp.unsqueeze(-1);
+  auto k0 = module->k0_A * (temp_expanded / opts->Tref()).pow(module->k0_b) *
+            torch::exp(-module->k0_Ea_R / temp_expanded);
+  auto eff_T = module->efficiency_matrix.narrow(1, 0, conc.size(-1))
+                   .transpose(0, 1)
+                   .to(device, dtype);
+  auto expected = torch::matmul(conc, eff_T) * k0;
+
+  EXPECT_TRUE(torch::allclose(rate, expected));
+
+  auto conc_full =
+      torch::zeros({1, (long)kintera::species_names.size()}, dtype).to(device);
+  conc_full.narrow(1, 0, conc.size(-1)).copy_(conc);
+  auto conc_expanded = conc_full.unsqueeze(-1)
+                           .expand({1, conc_full.size(-1), nreaction})
+                           .clone();
+  auto rate_expanded = module->forward(temp, pres, conc_expanded, {});
+  auto expected_expanded =
+      torch::matmul(conc_full, module->efficiency_matrix.transpose(0, 1)) * k0;
+
+  EXPECT_TRUE(torch::allclose(rate_expanded, expected_expanded));
+}
+
 TEST_P(FalloffEndToEndTest, forward_falloff_lindemann) {
   std::string yaml_str = R"(
 - equation: 2 OH (+ M) <=> H2O2 (+ M)

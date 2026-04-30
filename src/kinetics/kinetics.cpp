@@ -13,11 +13,6 @@
 
 namespace kintera {
 
-extern std::vector<std::array<double, 9>> species_nasa9_low;
-extern std::vector<std::array<double, 9>> species_nasa9_high;
-extern std::vector<double> species_nasa9_Tmid;
-extern bool species_has_nasa9;
-
 std::shared_ptr<KineticsImpl> KineticsImpl::create(KineticsOptions const& opts,
                                                    torch::nn::Module* p,
                                                    std::string const& name) {
@@ -261,30 +256,6 @@ void KineticsImpl::reset() {
   react_stoich = register_buffer("react_stoich", react_stoich_data);
   dn = register_buffer("dn", dn_data);
 
-  if (species_has_nasa9 && has_reversible_) {
-    auto low = torch::zeros({(int)nspecies, 9}, torch::kFloat64);
-    auto high = torch::zeros({(int)nspecies, 9}, torch::kFloat64);
-    auto tmid = torch::zeros({(int)nspecies}, torch::kFloat64);
-
-    for (int i = 0; i < (int)nspecies; ++i) {
-      int gid = options->vapor_ids()[i];
-      for (int k = 0; k < 9; ++k) {
-        low[i][k] = species_nasa9_low[gid][k];
-        high[i][k] = species_nasa9_high[gid][k];
-      }
-      tmid[i] = species_nasa9_Tmid[gid];
-    }
-
-    nasa9_coeffs_low = register_buffer("nasa9_coeffs_low", low);
-    nasa9_coeffs_high = register_buffer("nasa9_coeffs_high", high);
-    nasa9_Tmid = register_buffer("nasa9_Tmid", tmid);
-
-    if (options->verbose()) {
-      std::cout << "[Kinetics] loaded NASA-9 thermo data for " << nspecies
-                << " species" << std::endl;
-    }
-  }
-
   if (options->verbose()) {
     int n_rev = rev_mask_data.sum().item<int>();
     std::cout << "[Kinetics] " << n_rev << " reversible reactions out of "
@@ -420,8 +391,11 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
   auto rate_f = result * conc_safe.unsqueeze(-1).pow(react_stoich).prod(-2);
 
   // Split forward/reverse: augment rates with separate reverse entries
-  if (has_reversible_ && nasa9_coeffs_low.defined()) {
+  if (has_reversible_ && options->has_nasa9()) {
     auto rev_indices = rev_indices_.to(result.device(), torch::kLong);
+    auto nasa9_coeffs_low = options->nasa9_coeffs_low_tensor(temp.options());
+    auto nasa9_coeffs_high = options->nasa9_coeffs_high_tensor(temp.options());
+    auto nasa9_Tmid = options->nasa9_Tmid_tensor(temp.options());
     auto g_RT =
         nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high, nasa9_Tmid);
     auto delta_g_RT = torch::matmul(g_RT, stoich_base);

@@ -16,7 +16,6 @@
 #include <kintera/thermo/thermo_formatter.hpp>
 
 // tests
-#define DEVICE_TESTING_SKIP_DEFAULT_INSTANTIATION
 #include "device_testing.hpp"
 
 using namespace kintera;
@@ -138,17 +137,3 @@ int main(int argc, char** argv) {
   testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    DeviceAndDtypeNoMPS, DeviceTest,
-    testing::Values(Parameters{torch::kCPU, torch::kFloat32},
-                    Parameters{torch::kCPU, torch::kFloat64},
-                    Parameters{torch::kCUDA, torch::kFloat32},
-                    Parameters{torch::kCUDA, torch::kFloat64}),
-    [](const testing::TestParamInfo<DeviceTest::ParamType>& info) {
-      std::string name = torch::Device(info.param.device_type).str();
-      name += "_";
-      name += torch::toString(info.param.dtype);
-      std::replace(name.begin(), name.end(), '.', '_');
-      return name;
-    });
