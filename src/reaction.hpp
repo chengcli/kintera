@@ -27,6 +27,12 @@ struct Reaction {
   //! Reaction orders
   ADD_ARG(Composition, orders);
 
+  //! Third-body collision efficiencies (for three-body/falloff reactions)
+  ADD_ARG(Composition, efficiencies) = {};
+
+  //! Falloff type: "none" (Lindemann or simple three-body), "Troe", or "SRI"
+  ADD_ARG(std::string, falloff_type) = "none";
+
   ADD_ARG(bool, reversible) = false;
 };
 

@@ -8,11 +8,16 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
+#include <kintera/photolysis/photolysis.hpp>
 #include <kintera/species.hpp>
 
 #include "arrhenius.hpp"
 #include "coagulation.hpp"
 #include "evaporation.hpp"
+#include "lindemann_falloff.hpp"
+#include "sri_falloff.hpp"
+#include "three_body.hpp"
+#include "troe_falloff.hpp"
 
 // arg
 #include <kintera/add_arg.h>
@@ -25,6 +30,11 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     op->arrhenius() = ArrheniusOptionsImpl::create();
     op->coagulation() = CoagulationOptionsImpl::create();
     op->evaporation() = EvaporationOptionsImpl::create();
+    op->three_body() = ThreeBodyOptionsImpl::create();
+    op->lindemann_falloff() = LindemannFalloffOptionsImpl::create();
+    op->troe_falloff() = TroeFalloffOptionsImpl::create();
+    op->sri_falloff() = SRIFalloffOptionsImpl::create();
+    op->photolysis() = PhotolysisOptionsImpl::create();
     return op;
   }
 
@@ -40,6 +50,12 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     if (evaporation()) op->evaporation() = evaporation()->clone();
     return op;
   }
+
+  static std::shared_ptr<KineticsOptionsImpl> from_kinetics_base(
+      std::string const& master_input_path,
+      std::string const& photo_catalog_path = "",
+      std::string const& cross_dir = "", bool verbose = false);
+
   void report(std::ostream& os) const {
     os << "-- kinetics options --\n";
     os << "* Tref = " << Tref() << " K\n"
@@ -57,6 +73,11 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(ArrheniusOptions, arrhenius);
   ADD_ARG(CoagulationOptions, coagulation);
   ADD_ARG(EvaporationOptions, evaporation);
+  ADD_ARG(ThreeBodyOptions, three_body);
+  ADD_ARG(LindemannFalloffOptions, lindemann_falloff);
+  ADD_ARG(TroeFalloffOptions, troe_falloff);
+  ADD_ARG(SRIFalloffOptions, sri_falloff);
+  ADD_ARG(PhotolysisOptions, photolysis);
 
   ADD_ARG(bool, evolve_temperature) = false;
   ADD_ARG(bool, verbose) = false;
@@ -85,14 +106,58 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   //! rate constant evaluator
   std::vector<torch::nn::AnyModule> rc_evaluator;
 
+  //! photolysis evaluator
+  Photolysis photolysis_evaluator;
+
   //! options with which this `KineticsImpl` was constructed
   KineticsOptions options;
+
+  // --- reverse reaction data ---
+  //! 1.0 for reversible reactions, 0.0 otherwise, shape (nreaction_orig,)
+  torch::Tensor rev_mask;
+  //! product-only stoichiometry (positive values), shape (nspecies,
+  //! nreaction_orig)
+  torch::Tensor prod_stoich;
+  //! reactant-only stoichiometry (positive values), shape (nspecies,
+  //! nreaction_orig)
+  torch::Tensor react_stoich;
+  //! net mole change per reaction, shape (nreaction_orig,)
+  torch::Tensor dn;
+  //! whether any reversible reactions exist
+  bool has_reversible_ = false;
+  //! cached raw rate constants from last forward() call (before mass-action)
+  mutable torch::Tensor last_kf_;
+
+  // --- split forward/reverse data ---
+  //! number of reversible reactions
+  int n_reversible_ = 0;
+  //! number of original reactions (before augmentation)
+  int n_reactions_orig_ = 0;
+  //! indices of reversible reactions in the original reaction list
+  torch::Tensor rev_indices_;
 
   //! Constructor to initialize the layer
   KineticsImpl() : options(KineticsOptionsImpl::create()) {}
   explicit KineticsImpl(const KineticsOptions& options_);
   void reset() override;
 
+  //! Compute the reaction-space Jacobian of mass-action rates.
+  /*!
+   * \param temp   temperature [K], shape (...)
+   * \param conc   species concentrations [mol/m^3], shape (..., nspecies)
+   * \param cvol   volumetric heat capacity [J/(m^3 K)], shape (...)
+   * \param rate   reaction rates after mass-action multiplication
+   *               [mol/(m^3 s)], shape (..., nreaction_aug)
+   * \param rc_ddC derivative of the raw rate constants with respect to
+   *               concentration, shape (..., nspecies, nreaction_aug)
+   * \param rc_ddT optional derivative of the raw rate constants with respect
+   *               to temperature [mol/(m^3 K s)], shape (..., nreaction_aug)
+   * \return       reaction-space Jacobian d(rate_i)/dC_j,
+   *               shape (..., nreaction_aug, nspecies)
+   *
+   * Here `nreaction_aug` is the number of forward reactions plus any
+   * appended reverse reactions when reversible chemistry is enabled.
+   */
   torch::Tensor jacobian(torch::Tensor temp, torch::Tensor conc,
                          torch::Tensor cvol, torch::Tensor rate,
                          torch::Tensor rc_ddC,
@@ -113,9 +178,15 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
   forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc);
 
+  //! Compute kinetic rate with extra data (e.g. actinic flux for photolysis)
+  std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
+  forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
+          std::map<std::string, torch::Tensor> const& extra);
+
  private:
   // used in evaluating jacobian
   std::vector<int> _nreactions;
+  int n_photolysis_reactions_ = 0;
 
   void _jacobian_mass_action(torch::Tensor temp, torch::Tensor conc,
                              torch::Tensor cvol, torch::Tensor rate,

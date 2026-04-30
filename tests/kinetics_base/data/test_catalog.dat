@@ -1,0 +1,5 @@
+ O2      = O2                                                CROSS_O2=O2_LORES1.DAT
+ O2      =2O                                                 CROSS_O2=2O_LORES1.DAT
+ O3      = O3                                                CROSS_O3=O3_LORES1.DAT
+ O3      = O2      + O                                       CROSS_O3=O2+O_LORES1.DAT
+ O3      = O2      + O(1D)                                   CROSS_O3=O2+O_1D__LORES1.DAT

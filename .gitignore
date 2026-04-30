@@ -16,6 +16,9 @@ data/example.speos
 # env
 .env
 
+# so
+*.so
+
 # cache
 __pycache__
 
@@ -25,3 +28,24 @@ dist
 # agent
 AGENTS.md
 CLAUDE.md
+
+# test outputs
+examples/*.png
+
+# outputs
+*.png
+examples/*.pdf
+
+# vulcan test temp
+tests/vulcan/cho/_*.py
+tests/vulcan/cho/_*.pkl
+tests/vulcan/VULCAN/
+
+# vscode
+.vscode/*
+
+# library
+*.so
+
+# agent
+.codex

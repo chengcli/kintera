@@ -8,6 +8,10 @@
 #include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
+#include <kintera/kinetics/lindemann_falloff.hpp>
+#include <kintera/kinetics/sri_falloff.hpp>
+#include <kintera/kinetics/three_body.hpp>
+#include <kintera/kinetics/troe_falloff.hpp>
 
 // python
 #include "pyoptions.hpp"
@@ -75,6 +79,137 @@ void bind_kinetics(py::module& m) {
   ADD_KINTERA_MODULE(Evaporation, EvaporationOptions, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"));
 
+  ////////////// Three-Body //////////////
+  auto pyThreeBodyOptions =
+      py::class_<kintera::ThreeBodyOptionsImpl, kintera::ThreeBodyOptions>(
+          m, "ThreeBodyOptions");
+
+  pyThreeBodyOptions.def(py::init<>())
+      .def("__repr__",
+           [](const kintera::ThreeBodyOptions& self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("ThreeBodyOptions({})", ss.str());
+           })
+      .ADD_OPTION(double, kintera::ThreeBodyOptionsImpl, Tref)
+      .ADD_OPTION(std::string, kintera::ThreeBodyOptionsImpl, units)
+      .ADD_OPTION(std::vector<kintera::Reaction>, kintera::ThreeBodyOptionsImpl,
+                  reactions)
+      .ADD_OPTION(std::vector<double>, kintera::ThreeBodyOptionsImpl, k0_A)
+      .ADD_OPTION(std::vector<double>, kintera::ThreeBodyOptionsImpl, k0_b)
+      .ADD_OPTION(std::vector<double>, kintera::ThreeBodyOptionsImpl, k0_Ea_R)
+      .ADD_OPTION(std::vector<kintera::Composition>,
+                  kintera::ThreeBodyOptionsImpl, efficiencies);
+
+  ADD_KINTERA_MODULE(ThreeBody, ThreeBodyOptions, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"), py::arg("other"))
+      .def("pretty_print", &kintera::ThreeBodyImpl::pretty_print);
+
+  ////////////// Lindemann Falloff //////////////
+  auto pyLindemannFalloffOptions =
+      py::class_<kintera::LindemannFalloffOptionsImpl,
+                 kintera::LindemannFalloffOptions>(m,
+                                                   "LindemannFalloffOptions");
+
+  pyLindemannFalloffOptions.def(py::init<>())
+      .def("__repr__",
+           [](const kintera::LindemannFalloffOptions& self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("LindemannFalloffOptions({})", ss.str());
+           })
+      .ADD_OPTION(double, kintera::LindemannFalloffOptionsImpl, Tref)
+      .ADD_OPTION(std::string, kintera::LindemannFalloffOptionsImpl, units)
+      .ADD_OPTION(std::vector<kintera::Reaction>,
+                  kintera::LindemannFalloffOptionsImpl, reactions)
+      .ADD_OPTION(std::vector<double>, kintera::LindemannFalloffOptionsImpl,
+                  k0_A)
+      .ADD_OPTION(std::vector<double>, kintera::LindemannFalloffOptionsImpl,
+                  k0_b)
+      .ADD_OPTION(std::vector<double>, kintera::LindemannFalloffOptionsImpl,
+                  k0_Ea_R)
+      .ADD_OPTION(std::vector<double>, kintera::LindemannFalloffOptionsImpl,
+                  kinf_A)
+      .ADD_OPTION(std::vector<double>, kintera::LindemannFalloffOptionsImpl,
+                  kinf_b)
+      .ADD_OPTION(std::vector<double>, kintera::LindemannFalloffOptionsImpl,
+                  kinf_Ea_R)
+      .ADD_OPTION(std::vector<kintera::Composition>,
+                  kintera::LindemannFalloffOptionsImpl, efficiencies);
+
+  ADD_KINTERA_MODULE(LindemannFalloff, LindemannFalloffOptions, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"), py::arg("other"))
+      .def("pretty_print", &kintera::LindemannFalloffImpl::pretty_print);
+
+  ////////////// Troe Falloff //////////////
+  auto pyTroeFalloffOptions =
+      py::class_<kintera::TroeFalloffOptionsImpl, kintera::TroeFalloffOptions>(
+          m, "TroeFalloffOptions");
+
+  pyTroeFalloffOptions.def(py::init<>())
+      .def("__repr__",
+           [](const kintera::TroeFalloffOptions& self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("TroeFalloffOptions({})", ss.str());
+           })
+      .ADD_OPTION(double, kintera::TroeFalloffOptionsImpl, Tref)
+      .ADD_OPTION(std::string, kintera::TroeFalloffOptionsImpl, units)
+      .ADD_OPTION(std::vector<kintera::Reaction>,
+                  kintera::TroeFalloffOptionsImpl, reactions)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, k0_A)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, k0_b)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, k0_Ea_R)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, kinf_A)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, kinf_b)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl,
+                  kinf_Ea_R)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, troe_A)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, troe_T3)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, troe_T1)
+      .ADD_OPTION(std::vector<double>, kintera::TroeFalloffOptionsImpl, troe_T2)
+      .ADD_OPTION(std::vector<kintera::Composition>,
+                  kintera::TroeFalloffOptionsImpl, efficiencies);
+
+  ADD_KINTERA_MODULE(TroeFalloff, TroeFalloffOptions, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"), py::arg("other"))
+      .def("pretty_print", &kintera::TroeFalloffImpl::pretty_print);
+
+  ////////////// SRI Falloff //////////////
+  auto pySRIFalloffOptions =
+      py::class_<kintera::SRIFalloffOptionsImpl, kintera::SRIFalloffOptions>(
+          m, "SRIFalloffOptions");
+
+  pySRIFalloffOptions.def(py::init<>())
+      .def("__repr__",
+           [](const kintera::SRIFalloffOptions& self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("SRIFalloffOptions({})", ss.str());
+           })
+      .ADD_OPTION(double, kintera::SRIFalloffOptionsImpl, Tref)
+      .ADD_OPTION(std::string, kintera::SRIFalloffOptionsImpl, units)
+      .ADD_OPTION(std::vector<kintera::Reaction>,
+                  kintera::SRIFalloffOptionsImpl, reactions)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, k0_A)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, k0_b)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, k0_Ea_R)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, kinf_A)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, kinf_b)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl,
+                  kinf_Ea_R)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, sri_A)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, sri_B)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, sri_C)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, sri_D)
+      .ADD_OPTION(std::vector<double>, kintera::SRIFalloffOptionsImpl, sri_E)
+      .ADD_OPTION(std::vector<kintera::Composition>,
+                  kintera::SRIFalloffOptionsImpl, efficiencies);
+
+  ADD_KINTERA_MODULE(SRIFalloff, SRIFalloffOptions, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"), py::arg("other"))
+      .def("pretty_print", &kintera::SRIFalloffImpl::pretty_print);
+
   ////////////// Kinetics //////////////
   auto pyKineticsOptions =
       py::class_<kintera::KineticsOptionsImpl, kintera::SpeciesThermoImpl,
@@ -91,6 +226,11 @@ void bind_kinetics(py::module& m) {
                   py::overload_cast<std::string const&, bool>(
                       &kintera::KineticsOptionsImpl::from_yaml),
                   py::arg("filename"), py::arg("verbose") = false)
+      .def_static("from_kinetics_base",
+                  &kintera::KineticsOptionsImpl::from_kinetics_base,
+                  py::arg("master_input_path"),
+                  py::arg("photo_catalog_path") = "", py::arg("cross_dir") = "",
+                  py::arg("verbose") = false)
       .def("reactions", &kintera::KineticsOptionsImpl::reactions)
       .ADD_OPTION(double, kintera::KineticsOptionsImpl, Tref)
       .ADD_OPTION(double, kintera::KineticsOptionsImpl, Pref)
@@ -100,16 +240,55 @@ void bind_kinetics(py::module& m) {
                   coagulation)
       .ADD_OPTION(kintera::EvaporationOptions, kintera::KineticsOptionsImpl,
                   evaporation)
+      .ADD_OPTION(kintera::ThreeBodyOptions, kintera::KineticsOptionsImpl,
+                  three_body)
+      .ADD_OPTION(kintera::LindemannFalloffOptions,
+                  kintera::KineticsOptionsImpl, lindemann_falloff)
+      .ADD_OPTION(kintera::TroeFalloffOptions, kintera::KineticsOptionsImpl,
+                  troe_falloff)
+      .ADD_OPTION(kintera::SRIFalloffOptions, kintera::KineticsOptionsImpl,
+                  sri_falloff)
       .ADD_OPTION(bool, kintera::KineticsOptionsImpl, evolve_temperature);
 
-  ADD_KINTERA_MODULE(Kinetics, KineticsOptions, py::arg("temp"),
-                     py::arg("pres"), py::arg("conc"))
-      .def("forward_nogil",
-           [](kintera::KineticsImpl& self, torch::Tensor temp,
-              torch::Tensor pres, torch::Tensor conc) {
-             py::gil_scoped_release no_gil;
-             return self.forward(temp, pres, conc);
+  torch::python::bind_module<kintera::KineticsImpl>(m, "Kinetics")
+      .def(py::init<>(), R"(Construct a new default module.)")
+      .def(py::init<kintera::KineticsOptions>(), "Construct a Kinetics module",
+           py::arg("options"))
+      .def_readonly("options", &kintera::KineticsImpl::options)
+      .def("__repr__",
+           [](const kintera::KineticsImpl& a) {
+             std::stringstream ss;
+             a.options->report(ss);
+             return fmt::format("Kinetics(\n{})", ss.str());
            })
+      .def("module",
+           [](kintera::KineticsImpl& self, std::string name) {
+             return self.named_modules()[name];
+           })
+      .def("buffer",
+           [](kintera::KineticsImpl& self, std::string name) {
+             return self.named_buffers()[name];
+           })
+      .def(
+          "forward",
+          [](kintera::KineticsImpl& self, torch::Tensor temp,
+             torch::Tensor pres, torch::Tensor conc,
+             std::map<std::string, torch::Tensor> const& extra) {
+            py::gil_scoped_release no_gil;
+            return self.forward(temp, pres, conc, extra);
+          },
+          py::arg("temp"), py::arg("pres"), py::arg("conc"),
+          py::arg("extra") = std::map<std::string, torch::Tensor>{})
+      .def(
+          "forward_nogil",
+          [](kintera::KineticsImpl& self, torch::Tensor temp,
+             torch::Tensor pres, torch::Tensor conc,
+             std::map<std::string, torch::Tensor> const& extra) {
+            py::gil_scoped_release no_gil;
+            return self.forward(temp, pres, conc, extra);
+          },
+          py::arg("temp"), py::arg("pres"), py::arg("conc"),
+          py::arg("extra") = std::map<std::string, torch::Tensor>{})
       .def("jacobian", &kintera::KineticsImpl::jacobian, py::arg("temp"),
            py::arg("conc"), py::arg("cvol"), py::arg("rate"), py::arg("rc_ddC"),
            py::arg("rc_ddT") = torch::nullopt);

@@ -28,4 +28,7 @@ macro(setup_test namel)
   endif()
 
   add_test(NAME ${namel}.${buildl} COMMAND ${namel}.${buildl})
+  set_tests_properties(${namel}.${buildl}
+                       PROPERTIES WORKING_DIRECTORY
+                                  ${CMAKE_CURRENT_BINARY_DIR})
 endmacro()

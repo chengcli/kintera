@@ -1,8 +1,12 @@
 #pragma once
 
 // C/C++
+#include <array>
 #include <string>
 #include <vector>
+
+// c10
+#include <c10/core/TensorOptions.h>
 
 // kintera
 #include <kintera/utils/user_funcs.hpp>
@@ -20,8 +24,13 @@ class Node;
 
 namespace kintera {
 
+using Nasa9CoeffArray = std::array<double, 9>;
+using Nasa9CoeffTable = std::vector<Nasa9CoeffArray>;
+
 void init_species_from_yaml(std::string filename);
 void init_species_from_yaml(YAML::Node const& config);
+//! Initialize species and thermo data from a KINETICS-base master input file.
+void init_species_from_kinetics_base(std::string const& master_input_path);
 
 struct SpeciesThermoImpl {
   static std::shared_ptr<SpeciesThermoImpl> create() {
@@ -37,6 +46,13 @@ struct SpeciesThermoImpl {
                          std::shared_ptr<SpeciesThermoImpl> const& other) const;
   void accumulate(at::Tensor& data, at::Tensor const& other_data,
                   std::shared_ptr<SpeciesThermoImpl> const& other) const;
+  bool has_nasa9() const;
+  at::Tensor nasa9_coeffs_low_tensor(
+      c10::TensorOptions const& options = c10::TensorOptions()) const;
+  at::Tensor nasa9_coeffs_high_tensor(
+      c10::TensorOptions const& options = c10::TensorOptions()) const;
+  at::Tensor nasa9_Tmid_tensor(
+      c10::TensorOptions const& options = c10::TensorOptions()) const;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);
@@ -61,6 +77,14 @@ struct SpeciesThermoImpl {
   //! concentration is stored here, with first 'ngas' entries being
   //! valid numbers. The rests are no-ops.
   ADD_ARG(std::vector<std::string>, czh_ddC);
+
+  //! NASA-9 low-temperature coefficients, one 9-coefficient record per species.
+  ADD_ARG(Nasa9CoeffTable, nasa9_low);
+  //! NASA-9 high-temperature coefficients, one 9-coefficient record per
+  //! species.
+  ADD_ARG(Nasa9CoeffTable, nasa9_high);
+  //! NASA-9 range mid-point temperature [K], one value per species.
+  ADD_ARG(std::vector<double>, nasa9_Tmid);
 };
 using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
@@ -76,6 +100,7 @@ extern std::vector<double> species_weights;
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
+extern bool species_initialized;
 
 }  // namespace kintera
 

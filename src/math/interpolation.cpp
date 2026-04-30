@@ -70,8 +70,15 @@ torch::Tensor interpn_recur(
       interpn_recur(query_coords, coords, lookup, indices_high, extrapolate);
 
   // Compute weighted sum
-  return interp_low * weight_low.unsqueeze(-1) +
-         interp_high * weight_high.unsqueeze(-1);
+  auto weight_shape = weight_low.sizes().vec();
+  for (int i = 1; i < interp_low.dim(); ++i) {
+    weight_shape.push_back(1);
+  }
+
+  auto weight_low_view = weight_low.view(weight_shape);
+  auto weight_high_view = weight_high.view(weight_shape);
+
+  return interp_low * weight_low_view + interp_high * weight_high_view;
 }
 
 // Wrapper function for interpolation
@@ -82,9 +89,10 @@ torch::Tensor interpn(std::vector<torch::Tensor> const& query_coords,
   TORCH_CHECK(query_coords.size() == coords.size(),
               "Query coordinates must match interpolation dimensions");
 
-  auto nval = lookup.size(-1);
   auto vec = query_coords[0].sizes().vec();
-  vec.push_back(nval);
+  for (int dim = coords.size(); dim < lookup.dim(); ++dim) {
+    vec.push_back(lookup.size(dim));
+  }
 
   // Perform recursive interpolation
   return interpn_recur(query_coords, coords, lookup, {}, extrapolate).view(vec);

@@ -21,6 +21,9 @@ extern bool species_initialized;
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
+extern std::vector<std::array<double, 9>> species_nasa9_low;
+extern std::vector<std::array<double, 9>> species_nasa9_high;
+extern std::vector<double> species_nasa9_Tmid;
 
 ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename,
                                            bool verbose) {
@@ -141,6 +144,9 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
     thermo->cref_R().push_back(species_cref_R[id]);
     thermo->uref_R().push_back(species_uref_R[id]);
     thermo->sref_R().push_back(species_sref_R[id]);
+    thermo->nasa9_low().push_back(species_nasa9_low[id]);
+    thermo->nasa9_high().push_back(species_nasa9_high[id]);
+    thermo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
   }
 
   // register clouds
@@ -162,6 +168,9 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
     thermo->cref_R().push_back(species_cref_R[id]);
     thermo->uref_R().push_back(species_uref_R[id]);
     thermo->sref_R().push_back(species_sref_R[id]);
+    thermo->nasa9_low().push_back(species_nasa9_low[id]);
+    thermo->nasa9_high().push_back(species_nasa9_high[id]);
+    thermo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
   }
 
   return thermo;

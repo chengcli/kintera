@@ -28,6 +28,8 @@ extern std::vector<double> species_sref_R;
 void bind_thermo(py::module& m);
 void bind_constants(py::module& m);
 void bind_kinetics(py::module& m);
+void bind_photolysis(py::module& m);
+void bind_diffusion(py::module& m);
 
 PYBIND11_MODULE(kintera, m) {
   m.attr("__name__") = "kintera";
@@ -66,6 +68,8 @@ PYBIND11_MODULE(kintera, m) {
   bind_thermo(m);
   bind_constants(m);
   bind_kinetics(m);
+  bind_photolysis(m);
+  bind_diffusion(m);
 
   m.def("species_names", []() -> const std::vector<std::string>& {
     return kintera::species_names;
@@ -133,4 +137,11 @@ PYBIND11_MODULE(kintera, m) {
 
   m.def("evolve_implicit", &kintera::evolve_implicit, py::arg("rate"),
         py::arg("stoich"), py::arg("jacobian"), py::arg("dt"));
+
+  m.def("evolve_ros2", &kintera::evolve_ros2, py::arg("rate1"),
+        py::arg("rate2"), py::arg("stoich"), py::arg("jacobian"),
+        py::arg("dt"));
+
+  m.def("ros2_k1", &kintera::ros2_k1, py::arg("rate1"), py::arg("stoich"),
+        py::arg("jacobian"), py::arg("dt"));
 }

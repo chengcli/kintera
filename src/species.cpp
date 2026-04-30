@@ -1,5 +1,10 @@
 // C/C++
+#include <array>
+#include <cstring>
+#include <fstream>
+#include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -13,6 +18,8 @@
 #include <harp/compound.hpp>
 
 // kintera
+#include <configure.h>
+
 #include <kintera/utils/vectors.hpp>
 
 #include "species.hpp"
@@ -25,6 +32,58 @@ std::vector<double> species_cref_R;
 std::vector<double> species_uref_R;
 std::vector<double> species_sref_R;
 bool species_initialized = false;
+std::vector<std::array<double, 9>> species_nasa9_low;
+std::vector<std::array<double, 9>> species_nasa9_high;
+std::vector<double> species_nasa9_Tmid;
+
+struct Nasa9Entry {
+  std::array<double, 9> low, high;
+};
+
+static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
+  static std::unordered_map<std::string, Nasa9Entry> db;
+  if (!db.empty()) return db;
+
+  std::string path = std::string(KINTERA_ROOT_DIR) + "/data/nasa9.dat";
+  std::ifstream ifs(path);
+  TORCH_CHECK(ifs.good(), "Cannot open NASA-9 data file: ", path);
+
+  std::string line;
+  while (std::getline(ifs, line)) {
+    if (line.empty() || line[0] == '#') continue;
+    // species name line (non-numeric first character)
+    if (!std::isdigit(line[0]) && line[0] != '-' && line[0] != ' ') {
+      std::string name = line;
+      // trim whitespace
+      while (!name.empty() && std::isspace(name.back())) name.pop_back();
+
+      // read 4 lines of 5 values = 20 coefficients
+      double vals[20];
+      int idx = 0;
+      for (int row = 0; row < 4 && std::getline(ifs, line); ++row) {
+        std::istringstream iss(line);
+        double v;
+        while (iss >> v && idx < 20) vals[idx++] = v;
+      }
+      if (idx < 20) continue;
+
+      Nasa9Entry e;
+      // low-T range (vals 0..9): a0-a6, a7(=0), a8, a9
+      // store 9 coefficients: a0-a6, a8, a9 (skip a7)
+      for (int k = 0; k < 7; ++k) e.low[k] = vals[k];
+      e.low[7] = vals[8];  // a8
+      e.low[8] = vals[9];  // a9
+
+      // high-T range (vals 10..19)
+      for (int k = 0; k < 7; ++k) e.high[k] = vals[10 + k];
+      e.high[7] = vals[18];  // a8
+      e.high[8] = vals[19];  // a9
+
+      db[name] = e;
+    }
+  }
+  return db;
+}
 
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
@@ -41,6 +100,9 @@ void init_species_from_yaml(YAML::Node const& config) {
   species_cref_R.clear();
   species_uref_R.clear();
   species_sref_R.clear();
+  species_nasa9_low.clear();
+  species_nasa9_high.clear();
+  species_nasa9_Tmid.clear();
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -70,6 +132,25 @@ void init_species_from_yaml(YAML::Node const& config) {
     } else {
       species_sref_R.push_back(0.);
     }
+
+    // Look up NASA-9 thermodynamic data from data/nasa9.dat
+    std::array<double, 9> low_coeffs = {};
+    std::array<double, 9> high_coeffs = {};
+    double Tmid = 1000.0;
+
+    auto& nasa9_db = get_nasa9_db();
+    auto name = sp["name"].as<std::string>();
+    auto it = nasa9_db.find(name);
+    if (it != nasa9_db.end()) {
+      low_coeffs = it->second.low;
+      high_coeffs = it->second.high;
+    }
+
+    // Keep the canonical species registry populated so option builders can
+    // copy per-species NASA-9 data into SpeciesThermo-owned storage.
+    species_nasa9_low.push_back(low_coeffs);
+    species_nasa9_high.push_back(high_coeffs);
+    species_nasa9_Tmid.push_back(Tmid);
   }
 
   species_initialized = true;
@@ -93,12 +174,17 @@ std::vector<std::string> SpeciesThermoImpl::species() const {
 
 at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
                                           SpeciesThermo const& other) const {
-  auto indices =
-      locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
-                     merge_vectors(other->vapor_ids(), other->cloud_ids()));
+  auto source_ids = merge_vectors(vapor_ids(), cloud_ids());
+  auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
+  std::vector<int64_t> indices;
+  indices.reserve(source_ids.size());
 
-  TORCH_CHECK(indices.size() == vapor_ids().size() + cloud_ids().size(),
-              "Missing indices for some species in other's thermo data.");
+  for (auto species_id : source_ids) {
+    auto it = std::find(other_ids.begin(), other_ids.end(), species_id);
+    TORCH_CHECK(it != other_ids.end(),
+                "Missing indices for some species in other's thermo data.");
+    indices.push_back(std::distance(other_ids.begin(), it));
+  }
 
   auto id =
       torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
@@ -109,16 +195,76 @@ at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
 void SpeciesThermoImpl::accumulate(at::Tensor& data,
                                    at::Tensor const& other_data,
                                    SpeciesThermo const& other) const {
-  auto indices =
-      locate_vectors(merge_vectors(vapor_ids(), cloud_ids()),
-                     merge_vectors(other->vapor_ids(), other->cloud_ids()));
+  auto source_ids = merge_vectors(vapor_ids(), cloud_ids());
+  auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
+  std::vector<int64_t> indices;
+  indices.reserve(source_ids.size());
 
-  TORCH_CHECK(indices.size() == vapor_ids().size() + cloud_ids().size(),
-              "Missing indices for some species in other's thermo data.");
+  for (auto species_id : source_ids) {
+    auto it = std::find(other_ids.begin(), other_ids.end(), species_id);
+    TORCH_CHECK(it != other_ids.end(),
+                "Missing indices for some species in other's thermo data.");
+    indices.push_back(std::distance(other_ids.begin(), it));
+  }
 
   auto id =
       torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
   data.index_add_(-1, id, other_data);
+}
+
+bool SpeciesThermoImpl::has_nasa9() const {
+  for (auto const& coeffs : nasa9_low()) {
+    for (double v : coeffs) {
+      if (v != 0.0) return true;
+    }
+  }
+  for (auto const& coeffs : nasa9_high()) {
+    for (double v : coeffs) {
+      if (v != 0.0) return true;
+    }
+  }
+  return false;
+}
+
+static at::Tensor nasa9_coeffs_to_tensor(
+    std::vector<std::array<double, 9>> const& coeffs,
+    c10::TensorOptions const& options) {
+  auto tensor = torch::empty({static_cast<long>(coeffs.size()), 9},
+                             torch::dtype(torch::kFloat64));
+  if (!coeffs.empty()) {
+    std::memcpy(tensor.data_ptr<double>(), coeffs.data(),
+                coeffs.size() * sizeof(coeffs[0]));
+  }
+  if (options.has_device() || options.has_dtype() || options.has_layout() ||
+      options.has_pinned_memory()) {
+    return tensor.to(options);
+  }
+  return tensor;
+}
+
+at::Tensor SpeciesThermoImpl::nasa9_coeffs_low_tensor(
+    c10::TensorOptions const& options) const {
+  return nasa9_coeffs_to_tensor(nasa9_low(), options);
+}
+
+at::Tensor SpeciesThermoImpl::nasa9_coeffs_high_tensor(
+    c10::TensorOptions const& options) const {
+  return nasa9_coeffs_to_tensor(nasa9_high(), options);
+}
+
+at::Tensor SpeciesThermoImpl::nasa9_Tmid_tensor(
+    c10::TensorOptions const& options) const {
+  auto tensor = torch::empty({static_cast<long>(nasa9_Tmid().size())},
+                             torch::dtype(torch::kFloat64));
+  if (!nasa9_Tmid().empty()) {
+    std::memcpy(tensor.data_ptr<double>(), nasa9_Tmid().data(),
+                nasa9_Tmid().size() * sizeof(double));
+  }
+  if (options.has_device() || options.has_dtype() || options.has_layout() ||
+      options.has_pinned_memory()) {
+    return tensor.to(options);
+  }
+  return tensor;
 }
 
 void populate_thermo(SpeciesThermo thermo) {
@@ -143,6 +289,18 @@ void populate_thermo(SpeciesThermo thermo) {
 
   while (thermo->czh_ddC().size() < nspecies) {
     thermo->czh_ddC().push_back("");
+  }
+
+  while (thermo->nasa9_low().size() < nspecies) {
+    thermo->nasa9_low().push_back({});
+  }
+
+  while (thermo->nasa9_high().size() < nspecies) {
+    thermo->nasa9_high().push_back({});
+  }
+
+  while (thermo->nasa9_Tmid().size() < nspecies) {
+    thermo->nasa9_Tmid().push_back(1000.0);
   }
 }
 
@@ -183,6 +341,18 @@ void check_dimensions(SpeciesThermo const& thermo) {
   TORCH_CHECK(thermo->czh_ddC().size() == nspecies,
               "Missing non-ideal compressibility derivatives. Please call "
               "`populate_thermo` to fill in the missing data.");
+
+  TORCH_CHECK(thermo->nasa9_low().size() == nspecies,
+              "nasa9_low size = ", thermo->nasa9_low().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(thermo->nasa9_high().size() == nspecies,
+              "nasa9_high size = ", thermo->nasa9_high().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(thermo->nasa9_Tmid().size() == nspecies,
+              "nasa9_Tmid size = ", thermo->nasa9_Tmid().size(),
+              ". Expected = ", nspecies);
 }
 
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
@@ -205,6 +375,9 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   auto& entropy_R_extra = merged->entropy_R_extra();
   auto& czh = merged->czh();
   auto& czh_ddC = merged->czh_ddC();
+  auto& nasa9_low = merged->nasa9_low();
+  auto& nasa9_high = merged->nasa9_high();
+  auto& nasa9_Tmid = merged->nasa9_Tmid();
 
   // concatenate fields
   int nvapor1 = thermo1->vapor_ids().size();
@@ -234,6 +407,12 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
 
   czh_ddC =
       merge_vectors(thermo1->czh_ddC(), thermo2->czh_ddC(), nvapor1, nvapor2);
+  nasa9_low = merge_vectors(thermo1->nasa9_low(), thermo2->nasa9_low(), nvapor1,
+                            nvapor2);
+  nasa9_high = merge_vectors(thermo1->nasa9_high(), thermo2->nasa9_high(),
+                             nvapor1, nvapor2);
+  nasa9_Tmid = merge_vectors(thermo1->nasa9_Tmid(), thermo2->nasa9_Tmid(),
+                             nvapor1, nvapor2);
 
   // identify duplicated vapor ids and remove them from all vectors
   int first = 0;
@@ -251,6 +430,9 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
       entropy_R_extra.erase(entropy_R_extra.begin() + first);
       czh.erase(czh.begin() + first);
       czh_ddC.erase(czh_ddC.begin() + first);
+      nasa9_low.erase(nasa9_low.begin() + first);
+      nasa9_high.erase(nasa9_high.begin() + first);
+      nasa9_Tmid.erase(nasa9_Tmid.begin() + first);
     } else {
       seen_vapor_ids.insert(vapor_id);
       ++first;
@@ -282,6 +464,9 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
       entropy_R_extra.erase(entropy_R_extra.begin() + nvapor + first);
       czh.erase(czh.begin() + nvapor + first);
       czh_ddC.erase(czh_ddC.begin() + nvapor + first);
+      nasa9_low.erase(nasa9_low.begin() + nvapor + first);
+      nasa9_high.erase(nasa9_high.begin() + nvapor + first);
+      nasa9_Tmid.erase(nasa9_Tmid.begin() + nvapor + first);
     } else {
       seen_cloud_ids.insert(cloud_id);
       ++first;
@@ -314,6 +499,9 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
 
   czh = sort_vectors(czh, sorted);
   czh_ddC = sort_vectors(czh_ddC, sorted);
+  nasa9_low = sort_vectors(nasa9_low, sorted);
+  nasa9_high = sort_vectors(nasa9_high, sorted);
+  nasa9_Tmid = sort_vectors(nasa9_Tmid, sorted);
 
   return merged;
 }
