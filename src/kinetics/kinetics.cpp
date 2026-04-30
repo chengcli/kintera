@@ -305,7 +305,8 @@ torch::Tensor KineticsImpl::jacobian(
   // original forward reaction become reactants of the reverse).
   torch::Tensor react_st_full;
   if (has_reversible_) {
-    auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices_);
+    auto rev_indices = rev_indices_.to(prod_stoich.device(), torch::kLong);
+    auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices);
     react_st_full = torch::cat({react_stoich, prod_stoich_rev}, 1);
   } else {
     react_st_full = react_stoich;
@@ -420,6 +421,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
 
   // Split forward/reverse: augment rates with separate reverse entries
   if (has_reversible_ && nasa9_coeffs_low.defined()) {
+    auto rev_indices = rev_indices_.to(result.device(), torch::kLong);
     auto g_RT =
         nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high, nasa9_Tmid);
     auto delta_g_RT = torch::matmul(g_RT, stoich_base);
@@ -429,9 +431,9 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     auto Kc = (-delta_g_RT + dn * log_standconc.unsqueeze(-1)).exp();
 
     // Extract only reversible reactions
-    auto Kc_rev = Kc.index_select(-1, rev_indices_);
-    auto kf_rev = result.index_select(-1, rev_indices_);
-    auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices_);
+    auto Kc_rev = Kc.index_select(-1, rev_indices);
+    auto kf_rev = result.index_select(-1, rev_indices);
+    auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices);
     auto conc_prod_rev = conc_safe.unsqueeze(-1).pow(prod_stoich_rev).prod(-2);
 
     // Reverse rate = (k_f / Kc) * product(C_product^stoich), no clamp
@@ -442,12 +444,12 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     rate_f = torch::cat({rate_f, rate_rev}, -1);
 
     // Augment rc_ddC: reverse rate constant derivative = d(k_f)/d[C] / Kc
-    auto rc_ddC_fwd_rev = rc_ddC.index_select(-1, rev_indices_);
+    auto rc_ddC_fwd_rev = rc_ddC.index_select(-1, rev_indices);
     auto rc_ddC_rev = rc_ddC_fwd_rev / Kc_rev.clamp_min(1e-250).unsqueeze(-2);
     rc_ddC = torch::cat({rc_ddC, rc_ddC_rev}, -1);
 
     if (rc_ddT.has_value()) {
-      auto rc_ddT_fwd_rev = rc_ddT.value().index_select(-1, rev_indices_);
+      auto rc_ddT_fwd_rev = rc_ddT.value().index_select(-1, rev_indices);
       rc_ddT = torch::cat({rc_ddT.value(), rc_ddT_fwd_rev}, -1);
     }
   }

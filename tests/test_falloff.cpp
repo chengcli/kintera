@@ -237,21 +237,6 @@ TEST_P(FalloffEndToEndTest, module_initialization) {
 
 // Helper: build a simple stoich matrix from a Reaction for a module with 1
 // reaction
-static torch::Tensor make_stoich(const Reaction& rxn, int nspecies) {
-  auto stoich = torch::zeros({nspecies, 1}, torch::kFloat64);
-  for (int i = 0; i < nspecies; i++) {
-    auto it = rxn.reactants().find(kintera::species_names[i]);
-    if (it != rxn.reactants().end()) {
-      stoich[i][0] = -it->second;
-    }
-    it = rxn.products().find(kintera::species_names[i]);
-    if (it != rxn.products().end()) {
-      stoich[i][0] = it->second;
-    }
-  }
-  return stoich;
-}
-
 TEST_P(FalloffEndToEndTest, forward_three_body) {
   std::string yaml_str = R"(
 - equation: H2O2 + M <=> O + H2O + M
@@ -264,14 +249,13 @@ TEST_P(FalloffEndToEndTest, forward_three_body) {
   auto opts = ThreeBodyOptionsImpl::from_yaml(root);
   ThreeBody module(opts);
   int nspecies = kintera::species_names.size();
-  module->set_stoich(make_stoich(opts->reactions()[0], nspecies));
   module->to(device, dtype);
 
   auto temp = torch::tensor({300.0}, dtype).to(device);
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
-  auto du = torch::zeros({nspecies}, dtype).to(device);
+  auto pres = torch::tensor({101325.0}, dtype).to(device);
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
 
-  auto result = module->forward(du, w, temp, 1.0);
+  auto result = module->forward(temp, pres, conc, {});
 
   // du should have non-zero species tendencies
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
@@ -289,14 +273,13 @@ TEST_P(FalloffEndToEndTest, forward_falloff_lindemann) {
   auto opts = LindemannFalloffOptionsImpl::from_yaml(root);
   LindemannFalloff module(opts);
   int nspecies = kintera::species_names.size();
-  module->set_stoich(make_stoich(opts->reactions()[0], nspecies));
   module->to(device, dtype);
 
   auto temp = torch::tensor({300.0}, dtype).to(device);
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
-  auto du = torch::zeros({nspecies}, dtype).to(device);
+  auto pres = torch::tensor({101325.0}, dtype).to(device);
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
 
-  auto result = module->forward(du, w, temp, 1.0);
+  auto result = module->forward(temp, pres, conc, {});
 
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
 }
@@ -314,14 +297,13 @@ TEST_P(FalloffEndToEndTest, forward_falloff_troe) {
   auto opts = TroeFalloffOptionsImpl::from_yaml(root);
   TroeFalloff module(opts);
   int nspecies = kintera::species_names.size();
-  module->set_stoich(make_stoich(opts->reactions()[0], nspecies));
   module->to(device, dtype);
 
   auto temp = torch::tensor({300.0}, dtype).to(device);
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
-  auto du = torch::zeros({nspecies}, dtype).to(device);
+  auto pres = torch::tensor({101325.0}, dtype).to(device);
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
 
-  auto result = module->forward(du, w, temp, 1.0);
+  auto result = module->forward(temp, pres, conc, {});
 
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
 }
@@ -339,14 +321,13 @@ TEST_P(FalloffEndToEndTest, forward_falloff_sri) {
   auto opts = SRIFalloffOptionsImpl::from_yaml(root);
   SRIFalloff module(opts);
   int nspecies = kintera::species_names.size();
-  module->set_stoich(make_stoich(opts->reactions()[0], nspecies));
   module->to(device, dtype);
 
   auto temp = torch::tensor({300.0}, dtype).to(device);
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
-  auto du = torch::zeros({nspecies}, dtype).to(device);
+  auto pres = torch::tensor({101325.0}, dtype).to(device);
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
 
-  auto result = module->forward(du, w, temp, 1.0);
+  auto result = module->forward(temp, pres, conc, {});
 
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
 }
@@ -367,25 +348,13 @@ TEST_P(FalloffEndToEndTest, forward_multiple_reactions) {
   auto opts = LindemannFalloffOptionsImpl::from_yaml(root);
   LindemannFalloff module(opts);
   int nspecies = kintera::species_names.size();
-  // 2 reactions, same stoich for both
-  auto stoich = torch::zeros({nspecies, 2}, torch::kFloat64);
-  for (int j = 0; j < 2; j++) {
-    auto rxn = opts->reactions()[j];
-    for (int i = 0; i < nspecies; i++) {
-      auto it = rxn.reactants().find(kintera::species_names[i]);
-      if (it != rxn.reactants().end()) stoich[i][j] = -it->second;
-      it = rxn.products().find(kintera::species_names[i]);
-      if (it != rxn.products().end()) stoich[i][j] = it->second;
-    }
-  }
-  module->set_stoich(stoich);
   module->to(device, dtype);
 
   auto temp = torch::tensor({300.0}, dtype).to(device);
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
-  auto du = torch::zeros({nspecies}, dtype).to(device);
+  auto pres = torch::tensor({101325.0}, dtype).to(device);
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
 
-  auto result = module->forward(du, w, temp, 1.0);
+  auto result = module->forward(temp, pres, conc, {});
 
   // Both reactions should contribute to du
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
@@ -437,15 +406,15 @@ reactions:
 
   EXPECT_EQ(kinet_opts->three_body()->reactions().size(), 1);
   EXPECT_EQ(kinet_opts->lindemann_falloff()->reactions().size(), 1);
-  EXPECT_EQ(kinet->stoich.size(1), 2);
+  EXPECT_EQ(kinet->stoich.size(1), 4);
 
   auto temp = torch::tensor({300.0}, dtype).to(device);
   auto species = kinet_opts->species();
   int nspecies = species.size();
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
-  auto du = torch::zeros({nspecies}, dtype).to(device);
-
-  auto result = kinet->forward(du, w, temp, 1.0);
+  auto pres = torch::tensor({101325.0}, dtype).to(device);
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
+  auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
+  auto result = rate.matmul(kinet->stoich.t());
 
   // Species tendencies should be non-zero
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
@@ -456,22 +425,13 @@ reactions:
 // ============================================================================
 
 // Helper: compute the species Jacobian d(du)/d(w) via autograd
-static torch::Tensor compute_jacobian(Kinetics& kinet, torch::Tensor w,
-                                      torch::Tensor temp, double dt) {
-  int nspecies = w.size(-1);
-  auto w_ad = w.clone().requires_grad_(true);
-  auto du = torch::zeros_like(w_ad);
-  auto result = kinet->forward(du, w_ad, temp, dt);
-
-  auto jac = torch::zeros({nspecies, nspecies}, w.options());
-  for (int i = 0; i < nspecies; i++) {
-    if (w_ad.grad().defined()) w_ad.grad().zero_();
-    // Use .select(-1, i).sum() to reduce to scalar for backward()
-    result.select(-1, i).sum().backward(/*grad_tensors=*/{},
-                                        /*retain_graph=*/true);
-    jac[i] = w_ad.grad().clone();
-  }
-  return jac;
+static torch::Tensor compute_jacobian(Kinetics& kinet, torch::Tensor conc,
+                                      torch::Tensor temp) {
+  auto pres = torch::full_like(temp, 101325.0);
+  auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
+  auto jac =
+      kinet->jacobian(temp, conc, torch::ones_like(temp), rate, rc_ddC, rc_ddT);
+  return jac.squeeze(0);
 }
 
 TEST_P(FalloffEndToEndTest, jacobian_three_body_concentration) {
@@ -510,9 +470,9 @@ reactions:
   auto temp = torch::tensor({300.0}, dtype).to(device);
   auto species = kinet_opts->species();
   int nspecies = species.size();
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
 
-  auto jac = compute_jacobian(kinet, w, temp, 1.0);
+  auto jac = compute_jacobian(kinet, conc, temp);
 
   int ar_idx = -1, h2_idx = -1, h2o2_idx = -1;
   for (int i = 0; i < nspecies; i++) {
@@ -568,9 +528,9 @@ reactions:
   auto species = kinet_opts->species();
   int nspecies = species.size();
   // Use very small concentrations for moderate Pr
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-21;
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-21;
 
-  auto jac = compute_jacobian(kinet, w, temp, 1.0);
+  auto jac = compute_jacobian(kinet, conc, temp);
 
   int ar_idx = -1, n2_idx = -1, h2o2_idx = -1;
   for (int i = 0; i < nspecies; i++) {
@@ -631,11 +591,11 @@ reactions:
   auto temp = torch::tensor({300.0}, dtype).to(device);
   auto species = kinet_opts->species();
   int nspecies = species.size();
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
 
-  auto jac = compute_jacobian(kinet, w, temp, 1.0);
+  auto jac = compute_jacobian(kinet, conc, temp);
 
-  ASSERT_EQ(jac.size(0), nspecies);
+  ASSERT_EQ(jac.size(0), kinet->stoich.size(1));
   ASSERT_EQ(jac.size(1), nspecies);
 
   int ar_idx = -1, h2o2_idx = -1;
@@ -647,7 +607,7 @@ reactions:
   ASSERT_GE(h2o2_idx, 0);
 
   // AR should affect H2O2 through both reactions
-  EXPECT_GT(std::abs(jac[h2o2_idx][ar_idx].item<double>()), 1e-10);
+  EXPECT_GT(std::abs(jac[0][ar_idx].item<double>()), 1e-10);
 }
 
 // ============================================================================
@@ -748,17 +708,17 @@ reactions:
   auto species = kinet_opts->species();
   int nspecies = species.size();
 
-  auto w = torch::ones({nspecies}, dtype).to(device) * 1e-3;
-  auto du = torch::zeros({nspecies}, dtype).to(device);
-
-  auto result = kinet->forward(du, w, temp, 1.0);
+  auto pres = torch::tensor({101325.0}, dtype).to(device);
+  auto conc = torch::ones({1, nspecies}, dtype).to(device) * 1e-3;
+  auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
+  auto result = rate.matmul(kinet->stoich.t());
 
   // Species tendencies should be non-zero
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
 
   // Test Jacobian via autograd
-  auto jac = compute_jacobian(kinet, w, temp, 1.0);
-  EXPECT_EQ(jac.size(0), nspecies);
+  auto jac = compute_jacobian(kinet, conc, temp);
+  EXPECT_EQ(jac.size(0), kinet->stoich.size(1));
   EXPECT_EQ(jac.size(1), nspecies);
 
   // Jacobian should have non-zero entries

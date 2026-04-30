@@ -46,3 +46,6 @@ tests/vulcan/VULCAN/
 
 # library
 *.so
+
+# agent
+.codex

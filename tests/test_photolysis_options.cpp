@@ -3,6 +3,7 @@
 
 // external
 #include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
 
 // torch
 #include <torch/torch.h>
@@ -20,8 +21,8 @@ class PhotolysisOptionsTest : public testing::Test {
  protected:
   void SetUp() override {
     // Initialize species names for testing
-    extern std::vector<std::string> species_names;
-    species_names = {"CH4", "CH3", "(1)CH2", "(3)CH2", "CH", "H2", "H", "N2"};
+    kintera::species_names = {"CH4", "CH3", "(1)CH2", "(3)CH2",
+                              "CH",  "H2",  "H",      "N2"};
   }
 };
 

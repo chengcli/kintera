@@ -23,19 +23,13 @@ class PhotolysisKineticsTest : public DeviceTest {
   void SetUp() override {
     DeviceTest::SetUp();
     // Initialize species names for testing
-    extern std::vector<std::string> species_names;
-    extern std::vector<double> species_weights;
-    extern std::vector<double> species_cref_R;
-    extern std::vector<double> species_uref_R;
-    extern std::vector<double> species_sref_R;
-    extern bool species_initialized;
-
-    species_names = {"CH4", "CH3", "(1)CH2", "(3)CH2", "CH", "H2", "H", "N2"};
-    species_weights = {16.0, 15.0, 14.0, 14.0, 13.0, 2.0, 1.0, 28.0};
-    species_cref_R = {2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 1.5, 2.5};
-    species_uref_R = {0., 0., 0., 0., 0., 0., 0., 0.};
-    species_sref_R = {0., 0., 0., 0., 0., 0., 0., 0.};
-    species_initialized = true;
+    kintera::species_names = {"CH4", "CH3", "(1)CH2", "(3)CH2",
+                              "CH",  "H2",  "H",      "N2"};
+    kintera::species_weights = {16.0, 15.0, 14.0, 14.0, 13.0, 2.0, 1.0, 28.0};
+    kintera::species_cref_R = {2.5, 2.5, 2.5, 2.5, 2.5, 2.5, 1.5, 2.5};
+    kintera::species_uref_R = {0., 0., 0., 0., 0., 0., 0., 0.};
+    kintera::species_sref_R = {0., 0., 0., 0., 0., 0., 0., 0.};
+    kintera::species_initialized = true;
   }
 };
 

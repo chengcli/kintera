@@ -78,6 +78,7 @@ extern std::vector<double> species_weights;
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
+extern bool species_initialized;
 
 //! NASA-9 thermodynamic polynomial data (9 coefficients per range, 2 ranges)
 //! Each inner vector has 9 elements: a0..a6, a8, a9 (a7 is skipped)

@@ -13,6 +13,8 @@ project(
   LANGUAGES CXX C
   DESCRIPTION "library for chemistry and equation of state")
 
+enable_testing()
+
 # Try to enable CUDA
 if (CUDA)
   enable_language(CUDA)
