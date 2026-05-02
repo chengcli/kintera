@@ -30,6 +30,12 @@ configure_file(
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/test_catalog.dat
   ${CMAKE_CURRENT_BINARY_DIR}/kinetics_base/data/test_catalog.dat COPYONLY)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/test_titan_minimal.pun
+  ${CMAKE_CURRENT_BINARY_DIR}/kinetics_base/data/test_titan_minimal.pun COPYONLY)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/test_titan_run.inp
+  ${CMAKE_CURRENT_BINARY_DIR}/kinetics_base/data/test_titan_run.inp COPYONLY)
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/cross
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/kinetics_base/data)
 

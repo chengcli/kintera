@@ -294,6 +294,247 @@ parse_equation_string(std::string const& eq_str) {
   return {reactants, products};
 }
 
+static std::vector<int> extract_ints(std::string const& s) {
+  std::vector<int> result;
+  std::regex int_re(R"([-+]?\d+)");
+  for (std::sregex_iterator it(s.begin(), s.end(), int_re);
+       it != std::sregex_iterator(); ++it) {
+    try {
+      result.push_back(std::stoi(it->str()));
+    } catch (...) {
+    }
+  }
+  return result;
+}
+
+static bool parse_pun_species_header(std::string const& line,
+                                     KBPunSpecies& species) {
+  static std::regex const header_prefix_re(R"(^\s*\d+\.\s+)");
+  if (!std::regex_search(line, header_prefix_re)) return false;
+
+  std::istringstream iss(line);
+  int id = 0;
+  char dot = '\0';
+  std::string name;
+  int first_reaction = 0;
+  int n_reactions = 0;
+  double molecular_weight = 0.0;
+
+  if (!(iss >> id >> dot) || dot != '.') return false;
+  if (!(iss >> name >> first_reaction >> n_reactions >> molecular_weight)) {
+    return false;
+  }
+
+  species = {};
+  species.id = id;
+  species.name = normalize_species_name(name);
+  species.first_reaction = first_reaction;
+  species.n_reactions = n_reactions;
+  species.molecular_weight = molecular_weight;
+
+  int count = 0;
+  while (iss >> count) {
+    species.composition.push_back(count);
+  }
+  return true;
+}
+
+static bool parse_pun_reaction_header(std::string const& line,
+                                      KBPunReaction& reaction) {
+  static std::regex const header_prefix_re(R"(^\s*\d+\.\s+)");
+  if (!std::regex_search(line, header_prefix_re)) return false;
+
+  std::istringstream iss(line);
+  int id = 0;
+  char dot = '\0';
+  int reaction_type = 0;
+  int n_products = 0;
+
+  if (!(iss >> id >> dot) || dot != '.') return false;
+  if (!(iss >> reaction_type >> n_products)) return false;
+
+  reaction = {};
+  reaction.id = id;
+  reaction.reaction_type = reaction_type;
+  reaction.n_products = n_products;
+  reaction.raw_line = line;
+
+  std::regex sci_re(R"([-+]?\d+\.?\d*[eE][-+]?\d+)");
+  auto rate_match = std::sregex_iterator(line.begin(), line.end(), sci_re);
+  size_t participant_end =
+      rate_match == std::sregex_iterator()
+          ? line.size()
+          : static_cast<size_t>(rate_match->position());
+  auto participant_text = line.substr(0, participant_end);
+  auto eq_pos = participant_text.find('=');
+  if (eq_pos == std::string::npos) return true;
+
+  auto expand_ids = [](std::string const& side) {
+    std::vector<int> ids;
+    std::regex participant_re(R"(\(\s*(\d*)\s*\)\s*(\d+))");
+    for (std::sregex_iterator it(side.begin(), side.end(), participant_re);
+         it != std::sregex_iterator(); ++it) {
+      int coeff = (*it)[1].str().empty() ? 1 : std::stoi((*it)[1].str());
+      int species_id = std::stoi((*it)[2].str());
+      if (species_id == 0) continue;
+      for (int i = 0; i < coeff; ++i) ids.push_back(species_id);
+    }
+    return ids;
+  };
+
+  reaction.reactant_ids = expand_ids(participant_text.substr(0, eq_pos));
+  reaction.product_ids = expand_ids(participant_text.substr(eq_pos + 1));
+  return true;
+}
+
+static std::vector<int> collect_int_block(std::vector<std::string> const& lines,
+                                          int start_idx, int count) {
+  std::vector<int> values;
+  for (int i = start_idx; i < (int)lines.size() && (int)values.size() < count;
+       ++i) {
+    std::string stripped = trim(lines[i]);
+    if (stripped.empty()) continue;
+    if (stripped.find(':') != std::string::npos && !values.empty()) break;
+
+    auto ints = extract_ints(stripped);
+    for (int value : ints) {
+      values.push_back(value);
+      if ((int)values.size() == count) break;
+    }
+  }
+  return values;
+}
+
+KBPunNetwork parse_kinetics_base_pun(std::string const& filepath) {
+  KBPunNetwork network;
+
+  std::ifstream ifs(filepath);
+  TORCH_CHECK(ifs.good(), "Cannot open KINETICS-base .pun file: ", filepath);
+
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(ifs, line)) lines.push_back(line);
+
+  TORCH_CHECK(lines.size() >= 3, "Invalid KINETICS-base .pun file: ",
+              filepath);
+
+  {
+    std::istringstream header_iss(lines[1]);
+    header_iss >> network.header.natom >> network.header.nmol >>
+        network.header.nreact >> network.header.npart >>
+        network.header.version;
+  }
+
+  TORCH_CHECK(network.header.natom > 0 && network.header.nmol > 0 &&
+                  network.header.nreact > 0,
+              "Invalid KINETICS-base .pun header in: ", filepath);
+
+  int line_idx = 2;
+  while (line_idx < (int)lines.size() &&
+         (int)network.elements.size() < network.header.natom) {
+    std::istringstream elem_iss(lines[line_idx]);
+    std::string symbol;
+    double mass = 0.0;
+    while (elem_iss >> symbol >> mass) {
+      network.elements[to_upper(symbol)] = mass;
+      if ((int)network.elements.size() == network.header.natom) break;
+    }
+    ++line_idx;
+  }
+
+  TORCH_CHECK((int)network.elements.size() == network.header.natom,
+              "Could not parse all KINETICS-base .pun elements in: ",
+              filepath);
+
+  for (; line_idx < (int)lines.size() &&
+         (int)network.species.size() < network.header.nmol;
+       ++line_idx) {
+    KBPunSpecies species;
+    if (parse_pun_species_header(lines[line_idx], species)) {
+      network.species.push_back(std::move(species));
+    }
+  }
+
+  TORCH_CHECK((int)network.species.size() == network.header.nmol,
+              "Could not parse all KINETICS-base .pun species in: ",
+              filepath);
+
+  for (; line_idx < (int)lines.size() &&
+         (int)network.reactions.size() < network.header.nreact;
+       ++line_idx) {
+    KBPunReaction reaction;
+    if (parse_pun_reaction_header(lines[line_idx], reaction)) {
+      network.reactions.push_back(std::move(reaction));
+    }
+  }
+
+  TORCH_CHECK((int)network.reactions.size() == network.header.nreact,
+              "Could not parse all KINETICS-base .pun reactions in: ",
+              filepath);
+
+  return network;
+}
+
+KBRunSelection parse_kinetics_base_run_input(std::string const& filepath) {
+  KBRunSelection selection;
+
+  std::ifstream ifs(filepath);
+  TORCH_CHECK(ifs.good(), "Cannot open KINETICS-base run input: ", filepath);
+
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(ifs, line)) lines.push_back(line);
+
+  for (int i = 0; i + 1 < (int)lines.size(); ++i) {
+    std::string label = to_upper(trim(lines[i]));
+    if (label.find("NFIX NVARYS NVARYF") != std::string::npos) {
+      auto values = extract_ints(lines[i + 1]);
+      TORCH_CHECK(values.size() >= 3,
+                  "Could not parse NFIX/NVARYS/NVARYF from: ", filepath);
+      selection.nfix = values[0];
+      selection.nvarys = values[1];
+      selection.nvaryf = values[2];
+    } else if (label.find("NPHOTO NPHOTS NPHOTR NPHOTD") !=
+               std::string::npos) {
+      auto values = extract_ints(lines[i + 1]);
+      TORCH_CHECK(values.size() >= 4,
+                  "Could not parse NPHOTO/NPHOTS/NPHOTR/NPHOTD from: ",
+                  filepath);
+      selection.nphoto = values[0];
+      selection.nphots = values[1];
+      selection.nphotr = values[2];
+      selection.nphotd = values[3];
+    } else if (label.find("IFIX,IVARYS,IVARYF") != std::string::npos) {
+      int total = selection.nfix + selection.nvarys + selection.nvaryf;
+      auto values = collect_int_block(lines, i + 1, total);
+      TORCH_CHECK((int)values.size() == total,
+                  "Could not parse all selected species ids from: ", filepath);
+
+      selection.fixed_species_ids.assign(values.begin(),
+                                         values.begin() + selection.nfix);
+      selection.varying_slow_species_ids.assign(
+          values.begin() + selection.nfix,
+          values.begin() + selection.nfix + selection.nvarys);
+      selection.varying_fast_species_ids.assign(
+          values.begin() + selection.nfix + selection.nvarys, values.end());
+    } else if (label.find("IPHOTO,IPHOTS,IPHOTR,IPHOTD") !=
+               std::string::npos) {
+      int total =
+          selection.nphoto + selection.nphots + selection.nphotr +
+          selection.nphotd;
+      selection.photolysis_reaction_ids = collect_int_block(lines, i + 1, total);
+      TORCH_CHECK((int)selection.photolysis_reaction_ids.size() == total,
+                  "Could not parse all selected photolysis ids from: ",
+                  filepath);
+    }
+  }
+
+  TORCH_CHECK(selection.nfix + selection.nvarys + selection.nvaryf > 0,
+              "No KINETICS-base species selection found in: ", filepath);
+
+  return selection;
+}
+
 KBMasterData parse_kinetics_base_master(std::string const& filepath) {
   KBMasterData data;
 
@@ -512,6 +753,41 @@ KBCrossSectionFile parse_kinetics_base_cross_section(
   }
 
   return result;
+}
+
+KBTitanNetwork parse_kinetics_base_titan(
+    std::string const& pun_path, std::string const& run_input_path,
+    std::string const& photo_catalog_path, std::string const& cross_dir) {
+  KBTitanNetwork network;
+  network.pun = parse_kinetics_base_pun(pun_path);
+  network.selection = parse_kinetics_base_run_input(run_input_path);
+  network.catalog = parse_kinetics_base_catalog(photo_catalog_path);
+
+  std::set<int> reaction_ids;
+  for (auto const& reaction : network.pun.reactions) {
+    reaction_ids.insert(reaction.id);
+  }
+  for (int id : network.selection.photolysis_reaction_ids) {
+    if (reaction_ids.count(id) == 0) {
+      network.missing_selected_photolysis_ids.push_back(id);
+    }
+  }
+
+  std::string cross_prefix = cross_dir;
+  if (!cross_prefix.empty() && cross_prefix.back() != '/') {
+    cross_prefix += "/";
+  }
+  for (auto const& [_, filename] : network.catalog) {
+    auto path = cross_prefix + filename;
+    auto csf = parse_kinetics_base_cross_section(path);
+    if (csf.datasets.empty()) {
+      network.missing_cross_section_files.push_back(path);
+    } else {
+      ++network.resolved_cross_sections;
+    }
+  }
+
+  return network;
 }
 
 void init_species_from_kinetics_base(std::string const& master_input_path) {
