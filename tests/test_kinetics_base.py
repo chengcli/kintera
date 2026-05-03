@@ -125,6 +125,14 @@ def test_photochem_forward_with_xsec(master_path, catalog_path, cross_dir):
     assert du.size(-1) == nspecies
 
 
+def test_photochem_requires_catalog(master_path):
+    """Photochemistry loader should fail fast without a catalog."""
+    import kintera as kt
+
+    with pytest.raises(RuntimeError, match="photo_catalog_path"):
+        kt.PhotoChemOptions.from_kinetics_base(master_path)
+
+
 def test_kinetics_species_consistency(master_path):
     """Check that species names and weights are consistent."""
     import kintera as kt

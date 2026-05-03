@@ -9,8 +9,8 @@
 
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
-#include <kintera/photolysis/kinetics_base_reader.hpp>
-#include <kintera/photolysis/photochem.hpp>
+#include <kintera/photochem/kinetics_base_reader.hpp>
+#include <kintera/photochem/photochem.hpp>
 
 // tests
 #include "device_testing.hpp"
@@ -205,6 +205,25 @@ TEST_P(DeviceTest, KineticsBaseLoadWithXsec) {
             << std::endl;
   std::cout << "Cross-section data size: "
             << op->photolysis()->cross_section().size() << std::endl;
+
+  auto const& wave = op->photolysis()->wavelength();
+  EXPECT_TRUE(std::find(wave.begin(), wave.end(), 317.5) != wave.end());
+
+  PhotoChem photo(op);
+  photo->to(device, dtype);
+  auto query_wave = torch::tensor({317.5}, torch::device(device).dtype(dtype));
+  auto query_temp = torch::tensor({298.0}, torch::device(device).dtype(dtype));
+  auto xs = photo->photolysis_evaluator->interp_cross_section(3, query_wave,
+                                                              query_temp);
+  EXPECT_GT(xs[0][1].item<double>(), 0.0);
+}
+
+TEST_P(DeviceTest, KineticsBasePhotoChemRequiresCatalog) {
+  species_initialized = false;
+
+  EXPECT_THROW(PhotoChemOptionsImpl::from_kinetics_base(
+                   data_dir() + "test_master.inp", "", "", true),
+               c10::Error);
 }
 
 TEST_P(DeviceTest, KineticsBaseForward) {

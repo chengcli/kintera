@@ -5,9 +5,9 @@
 #include <pybind11/stl.h>
 
 // kintera
-#include <kintera/photolysis/actinic_flux.hpp>
-#include <kintera/photolysis/photochem.hpp>
-#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photochem/actinic_flux.hpp>
+#include <kintera/photochem/photochem.hpp>
+#include <kintera/photochem/photolysis.hpp>
 
 // python
 #include "pyoptions.hpp"
@@ -68,10 +68,10 @@ void bind_photolysis(py::module& m) {
                   py::arg("master_input_path"),
                   py::arg("photo_catalog_path") = "", py::arg("cross_dir") = "",
                   py::arg("verbose") = false)
-      .def("reactions", &kintera::PhotoChemOptionsImpl::reactions)
+      .def("reactions", &kintera::PhotoChemOptionsImpl::reactions,
+           py::return_value_policy::reference_internal)
       .ADD_OPTION(kintera::PhotolysisOptions, kintera::PhotoChemOptionsImpl,
-                  photolysis)
-      .ADD_OPTION(bool, kintera::PhotoChemOptionsImpl, evolve_temperature);
+                  photolysis);
 
   ////////////// Photolysis Module //////////////
   torch::python::bind_module<kintera::PhotolysisImpl>(m, "Photolysis")

@@ -9,8 +9,8 @@
 
 // kintera
 #include <kintera/kinetics/kinetics_formatter.hpp>
-#include <kintera/photolysis/photochem.hpp>
-#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photochem/photochem.hpp>
+#include <kintera/photochem/photolysis.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
 
 // tests

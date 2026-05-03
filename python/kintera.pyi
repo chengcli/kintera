@@ -2213,12 +2213,6 @@ class PhotoChemOptions(SpeciesThermo):
     @overload
     def photolysis(self, value: PhotolysisOptions) -> PhotoChemOptions: ...
 
-    @overload
-    def evolve_temperature(self) -> bool: ...
-
-    @overload
-    def evolve_temperature(self, value: bool) -> PhotoChemOptions: ...
-
 
 class PhotoChem:
     options: PhotoChemOptions

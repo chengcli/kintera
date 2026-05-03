@@ -10,9 +10,9 @@
 // kintera
 #include <kintera/kinetics/jacobian_kinetics.hpp>
 #include <kintera/kinetics/kinetics.hpp>
-#include <kintera/photolysis/actinic_flux.hpp>
-#include <kintera/photolysis/photochem.hpp>
-#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photochem/actinic_flux.hpp>
+#include <kintera/photochem/photochem.hpp>
+#include <kintera/photochem/photolysis.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
 
 // tests

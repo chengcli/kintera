@@ -12,8 +12,8 @@
 #include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/three_body.hpp>
-#include <kintera/photolysis/photochem.hpp>
-#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photochem/photochem.hpp>
+#include <kintera/photochem/photolysis.hpp>
 
 #include "device_testing.hpp"
 

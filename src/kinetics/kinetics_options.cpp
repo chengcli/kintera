@@ -2,7 +2,7 @@
 #include <yaml-cpp/yaml.h>
 
 // kintera
-#include <kintera/photolysis/kinetics_base_reader.hpp>
+#include <kintera/photochem/kinetics_base_reader.hpp>
 
 #include "kinetics.hpp"
 #include "kinetics_formatter.hpp"
