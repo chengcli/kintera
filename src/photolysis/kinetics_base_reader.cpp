@@ -16,6 +16,7 @@
 
 // kintera
 #include <kintera/kinetics/kinetics.hpp>
+#include <kintera/photolysis/photochem.hpp>
 #include <kintera/units/units.hpp>
 
 #include "kinetics_base_reader.hpp"
@@ -584,10 +585,11 @@ static std::string collapse_whitespace(std::string const& s) {
 KineticsOptions kinetics_options_from_kinetics_base(
     std::string const& master_input_path, std::string const& photo_catalog_path,
     std::string const& cross_dir, bool verbose) {
+  (void)photo_catalog_path;
+  (void)cross_dir;
   auto master = parse_kinetics_base_master(master_input_path);
 
   if (!species_initialized) {
-    // Initialize global species from master data
     species_names.clear();
     species_weights.clear();
     species_cref_R.clear();
@@ -613,10 +615,8 @@ KineticsOptions kinetics_options_from_kinetics_base(
   auto kinet = KineticsOptionsImpl::create();
   kinet->verbose(verbose);
 
-  // KINETICS-base uses molecule/cm/s units inherently — no Tref correction
   UnitSystem us;
 
-  // --- Arrhenius reactions (two-body thermal) ---
   auto arrh = ArrheniusOptionsImpl::create();
   for (auto const& rxn : master.thermal) {
     if (rxn.has_M) continue;
@@ -625,8 +625,9 @@ KineticsOptions kinetics_options_from_kinetics_base(
     arrh->reactions().push_back(Reaction(eq));
 
     double sum_stoich = 0.0;
-    for (auto const& [_, coeff] : arrh->reactions().back().reactants())
+    for (auto const& [_, coeff] : arrh->reactions().back().reactants()) {
       sum_stoich += coeff;
+    }
 
     auto unit = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
                             -3. * (1. - sum_stoich));
@@ -637,14 +638,6 @@ KineticsOptions kinetics_options_from_kinetics_base(
   }
   kinet->arrhenius() = arrh;
 
-  if (verbose) {
-    std::cout << fmt::format(
-                     "[KineticsOptions] registered {} Arrhenius reactions",
-                     arrh->reactions().size())
-              << std::endl;
-  }
-
-  // --- Three-body reactions (with M, no kinf) ---
   auto tb = ThreeBodyOptionsImpl::create();
   for (auto const& rxn : master.thermal) {
     if (!rxn.has_M || rxn.has_kinf) continue;
@@ -653,13 +646,13 @@ KineticsOptions kinetics_options_from_kinetics_base(
     r.push_back("M");
     auto p = rxn.products;
     p.push_back("M");
-    std::string eq = format_equation(r, p, true);
-    Reaction reaction(eq);
+    Reaction reaction(format_equation(r, p, true));
 
     double sum_stoich = 0.0;
-    for (auto const& [name, coeff] : reaction.reactants())
+    for (auto const& [name, coeff] : reaction.reactants()) {
       if (name != "M") sum_stoich += coeff;
-    sum_stoich += 1.0;  // +1 for M
+    }
+    sum_stoich += 1.0;
 
     auto unit = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
                             -3. * (1. - sum_stoich));
@@ -672,14 +665,6 @@ KineticsOptions kinetics_options_from_kinetics_base(
   }
   kinet->three_body() = tb;
 
-  if (verbose) {
-    std::cout << fmt::format(
-                     "[KineticsOptions] registered {} Three-Body reactions",
-                     tb->reactions().size())
-              << std::endl;
-  }
-
-  // --- Lindemann falloff reactions (with M and kinf) ---
   auto lf = LindemannFalloffOptionsImpl::create();
   for (auto const& rxn : master.thermal) {
     if (!rxn.has_M || !rxn.has_kinf) continue;
@@ -688,12 +673,12 @@ KineticsOptions kinetics_options_from_kinetics_base(
     r.push_back("M");
     auto p = rxn.products;
     p.push_back("M");
-    std::string eq = format_equation(r, p, true);
-    Reaction reaction(eq);
+    Reaction reaction(format_equation(r, p, true));
 
     double sum_stoich = 0.0;
-    for (auto const& [name, coeff] : reaction.reactants())
+    for (auto const& [name, coeff] : reaction.reactants()) {
       if (name != "M") sum_stoich += coeff;
+    }
 
     auto unit_low =
         fmt::format("molecule^{} * cm^{} * s^-1", 1. - (sum_stoich + 1.),
@@ -702,7 +687,6 @@ KineticsOptions kinetics_options_from_kinetics_base(
                                  -3. * (1. - sum_stoich));
 
     reaction.falloff_type("none");
-
     lf->reactions().push_back(reaction);
     lf->k0_A().push_back(us.convert_from(rxn.A0, unit_low));
     lf->k0_b().push_back(rxn.b0);
@@ -714,35 +698,45 @@ KineticsOptions kinetics_options_from_kinetics_base(
   }
   kinet->lindemann_falloff() = lf;
 
-  if (verbose) {
-    std::cout << fmt::format(
-                     "[KineticsOptions] registered {} Lindemann Falloff "
-                     "reactions",
-                     lf->reactions().size())
-              << std::endl;
-  }
-
-  // Empty options for unused reaction types
   kinet->troe_falloff() = TroeFalloffOptionsImpl::create();
   kinet->sri_falloff() = SRIFalloffOptionsImpl::create();
   kinet->coagulation() = CoagulationOptionsImpl::create();
   kinet->evaporation() = EvaporationOptionsImpl::create();
 
-  // --- Photolysis reactions + cross-sections ---
+  for (int id = 0; id < (int)species_names.size(); ++id) {
+    kinet->vapor_ids().push_back(id);
+  }
+  std::sort(kinet->vapor_ids().begin(), kinet->vapor_ids().end());
+
+  for (auto const& id : kinet->vapor_ids()) {
+    kinet->cref_R().push_back(species_cref_R[id]);
+    kinet->uref_R().push_back(species_uref_R[id]);
+    kinet->sref_R().push_back(species_sref_R[id]);
+    kinet->nasa9_low().push_back(species_nasa9_low[id]);
+    kinet->nasa9_high().push_back(species_nasa9_high[id]);
+    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+  }
+
+  return kinet;
+}
+
+PhotoChemOptions photochem_options_from_kinetics_base(
+    std::string const& master_input_path, std::string const& photo_catalog_path,
+    std::string const& cross_dir, bool verbose) {
+  auto master = parse_kinetics_base_master(master_input_path);
+
+  if (!species_initialized) {
+    init_species_from_kinetics_base(master_input_path);
+  }
+
+  auto photo_chem = PhotoChemOptionsImpl::create();
+  photo_chem->verbose(verbose);
   auto photo = PhotolysisOptionsImpl::create();
 
-  // Load catalog and cross-section data if provided
   std::map<std::string, std::string> catalog_map;
   if (!photo_catalog_path.empty()) {
     auto catalog = parse_kinetics_base_catalog(photo_catalog_path);
-
-    // Build absorption cross-section cache (type=0) keyed by parent species.
-    // Keep the whole file so multi-temperature branching ratios can select the
-    // matching absorption slab.
-    std::map<std::string, KBCrossSectionFile const*> absorption_cache;
-
     for (auto const& [cat_eq, fname] : catalog) {
-      // Parse the catalog equation the same way as reactions
       auto [cat_r, cat_p] = parse_equation_string(cat_eq);
       auto build_side_key = [](std::vector<std::string> const& species) {
         std::map<std::string, int> counts;
@@ -759,340 +753,134 @@ KineticsOptions kinetics_options_from_kinetics_base(
         }
         return result;
       };
-      std::string compact = build_side_key(cat_r) + "=" + build_side_key(cat_p);
-      catalog_map[compact] = fname;
+      catalog_map[build_side_key(cat_r) + "=" + build_side_key(cat_p)] = fname;
     }
 
-    // Pre-load all cross-section files and build absorption cache
-    std::map<std::string, KBCrossSectionFile> file_cache;
-    for (auto const& [cat_eq, fname] : catalog) {
-      if (file_cache.count(fname)) continue;
-      std::string fpath = cross_dir.empty() ? fname : (cross_dir + "/" + fname);
+    if (photo->wavelength().empty() && !catalog.empty()) {
+      std::string fpath = cross_dir.empty()
+                              ? catalog.front().second
+                              : (cross_dir + "/" + catalog.front().second);
       auto csf = parse_kinetics_base_cross_section(fpath);
       if (!csf.datasets.empty()) {
-        file_cache[fname] = std::move(csf);
+        photo->wavelength() = csf.datasets[0].wavelengths_nm;
       }
     }
+  }
 
-    // Build absorption cache from type=0 files
-    for (auto const& [cat_eq, fname] : catalog) {
-      auto it = file_cache.find(fname);
-      if (it == file_cache.end()) continue;
-      auto const& csf = it->second;
-      if (!csf.datasets.empty() && csf.datasets[0].type == 0) {
-        // Extract parent species from equation
-        auto eq_pos = cat_eq.find('=');
-        if (eq_pos != std::string::npos) {
-          std::string parent =
-              collapse_whitespace(trim(cat_eq.substr(0, eq_pos)));
-          // Remove spaces
-          std::string parent_key;
-          for (char c : parent)
-            if (c != ' ') parent_key += c;
-          if (absorption_cache.count(parent_key) == 0) {
-            absorption_cache[parent_key] = &csf;
-          }
+  for (auto const& rxn : master.photolysis) {
+    std::string eq = format_equation(rxn.reactants, rxn.products, false);
+    photo->reactions().push_back(Reaction(eq));
+
+    auto& reaction = photo->reactions().back();
+    std::vector<std::string> branch_strs;
+    std::string absorb_str;
+    for (auto const& [sp, coeff] : reaction.reactants()) {
+      absorb_str += sp + ":" + std::to_string((int)coeff) + " ";
+    }
+    branch_strs.push_back(absorb_str);
+
+    if (reaction.products() != reaction.reactants()) {
+      std::string prod_str;
+      for (auto const& [sp, coeff] : reaction.products()) {
+        prod_str += sp + ":" + std::to_string((int)coeff) + " ";
+      }
+      branch_strs.push_back(prod_str);
+    }
+    photo->branch_names().push_back(branch_strs);
+
+    std::vector<Composition> branch_comps;
+    for (auto const& s : branch_strs) {
+      Composition comp;
+      std::istringstream bss(s);
+      std::string token;
+      while (bss >> token) {
+        auto colon = token.find(':');
+        if (colon != std::string::npos) {
+          comp[token.substr(0, colon)] = std::stod(token.substr(colon + 1));
         }
       }
+      branch_comps.push_back(comp);
+    }
+    photo->branches().push_back(branch_comps);
+
+    auto build_side_key2 = [](std::vector<std::string> const& species) {
+      std::map<std::string, int> counts;
+      std::vector<std::string> order;
+      for (auto const& s : species) {
+        if (counts.count(s) == 0) order.push_back(s);
+        counts[s]++;
+      }
+      std::string result;
+      for (size_t i = 0; i < order.size(); ++i) {
+        if (i > 0) result += "+";
+        if (counts[order[i]] > 1) result += std::to_string(counts[order[i]]);
+        result += to_upper(order[i]);
+      }
+      return result;
+    };
+
+    std::string rxn_key =
+        build_side_key2(rxn.reactants) + "=" + build_side_key2(rxn.products);
+    int nbranch = std::max((int)branch_strs.size(), 1);
+    auto cat_it = catalog_map.find(rxn_key);
+    if (cat_it == catalog_map.end()) {
+      photo->cross_section_nslabs().push_back(1);
+      photo->cross_section().insert(photo->cross_section().end(),
+                                    photo->wavelength().size() * nbranch, 0.0);
+      continue;
+    }
+
+    std::string fpath =
+        cross_dir.empty() ? cat_it->second : (cross_dir + "/" + cat_it->second);
+    auto csf = parse_kinetics_base_cross_section(fpath);
+    if (csf.datasets.empty()) {
+      photo->cross_section_nslabs().push_back(1);
+      photo->cross_section().insert(photo->cross_section().end(),
+                                    photo->wavelength().size() * nbranch, 0.0);
+      continue;
     }
 
     if (photo->wavelength().empty()) {
-      for (auto const& [_, csf] : file_cache) {
-        if (!csf.datasets.empty()) {
-          photo->wavelength() = csf.datasets[0].wavelengths_nm;
-          break;
-        }
+      photo->wavelength() = csf.datasets[0].wavelengths_nm;
+    }
+    photo->cross_section_nslabs().push_back(csf.datasets.size());
+    if (csf.datasets.size() > 1 && photo->temperature().empty()) {
+      for (auto const& ds : csf.datasets) {
+        photo->temperature().push_back(ds.temperature);
       }
     }
 
-    auto assign_shared_wavelength = [&](std::vector<double> const& wl) {
-      if (photo->wavelength().empty()) {
-        photo->wavelength() = wl;
+    for (auto const& ds : csf.datasets) {
+      std::vector<double> vals = ds.values;
+      if (vals.size() != photo->wavelength().size()) {
+        std::vector<double> resized(photo->wavelength().size(), 0.0);
+        for (size_t i = 0; i < resized.size() && i < vals.size(); ++i) {
+          resized[i] = vals[i];
+        }
+        vals.swap(resized);
       }
-    };
-
-    auto interpolate_to_shared_wavelength =
-        [&](std::vector<double> const& wl, std::vector<double> const& vals) {
-          assign_shared_wavelength(wl);
-          if (wl.size() == photo->wavelength().size()) {
-            bool same_grid = true;
-            for (size_t j = 0; j < wl.size(); ++j) {
-              if (std::abs(photo->wavelength()[j] - wl[j]) >= 1e-12) {
-                same_grid = false;
-                break;
-              }
-            }
-            if (same_grid) {
-              return vals;
-            }
-          }
-
-          std::vector<double> out(photo->wavelength().size(), 0.0);
-          if (wl.empty() || vals.empty()) return out;
-
-          for (size_t i = 0; i < photo->wavelength().size(); ++i) {
-            double target = photo->wavelength()[i];
-            if (target < wl.front() || target > wl.back()) continue;
-            if (target == wl.front()) {
-              out[i] = vals.front();
-              continue;
-            }
-            if (target == wl.back()) {
-              out[i] = vals.back();
-              continue;
-            }
-
-            auto upper = std::lower_bound(wl.begin(), wl.end(), target);
-            if (upper == wl.end()) {
-              out[i] = vals.back();
-              continue;
-            }
-            if (*upper == target) {
-              out[i] = vals[upper - wl.begin()];
-              continue;
-            }
-            auto lower = upper - 1;
-            size_t j = lower - wl.begin();
-            double frac = (target - wl[j]) / (wl[j + 1] - wl[j]);
-            out[i] = vals[j] + frac * (vals[j + 1] - vals[j]);
-          }
-
-          return out;
-        };
-
-    auto interpolate_on_grid = [](std::vector<double> const& source_wl,
-                                  std::vector<double> const& source_vals,
-                                  double target) {
-      if (source_wl.empty() || source_vals.empty()) return 0.0;
-      if (target <= source_wl.front()) return source_vals.front();
-      if (target >= source_wl.back()) return source_vals.back();
-
-      auto upper = std::lower_bound(source_wl.begin(), source_wl.end(), target);
-      if (upper == source_wl.end()) return source_vals.back();
-      if (*upper == target) return source_vals[upper - source_wl.begin()];
-
-      auto lower = upper - 1;
-      size_t j = lower - source_wl.begin();
-      double frac = (target - source_wl[j]) / (source_wl[j + 1] - source_wl[j]);
-      return source_vals[j] + frac * (source_vals[j + 1] - source_vals[j]);
-    };
-
-    auto assign_or_check_temperature = [&](std::vector<double> const& temps) {
-      if (temps.size() <= 1) return;
-      if (photo->temperature().empty()) {
-        photo->temperature() = temps;
-        return;
-      }
-      TORCH_CHECK(photo->temperature() == temps,
-                  "All KINETICS-base photolysis reactions must use the same "
-                  "temperature grid");
-    };
-
-    auto find_absorption_dataset =
-        [&](std::string const& parent_key,
-            KBCrossSection const& branch_dataset) -> KBCrossSection const* {
-      auto abs_it = absorption_cache.find(parent_key);
-      if (abs_it == absorption_cache.end()) return nullptr;
-
-      auto const& datasets = abs_it->second->datasets;
-      if (datasets.empty()) return nullptr;
-      if (datasets.size() == 1) return &datasets[0];
-
-      for (auto const& abs_ds : datasets) {
-        if (std::abs(abs_ds.temperature - branch_dataset.temperature) < 1e-12) {
-          return &abs_ds;
+      for (double val : vals) {
+        for (int bi = 0; bi < nbranch; ++bi) {
+          photo->cross_section().push_back(val);
         }
       }
-
-      TORCH_CHECK(false,
-                  "No matching absorption cross-section temperature for ",
-                  parent_key, " at T=", branch_dataset.temperature);
-    };
-
-    // Process photolysis reactions
-    for (auto const& rxn : master.photolysis) {
-      std::string eq = format_equation(rxn.reactants, rxn.products, false);
-      photo->reactions().push_back(Reaction(eq));
-
-      // Build branch info
-      auto& reaction = photo->reactions().back();
-      std::vector<std::string> branch_strs;
-      std::string absorb_str;
-      for (auto const& [sp, coeff] : reaction.reactants()) {
-        absorb_str += sp + ":" + std::to_string((int)coeff) + " ";
-      }
-      branch_strs.push_back(absorb_str);
-
-      if (reaction.products() != reaction.reactants()) {
-        std::string prod_str;
-        for (auto const& [sp, coeff] : reaction.products()) {
-          prod_str += sp + ":" + std::to_string((int)coeff) + " ";
-        }
-        branch_strs.push_back(prod_str);
-      }
-      photo->branch_names().push_back(branch_strs);
-
-      // Try to find cross-section data
-      auto build_side_key2 = [](std::vector<std::string> const& species) {
-        std::map<std::string, int> counts;
-        std::vector<std::string> order;
-        for (auto const& s : species) {
-          if (counts.count(s) == 0) order.push_back(s);
-          counts[s]++;
-        }
-        std::string result;
-        for (size_t i = 0; i < order.size(); ++i) {
-          if (i > 0) result += "+";
-          if (counts[order[i]] > 1) result += std::to_string(counts[order[i]]);
-          result += to_upper(order[i]);
-        }
-        return result;
-      };
-      std::string rxn_key =
-          build_side_key2(rxn.reactants) + "=" + build_side_key2(rxn.products);
-
-      auto cat_it = catalog_map.find(rxn_key);
-      std::string fname;
-      if (cat_it != catalog_map.end()) fname = cat_it->second;
-
-      std::vector<Composition> branch_comps;
-      int nbranch = std::max((int)branch_strs.size(), 1);
-      bool have_cross_section_data = false;
-      if (!fname.empty()) {
-        auto file_it = file_cache.find(fname);
-        if (file_it != file_cache.end() && !file_it->second.datasets.empty()) {
-          auto const& datasets = file_it->second.datasets;
-          std::vector<double> temps;
-          temps.reserve(datasets.size());
-          for (auto const& ds : datasets) {
-            temps.push_back(ds.temperature);
-          }
-          assign_or_check_temperature(temps);
-          photo->cross_section_nslabs().push_back(datasets.size());
-
-          for (auto const& ds : datasets) {
-            auto wl = ds.wavelengths_nm;
-            auto vals = ds.values;
-            vals = interpolate_to_shared_wavelength(wl, vals);
-            auto const& shared_wl = photo->wavelength();
-
-            // Handle branching ratios: multiply by parent absorption.
-            if (ds.type == 2) {
-              std::string parent_key;
-              if (!rxn.reactants.empty()) {
-                parent_key = to_upper(rxn.reactants[0]);
-              }
-              auto const* abs_ds = find_absorption_dataset(parent_key, ds);
-              if (abs_ds != nullptr) {
-                auto const& abs_wl = abs_ds->wavelengths_nm;
-                auto const& abs_vals = abs_ds->values;
-                for (size_t j = 0; j < vals.size(); ++j) {
-                  double abs_val =
-                      interpolate_on_grid(abs_wl, abs_vals, shared_wl[j]);
-                  vals[j] *= abs_val;
-                }
-              }
-            }
-
-            for (size_t j = 0; j < shared_wl.size(); ++j) {
-              for (int bi = 0; bi < nbranch; ++bi) {
-                photo->cross_section().push_back(vals[j]);
-              }
-            }
-          }
-          have_cross_section_data = true;
-        }
-      }
-
-      if (!have_cross_section_data) {
-        photo->cross_section_nslabs().push_back(1);
-        if (!photo->wavelength().empty()) {
-          photo->cross_section().insert(photo->cross_section().end(),
-                                        photo->wavelength().size() * nbranch,
-                                        0.0);
-        }
-      }
-
-      // Parse branch compositions
-      for (auto const& s : branch_strs) {
-        Composition comp;
-        std::istringstream bss(s);
-        std::string token;
-        while (bss >> token) {
-          auto colon = token.find(':');
-          if (colon != std::string::npos) {
-            comp[token.substr(0, colon)] = std::stod(token.substr(colon + 1));
-          }
-        }
-        branch_comps.push_back(comp);
-      }
-      photo->branches().push_back(branch_comps);
-    }
-  } else {
-    // No cross-section data — still register photolysis reactions
-    for (auto const& rxn : master.photolysis) {
-      std::string eq = format_equation(rxn.reactants, rxn.products, false);
-      photo->reactions().push_back(Reaction(eq));
-
-      auto& reaction = photo->reactions().back();
-      std::vector<std::string> branch_strs;
-      std::string absorb_str;
-      for (auto const& [sp, coeff] : reaction.reactants()) {
-        absorb_str += sp + ":" + std::to_string((int)coeff) + " ";
-      }
-      branch_strs.push_back(absorb_str);
-
-      if (reaction.products() != reaction.reactants()) {
-        std::string prod_str;
-        for (auto const& [sp, coeff] : reaction.products()) {
-          prod_str += sp + ":" + std::to_string((int)coeff) + " ";
-        }
-        branch_strs.push_back(prod_str);
-      }
-      photo->branch_names().push_back(branch_strs);
-
-      std::vector<Composition> branch_comps;
-      for (auto const& s : branch_strs) {
-        Composition comp;
-        std::istringstream bss(s);
-        std::string token;
-        while (bss >> token) {
-          auto colon = token.find(':');
-          if (colon != std::string::npos) {
-            comp[token.substr(0, colon)] = std::stod(token.substr(colon + 1));
-          }
-        }
-        branch_comps.push_back(comp);
-      }
-      photo->branches().push_back(branch_comps);
     }
   }
 
-  kinet->photolysis() = photo;
-
-  if (verbose) {
-    std::cout << fmt::format(
-                     "[KineticsOptions] registered {} Photolysis reactions",
-                     photo->reactions().size())
-              << std::endl;
-  }
-
-  // Register vapor species (all species are vapors for KINETICS-base)
+  photo_chem->photolysis() = photo;
   for (int id = 0; id < (int)species_names.size(); ++id) {
-    kinet->vapor_ids().push_back(id);
+    photo_chem->vapor_ids().push_back(id);
   }
-  std::sort(kinet->vapor_ids().begin(), kinet->vapor_ids().end());
-
-  for (auto const& id : kinet->vapor_ids()) {
-    kinet->cref_R().push_back(species_cref_R[id]);
-    kinet->uref_R().push_back(species_uref_R[id]);
-    kinet->sref_R().push_back(species_sref_R[id]);
-    kinet->nasa9_low().push_back(species_nasa9_low[id]);
-    kinet->nasa9_high().push_back(species_nasa9_high[id]);
-    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+  for (auto const& id : photo_chem->vapor_ids()) {
+    photo_chem->cref_R().push_back(species_cref_R[id]);
+    photo_chem->uref_R().push_back(species_uref_R[id]);
+    photo_chem->sref_R().push_back(species_sref_R[id]);
+    photo_chem->nasa9_low().push_back(species_nasa9_low[id]);
+    photo_chem->nasa9_high().push_back(species_nasa9_high[id]);
+    photo_chem->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
   }
 
-  return kinet;
+  return photo_chem;
 }
 
 }  // namespace kintera

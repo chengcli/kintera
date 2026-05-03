@@ -51,7 +51,7 @@ def test_from_kinetics_base_no_xsec(master_path):
     assert "O(1D)" in species
 
     reactions = opts.reactions()
-    assert len(reactions) == 20  # 12 thermal + 8 photolysis
+    assert len(reactions) == 12
 
     n_rev = _count_reversible(reactions)
     assert n_rev == 12  # all thermal reactions are reversible
@@ -66,7 +66,7 @@ def test_from_kinetics_base_with_xsec(master_path, catalog_path, cross_dir):
     )
 
     reactions = opts.reactions()
-    assert len(reactions) == 20
+    assert len(reactions) == 12
 
 
 def test_kinetics_module_creation(master_path, catalog_path, cross_dir):
@@ -89,36 +89,39 @@ def test_kinetics_module_creation(master_path, catalog_path, cross_dir):
     assert stoich.size(1) == nrxn + n_rev
 
 
-def test_kinetics_forward_with_xsec(master_path, catalog_path, cross_dir):
+def test_photochem_forward_with_xsec(master_path, catalog_path, cross_dir):
     """Forward pass with cross-section data loaded."""
     import kintera as kt
 
-    opts = kt.KineticsOptions.from_kinetics_base(
+    kinet_opts = kt.KineticsOptions.from_kinetics_base(
         master_path, catalog_path, cross_dir
     )
-    kinet = kt.Kinetics(opts)
+    photo_opts = kt.PhotoChemOptions.from_kinetics_base(
+        master_path, catalog_path, cross_dir
+    )
+    kinet = kt.Kinetics(kinet_opts)
+    photo = kt.PhotoChem(photo_opts)
 
-    species = opts.species()
+    species = kinet_opts.species()
     nspecies = len(species)
 
     temp = 300.0 * torch.ones(1)
     pres = 1.0e5 * torch.ones(1)
     conc = 1e18 * torch.ones(1, nspecies)
 
-    wave = kinet.module("photolysis").buffer("wavelength")
+    wave = photo.module("photolysis").buffer("wavelength")
     aflux = 1e14 * torch.ones_like(wave)
-    extra = {"actinic_flux": aflux}
+    rate, rc_ddC, rc_ddT = kinet.forward_nogil(temp, pres, conc, {})
+    photo_rate = photo.forward(temp, conc, aflux)
 
-    kinet.module("photolysis").update_xs_diss_stacked(temp)
-    rate, rc_ddC, rc_ddT = kinet.forward(temp, pres, conc, extra)
-
-    nrxn = len(opts.reactions())
-    n_rev = _count_reversible(opts.reactions())
+    nrxn = len(kinet_opts.reactions())
+    n_rev = _count_reversible(kinet_opts.reactions())
     assert rate.dim() == 2
     assert rate.size(0) == 1
     assert rate.size(1) == nrxn + n_rev
+    assert photo_rate.size(1) == len(photo_opts.reactions())
 
-    du = rate @ kinet.stoich.t()
+    du = rate @ kinet.stoich.t() + photo_rate @ photo.stoich.t()
     assert du.size(-1) == nspecies
 
 
