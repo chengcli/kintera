@@ -39,7 +39,8 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, Ea_R)
       .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, E4_R);
 
-  ADD_KINTERA_MODULE(Arrhenius, ArrheniusOptions, py::arg("temp"),
+  ADD_KINTERA_MODULE(Arrhenius, ArrheniusOptions,
+                     &kintera::ArrheniusImpl::forward, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"));
 
   ////////////// Coagulation //////////////
@@ -76,7 +77,8 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl,
                   diameter);
 
-  ADD_KINTERA_MODULE(Evaporation, EvaporationOptions, py::arg("temp"),
+  ADD_KINTERA_MODULE(Evaporation, EvaporationOptions,
+                     &kintera::EvaporationImpl::forward, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"));
 
   ////////////// Three-Body //////////////
@@ -101,7 +103,8 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<kintera::Composition>,
                   kintera::ThreeBodyOptionsImpl, efficiencies);
 
-  ADD_KINTERA_MODULE(ThreeBody, ThreeBodyOptions, py::arg("temp"),
+  ADD_KINTERA_MODULE(ThreeBody, ThreeBodyOptions,
+                     &kintera::ThreeBodyImpl::forward, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"))
       .def("pretty_print", &kintera::ThreeBodyImpl::pretty_print);
 
@@ -137,7 +140,8 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<kintera::Composition>,
                   kintera::LindemannFalloffOptionsImpl, efficiencies);
 
-  ADD_KINTERA_MODULE(LindemannFalloff, LindemannFalloffOptions, py::arg("temp"),
+  ADD_KINTERA_MODULE(LindemannFalloff, LindemannFalloffOptions,
+                     &kintera::LindemannFalloffImpl::forward, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"))
       .def("pretty_print", &kintera::LindemannFalloffImpl::pretty_print);
 
@@ -171,7 +175,8 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<kintera::Composition>,
                   kintera::TroeFalloffOptionsImpl, efficiencies);
 
-  ADD_KINTERA_MODULE(TroeFalloff, TroeFalloffOptions, py::arg("temp"),
+  ADD_KINTERA_MODULE(TroeFalloff, TroeFalloffOptions,
+                     &kintera::TroeFalloffImpl::forward, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"))
       .def("pretty_print", &kintera::TroeFalloffImpl::pretty_print);
 
@@ -206,7 +211,8 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<kintera::Composition>,
                   kintera::SRIFalloffOptionsImpl, efficiencies);
 
-  ADD_KINTERA_MODULE(SRIFalloff, SRIFalloffOptions, py::arg("temp"),
+  ADD_KINTERA_MODULE(SRIFalloff, SRIFalloffOptions,
+                     &kintera::SRIFalloffImpl::forward, py::arg("temp"),
                      py::arg("pres"), py::arg("conc"), py::arg("other"))
       .def("pretty_print", &kintera::SRIFalloffImpl::pretty_print);
 
@@ -250,16 +256,15 @@ void bind_kinetics(py::module& m) {
                   sri_falloff)
       .ADD_OPTION(bool, kintera::KineticsOptionsImpl, evolve_temperature);
 
-  ADD_KINTERA_MODULE_FORWARD(
-      Kinetics, KineticsOptions,
-      torch::wrap_pybind_function_no_gil(
-          [](kintera::KineticsImpl& self, torch::Tensor temp,
-             torch::Tensor pres, torch::Tensor conc,
-             std::map<std::string, torch::Tensor> const& extra) {
-            return self.forward(temp, pres, conc, extra);
-          }),
-      py::arg("temp"), py::arg("pres"), py::arg("conc"),
-      py::arg("extra") = std::map<std::string, torch::Tensor>{})
+  ADD_KINTERA_MODULE(Kinetics, KineticsOptions,
+                     torch::wrap_pybind_function_no_gil(
+                         [](kintera::KineticsImpl& self, torch::Tensor temp,
+                            torch::Tensor pres, torch::Tensor conc,
+                            std::map<std::string, torch::Tensor> const& extra) {
+                           return self.forward(temp, pres, conc, extra);
+                         }),
+                     py::arg("temp"), py::arg("pres"), py::arg("conc"),
+                     py::arg("extra") = std::map<std::string, torch::Tensor>{})
       .def(
           "forward_nogil",
           [](kintera::KineticsImpl& self, torch::Tensor temp,
