@@ -9,7 +9,8 @@
 
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
-#include <kintera/photolysis/kinetics_base_reader.hpp>
+#include <kintera/photochem/kinetics_base_reader.hpp>
+#include <kintera/photochem/photochem.hpp>
 
 // tests
 #include "device_testing.hpp"
@@ -182,8 +183,6 @@ TEST_P(DeviceTest, KineticsBaseLoadNoXsec) {
   EXPECT_GT(op->arrhenius()->reactions().size(), 0);
   EXPECT_GT(op->three_body()->reactions().size(), 0);
   EXPECT_GT(op->lindemann_falloff()->reactions().size(), 0);
-  EXPECT_GT(op->photolysis()->reactions().size(), 0);
-
   Kinetics kinet(op);
   kinet->to(device, dtype);
 
@@ -194,7 +193,7 @@ TEST_P(DeviceTest, KineticsBaseLoadNoXsec) {
 TEST_P(DeviceTest, KineticsBaseLoadWithXsec) {
   species_initialized = false;
 
-  auto op = KineticsOptionsImpl::from_kinetics_base(
+  auto op = PhotoChemOptionsImpl::from_kinetics_base(
       data_dir() + "test_master.inp", data_dir() + "test_catalog.dat",
       data_dir() + "cross/", true);
 
@@ -206,19 +205,43 @@ TEST_P(DeviceTest, KineticsBaseLoadWithXsec) {
             << std::endl;
   std::cout << "Cross-section data size: "
             << op->photolysis()->cross_section().size() << std::endl;
+
+  auto const& wave = op->photolysis()->wavelength();
+  EXPECT_TRUE(std::find(wave.begin(), wave.end(), 317.5) != wave.end());
+
+  PhotoChem photo(op);
+  photo->to(device, dtype);
+  auto query_wave = torch::tensor({317.5}, torch::device(device).dtype(dtype));
+  auto query_temp = torch::tensor({298.0}, torch::device(device).dtype(dtype));
+  auto xs = photo->photolysis_evaluator->interp_cross_section(3, query_wave,
+                                                              query_temp);
+  EXPECT_GT(xs[0][1].item<double>(), 0.0);
+}
+
+TEST_P(DeviceTest, KineticsBasePhotoChemRequiresCatalog) {
+  species_initialized = false;
+
+  EXPECT_THROW(PhotoChemOptionsImpl::from_kinetics_base(
+                   data_dir() + "test_master.inp", "", "", true),
+               c10::Error);
 }
 
 TEST_P(DeviceTest, KineticsBaseForward) {
   species_initialized = false;
 
-  auto op = KineticsOptionsImpl::from_kinetics_base(
+  auto op_kinet = KineticsOptionsImpl::from_kinetics_base(
+      data_dir() + "test_master.inp", data_dir() + "test_catalog.dat",
+      data_dir() + "cross/");
+  auto op_photo = PhotoChemOptionsImpl::from_kinetics_base(
       data_dir() + "test_master.inp", data_dir() + "test_catalog.dat",
       data_dir() + "cross/");
 
-  Kinetics kinet(op);
+  Kinetics kinet(op_kinet);
+  PhotoChem photo(op_photo);
   kinet->to(device, dtype);
+  photo->to(device, dtype);
 
-  auto species = op->species();
+  auto species = op_kinet->species();
   int nspecies = species.size();
   std::cout << "Species (" << nspecies << "): ";
   for (auto const& s : species) std::cout << s << " ";
@@ -229,27 +252,30 @@ TEST_P(DeviceTest, KineticsBaseForward) {
   auto temp = 300.0 * torch::ones({1}, torch::device(device).dtype(dtype));
   auto pres = 1.0e5 * torch::ones({1}, torch::device(device).dtype(dtype));
 
-  auto wave = kinet->photolysis_evaluator->wavelength.to(device, dtype);
+  auto wave = photo->photolysis_evaluator->wavelength.to(device, dtype);
   auto aflux = torch::ones_like(wave) * 1e14;
 
   std::map<std::string, torch::Tensor> extra;
   extra["actinic_flux"] = aflux;
 
-  kinet->photolysis_evaluator->update_xs_diss_stacked(temp);
-  auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc, extra);
+  auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
+  auto photo_rate = photo->forward(temp, conc, aflux);
 
   std::cout << "Rate shape: " << rate.sizes() << std::endl;
   std::cout << "Rate: " << rate << std::endl;
+  std::cout << "Photo rate: " << photo_rate << std::endl;
 
-  auto du = rate.matmul(kinet->stoich.t());
+  auto du =
+      rate.matmul(kinet->stoich.t()) + photo_rate.matmul(photo->stoich.t());
   std::cout << "du: " << du << std::endl;
 
-  int nrxn = op->reactions().size();
+  int nrxn = op_kinet->reactions().size();
   int n_reversible = 0;
-  for (auto const& r : op->reactions()) {
+  for (auto const& r : op_kinet->reactions()) {
     if (r.reversible()) n_reversible++;
   }
   EXPECT_EQ(rate.size(-1), (int64_t)(nrxn + n_reversible));
+  EXPECT_EQ(photo_rate.size(-1), (int64_t)op_photo->reactions().size());
   EXPECT_TRUE(rate.isfinite().any().item<bool>());
 }
 

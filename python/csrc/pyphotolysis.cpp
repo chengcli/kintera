@@ -5,8 +5,9 @@
 #include <pybind11/stl.h>
 
 // kintera
-#include <kintera/photolysis/actinic_flux.hpp>
-#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photochem/actinic_flux.hpp>
+#include <kintera/photochem/photochem.hpp>
+#include <kintera/photochem/photolysis.hpp>
 
 // python
 #include "pyoptions.hpp"
@@ -47,6 +48,31 @@ void bind_photolysis(py::module& m) {
       .ADD_OPTION(std::vector<std::vector<std::string>>,
                   kintera::PhotolysisOptionsImpl, branch_names);
 
+  auto pyPhotoChemOptions =
+      py::class_<kintera::PhotoChemOptionsImpl, kintera::SpeciesThermoImpl,
+                 kintera::PhotoChemOptions>(m, "PhotoChemOptions");
+
+  pyPhotoChemOptions.def(py::init<>())
+      .def("__repr__",
+           [](const kintera::PhotoChemOptions& self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("PhotoChemOptions({})", ss.str());
+           })
+      .def_static("from_yaml",
+                  py::overload_cast<std::string const&, bool>(
+                      &kintera::PhotoChemOptionsImpl::from_yaml),
+                  py::arg("filename"), py::arg("verbose") = false)
+      .def_static("from_kinetics_base",
+                  &kintera::PhotoChemOptionsImpl::from_kinetics_base,
+                  py::arg("master_input_path"),
+                  py::arg("photo_catalog_path") = "", py::arg("cross_dir") = "",
+                  py::arg("verbose") = false)
+      .def("reactions", &kintera::PhotoChemOptionsImpl::reactions,
+           py::return_value_policy::reference_internal)
+      .ADD_OPTION(kintera::PhotolysisOptions, kintera::PhotoChemOptionsImpl,
+                  photolysis);
+
   ////////////// Photolysis Module //////////////
   torch::python::bind_module<kintera::PhotolysisImpl>(m, "Photolysis")
       .def(py::init<>(), R"(Construct a new default module.)")
@@ -77,6 +103,12 @@ void bind_photolysis(py::module& m) {
       .def("get_effective_stoich",
            &kintera::PhotolysisImpl::get_effective_stoich, py::arg("rxn_idx"),
            py::arg("wave"), py::arg("aflux"), py::arg("temp"));
+
+  ADD_KINTERA_MODULE(PhotoChem, PhotoChemOptions,
+                     &kintera::PhotoChemImpl::forward, py::arg("temp"),
+                     py::arg("conc"), py::arg("actinic_flux"))
+      .def("jacobian", &kintera::PhotoChemImpl::jacobian, py::arg("conc"),
+           py::arg("rate"));
 
   ////////////// ActinicFluxOptions //////////////
   auto pyActinicFluxOptions =

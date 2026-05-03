@@ -8,6 +8,8 @@ import torch
 
 def test_import_photolysis():
     from kintera import (
+        PhotoChemOptions,
+        PhotoChem,
         PhotolysisOptions,
         Photolysis,
         ActinicFluxOptions,
@@ -17,6 +19,8 @@ def test_import_photolysis():
         interpolate_actinic_flux,
     )
 
+    assert PhotoChemOptions is not None
+    assert PhotoChem is not None
     assert PhotolysisOptions is not None
     assert Photolysis is not None
     assert ActinicFluxOptions is not None
@@ -138,6 +142,39 @@ def test_photolysis_forward():
 
     module.update_xs_diss_stacked(temp)
     rate = module.forward(temp, actinic_flux)
+
+    assert rate.dim() == 2
+    assert rate.size(-1) == 1
+
+
+def test_photochem_forward():
+    from kintera import (
+        PhotoChemOptions,
+        PhotoChem,
+        Reaction,
+        set_species_names,
+        create_uniform_flux,
+    )
+
+    set_species_names(["N2"])
+
+    opts = PhotoChemOptions()
+    photo = opts.photolysis()
+    photo.wavelength([100.0, 150.0, 200.0])
+    photo.temperature([200.0, 300.0])
+    photo.reactions([Reaction("N2 => N2")])
+    photo.cross_section([1e-18, 2e-18, 1e-18])
+    photo.branches([[{"N2": 1.0}]])
+    opts.vapor_ids([0])
+    opts.cref_R([2.5])
+    opts.uref_R([0.0])
+    opts.sref_R([0.0])
+
+    module = PhotoChem(opts)
+    temp = torch.tensor([250.0])
+    conc = torch.tensor([[1.0e18]])
+    wave = module.module("photolysis").buffer("wavelength")
+    rate = module.forward(temp, conc, create_uniform_flux(wave, 1.0))
 
     assert rate.dim() == 2
     assert rate.size(-1) == 1

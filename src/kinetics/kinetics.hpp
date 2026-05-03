@@ -8,7 +8,6 @@
 #include <torch/nn/modules/container/any.h>
 
 // kintera
-#include <kintera/photolysis/photolysis.hpp>
 #include <kintera/species.hpp>
 
 #include "arrhenius.hpp"
@@ -34,7 +33,6 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     op->lindemann_falloff() = LindemannFalloffOptionsImpl::create();
     op->troe_falloff() = TroeFalloffOptionsImpl::create();
     op->sri_falloff() = SRIFalloffOptionsImpl::create();
-    op->photolysis() = PhotolysisOptionsImpl::create();
     return op;
   }
 
@@ -77,8 +75,6 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(LindemannFalloffOptions, lindemann_falloff);
   ADD_ARG(TroeFalloffOptions, troe_falloff);
   ADD_ARG(SRIFalloffOptions, sri_falloff);
-  ADD_ARG(PhotolysisOptions, photolysis);
-
   ADD_ARG(bool, evolve_temperature) = false;
   ADD_ARG(bool, verbose) = false;
   ADD_ARG(bool, offset_zero) = false;
@@ -105,9 +101,6 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
 
   //! rate constant evaluator
   std::vector<torch::nn::AnyModule> rc_evaluator;
-
-  //! photolysis evaluator
-  Photolysis photolysis_evaluator;
 
   //! options with which this `KineticsImpl` was constructed
   KineticsOptions options;
@@ -176,18 +169,12 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
    *                    temperature [mol/(m^3 K s], shape (..., nreaction)
    */
   std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
-  forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc);
-
-  //! Compute kinetic rate with extra data (e.g. actinic flux for photolysis)
-  std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
   forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
-          std::map<std::string, torch::Tensor> const& extra);
+          std::map<std::string, torch::Tensor> const& extra = {});
 
  private:
   // used in evaluating jacobian
   std::vector<int> _nreactions;
-  int n_photolysis_reactions_ = 0;
-
   void _jacobian_mass_action(torch::Tensor temp, torch::Tensor conc,
                              torch::Tensor cvol, torch::Tensor rate,
                              torch::optional<torch::Tensor> logrc_ddT,

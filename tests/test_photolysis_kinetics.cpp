@@ -8,9 +8,9 @@
 #include <torch/torch.h>
 
 // kintera
-#include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
-#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photochem/photochem.hpp>
+#include <kintera/photochem/photolysis.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
 
 // tests
@@ -33,88 +33,86 @@ class PhotolysisKineticsTest : public DeviceTest {
   }
 };
 
-TEST_P(PhotolysisKineticsTest, KineticsOptionsWithPhotolysis) {
-  auto kinet_opts = KineticsOptionsImpl::create();
-
-  // Verify photolysis option exists
-  EXPECT_NE(kinet_opts->photolysis(), nullptr);
-  EXPECT_EQ(kinet_opts->photolysis()->reactions().size(), 0);
+TEST_P(PhotolysisKineticsTest, PhotoChemOptionsWithPhotolysis) {
+  auto photo_opts = PhotoChemOptionsImpl::create();
+  EXPECT_NE(photo_opts->photolysis(), nullptr);
+  EXPECT_EQ(photo_opts->photolysis()->reactions().size(), 0);
 }
 
-TEST_P(PhotolysisKineticsTest, PhotolysisReactionsInKinetics) {
-  auto kinet_opts = KineticsOptionsImpl::create();
+TEST_P(PhotolysisKineticsTest, PhotolysisReactionsInPhotoChem) {
+  auto photo_opts = PhotoChemOptionsImpl::create();
 
-  // Add a photolysis reaction manually
-  kinet_opts->photolysis()->wavelength() = {100., 150., 200.};
-  kinet_opts->photolysis()->temperature() = {200., 300.};
-  kinet_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
-  kinet_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
-  kinet_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
+  photo_opts->photolysis()->wavelength() = {100., 150., 200.};
+  photo_opts->photolysis()->temperature() = {200., 300.};
+  photo_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
+  photo_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
+  photo_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
 
-  // Add an Arrhenius reaction
-  kinet_opts->arrhenius()->reactions().push_back(Reaction("CH4 => CH3 + H"));
-  kinet_opts->arrhenius()->A() = {1.e10};
-  kinet_opts->arrhenius()->b() = {0.};
-  kinet_opts->arrhenius()->Ea_R() = {10000.};
-  kinet_opts->arrhenius()->E4_R() = {0.};
-
-  // Total reactions should include both
-  auto all_reactions = kinet_opts->reactions();
-  EXPECT_EQ(all_reactions.size(), 2);
+  auto all_reactions = photo_opts->reactions();
+  EXPECT_EQ(all_reactions.size(), 1);
 }
 
-TEST_P(PhotolysisKineticsTest, KineticsModuleWithPhotolysis) {
-  auto kinet_opts = KineticsOptionsImpl::create();
+TEST_P(PhotolysisKineticsTest, PhotoChemModuleWithPhotolysis) {
+  auto photo_opts = PhotoChemOptionsImpl::create();
 
-  // Setup species thermo
-  kinet_opts->vapor_ids() = {7};  // N2
-  kinet_opts->cref_R() = {2.5};
-  kinet_opts->uref_R() = {0.};
-  kinet_opts->sref_R() = {0.};
+  photo_opts->vapor_ids() = {7};
+  photo_opts->cref_R() = {2.5};
+  photo_opts->uref_R() = {0.};
+  photo_opts->sref_R() = {0.};
 
-  // Add photolysis reaction
-  kinet_opts->photolysis()->wavelength() = {100., 150., 200.};
-  kinet_opts->photolysis()->temperature() = {200., 300.};
-  kinet_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
-  kinet_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
-  kinet_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
+  photo_opts->photolysis()->wavelength() = {100., 150., 200.};
+  photo_opts->photolysis()->temperature() = {200., 300.};
+  photo_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
+  photo_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
+  photo_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
 
-  // Create kinetics module
-  Kinetics kinet(kinet_opts);
-  kinet->to(device, dtype);
+  PhotoChem photo(photo_opts);
+  photo->to(device, dtype);
 
-  // Verify stoichiometry matrix
-  EXPECT_EQ(kinet->stoich.size(1), 1);  // 1 photolysis reaction
+  EXPECT_EQ(photo->stoich.size(1), 1);
 }
 
 TEST_P(PhotolysisKineticsTest, StoichiometryMatrixIncludesPhotolysis) {
-  auto kinet_opts = KineticsOptionsImpl::create();
+  auto photo_opts = PhotoChemOptionsImpl::create();
 
-  // Setup minimal species thermo
-  kinet_opts->vapor_ids() = {0, 7};  // CH4, N2
-  kinet_opts->cref_R() = {2.5, 2.5};
-  kinet_opts->uref_R() = {0., 0.};
-  kinet_opts->sref_R() = {0., 0.};
+  photo_opts->vapor_ids() = {0, 7};
+  photo_opts->cref_R() = {2.5, 2.5};
+  photo_opts->uref_R() = {0., 0.};
+  photo_opts->sref_R() = {0., 0.};
 
-  // Add Arrhenius reaction
-  kinet_opts->arrhenius()->reactions().push_back(Reaction("CH4 => CH3 + H"));
-  kinet_opts->arrhenius()->A() = {1.e10};
-  kinet_opts->arrhenius()->b() = {0.};
-  kinet_opts->arrhenius()->Ea_R() = {10000.};
-  kinet_opts->arrhenius()->E4_R() = {0.};
+  photo_opts->photolysis()->wavelength() = {100., 200.};
+  photo_opts->photolysis()->temperature() = {200., 300.};
+  photo_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
+  photo_opts->photolysis()->cross_section() = {1.e-18, 1.e-18};
+  photo_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
 
-  // Add photolysis reaction
-  kinet_opts->photolysis()->wavelength() = {100., 200.};
-  kinet_opts->photolysis()->temperature() = {200., 300.};
-  kinet_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
-  kinet_opts->photolysis()->cross_section() = {1.e-18, 1.e-18};
-  kinet_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
+  PhotoChem photo(photo_opts);
+  photo->to(device, dtype);
 
-  Kinetics kinet(kinet_opts);
-  kinet->to(device, dtype);
+  EXPECT_EQ(photo->stoich.size(1), 1);
+}
 
-  // Should have 2 reactions total
-  EXPECT_EQ(kinet->stoich.size(1), 2);
+TEST_P(PhotolysisKineticsTest, PhotoChemForward) {
+  auto photo_opts = PhotoChemOptionsImpl::create();
+  photo_opts->vapor_ids() = {7};
+  photo_opts->cref_R() = {2.5};
+  photo_opts->uref_R() = {0.};
+  photo_opts->sref_R() = {0.};
+  photo_opts->photolysis()->wavelength() = {100., 150., 200.};
+  photo_opts->photolysis()->temperature() = {200., 300.};
+  photo_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
+  photo_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
+  photo_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
+
+  PhotoChem photo(photo_opts);
+  photo->to(device, dtype);
+
+  auto temp = torch::tensor({250.0}, torch::device(device).dtype(dtype));
+  auto conc = torch::tensor({{1.0e18}}, torch::device(device).dtype(dtype));
+  auto wave = photo->photolysis_evaluator->wavelength.to(device, dtype);
+  auto rate = photo->forward(temp, conc, torch::ones_like(wave) * 1.0e14);
+  EXPECT_EQ(rate.size(-1), 1);
+  EXPECT_TRUE(rate.isfinite().all().item<bool>());
 }
 
 INSTANTIATE_TEST_SUITE_P(

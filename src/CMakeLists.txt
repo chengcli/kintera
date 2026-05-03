@@ -32,7 +32,7 @@ file(GLOB src_files CONFIGURE_DEPENDS
   *.cpp
   utils/*.cpp
   kinetics/*.cpp
-  photolysis/*.cpp
+  photochem/*.cpp
   thermo/*.cpp
   math/*.cpp
   units/*.cpp

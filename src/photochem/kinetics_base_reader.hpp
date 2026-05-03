@@ -11,6 +11,8 @@ namespace kintera {
 
 struct KineticsOptionsImpl;
 using KineticsOptions = std::shared_ptr<KineticsOptionsImpl>;
+struct PhotoChemOptionsImpl;
+using PhotoChemOptions = std::shared_ptr<PhotoChemOptionsImpl>;
 
 struct KBSpecies {
   std::string name;
@@ -65,6 +67,10 @@ KBCrossSectionFile parse_kinetics_base_cross_section(
 void init_species_from_kinetics_base(std::string const& master_input_path);
 
 KineticsOptions kinetics_options_from_kinetics_base(
+    std::string const& master_input_path,
+    std::string const& photo_catalog_path = "",
+    std::string const& cross_dir = "", bool verbose = false);
+PhotoChemOptions photochem_options_from_kinetics_base(
     std::string const& master_input_path,
     std::string const& photo_catalog_path = "",
     std::string const& cross_dir = "", bool verbose = false);

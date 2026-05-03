@@ -2174,25 +2174,65 @@ class Photolysis:
     def forward(
         self,
         temp: torch.Tensor,
-        pres: torch.Tensor,
-        conc: torch.Tensor,
-        other: Dict[str, torch.Tensor]
+        actinic_flux: torch.Tensor
     ) -> torch.Tensor:
         """
         Compute photolysis rate constants.
 
         Args:
             temp (torch.Tensor): Temperature [K], shape (...)
-            pres (torch.Tensor): Pressure [Pa], shape (...)
-            conc (torch.Tensor): Concentration [mol/m^3], shape (..., nspecies)
-            other (dict): Dictionary containing:
-                - "wavelength": Wavelength grid [nm], shape (nwave,)
-                - "actinic_flux": Actinic flux [photons cm^-2 s^-1 nm^-1]
+            actinic_flux (torch.Tensor): Actinic flux [photons cm^-2 s^-1 nm^-1]
 
         Returns:
             torch.Tensor: Photolysis rate constants [s^-1], shape (..., nreaction)
         """
         ...
+
+
+class PhotoChemOptions(SpeciesThermo):
+    def __init__(self) -> None: ...
+
+    def __repr__(self) -> str: ...
+
+    @staticmethod
+    def from_yaml(filename: str, verbose: bool = False) -> PhotoChemOptions: ...
+
+    @staticmethod
+    def from_kinetics_base(
+        master_input_path: str,
+        photo_catalog_path: str = "",
+        cross_dir: str = "",
+        verbose: bool = False
+    ) -> PhotoChemOptions: ...
+
+    def reactions(self) -> List[Reaction]: ...
+
+    @overload
+    def photolysis(self) -> PhotolysisOptions: ...
+
+    @overload
+    def photolysis(self, value: PhotolysisOptions) -> PhotoChemOptions: ...
+
+
+class PhotoChem:
+    options: PhotoChemOptions
+
+    def __init__(self, options: PhotoChemOptions) -> None: ...
+
+    def __repr__(self) -> str: ...
+
+    def forward(
+        self,
+        temp: torch.Tensor,
+        conc: torch.Tensor,
+        actinic_flux: torch.Tensor
+    ) -> torch.Tensor: ...
+
+    def jacobian(
+        self,
+        conc: torch.Tensor,
+        rate: torch.Tensor
+    ) -> torch.Tensor: ...
 
     def interp_cross_section(
         self,
