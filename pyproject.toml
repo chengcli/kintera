@@ -46,7 +46,7 @@ Homepage = "https://github.com/chengcli/kintera"
 Documentation = "https://kintera.readthedocs.io"
 
 [tool.setuptools]
-packages = ["kintera", "kintera.api"]
+packages = ["kintera", "kintera.api", "kintera.atm1d"]
 include-package-data = false
 
 [tool.setuptools.package-data]

@@ -5,6 +5,7 @@ import pydisort
 import pyharp
 
 from .kintera import *
+from .atm1d import *
 
 try:
     __version__ = version("kintera")
