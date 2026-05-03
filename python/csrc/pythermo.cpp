@@ -56,18 +56,16 @@ void bind_thermo(py::module& m) {
       .ADD_OPTION(int, kintera::ThermoOptionsImpl, max_iter)
       .ADD_OPTION(double, kintera::ThermoOptionsImpl, ftol);
 
-  ADD_KINTERA_MODULE(ThermoY, ThermoOptions)
-      .def("forward", &kintera::ThermoYImpl::forward, py::arg("rho"),
-           py::arg("intEng"), py::arg("yfrac"), py::arg("warm_start") = false,
-           py::arg("diag") = py::none())
+  ADD_KINTERA_MODULE(ThermoY, ThermoOptions, py::arg("rho"), py::arg("intEng"),
+                     py::arg("yfrac"), py::arg("warm_start") = false,
+                     py::arg("diag") = py::none())
 
       .def("compute", &kintera::ThermoYImpl::compute, py::arg("ab"),
            py::arg("args"));
 
-  ADD_KINTERA_MODULE(ThermoX, ThermoOptions)
-      .def("forward", &kintera::ThermoXImpl::forward, py::arg("temp"),
-           py::arg("pres"), py::arg("xfrac"), py::arg("warm_start") = false,
-           py::arg("diag") = py::none())
+  ADD_KINTERA_MODULE(ThermoX, ThermoOptions, py::arg("temp"), py::arg("pres"),
+                     py::arg("xfrac"), py::arg("warm_start") = false,
+                     py::arg("diag") = py::none())
 
       .def("compute", &kintera::ThermoXImpl::compute, py::arg("ab"),
            py::arg("args"))

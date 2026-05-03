@@ -104,9 +104,8 @@ void bind_photolysis(py::module& m) {
            &kintera::PhotolysisImpl::get_effective_stoich, py::arg("rxn_idx"),
            py::arg("wave"), py::arg("aflux"), py::arg("temp"));
 
-  ADD_KINTERA_MODULE(PhotoChem, PhotoChemOptions)
-      .def("forward", &kintera::PhotoChemImpl::forward, py::arg("temp"),
-           py::arg("conc"), py::arg("actinic_flux"))
+  ADD_KINTERA_MODULE(PhotoChem, PhotoChemOptions, py::arg("temp"),
+                     py::arg("conc"), py::arg("actinic_flux"))
       .def("jacobian", &kintera::PhotoChemImpl::jacobian, py::arg("conc"),
            py::arg("rate"));
 
