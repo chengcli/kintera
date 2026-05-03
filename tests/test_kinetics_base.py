@@ -111,7 +111,7 @@ def test_photochem_forward_with_xsec(master_path, catalog_path, cross_dir):
 
     wave = photo.module("photolysis").buffer("wavelength")
     aflux = 1e14 * torch.ones_like(wave)
-    rate, rc_ddC, rc_ddT = kinet.forward_nogil(temp, pres, conc, {})
+    rate, rc_ddC, rc_ddT = kinet.forward_nogil(temp, pres, conc)
     photo_rate = photo.forward(temp, conc, aflux)
 
     nrxn = len(kinet_opts.reactions())

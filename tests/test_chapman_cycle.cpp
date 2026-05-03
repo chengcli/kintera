@@ -715,7 +715,7 @@ TEST_P(ChapmanCycleTest, ForwardRatesAndJacobianConsistent) {
   std::map<std::string, torch::Tensor> extra;
   extra["actinic_flux"] = actinic_flux;
 
-  auto [rate_kin, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc, {});
+  auto [rate_kin, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
   auto rate_photo = photo->forward(temp, conc, actinic_flux);
   auto rate = torch::cat({rate_kin, rate_photo}, -1);
 
