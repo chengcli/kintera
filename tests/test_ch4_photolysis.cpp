@@ -10,8 +10,9 @@
 // kintera
 #include <kintera/kinetics/jacobian_kinetics.hpp>
 #include <kintera/kinetics/kinetics.hpp>
-#include <kintera/photolysis/actinic_flux.hpp>
-#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photochem/actinic_flux.hpp>
+#include <kintera/photochem/photochem.hpp>
+#include <kintera/photochem/photolysis.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
 
 // tests
@@ -164,30 +165,26 @@ TEST_P(CH4PhotolysisTest, PhotolysisJacobian) {
   EXPECT_GT(jac[1][0].item<double>(), 0.);  // d(dB/dt)/dA > 0
 }
 
-// Test integration with Kinetics module
-TEST_P(CH4PhotolysisTest, KineticsIntegration) {
-  auto kinet_opts = KineticsOptionsImpl::create();
+// Test integration with PhotoChem module
+TEST_P(CH4PhotolysisTest, PhotoChemIntegration) {
+  auto photo_opts = PhotoChemOptionsImpl::create();
 
-  // Setup species thermo
-  kinet_opts->vapor_ids() = {0, 7};  // CH4, N2
-  kinet_opts->cref_R() = {2.5, 2.5};
-  kinet_opts->uref_R() = {0., 0.};
-  kinet_opts->sref_R() = {0., 0.};
+  photo_opts->vapor_ids() = {0, 7};
+  photo_opts->cref_R() = {2.5, 2.5};
+  photo_opts->uref_R() = {0., 0.};
+  photo_opts->sref_R() = {0., 0.};
 
-  // Add photolysis reaction
-  kinet_opts->photolysis()->wavelength() = {100., 150., 200.};
-  kinet_opts->photolysis()->temperature() = {200., 300.};
-  kinet_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
-  kinet_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
-  kinet_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
+  photo_opts->photolysis()->wavelength() = {100., 150., 200.};
+  photo_opts->photolysis()->temperature() = {200., 300.};
+  photo_opts->photolysis()->reactions().push_back(Reaction("N2 => N2"));
+  photo_opts->photolysis()->cross_section() = {1.e-18, 2.e-18, 1.e-18};
+  photo_opts->photolysis()->branches().push_back({parse_comp_string("N2:1")});
 
-  // Create kinetics module
-  Kinetics kinet(kinet_opts);
-  kinet->to(device, dtype);
+  PhotoChem photo(photo_opts);
+  photo->to(device, dtype);
 
-  // Verify total reactions
-  auto all_rxns = kinet_opts->reactions();
-  EXPECT_EQ(all_rxns.size(), 1);  // Just the photolysis reaction
+  auto all_rxns = photo_opts->reactions();
+  EXPECT_EQ(all_rxns.size(), 1);
 }
 
 // Test cross-section interpolation

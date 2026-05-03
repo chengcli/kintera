@@ -8,7 +8,7 @@
 #include <torch/torch.h>
 
 // kintera
-#include <kintera/photolysis/actinic_flux.hpp>
+#include <kintera/photochem/actinic_flux.hpp>
 
 // tests
 #include "device_testing.hpp"

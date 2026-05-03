@@ -2,7 +2,7 @@
 #include <yaml-cpp/yaml.h>
 
 // kintera
-#include <kintera/photolysis/kinetics_base_reader.hpp>
+#include <kintera/photochem/kinetics_base_reader.hpp>
 
 #include "kinetics.hpp"
 #include "kinetics_formatter.hpp"
@@ -143,16 +143,6 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
               << std::endl;
   }
 
-  // add photolysis reactions
-  kinet->photolysis() = PhotolysisOptionsImpl::from_yaml(config["reactions"]);
-  add_to_vapor_cloud(vapor_set, cloud_set, kinet->photolysis());
-  if (kinet->verbose()) {
-    std::cout << fmt::format(
-                     "[KineticsOptions] registered {} Photolysis reactions",
-                     kinet->photolysis()->reactions().size())
-              << std::endl;
-  }
-
   // register vapors: include ALL species from the YAML, not just those in
   // reactions, so that inert species (e.g. He) are tracked for total density.
   for (int id = 0; id < (int)species_names.size(); ++id) {
@@ -211,8 +201,7 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
       arrhenius()->reactions().size() + coagulation()->reactions().size() +
       evaporation()->reactions().size() + three_body()->reactions().size() +
       lindemann_falloff()->reactions().size() +
-      troe_falloff()->reactions().size() + sri_falloff()->reactions().size() +
-      photolysis()->reactions().size());
+      troe_falloff()->reactions().size() + sri_falloff()->reactions().size());
 
   for (const auto& reaction : arrhenius()->reactions()) {
     reactions.push_back(reaction);
@@ -239,10 +228,6 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   }
 
   for (const auto& reaction : sri_falloff()->reactions()) {
-    reactions.push_back(reaction);
-  }
-
-  for (const auto& reaction : photolysis()->reactions()) {
     reactions.push_back(reaction);
   }
 

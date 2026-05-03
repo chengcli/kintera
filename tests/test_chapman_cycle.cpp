@@ -12,7 +12,9 @@
 #include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/three_body.hpp>
-#include <kintera/photolysis/photolysis.hpp>
+#include <kintera/photochem/actinic_flux.hpp>
+#include <kintera/photochem/photochem.hpp>
+#include <kintera/photochem/photolysis.hpp>
 
 #include "device_testing.hpp"
 
@@ -549,9 +551,13 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   kintera::species_names = {"N2", "O2", "O", "O3"};
 
   auto op_kinet = KineticsOptionsImpl::from_yaml("chapman_cycle.yaml");
+  auto op_photo = PhotoChemOptionsImpl::from_yaml("chapman_cycle.yaml");
   ASSERT_NE(op_kinet, nullptr) << "Failed to load chapman_cycle.yaml";
+  ASSERT_NE(op_photo, nullptr) << "Failed to load chapman_cycle.yaml";
   Kinetics kinet(op_kinet);
+  PhotoChem photo(op_photo);
   kinet->to(device, dtype);
+  photo->to(device, dtype);
 
   auto species = op_kinet->species();
   int nspecies = species.size();
@@ -579,9 +585,9 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
     else
       actinic_flux[i] = 1.e14;
   }
-
-  std::map<std::string, torch::Tensor> extra;
-  extra["actinic_flux"] = actinic_flux;
+  auto photo_wavelength = photo->photolysis->wavelength.to(device, dtype);
+  auto photo_actinic_flux =
+      interpolate_actinic_flux(wavelength, actinic_flux, photo_wavelength);
 
   // Initial conditions in mol/m^3
   // Stratospheric conditions: sufficient pressure for three-body recombination
@@ -612,18 +618,23 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   double dt = 1.0;
   std::cout << "\nTime marching with Kinetics + evolve_implicit:\n";
 
-  kinet->photolysis_evaluator->update_xs_diss_stacked(temp);
   for (int step = 0; step < 1000; step++) {
-    auto [rate, rc_ddC, rc_ddT] =
-        kinet->forward(temp, pres, conc.unsqueeze(0), extra);
+    auto [rate_kin, rc_ddC, rc_ddT] =
+        kinet->forward(temp, pres, conc.unsqueeze(0));
+    auto rate_photo =
+        photo->forward(temp, conc.unsqueeze(0), photo_actinic_flux);
+    auto rate = torch::cat({rate_kin, rate_photo}, -1);
 
     auto rate0 = rate.squeeze(0);
     auto cvol = torch::ones({1}, torch::device(device).dtype(dtype));
-    auto jac =
-        kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate, rc_ddC, rc_ddT);
+    auto jac_kin = kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate_kin,
+                                   rc_ddC, rc_ddT);
+    auto jac_photo = photo->jacobian(conc.unsqueeze(0), rate_photo);
+    auto jac = torch::cat({jac_kin, jac_photo}, -2);
     auto jac0 = jac.squeeze(0);
+    auto stoich = torch::cat({kinet->stoich, photo->stoich}, 1);
 
-    auto delta = evolve_implicit(rate0, kinet->stoich, jac0, dt);
+    auto delta = evolve_implicit(rate0, stoich, jac0, dt);
 
     auto conc_trial = (conc + delta).clamp_min(0.0);
     double rel_change =
@@ -678,9 +689,13 @@ TEST_P(ChapmanCycleTest, ForwardRatesAndJacobianConsistent) {
   kintera::species_names = {"N2", "O2", "O", "O3"};
 
   auto op_kinet = KineticsOptionsImpl::from_yaml("chapman_cycle.yaml");
+  auto op_photo = PhotoChemOptionsImpl::from_yaml("chapman_cycle.yaml");
   ASSERT_NE(op_kinet, nullptr);
+  ASSERT_NE(op_photo, nullptr);
   Kinetics kinet(op_kinet);
+  PhotoChem photo(op_photo);
   kinet->to(device, dtype);
+  photo->to(device, dtype);
 
   double T = 300.0;
   auto temp = torch::tensor({T}, torch::device(device).dtype(dtype));
@@ -698,14 +713,16 @@ TEST_P(ChapmanCycleTest, ForwardRatesAndJacobianConsistent) {
   for (int w = 100; w <= 320; w++) wl_vec.push_back(w);
   auto wavelength = torch::tensor(wl_vec, torch::device(device).dtype(dtype));
   auto actinic_flux = torch::zeros_like(wavelength);
+  auto photo_wavelength = photo->photolysis->wavelength.to(device, dtype);
+  auto photo_actinic_flux =
+      interpolate_actinic_flux(wavelength, actinic_flux, photo_wavelength);
 
-  std::map<std::string, torch::Tensor> extra;
-  extra["actinic_flux"] = actinic_flux;
+  auto [rate_kin, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
+  auto rate_photo = photo->forward(temp, conc, photo_actinic_flux);
+  auto rate = torch::cat({rate_kin, rate_photo}, -1);
 
-  kinet->photolysis_evaluator->update_xs_diss_stacked(temp);
-  auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc, extra);
-
-  int nrxn_aug = kinet->stoich.size(1);
+  auto stoich = torch::cat({kinet->stoich, photo->stoich}, 1);
+  int nrxn_aug = stoich.size(1);
   std::cout << "Augmented reactions: " << nrxn_aug
             << " (has_reversible=" << kinet->has_reversible_
             << ", n_rev=" << kinet->n_reversible_ << ")\n";
@@ -713,7 +730,9 @@ TEST_P(ChapmanCycleTest, ForwardRatesAndJacobianConsistent) {
             << ", Rate R2: " << rate[0][1].item<double>() << "\n";
 
   auto cvol = torch::ones({1}, torch::device(device).dtype(dtype));
-  auto jac = kinet->jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT);
+  auto jac_kin = kinet->jacobian(temp, conc, cvol, rate_kin, rc_ddC, rc_ddT);
+  auto jac_photo = photo->jacobian(conc, rate_photo);
+  auto jac = torch::cat({jac_kin, jac_photo}, -2);
   std::cout << "Jacobian shape: " << jac.sizes() << "\n";
   EXPECT_EQ(jac.size(-1), 4);
   EXPECT_EQ(jac.size(-2), nrxn_aug);
@@ -725,9 +744,13 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
   kintera::species_names = {"N2", "O2", "O", "O3"};
 
   auto op_kinet = KineticsOptionsImpl::from_yaml("chapman_cycle.yaml");
+  auto op_photo = PhotoChemOptionsImpl::from_yaml("chapman_cycle.yaml");
   ASSERT_NE(op_kinet, nullptr);
+  ASSERT_NE(op_photo, nullptr);
   Kinetics kinet(op_kinet);
+  PhotoChem photo(op_photo);
   kinet->to(device, dtype);
+  photo->to(device, dtype);
 
   auto species = op_kinet->species();
   int nspecies = species.size();
@@ -746,9 +769,9 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
     else
       actinic_flux[i] = 1.e14;
   }
-
-  std::map<std::string, torch::Tensor> extra;
-  extra["actinic_flux"] = actinic_flux;
+  auto photo_wavelength = photo->photolysis->wavelength.to(device, dtype);
+  auto photo_actinic_flux =
+      interpolate_actinic_flux(wavelength, actinic_flux, photo_wavelength);
 
   double T = 250.0, P = 1000.0;
   double n_tot = P / (constants::Rgas * T);
@@ -777,18 +800,23 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
   double dt = 1.0;
   bool converged = false;
 
-  kinet->photolysis_evaluator->update_xs_diss_stacked(temp);
   for (int step = 0; step < 1000; step++) {
-    auto [rate, rc_ddC, rc_ddT] =
-        kinet->forward(temp, pres, conc.unsqueeze(0), extra);
+    auto [rate_kin, rc_ddC, rc_ddT] =
+        kinet->forward(temp, pres, conc.unsqueeze(0));
+    auto rate_photo =
+        photo->forward(temp, conc.unsqueeze(0), photo_actinic_flux);
+    auto rate = torch::cat({rate_kin, rate_photo}, -1);
 
     auto rate0 = rate.squeeze(0);
     auto cvol = torch::ones({1}, torch::device(device).dtype(dtype));
-    auto jac =
-        kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate, rc_ddC, rc_ddT);
+    auto jac_kin = kinet->jacobian(temp, conc.unsqueeze(0), cvol, rate_kin,
+                                   rc_ddC, rc_ddT);
+    auto jac_photo = photo->jacobian(conc.unsqueeze(0), rate_photo);
+    auto jac = torch::cat({jac_kin, jac_photo}, -2);
     auto jac0 = jac.squeeze(0);
+    auto stoich = torch::cat({kinet->stoich, photo->stoich}, 1);
 
-    auto delta = evolve_implicit(rate0, kinet->stoich, jac0, dt);
+    auto delta = evolve_implicit(rate0, stoich, jac0, dt);
 
     auto conc_trial = (conc + delta).clamp_min(0.0);
     double rel_change =

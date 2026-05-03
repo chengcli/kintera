@@ -22,4 +22,4 @@ torch::Tensor jacobian_evaporation(torch::Tensor rate, torch::Tensor stoich,
 
 }  // namespace kintera
 
-#include <kintera/photolysis/jacobian_photolysis.hpp>
+#include <kintera/photochem/jacobian_photolysis.hpp>
