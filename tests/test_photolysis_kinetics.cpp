@@ -109,7 +109,7 @@ TEST_P(PhotolysisKineticsTest, PhotoChemForward) {
 
   auto temp = torch::tensor({250.0}, torch::device(device).dtype(dtype));
   auto conc = torch::tensor({{1.0e18}}, torch::device(device).dtype(dtype));
-  auto wave = photo->photolysis_evaluator->wavelength.to(device, dtype);
+  auto wave = photo->photolysis->wavelength.to(device, dtype);
   auto rate = photo->forward(temp, conc, torch::ones_like(wave) * 1.0e14);
   EXPECT_EQ(rate.size(-1), 1);
   EXPECT_TRUE(rate.isfinite().all().item<bool>());

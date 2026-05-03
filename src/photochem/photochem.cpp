@@ -116,8 +116,8 @@ void PhotoChemImpl::reset() {
   stoich = register_buffer("stoich", stoich_data);
   react_stoich_ = register_buffer("react_stoich", react_data);
 
-  photolysis_evaluator = Photolysis(options->photolysis());
-  register_module("photolysis", photolysis_evaluator);
+  photolysis = Photolysis(options->photolysis());
+  register_module("photolysis", photolysis);
 }
 
 torch::Tensor PhotoChemImpl::forward(torch::Tensor temp, torch::Tensor conc,
@@ -129,8 +129,8 @@ torch::Tensor PhotoChemImpl::forward(torch::Tensor temp, torch::Tensor conc,
     return torch::empty(out_shape, temp.options());
   }
 
-  photolysis_evaluator->update_xs_diss_stacked(temp);
-  auto k = photolysis_evaluator->forward(temp, actinic_flux);
+  photolysis->update_xs_diss_stacked(temp);
+  auto k = photolysis->forward(temp, actinic_flux);
   auto conc_safe = conc.clamp_min(1e-300);
   return k * conc_safe.unsqueeze(-1).pow(react_stoich_).prod(-2);
 }

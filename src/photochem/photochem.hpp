@@ -53,7 +53,7 @@ class PhotoChemImpl : public torch::nn::Cloneable<PhotoChemImpl> {
 
   torch::Tensor stoich;
   PhotoChemOptions options;
-  Photolysis photolysis_evaluator;
+  Photolysis photolysis;
 
   PhotoChemImpl() : options(PhotoChemOptionsImpl::create()) {}
   explicit PhotoChemImpl(const PhotoChemOptions& options_);

@@ -12,6 +12,7 @@
 #include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/three_body.hpp>
+#include <kintera/photochem/actinic_flux.hpp>
 #include <kintera/photochem/photochem.hpp>
 #include <kintera/photochem/photolysis.hpp>
 
@@ -584,9 +585,9 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
     else
       actinic_flux[i] = 1.e14;
   }
-
-  std::map<std::string, torch::Tensor> extra;
-  extra["actinic_flux"] = actinic_flux;
+  auto photo_wavelength = photo->photolysis->wavelength.to(device, dtype);
+  auto photo_actinic_flux =
+      interpolate_actinic_flux(wavelength, actinic_flux, photo_wavelength);
 
   // Initial conditions in mol/m^3
   // Stratospheric conditions: sufficient pressure for three-body recombination
@@ -619,8 +620,9 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
 
   for (int step = 0; step < 1000; step++) {
     auto [rate_kin, rc_ddC, rc_ddT] =
-        kinet->forward(temp, pres, conc.unsqueeze(0), {});
-    auto rate_photo = photo->forward(temp, conc.unsqueeze(0), actinic_flux);
+        kinet->forward(temp, pres, conc.unsqueeze(0));
+    auto rate_photo =
+        photo->forward(temp, conc.unsqueeze(0), photo_actinic_flux);
     auto rate = torch::cat({rate_kin, rate_photo}, -1);
 
     auto rate0 = rate.squeeze(0);
@@ -711,12 +713,12 @@ TEST_P(ChapmanCycleTest, ForwardRatesAndJacobianConsistent) {
   for (int w = 100; w <= 320; w++) wl_vec.push_back(w);
   auto wavelength = torch::tensor(wl_vec, torch::device(device).dtype(dtype));
   auto actinic_flux = torch::zeros_like(wavelength);
-
-  std::map<std::string, torch::Tensor> extra;
-  extra["actinic_flux"] = actinic_flux;
+  auto photo_wavelength = photo->photolysis->wavelength.to(device, dtype);
+  auto photo_actinic_flux =
+      interpolate_actinic_flux(wavelength, actinic_flux, photo_wavelength);
 
   auto [rate_kin, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
-  auto rate_photo = photo->forward(temp, conc, actinic_flux);
+  auto rate_photo = photo->forward(temp, conc, photo_actinic_flux);
   auto rate = torch::cat({rate_kin, rate_photo}, -1);
 
   auto stoich = torch::cat({kinet->stoich, photo->stoich}, 1);
@@ -767,9 +769,9 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
     else
       actinic_flux[i] = 1.e14;
   }
-
-  std::map<std::string, torch::Tensor> extra;
-  extra["actinic_flux"] = actinic_flux;
+  auto photo_wavelength = photo->photolysis->wavelength.to(device, dtype);
+  auto photo_actinic_flux =
+      interpolate_actinic_flux(wavelength, actinic_flux, photo_wavelength);
 
   double T = 250.0, P = 1000.0;
   double n_tot = P / (constants::Rgas * T);
@@ -800,8 +802,9 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
 
   for (int step = 0; step < 1000; step++) {
     auto [rate_kin, rc_ddC, rc_ddT] =
-        kinet->forward(temp, pres, conc.unsqueeze(0), {});
-    auto rate_photo = photo->forward(temp, conc.unsqueeze(0), actinic_flux);
+        kinet->forward(temp, pres, conc.unsqueeze(0));
+    auto rate_photo =
+        photo->forward(temp, conc.unsqueeze(0), photo_actinic_flux);
     auto rate = torch::cat({rate_kin, rate_photo}, -1);
 
     auto rate0 = rate.squeeze(0);

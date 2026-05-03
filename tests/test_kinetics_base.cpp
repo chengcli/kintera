@@ -213,8 +213,7 @@ TEST_P(DeviceTest, KineticsBaseLoadWithXsec) {
   photo->to(device, dtype);
   auto query_wave = torch::tensor({317.5}, torch::device(device).dtype(dtype));
   auto query_temp = torch::tensor({298.0}, torch::device(device).dtype(dtype));
-  auto xs = photo->photolysis_evaluator->interp_cross_section(3, query_wave,
-                                                              query_temp);
+  auto xs = photo->photolysis->interp_cross_section(3, query_wave, query_temp);
   EXPECT_GT(xs[0][1].item<double>(), 0.0);
 }
 
@@ -252,11 +251,8 @@ TEST_P(DeviceTest, KineticsBaseForward) {
   auto temp = 300.0 * torch::ones({1}, torch::device(device).dtype(dtype));
   auto pres = 1.0e5 * torch::ones({1}, torch::device(device).dtype(dtype));
 
-  auto wave = photo->photolysis_evaluator->wavelength.to(device, dtype);
+  auto wave = photo->photolysis->wavelength.to(device, dtype);
   auto aflux = torch::ones_like(wave) * 1e14;
-
-  std::map<std::string, torch::Tensor> extra;
-  extra["actinic_flux"] = aflux;
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
   auto photo_rate = photo->forward(temp, conc, aflux);

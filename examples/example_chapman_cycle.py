@@ -129,9 +129,8 @@ def run_chapman_cycle():
         else:
             flux_values[i] = 1.e14
 
-    flux_map = {"wavelength": wavelength, "actinic_flux": flux_values}
-
-    J = photolysis.forward(temp, pres, conc, flux_map)
+    photolysis.update_xs_diss_stacked(temp)
+    J = photolysis.forward(temp, flux_values)
     k = arrhenius.forward(temp, pres, conc)
     print(f"\nPhotolysis rates:")
     print(f"  J(O2) = {J[0, 0].item():.3e} s^-1")
@@ -152,7 +151,7 @@ def run_chapman_cycle():
     for step in range(nsteps):
         c_N2, c_O2, c_O, c_O3 = conc_evolve[0].tolist()
 
-        J_vals = photolysis.forward(temp, pres, conc_evolve, flux_map)
+        J_vals = photolysis.forward(temp, flux_values)
         k_vals = arrhenius.forward(temp, pres, conc_evolve)
         J_O2, J_O3 = J_vals[0, 0].item(), J_vals[0, 1].item()
         k2, k4 = k_vals[0, 0].item(), k_vals[0, 1].item()
@@ -195,8 +194,9 @@ def run_chapman_cycle():
     print(f"\n1. Mass Conservation: {mass_error:.4f}% error")
     print("   " + ("PASS" if mass_error < 1.0 else "FAIL"))
 
-    J_O2_final = photolysis.forward(temp, pres, conc_evolve, flux_map)[0, 0].item()
-    J_O3_final = photolysis.forward(temp, pres, conc_evolve, flux_map)[0, 1].item()
+    J_final = photolysis.forward(temp, flux_values)
+    J_O2_final = J_final[0, 0].item()
+    J_O3_final = J_final[0, 1].item()
     print(f"\n2. Photolysis Rates:")
     print(f"   J(O2) = {J_O2_final:.3e} s^-1")
     print(f"   J(O3) = {J_O3_final:.3e} s^-1")
