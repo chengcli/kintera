@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
+import scipy.sparse
+import scipy.sparse.linalg
 import torch
 
 
@@ -13,6 +16,7 @@ class SparseSystemMatrix:
     global_csr: torch.Tensor
     rhs_override_mask: torch.Tensor | None = None
     rhs_override_values: torch.Tensor | None = None
+    _cpu_factorized_solver: Any = field(default=None, init=False, repr=False, compare=False)
 
     @classmethod
     def from_dense(
@@ -205,6 +209,22 @@ class SparseSystemMatrix:
         if self.rhs_override_mask is None:
             return rhs_3d
         return torch.where(self.rhs_override_mask, self.rhs_override_values, rhs_3d)
+
+    def factorized_cpu_solver(self):
+        if self.device.type != "cpu":
+            raise ValueError("CPU factorization is only available for CPU matrices")
+        if self._cpu_factorized_solver is None:
+            scipy_csr = scipy.sparse.csr_matrix(
+                (
+                    self.global_csr.values().numpy(),
+                    self.global_csr.col_indices().numpy(),
+                    self.global_csr.crow_indices().numpy(),
+                ),
+                shape=self.global_csr.shape,
+            )
+            scipy_csc = scipy_csr.tocsc()
+            self._cpu_factorized_solver = scipy.sparse.linalg.factorized(scipy_csc)
+        return self._cpu_factorized_solver
 
 
 def add_sparse_system_matrices(*matrices: SparseSystemMatrix) -> SparseSystemMatrix:

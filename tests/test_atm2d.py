@@ -1,4 +1,5 @@
 import pytest
+import scipy.sparse.linalg
 import torch
 
 import kintera as kt
@@ -87,6 +88,38 @@ def test_sparse_solver_matches_dense_solution():
     sol = kt.solve_sparse_system(matrix, rhs)
     ref = torch.linalg.solve(dense, rhs.reshape(-1)).reshape(ncol, nlyr, ns)
     torch.testing.assert_close(sol, ref, atol=1e-12, rtol=1e-12)
+
+
+def test_sparse_solver_reuses_cpu_factorization(monkeypatch):
+    ncol, nlyr, ns = 1, 3, 1
+    dense = torch.tensor(
+        [
+            [4.0, -1.0, 0.0],
+            [-1.0, 4.0, -1.0],
+            [0.0, -1.0, 4.0],
+        ],
+        dtype=torch.float64,
+    )
+    matrix = kt.SparseSystemMatrix.from_dense(dense, ncol=ncol, nlyr=nlyr, nspecies=ns)
+    calls = {"count": 0}
+    factorized_impl = scipy.sparse.linalg.factorized
+
+    def counting_factorized(*args, **kwargs):
+        calls["count"] += 1
+        return factorized_impl(*args, **kwargs)
+
+    monkeypatch.setattr(scipy.sparse.linalg, "factorized", counting_factorized)
+    rhs1 = torch.tensor([[[1.0], [2.0], [3.0]]], dtype=torch.float64)
+    rhs2 = torch.tensor([[[3.0], [2.0], [1.0]]], dtype=torch.float64)
+
+    sol1 = kt.solve_sparse_system(matrix, rhs1)
+    sol2 = kt.solve_sparse_system(matrix, rhs2)
+
+    ref1 = torch.linalg.solve(dense, rhs1.reshape(-1)).reshape(ncol, nlyr, ns)
+    ref2 = torch.linalg.solve(dense, rhs2.reshape(-1)).reshape(ncol, nlyr, ns)
+    torch.testing.assert_close(sol1, ref1, atol=1.0e-12, rtol=1.0e-12)
+    torch.testing.assert_close(sol2, ref2, atol=1.0e-12, rtol=1.0e-12)
+    assert calls["count"] == 1
 
 
 def test_steady_1d_advection_diffusion_dirichlet_matches_analytic_solution():

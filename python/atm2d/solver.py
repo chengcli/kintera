@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-import scipy.sparse
-import scipy.sparse.linalg
 import torch
 
 from .matrix import SparseSystemMatrix
@@ -25,16 +23,8 @@ def solve_sparse_system(matrix: SparseSystemMatrix, rhs: torch.Tensor) -> torch.
             0,
         )
     else:
-        sparse_cpu = sparse_matrix.cpu()
-        scipy_csr = scipy.sparse.csr_matrix(
-            (
-                sparse_cpu.values().numpy(),
-                sparse_cpu.col_indices().numpy(),
-                sparse_cpu.crow_indices().numpy(),
-            ),
-            shape=sparse_cpu.shape,
-        )
-        sol_np = scipy.sparse.linalg.spsolve(scipy_csr, rhs_vec.cpu().numpy())
+        solve_cpu = matrix.factorized_cpu_solver()
+        sol_np = solve_cpu(rhs_vec.cpu().numpy())
         sol_vec = torch.from_numpy(np.asarray(sol_np)).to(device=matrix.device, dtype=matrix.dtype)
     return sol_vec.reshape(matrix.ncol, matrix.nlyr, matrix.nspecies)
 
