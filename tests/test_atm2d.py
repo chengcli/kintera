@@ -482,3 +482,34 @@ def test_cuda_sparse_solver_matches_cpu():
     )
     gpu_sol = kt.solve_sparse_system(gpu_matrix, rhs.cuda()).cpu()
     torch.testing.assert_close(cpu_sol, gpu_sol, atol=1e-12, rtol=1e-12)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_cuda_sparse_solver_reuses_cached_int32_csr_indices():
+    dense = torch.tensor(
+        [
+            [4.0, -1.0, 0.0],
+            [-1.0, 4.0, -1.0],
+            [0.0, -1.0, 4.0],
+        ],
+        dtype=torch.float64,
+        device="cuda",
+    )
+    matrix = kt.SparseSystemMatrix.from_dense(dense, ncol=1, nlyr=3, nspecies=1)
+
+    crow1, col1 = matrix.cuda_csr_indices_int32()
+    crow2, col2 = matrix.cuda_csr_indices_int32()
+    assert crow1.dtype == torch.int32
+    assert col1.dtype == torch.int32
+    assert crow1.data_ptr() == crow2.data_ptr()
+    assert col1.data_ptr() == col2.data_ptr()
+
+    rhs1 = torch.tensor([[[1.0], [2.0], [3.0]]], dtype=torch.float64, device="cuda")
+    rhs2 = torch.tensor([[[3.0], [2.0], [1.0]]], dtype=torch.float64, device="cuda")
+    kt.solve_sparse_system(matrix, rhs1)
+    crow3, col3 = matrix.cuda_csr_indices_int32()
+    kt.solve_sparse_system(matrix, rhs2)
+    crow4, col4 = matrix.cuda_csr_indices_int32()
+
+    assert crow1.data_ptr() == crow3.data_ptr() == crow4.data_ptr()
+    assert col1.data_ptr() == col3.data_ptr() == col4.data_ptr()

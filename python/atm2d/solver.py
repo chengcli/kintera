@@ -14,9 +14,10 @@ def solve_sparse_system(matrix: SparseSystemMatrix, rhs: torch.Tensor) -> torch.
     if sparse_matrix.device.type == "cuda":
         from ..kintera import cuda_csr_solve_cusolver
 
+        crow_indices, col_indices = matrix.cuda_csr_indices_int32()
         sol_vec = cuda_csr_solve_cusolver(
-            sparse_matrix.crow_indices().to(dtype=torch.int32),
-            sparse_matrix.col_indices().to(dtype=torch.int32),
+            crow_indices,
+            col_indices,
             sparse_matrix.values(),
             rhs_vec,
             0.0,

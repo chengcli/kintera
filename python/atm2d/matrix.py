@@ -17,6 +17,12 @@ class SparseSystemMatrix:
     rhs_override_mask: torch.Tensor | None = None
     rhs_override_values: torch.Tensor | None = None
     _cpu_factorized_solver: Any = field(default=None, init=False, repr=False, compare=False)
+    _cuda_crow_indices_int32: torch.Tensor | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    _cuda_col_indices_int32: torch.Tensor | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @classmethod
     def from_dense(
@@ -225,6 +231,14 @@ class SparseSystemMatrix:
             scipy_csc = scipy_csr.tocsc()
             self._cpu_factorized_solver = scipy.sparse.linalg.factorized(scipy_csc)
         return self._cpu_factorized_solver
+
+    def cuda_csr_indices_int32(self) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.device.type != "cuda":
+            raise ValueError("CUDA CSR index cache is only available for CUDA matrices")
+        if self._cuda_crow_indices_int32 is None:
+            self._cuda_crow_indices_int32 = self.global_csr.crow_indices().to(dtype=torch.int32)
+            self._cuda_col_indices_int32 = self.global_csr.col_indices().to(dtype=torch.int32)
+        return self._cuda_crow_indices_int32, self._cuda_col_indices_int32
 
 
 def add_sparse_system_matrices(*matrices: SparseSystemMatrix) -> SparseSystemMatrix:

@@ -5,6 +5,9 @@
 #include <c10/util/Exception.h>
 #include <torch/extension.h>
 
+// std
+#include <mutex>
+
 // system
 #include <dlfcn.h>
 
@@ -18,11 +21,16 @@ using cuda_csr_solve_fn = torch::Tensor (*)(const torch::Tensor&,
                                             const torch::Tensor&, double, int);
 
 cuda_csr_solve_fn resolve_cuda_csr_solve_cusolver() {
-  void* symbol = dlsym(RTLD_DEFAULT, "kintera_cuda_csr_solve_cusolver");
-  TORCH_CHECK(symbol != nullptr,
+  static std::once_flag once;
+  static cuda_csr_solve_fn cached = nullptr;
+  std::call_once(once, []() {
+    void* symbol = dlsym(RTLD_DEFAULT, "kintera_cuda_csr_solve_cusolver");
+    cached = reinterpret_cast<cuda_csr_solve_fn>(symbol);
+  });
+  TORCH_CHECK(cached != nullptr,
               "cuda_csr_solve_cusolver is unavailable because kintera was "
               "built without CUDA sparse-solver support");
-  return reinterpret_cast<cuda_csr_solve_fn>(symbol);
+  return cached;
 }
 
 torch::Tensor cuda_csr_solve_cusolver_binding(const torch::Tensor& crow_indices,

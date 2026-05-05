@@ -1,4 +1,6 @@
 // torch
+#include <memory>
+
 #include <torch/types.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
@@ -28,6 +30,22 @@ void check_cusparse(cusparseStatus_t status, const char* msg) {
   TORCH_CHECK(status == CUSPARSE_STATUS_SUCCESS, msg, " failed with status ",
               static_cast<int>(status));
 }
+
+struct CuSolverSpHandleDeleter {
+  void operator()(std::remove_pointer_t<cusolverSpHandle_t>* handle) const {
+    if (handle != nullptr) {
+      cusolverSpDestroy(handle);
+    }
+  }
+};
+
+struct CuSparseMatDescrDeleter {
+  void operator()(std::remove_pointer_t<cusparseMatDescr_t>* descr) const {
+    if (descr != nullptr) {
+      cusparseDestroyMatDescr(descr);
+    }
+  }
+};
 
 }  // namespace
 
@@ -65,36 +83,52 @@ torch::Tensor cuda_csr_solve_cusolver(const torch::Tensor& crow_indices,
 
   const auto n = static_cast<int>(b.numel());
   TORCH_CHECK(crow.numel() == n + 1, "crow_indices must have length n + 1");
+  TORCH_CHECK(col.numel() == val.numel(),
+              "col_indices must have the same length as values");
   TORCH_CHECK(crow.device() == device && col.device() == device &&
                   b.device() == device,
               "all tensors must live on the same CUDA device");
   TORCH_CHECK(crow[crow.numel() - 1].item<int>() == val.numel(),
               "CSR nnz mismatch");
+  auto crow_host = crow.cpu();
+  auto crow_ptr = crow_host.data_ptr<int>();
+  for (int i = 0; i < crow_host.numel() - 1; ++i) {
+    TORCH_CHECK(crow_ptr[i] <= crow_ptr[i + 1],
+                "crow_indices must be nondecreasing");
+  }
 
   auto x = torch::zeros_like(b);
 
-  cusolverSpHandle_t solver_handle = nullptr;
-  cusparseMatDescr_t descr = nullptr;
-  check_cusolver(cusolverSpCreate(&solver_handle), "cusolverSpCreate");
-  check_cusolver(cusolverSpSetStream(solver_handle, stream),
+  cusolverSpHandle_t solver_handle_raw = nullptr;
+  cusparseMatDescr_t descr_raw = nullptr;
+  check_cusolver(cusolverSpCreate(&solver_handle_raw), "cusolverSpCreate");
+  std::unique_ptr<std::remove_pointer_t<cusolverSpHandle_t>,
+                  CuSolverSpHandleDeleter>
+      solver_handle(solver_handle_raw);
+  check_cusolver(cusolverSpSetStream(solver_handle.get(), stream),
                  "cusolverSpSetStream");
-  check_cusparse(cusparseCreateMatDescr(&descr), "cusparseCreateMatDescr");
-  check_cusparse(cusparseSetMatType(descr, CUSPARSE_MATRIX_TYPE_GENERAL),
+  check_cusparse(cusparseCreateMatDescr(&descr_raw), "cusparseCreateMatDescr");
+  std::unique_ptr<std::remove_pointer_t<cusparseMatDescr_t>,
+                  CuSparseMatDescrDeleter>
+      descr(descr_raw);
+  check_cusparse(cusparseSetMatType(descr.get(), CUSPARSE_MATRIX_TYPE_GENERAL),
                  "cusparseSetMatType");
-  check_cusparse(cusparseSetMatIndexBase(descr, CUSPARSE_INDEX_BASE_ZERO),
+  check_cusparse(cusparseSetMatIndexBase(descr.get(), CUSPARSE_INDEX_BASE_ZERO),
                  "cusparseSetMatIndexBase");
 
   int singularity = -1;
   if (val.scalar_type() == torch::kFloat64) {
     check_cusolver(cusolverSpDcsrlsvqr(
-                       solver_handle, n, static_cast<int>(val.numel()), descr,
+                       solver_handle.get(), n, static_cast<int>(val.numel()),
+                       descr.get(),
                        val.data_ptr<double>(), crow.data_ptr<int>(),
                        col.data_ptr<int>(), b.data_ptr<double>(), tol, reorder,
                        x.data_ptr<double>(), &singularity),
                    "cusolverSpDcsrlsvqr");
   } else {
     check_cusolver(cusolverSpScsrlsvqr(
-                       solver_handle, n, static_cast<int>(val.numel()), descr,
+                       solver_handle.get(), n, static_cast<int>(val.numel()),
+                       descr.get(),
                        val.data_ptr<float>(), crow.data_ptr<int>(),
                        col.data_ptr<int>(), b.data_ptr<float>(),
                        static_cast<float>(tol), reorder, x.data_ptr<float>(),
@@ -106,9 +140,6 @@ torch::Tensor cuda_csr_solve_cusolver(const torch::Tensor& crow_indices,
   TORCH_CHECK(singularity < 0,
               "cusolver sparse solve detected singularity at row ",
               singularity);
-
-  check_cusparse(cusparseDestroyMatDescr(descr), "cusparseDestroyMatDescr");
-  check_cusolver(cusolverSpDestroy(solver_handle), "cusolverSpDestroy");
   return x;
 }
 

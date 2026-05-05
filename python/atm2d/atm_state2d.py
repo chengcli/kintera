@@ -80,6 +80,8 @@ class AtmState2D:
         self.dx2f = self.x2f[1:] - self.x2f[:-1]
         self.x1v = 0.5 * (self.x1f[:-1] + self.x1f[1:])
         self.x2v = 0.5 * (self.x2f[:-1] + self.x2f[1:])
+        self._dx1v = self.x1v[1:] - self.x1v[:-1]
+        self._dx2v = self.x2v[1:] - self.x2v[:-1]
 
         if self.temperature.shape != (self.ncol, self.nlyr):
             raise ValueError("temperature must have shape (ncol, nlyr)")
@@ -110,11 +112,11 @@ class AtmState2D:
 
     @property
     def dx1v(self) -> torch.Tensor:
-        return self.x1v[1:] - self.x1v[:-1]
+        return self._dx1v
 
     @property
     def dx2v(self) -> torch.Tensor:
-        return self.x2v[1:] - self.x2v[:-1]
+        return self._dx2v
 
     @property
     def temperature_x1f(self) -> torch.Tensor:
