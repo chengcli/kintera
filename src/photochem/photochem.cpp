@@ -129,6 +129,7 @@ torch::Tensor PhotoChemImpl::forward(torch::Tensor temp, torch::Tensor conc,
     return torch::empty(out_shape, temp.options());
   }
 
+  photolysis->update_xs_diss_stacked(temp);
   auto k = photolysis->forward(temp, actinic_flux);
   auto conc_safe = conc.clamp_min(1e-300);
   return k * conc_safe.unsqueeze(-1).pow(react_stoich_).prod(-2);

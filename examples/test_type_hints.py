@@ -8,6 +8,13 @@ that the kintera.pyi stub file provides proper type information.
 # This file will be type-checked but not executed
 # It demonstrates that IDEs/type checkers can understand the API
 
+import pytest
+
+pytest.skip(
+    "type-hint demonstration only; not a runtime pytest module",
+    allow_module_level=True,
+)
+
 def test_species_thermo() -> None:
     """Test SpeciesThermo type hints."""
     from kintera import SpeciesThermo

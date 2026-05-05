@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 import scipy.sparse.linalg
 import torch
@@ -6,6 +8,8 @@ import kintera as kt
 
 
 torch.set_default_dtype(torch.float64)
+TEST_DIR = Path(__file__).resolve().parent
+CHAPMAN_CYCLE_YAML = TEST_DIR / "chapman_cycle.yaml"
 
 
 def _make_state(ncol: int = 3, nlyr: int = 5, ns: int = 2) -> kt.AtmState2D:
@@ -392,7 +396,7 @@ def test_boundary_corner_precedence_overrides_left_with_top():
 
 
 def test_actinic_flux_from_disort_supports_2d_state():
-    photo_opts = kt.PhotoChemOptions.from_yaml("tests/chapman_cycle.yaml")
+    photo_opts = kt.PhotoChemOptions.from_yaml(str(CHAPMAN_CYCLE_YAML))
     photo = kt.PhotoChem(photo_opts)
     species = photo_opts.species()
     idx = {name: i for i, name in enumerate(species)}
@@ -425,8 +429,8 @@ def test_actinic_flux_from_disort_supports_2d_state():
 
 
 def test_implicit_operator_adds_chemistry_and_photochemistry():
-    kinetics = kt.Kinetics(kt.KineticsOptions.from_yaml("tests/chapman_cycle.yaml"))
-    photo_opts = kt.PhotoChemOptions.from_yaml("tests/chapman_cycle.yaml")
+    kinetics = kt.Kinetics(kt.KineticsOptions.from_yaml(str(CHAPMAN_CYCLE_YAML)))
+    photo_opts = kt.PhotoChemOptions.from_yaml(str(CHAPMAN_CYCLE_YAML))
     photo = kt.PhotoChem(photo_opts)
     species = photo_opts.species()
     kt.set_species_names(species)

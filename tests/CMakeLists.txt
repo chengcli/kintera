@@ -38,9 +38,6 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/cross
 file(GLOB pyfiles test*.py)
 foreach(pyfile ${pyfiles})
   get_filename_component(name ${pyfile} NAME)
-  message(STATUS "Copying ${pyfile} to ${name}")
-  configure_file(${pyfile} ${CMAKE_CURRENT_BINARY_DIR}/${name} @ONLY)
-  add_test(NAME ${name} COMMAND pytest ${name})
-  set_tests_properties(${name} PROPERTIES WORKING_DIRECTORY
-                                         ${CMAKE_CURRENT_BINARY_DIR})
+  add_test(NAME ${name} COMMAND pytest ${pyfile})
+  set_tests_properties(${name} PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
