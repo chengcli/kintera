@@ -588,29 +588,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
   (void)photo_catalog_path;
   (void)cross_dir;
   auto master = parse_kinetics_base_master(master_input_path);
-
-  if (!species_initialized) {
-    species_names.clear();
-    species_weights.clear();
-    species_cref_R.clear();
-    species_uref_R.clear();
-    species_sref_R.clear();
-    species_nasa9_low.clear();
-    species_nasa9_high.clear();
-    species_nasa9_Tmid.clear();
-
-    for (auto const& sp : master.species) {
-      species_names.push_back(sp.name);
-      species_weights.push_back(sp.molecular_weight);
-      species_cref_R.push_back(2.5);
-      species_uref_R.push_back(0.0);
-      species_sref_R.push_back(0.0);
-      species_nasa9_low.push_back(sp.nasa9_low);
-      species_nasa9_high.push_back(sp.nasa9_high);
-      species_nasa9_Tmid.push_back(sp.nasa9_Tmid);
-    }
-    species_initialized = true;
-  }
+  init_species_from_kinetics_base(master_input_path);
 
   auto kinet = KineticsOptionsImpl::create();
   kinet->verbose(verbose);
@@ -725,9 +703,7 @@ PhotoChemOptions photochem_options_from_kinetics_base(
     std::string const& cross_dir, bool verbose) {
   auto master = parse_kinetics_base_master(master_input_path);
 
-  if (!species_initialized) {
-    init_species_from_kinetics_base(master_input_path);
-  }
+  init_species_from_kinetics_base(master_input_path);
 
   auto photo_chem = PhotoChemOptionsImpl::create();
   photo_chem->verbose(verbose);
@@ -960,10 +936,10 @@ PhotoChemOptions photochem_options_from_kinetics_base(
       continue;
     }
 
-    std::string fpath =
-        cross_dir.empty() ? cat_it->second : (cross_dir + "/" + cat_it->second);
-    auto csf = parse_kinetics_base_cross_section(fpath);
-    if (csf.datasets.empty()) {
+    std::string const& fname = cat_it->second;
+    std::string fpath = cross_dir.empty() ? fname : (cross_dir + "/" + fname);
+    auto cache_it = file_cache.find(fname);
+    if (cache_it == file_cache.end() || cache_it->second.datasets.empty()) {
       TORCH_CHECK(!photo->wavelength().empty(),
                   "Photolysis cross-section file '", fpath,
                   "' contains no usable datasets and no shared photolysis "
@@ -974,6 +950,7 @@ PhotoChemOptions photochem_options_from_kinetics_base(
                                     photo->wavelength().size() * nbranch, 0.0);
       continue;
     }
+    auto const& csf = cache_it->second;
 
     std::vector<double> temps;
     temps.reserve(csf.datasets.size());

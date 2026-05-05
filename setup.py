@@ -2,12 +2,12 @@
 import os
 import sys
 import glob
-import torch
 import platform
 from pathlib import Path
 from setuptools import setup
 from torch.utils import cpp_extension
 import sysconfig
+
 
 def parse_library_names(libdir):
     library_names = []
@@ -28,9 +28,30 @@ def parse_library_names(libdir):
     other = [l for l in library_names if not l.startswith("kintera")]
     return kintera_non_cuda + other + kintera_cuda
 
+
+def has_kintera_cuda_library(libdir):
+    for root, _, files in os.walk(libdir):
+        for file in files:
+            if file.startswith("libkintera_cuda") and file.endswith((".a", ".so", ".dylib")):
+                return True
+    return False
+
+
+def cuda_root_candidates():
+    roots = []
+    for name in ("CUDA_HOME", "CUDA_PATH", "CUDAToolkit_ROOT"):
+        value = os.environ.get(name)
+        if value:
+            roots.append(value)
+    if platform.system() == "Linux":
+        roots.extend(["/usr/local/cuda", "/usr/local/cuda-13.1", "/usr/local/cuda-13"])
+    return [root for root in roots if os.path.isdir(root)]
+
 site_dir = sysconfig.get_paths()["purelib"]
 
 current_dir = os.getenv("WORKSPACE", Path().absolute())
+build_lib_dir = f"{current_dir}/build/lib"
+enable_cuda = has_kintera_cuda_library(build_lib_dir)
 include_dirs = [
     f"{current_dir}",
     f"{current_dir}/build",
@@ -38,17 +59,35 @@ include_dirs = [
     f'{current_dir}/build/_deps/yaml-cpp-src/include',
     f"{site_dir}/pyharp",
 ]
+if enable_cuda:
+    for cuda_root in cuda_root_candidates():
+        cuda_include = os.path.join(cuda_root, "include")
+        if os.path.isdir(cuda_include):
+            include_dirs.append(cuda_include)
+            break
 
 # add homebrew directories if on MacOS
-lib_dirs = [f"{current_dir}/build/lib"]
+lib_dirs = [build_lib_dir]
 if platform.system() == 'Darwin':
     lib_dirs.extend(['/opt/homebrew/lib'])
 else:
     lib_dirs.extend(['/lib64/', '/usr/lib/x86_64-linux-gnu/'])
+if enable_cuda:
+    for cuda_root in cuda_root_candidates():
+        for suffix in ("lib64", "lib"):
+            cuda_lib = os.path.join(cuda_root, suffix)
+            if os.path.isdir(cuda_lib):
+                lib_dirs.append(cuda_lib)
+                break
 nc_home = os.environ.get("NC_HOME")
-lib_dirs.append(f"{nc_home}/lib")
+if nc_home:
+    lib_dirs.append(f"{nc_home}/lib")
 
-libraries = parse_library_names(f"{current_dir}/build/lib")
+libraries = parse_library_names(build_lib_dir)
+if enable_cuda:
+    for cuda_system_lib in ["cusolver", "cusparse", "cudart"]:
+        if cuda_system_lib not in libraries:
+            libraries.append(cuda_system_lib)
 
 if sys.platform == "darwin":
     extra_link_args = [
@@ -81,7 +120,7 @@ else:
 
 ext_module = cpp_extension.CppExtension(
     name='kintera.kintera',
-    sources=glob.glob('python/csrc/*.cpp'),
+    sources=sorted(glob.glob('python/csrc/*.cpp')),
     include_dirs=include_dirs,
     library_dirs=lib_dirs,
     libraries=libraries,

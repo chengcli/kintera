@@ -23,6 +23,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "numpy",
+  "scipy",
   "pyharp>=2.2.0",
 ]
 classifiers = [
@@ -46,7 +47,7 @@ Homepage = "https://github.com/chengcli/kintera"
 Documentation = "https://kintera.readthedocs.io"
 
 [tool.setuptools]
-packages = ["kintera", "kintera.api"]
+packages = ["kintera", "kintera.api", "kintera.atm2d"]
 include-package-data = false
 
 [tool.setuptools.package-data]

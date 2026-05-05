@@ -30,6 +30,7 @@ void bind_constants(py::module& m);
 void bind_kinetics(py::module& m);
 void bind_photolysis(py::module& m);
 void bind_diffusion(py::module& m);
+void bind_sparse_solver(py::module& m);
 
 PYBIND11_MODULE(kintera, m) {
   m.attr("__name__") = "kintera";
@@ -70,6 +71,7 @@ PYBIND11_MODULE(kintera, m) {
   bind_kinetics(m);
   bind_photolysis(m);
   bind_diffusion(m);
+  bind_sparse_solver(m);
 
   m.def("species_names", []() -> const std::vector<std::string>& {
     return kintera::species_names;

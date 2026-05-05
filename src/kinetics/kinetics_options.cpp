@@ -11,8 +11,6 @@ namespace kintera {
 
 extern std::vector<std::string> species_names;
 extern std::vector<double> species_weights;
-extern bool species_initialized;
-
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
@@ -25,9 +23,7 @@ KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename,
   auto config = YAML::LoadFile(filename);
   if (!config["reference-state"]) return nullptr;
 
-  if (!species_initialized) {
-    init_species_from_yaml(filename);
-  }
+  ensure_species_initialized(filename);
 
   return KineticsOptionsImpl::from_yaml(config, verbose);
 }
@@ -35,9 +31,7 @@ KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename,
 KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
                                                bool verbose) {
   if (!config["reference-state"]) return nullptr;
-  if (!species_initialized) {
-    init_species_from_yaml(config);
-  }
+  ensure_species_initialized(config);
 
   auto kinet = KineticsOptionsImpl::create();
   kinet->verbose(verbose);

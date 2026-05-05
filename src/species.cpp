@@ -85,6 +85,21 @@ static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
   return db;
 }
 
+namespace {
+
+void clear_species_registry() {
+  species_names.clear();
+  species_weights.clear();
+  species_cref_R.clear();
+  species_uref_R.clear();
+  species_sref_R.clear();
+  species_nasa9_low.clear();
+  species_nasa9_high.clear();
+  species_nasa9_Tmid.clear();
+}
+
+}  // namespace
+
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
   init_species_from_yaml(config);
@@ -95,14 +110,7 @@ void init_species_from_yaml(YAML::Node const& config) {
   TORCH_CHECK(config["species"],
               "'species' is not defined in the kintera configuration file");
 
-  species_names.clear();
-  species_weights.clear();
-  species_cref_R.clear();
-  species_uref_R.clear();
-  species_sref_R.clear();
-  species_nasa9_low.clear();
-  species_nasa9_high.clear();
-  species_nasa9_Tmid.clear();
+  clear_species_registry();
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -154,6 +162,18 @@ void init_species_from_yaml(YAML::Node const& config) {
   }
 
   species_initialized = true;
+}
+
+void ensure_species_initialized(std::string const& filename) {
+  if (!species_initialized) {
+    init_species_from_yaml(filename);
+  }
+}
+
+void ensure_species_initialized(YAML::Node const& config) {
+  if (!species_initialized) {
+    init_species_from_yaml(config);
+  }
 }
 
 std::vector<std::string> SpeciesThermoImpl::species() const {

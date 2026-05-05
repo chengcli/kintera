@@ -68,6 +68,7 @@ if (CUDAToolkit_FOUND)
     *.cu
     utils/*.cu
     thermo/*.cu
+    math/*.cu
     )
 
   add_library(${namel}_cuda_${buildl}
@@ -83,6 +84,8 @@ if (CUDAToolkit_FOUND)
   target_link_libraries(${namel}_cuda_${buildl}
       PUBLIC
       CUDA::cudart
+      CUDA::cusolver
+      CUDA::cusparse
       ${TORCH_CUDA_LIBRARY}
       ${C10_CUDA_LIBRARY}
       )

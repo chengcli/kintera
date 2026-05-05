@@ -31,6 +31,8 @@ void init_species_from_yaml(std::string filename);
 void init_species_from_yaml(YAML::Node const& config);
 //! Initialize species and thermo data from a KINETICS-base master input file.
 void init_species_from_kinetics_base(std::string const& master_input_path);
+void ensure_species_initialized(std::string const& filename);
+void ensure_species_initialized(YAML::Node const& config);
 
 struct SpeciesThermoImpl {
   static std::shared_ptr<SpeciesThermoImpl> create() {
