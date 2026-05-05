@@ -26,12 +26,16 @@ def test_vertical_eddy_transport_matches_columnwise_reference():
         dtype=torch.float64,
     )
     state.concentration = conc
-    kzz = torch.full((state.ncol, state.nlyr - 1), 1.0e5, dtype=torch.float64)
+    kzz = torch.tensor(
+        [[1.0e5, 2.0e5, 3.0e5, 4.0e5, 5.0e5], [1.5e5, 2.5e5, 3.5e5, 4.5e5, 5.5e5]],
+        dtype=torch.float64,
+    )
 
     matrix = kt.build_eddy_diffusion_matrix(state, kzz)
     tendency = matrix.matvec(conc)
+    kzz_face = 0.5 * (kzz[:, :-1] + kzz[:, 1:])
     for icol in range(state.ncol):
-        reference = kt.diffusion_tendency(conc[icol], kzz[icol], state.x1v[1:] - state.x1v[:-1])
+        reference = kt.diffusion_tendency(conc[icol], kzz_face[icol], state.x1v[1:] - state.x1v[:-1])
         torch.testing.assert_close(tendency[icol], reference, atol=1e-12, rtol=1e-12)
 
 
@@ -42,8 +46,8 @@ def test_horizontal_and_cross_diffusion_create_2d_coupling():
     conc[2, :, 0] = -1.0
     state.concentration = conc
 
-    kzz = torch.zeros((state.ncol, state.nlyr - 1), dtype=state.dtype)
-    kyy = torch.full((state.ncol - 1, state.nlyr), 2.0e5, dtype=state.dtype)
+    kzz = torch.zeros((state.ncol, state.nlyr), dtype=state.dtype)
+    kyy = torch.full((state.ncol, state.nlyr), 2.0e5, dtype=state.dtype)
     kzy = torch.full((state.ncol, state.nlyr), 5.0e4, dtype=state.dtype)
 
     matrix = kt.build_eddy_diffusion_matrix(state, kzz, kyy=kyy, kzy=kzy)
@@ -55,7 +59,7 @@ def test_horizontal_and_cross_diffusion_create_2d_coupling():
 
 def test_binary_diffusion_creates_species_coupling():
     state = _make_state(ncol=2, nlyr=4, ns=3)
-    binary = torch.zeros((state.ncol, state.nlyr - 1, state.nspecies, state.nspecies), dtype=state.dtype)
+    binary = torch.zeros((state.ncol, state.nlyr, state.nspecies, state.nspecies), dtype=state.dtype)
     binary[..., 0, 0] = 1.0e4
     binary[..., 1, 1] = 1.5e4
     binary[..., 2, 2] = 0.8e4
@@ -85,10 +89,224 @@ def test_sparse_solver_matches_dense_solution():
     torch.testing.assert_close(sol, ref, atol=1e-12, rtol=1e-12)
 
 
+def test_steady_1d_advection_diffusion_dirichlet_matches_analytic_solution():
+    ncol, nlyr, ns = 1, 161, 1
+    x = torch.linspace(0.0, 1.0, nlyr, dtype=torch.float64)
+    dx = float(x[1] - x[0])
+    diffusivity = 2.0e-2
+    velocity = 3.0e-1
+    c_left = 1.0
+    c_right = 0.2
+    dt = 0.5
+
+    operator = torch.zeros((nlyr, nlyr), dtype=torch.float64)
+    lower = diffusivity / (dx * dx) + velocity / (2.0 * dx)
+    diag = -2.0 * diffusivity / (dx * dx)
+    upper = diffusivity / (dx * dx) - velocity / (2.0 * dx)
+    for i in range(1, nlyr - 1):
+        operator[i, i - 1] = lower
+        operator[i, i] = diag
+        operator[i, i + 1] = upper
+
+    system = torch.eye(nlyr, dtype=torch.float64) - dt * operator
+    system[0] = 0.0
+    system[-1] = 0.0
+    system[0, 0] = 1.0
+    system[-1, -1] = 1.0
+
+    rhs_override_mask = torch.zeros((ncol, nlyr, ns), dtype=torch.bool)
+    rhs_override_values = torch.zeros((ncol, nlyr, ns), dtype=torch.float64)
+    rhs_override_mask[0, 0, 0] = True
+    rhs_override_mask[0, -1, 0] = True
+    rhs_override_values[0, 0, 0] = c_left
+    rhs_override_values[0, -1, 0] = c_right
+
+    matrix = kt.SparseSystemMatrix.from_dense(
+        system,
+        ncol=ncol,
+        nlyr=nlyr,
+        nspecies=ns,
+        rhs_override_mask=rhs_override_mask,
+        rhs_override_values=rhs_override_values,
+    )
+
+    state = torch.zeros((ncol, nlyr, ns), dtype=torch.float64)
+    state[0, 0, 0] = c_left
+    state[0, -1, 0] = c_right
+    for _ in range(400):
+        next_state = kt.solve_sparse_system(matrix, state)
+        if torch.max(torch.abs(next_state - state)).item() < 1.0e-11:
+            state = next_state
+            break
+        state = next_state
+
+    profile = state[0, :, 0]
+    analytic = c_left + (c_right - c_left) * (
+        torch.exp((velocity / diffusivity) * x) - 1.0
+    ) / (torch.exp(torch.tensor(velocity / diffusivity, dtype=torch.float64)) - 1.0)
+    torch.testing.assert_close(profile, analytic, atol=2.5e-3, rtol=2.5e-3)
+
+
+def test_steady_2d_diffusion_four_side_dirichlet_matches_linear_solution():
+    ncol, nlyr, ns = 31, 25, 1
+    x2f = torch.linspace(0.0, 2.0, ncol + 1, dtype=torch.float64)
+    x1f = torch.linspace(0.0, 1.5, nlyr + 1, dtype=torch.float64)
+    x2v = 0.5 * (x2f[:-1] + x2f[1:])
+    x1v = 0.5 * (x1f[:-1] + x1f[1:])
+    temp = torch.full((ncol, nlyr), 250.0, dtype=torch.float64)
+    pres = torch.full((ncol, nlyr), 1.0e4, dtype=torch.float64)
+    conc = torch.zeros((ncol, nlyr, ns), dtype=torch.float64)
+    state = kt.AtmState2D(x1f=x1f, x2f=x2f, temperature=temp, pressure=pres, concentration=conc)
+
+    x1_grid = x1v.unsqueeze(0).expand(ncol, nlyr)
+    x2_grid = x2v.unsqueeze(1).expand(ncol, nlyr)
+    analytic = 0.3 + 0.7 * (x1_grid / x1f[-1]) - 0.4 * (x2_grid / x2f[-1])
+
+    left_bc = analytic[0, :].unsqueeze(-1)
+    right_bc = analytic[-1, :].unsqueeze(-1)
+    bottom_bc = analytic[:, 0].unsqueeze(-1)
+    top_bc = analytic[:, -1].unsqueeze(-1)
+    bc = kt.SpeciesBoundaryConditions2D(
+        left=kt.SpeciesBoundaryCondition(kind="dirichlet", value=left_bc),
+        right=kt.SpeciesBoundaryCondition(kind="dirichlet", value=right_bc),
+        bottom=kt.SpeciesBoundaryCondition(kind="dirichlet", value=bottom_bc),
+        top=kt.SpeciesBoundaryCondition(kind="dirichlet", value=top_bc),
+    )
+
+    kzz = torch.full((ncol, nlyr), 4.0e-2, dtype=torch.float64)
+    kyy = torch.full((ncol, nlyr), 9.0e-2, dtype=torch.float64)
+    transport = kt.build_transport_matrix(state, kzz, kyy=kyy)
+    dt = 0.2
+    system = torch.eye(transport.nstate, dtype=torch.float64) - dt * transport.global_csr.to_dense()
+    matrix = kt.SparseSystemMatrix.from_dense(system, ncol=ncol, nlyr=nlyr, nspecies=ns)
+
+    row_values: dict[int, float] = {}
+    rhs_override_mask = torch.zeros((ncol, nlyr, ns), dtype=torch.bool)
+    rhs_override_values = torch.zeros((ncol, nlyr, ns), dtype=torch.float64)
+
+    def add_dirichlet_row(icol: int, ilev: int, value: float) -> None:
+        row = (icol * nlyr + ilev) * ns
+        row_values[row] = 1.0
+        rhs_override_mask[icol, ilev, 0] = True
+        rhs_override_values[icol, ilev, 0] = value
+
+    for ilev in range(nlyr):
+        add_dirichlet_row(0, ilev, float(left_bc[ilev, 0]))
+        add_dirichlet_row(ncol - 1, ilev, float(right_bc[ilev, 0]))
+    for icol in range(ncol):
+        add_dirichlet_row(icol, 0, float(bottom_bc[icol, 0]))
+        add_dirichlet_row(icol, nlyr - 1, float(top_bc[icol, 0]))
+
+    rows = torch.tensor(sorted(row_values), dtype=torch.int64)
+    matrix = matrix.replace_rows(
+        rows,
+        rows.clone(),
+        torch.ones(rows.numel(), dtype=torch.float64),
+        rhs_override_mask=rhs_override_mask,
+        rhs_override_values=rhs_override_values,
+    )
+
+    solution = torch.zeros((ncol, nlyr, ns), dtype=torch.float64)
+    solution[:, :, 0] = analytic
+    solution[1:-1, 1:-1, 0] = 0.0
+    for _ in range(600):
+        next_solution = kt.solve_sparse_system(matrix, solution)
+        if torch.max(torch.abs(next_solution - solution)).item() < 1.0e-11:
+            solution = next_solution
+            break
+        solution = next_solution
+
+    torch.testing.assert_close(solution[:, :, 0], analytic, atol=2.5e-3, rtol=2.5e-3)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_cuda_cusolver_binding_matches_dense_solution():
+    dense = torch.tensor(
+        [
+            [4.0, -1.0, 0.0, 0.0],
+            [-1.0, 4.5, -0.5, 0.0],
+            [0.0, -0.25, 3.5, -0.75],
+            [0.0, 0.0, -1.0, 2.5],
+        ],
+        dtype=torch.float64,
+    )
+    rhs = torch.tensor([1.0, 2.0, -1.0, 0.5], dtype=torch.float64)
+    csr = dense.cuda().to_sparse_csr()
+    sol = kt.cuda_csr_solve_cusolver(
+        csr.crow_indices().to(dtype=torch.int32),
+        csr.col_indices().to(dtype=torch.int32),
+        csr.values(),
+        rhs.cuda(),
+        0.0,
+        0,
+    ).cpu()
+    ref = torch.linalg.solve(dense, rhs)
+    torch.testing.assert_close(sol, ref, atol=1.0e-12, rtol=1.0e-12)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+def test_cuda_steady_1d_advection_diffusion_dirichlet_matches_analytic_solution():
+    ncol, nlyr, ns = 1, 161, 1
+    x = torch.linspace(0.0, 1.0, nlyr, dtype=torch.float64, device="cuda")
+    dx = float((x[1] - x[0]).item())
+    diffusivity = 2.0e-2
+    velocity = 3.0e-1
+    c_left = 1.0
+    c_right = 0.2
+    dt = 0.5
+
+    operator = torch.zeros((nlyr, nlyr), dtype=torch.float64, device="cuda")
+    lower = diffusivity / (dx * dx) + velocity / (2.0 * dx)
+    diag = -2.0 * diffusivity / (dx * dx)
+    upper = diffusivity / (dx * dx) - velocity / (2.0 * dx)
+    for i in range(1, nlyr - 1):
+        operator[i, i - 1] = lower
+        operator[i, i] = diag
+        operator[i, i + 1] = upper
+
+    system = torch.eye(nlyr, dtype=torch.float64, device="cuda") - dt * operator
+    system[0] = 0.0
+    system[-1] = 0.0
+    system[0, 0] = 1.0
+    system[-1, -1] = 1.0
+
+    rhs_override_mask = torch.zeros((ncol, nlyr, ns), dtype=torch.bool, device="cuda")
+    rhs_override_values = torch.zeros((ncol, nlyr, ns), dtype=torch.float64, device="cuda")
+    rhs_override_mask[0, 0, 0] = True
+    rhs_override_mask[0, -1, 0] = True
+    rhs_override_values[0, 0, 0] = c_left
+    rhs_override_values[0, -1, 0] = c_right
+
+    matrix = kt.SparseSystemMatrix.from_dense(
+        system,
+        ncol=ncol,
+        nlyr=nlyr,
+        nspecies=ns,
+        rhs_override_mask=rhs_override_mask,
+        rhs_override_values=rhs_override_values,
+    )
+
+    state = torch.zeros((ncol, nlyr, ns), dtype=torch.float64, device="cuda")
+    state[0, 0, 0] = c_left
+    state[0, -1, 0] = c_right
+    for _ in range(400):
+        next_state = kt.solve_sparse_system(matrix, state)
+        if torch.max(torch.abs(next_state - state)).item() < 1.0e-11:
+            state = next_state
+            break
+        state = next_state
+
+    profile = state[0, :, 0]
+    analytic = c_left + (c_right - c_left) * (
+        torch.exp((velocity / diffusivity) * x) - 1.0
+    ) / (torch.exp(torch.tensor(velocity / diffusivity, dtype=torch.float64, device="cuda")) - 1.0)
+    torch.testing.assert_close(profile.cpu(), analytic.cpu(), atol=2.5e-3, rtol=2.5e-3)
+
+
 def test_boundary_conditions_apply_on_left_and_top_edges():
     state = _make_state(ncol=3, nlyr=4, ns=3)
-    kzz = torch.full((state.ncol, state.nlyr - 1), 1.0e5, dtype=torch.float64)
-    kyy = torch.full((state.ncol - 1, state.nlyr), 2.0e5, dtype=torch.float64)
+    kzz = torch.full((state.ncol, state.nlyr), 1.0e5, dtype=torch.float64)
+    kyy = torch.full((state.ncol, state.nlyr), 2.0e5, dtype=torch.float64)
     bc = kt.SpeciesBoundaryConditions2D(
         left=kt.SpeciesBoundaryCondition(
             kind=["dirichlet", "neumann", "none"],
@@ -161,8 +379,8 @@ def test_implicit_operator_adds_chemistry_and_photochemistry():
     pres = torch.full((ncol, nlyr), 1.0e4, dtype=torch.float64)
     conc = torch.full((ncol, nlyr, len(species)), 1.0e-6, dtype=torch.float64)
     state = kt.AtmState2D(x1f=x1f, x2f=x2f, temperature=temp, pressure=pres, concentration=conc)
-    kzz = torch.full((ncol, nlyr - 1), 1.0e5, dtype=torch.float64)
-    kyy = torch.full((ncol - 1, nlyr), 2.0e5, dtype=torch.float64)
+    kzz = torch.full((ncol, nlyr), 1.0e5, dtype=torch.float64)
+    kyy = torch.full((ncol, nlyr), 2.0e5, dtype=torch.float64)
 
     wave = photo.module("photolysis").buffer("wavelength")
     actinic_flux = torch.ones((wave.numel(), ncol, nlyr), dtype=torch.float64)

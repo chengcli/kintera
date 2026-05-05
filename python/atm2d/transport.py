@@ -20,9 +20,11 @@ def build_eddy_diffusion_matrix(
     rows: list[torch.Tensor] = []
     cols: list[torch.Tensor] = []
     vals: list[torch.Tensor] = []
-    _assemble_vertical_scalar_diffusion(rows, cols, vals, state, _as_vertical_face_scalar(kzz, state))
+    kzz_x1f = _center_to_x1_faces_scalar(kzz, state)
+    _assemble_vertical_scalar_diffusion(rows, cols, vals, state, kzz_x1f[:, 1:-1])
     if kyy is not None:
-        _assemble_horizontal_scalar_diffusion(rows, cols, vals, state, _as_horizontal_face_scalar(kyy, state))
+        kyy_x2f = _center_to_x2_faces_scalar(kyy, state)
+        _assemble_horizontal_scalar_diffusion(rows, cols, vals, state, kyy_x2f[1:-1, :])
     cross_center = None
     if kzy is not None:
         cross_center = _as_center_scalar(kzy, state)
@@ -48,7 +50,8 @@ def build_binary_diffusion_matrix(
     rows: list[torch.Tensor] = []
     cols: list[torch.Tensor] = []
     vals: list[torch.Tensor] = []
-    binary_4d = _as_vertical_face_matrix(binary_diffusion, state)
+    binary_x1f = _center_to_x1_faces_matrix(binary_diffusion, state)
+    binary_4d = binary_x1f[:, 1:-1]
     molecular_weights = torch.as_tensor(molecular_weights, dtype=state.dtype, device=state.device)
     if molecular_weights.shape != (state.nspecies,):
         raise ValueError("molecular_weights must have shape (nspecies,)")
@@ -481,28 +484,6 @@ def _cell_gradient_weights_z(
     return [(col_idx, lyr_idx - 1, -1.0 / denom), (col_idx, lyr_idx + 1, 1.0 / denom)]
 
 
-def _as_vertical_face_scalar(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
-    tensor = torch.as_tensor(value, dtype=state.dtype, device=state.device)
-    if tensor.dim() == 0:
-        return tensor.expand(state.ncol, state.nlyr - 1)
-    if tensor.dim() == 1 and tensor.numel() == state.nlyr - 1:
-        return tensor.unsqueeze(0).expand(state.ncol, state.nlyr - 1)
-    if tensor.shape != (state.ncol, state.nlyr - 1):
-        raise ValueError("vertical-face tensor must have shape (ncol, nlyr - 1)")
-    return tensor
-
-
-def _as_horizontal_face_scalar(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
-    tensor = torch.as_tensor(value, dtype=state.dtype, device=state.device)
-    if tensor.dim() == 0:
-        return tensor.expand(state.ncol - 1, state.nlyr)
-    if tensor.dim() == 1 and tensor.numel() == state.nlyr:
-        return tensor.unsqueeze(0).expand(state.ncol - 1, state.nlyr)
-    if tensor.shape != (state.ncol - 1, state.nlyr):
-        raise ValueError("horizontal-face tensor must have shape (ncol - 1, nlyr)")
-    return tensor
-
-
 def _as_center_scalar(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
     tensor = torch.as_tensor(value, dtype=state.dtype, device=state.device)
     if tensor.dim() == 0:
@@ -512,15 +493,51 @@ def _as_center_scalar(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
     return tensor
 
 
-def _as_vertical_face_matrix(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
+def _center_to_x1_faces_scalar(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
+    center = _as_center_scalar(value, state)
+    faces = torch.empty((state.ncol, state.nlyr + 1), dtype=state.dtype, device=state.device)
+    faces[:, 0] = center[:, 0]
+    faces[:, -1] = center[:, -1]
+    if state.nlyr > 1:
+        faces[:, 1:-1] = 0.5 * (center[:, :-1] + center[:, 1:])
+    return faces
+
+
+def _center_to_x2_faces_scalar(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
+    center = _as_center_scalar(value, state)
+    faces = torch.empty((state.ncol + 1, state.nlyr), dtype=state.dtype, device=state.device)
+    faces[0, :] = center[0, :]
+    faces[-1, :] = center[-1, :]
+    if state.ncol > 1:
+        faces[1:-1, :] = 0.5 * (center[:-1, :] + center[1:, :])
+    return faces
+
+
+def _as_center_matrix(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
     tensor = torch.as_tensor(value, dtype=state.dtype, device=state.device)
+    if tensor.dim() == 2:
+        tensor = tensor.unsqueeze(0).unsqueeze(0).expand(state.ncol, state.nlyr, -1, -1)
     if tensor.dim() == 3:
         tensor = tensor.unsqueeze(0).expand(state.ncol, -1, -1, -1)
-    if tensor.shape != (state.ncol, state.nlyr - 1, state.nspecies, state.nspecies):
+    if tensor.shape != (state.ncol, state.nlyr, state.nspecies, state.nspecies):
         raise ValueError(
-            "binary_diffusion must have shape (ncol, nlyr - 1, nspecies, nspecies)"
+            "centered matrix tensor must have shape (ncol, nlyr, nspecies, nspecies)"
         )
     return tensor
+
+
+def _center_to_x1_faces_matrix(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
+    center = _as_center_matrix(value, state)
+    faces = torch.empty(
+        (state.ncol, state.nlyr + 1, state.nspecies, state.nspecies),
+        dtype=state.dtype,
+        device=state.device,
+    )
+    faces[:, 0] = center[:, 0]
+    faces[:, -1] = center[:, -1]
+    if state.nlyr > 1:
+        faces[:, 1:-1] = 0.5 * (center[:, :-1] + center[:, 1:])
+    return faces
 
 
 def _interface_thermo(

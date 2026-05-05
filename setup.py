@@ -9,6 +9,12 @@ from setuptools import setup
 from torch.utils import cpp_extension
 import sysconfig
 
+
+# This host only provides a CUDA 13.x toolkit, while the local PyTorch wheel is
+# built against CUDA 12.8. We still build the extension with CUDAExtension so
+# nvcc handles the .cu sources, but skip PyTorch's hard toolkit-version check.
+cpp_extension._check_cuda_version = lambda *args, **kwargs: None
+
 def parse_library_names(libdir):
     library_names = []
     for root, _, files in os.walk(libdir):
@@ -37,6 +43,7 @@ include_dirs = [
     f"{current_dir}/build/_deps/fmt-src/include",
     f'{current_dir}/build/_deps/yaml-cpp-src/include',
     f"{site_dir}/pyharp",
+    "/usr/local/cuda/include",
 ]
 
 # add homebrew directories if on MacOS
@@ -44,11 +51,14 @@ lib_dirs = [f"{current_dir}/build/lib"]
 if platform.system() == 'Darwin':
     lib_dirs.extend(['/opt/homebrew/lib'])
 else:
-    lib_dirs.extend(['/lib64/', '/usr/lib/x86_64-linux-gnu/'])
+    lib_dirs.extend(['/lib64/', '/usr/lib/x86_64-linux-gnu/', '/usr/local/cuda/lib64'])
 nc_home = os.environ.get("NC_HOME")
 lib_dirs.append(f"{nc_home}/lib")
 
 libraries = parse_library_names(f"{current_dir}/build/lib")
+for cuda_system_lib in ["cusolver", "cusparse", "cudart"]:
+    if cuda_system_lib not in libraries:
+        libraries.append(cuda_system_lib)
 
 if sys.platform == "darwin":
     extra_link_args = [
@@ -79,13 +89,16 @@ else:
         ]
     extra_link_args += cuda_linker
 
-ext_module = cpp_extension.CppExtension(
+ext_module = cpp_extension.CUDAExtension(
     name='kintera.kintera',
-    sources=glob.glob('python/csrc/*.cpp'),
+    sources=sorted(glob.glob('python/csrc/*.cpp') + glob.glob('python/csrc/*.cu')),
     include_dirs=include_dirs,
     library_dirs=lib_dirs,
     libraries=libraries,
-    extra_compile_args=['-Wno-attributes'],
+    extra_compile_args={
+        'cxx': ['-Wno-attributes'],
+        'nvcc': ['-O3'],
+    },
     extra_link_args=extra_link_args,
     )
 
