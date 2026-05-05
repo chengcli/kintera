@@ -2,18 +2,11 @@
 import os
 import sys
 import glob
-import torch
 import platform
 from pathlib import Path
 from setuptools import setup
 from torch.utils import cpp_extension
 import sysconfig
-
-
-# This host only provides a CUDA 13.x toolkit, while the local PyTorch wheel is
-# built against CUDA 12.8. We still build the extension with CUDAExtension so
-# nvcc handles the .cu sources, but skip PyTorch's hard toolkit-version check.
-cpp_extension._check_cuda_version = lambda *args, **kwargs: None
 
 def parse_library_names(libdir):
     library_names = []
@@ -89,16 +82,13 @@ else:
         ]
     extra_link_args += cuda_linker
 
-ext_module = cpp_extension.CUDAExtension(
+ext_module = cpp_extension.CppExtension(
     name='kintera.kintera',
-    sources=sorted(glob.glob('python/csrc/*.cpp') + glob.glob('python/csrc/*.cu')),
+    sources=sorted(glob.glob('python/csrc/*.cpp')),
     include_dirs=include_dirs,
     library_dirs=lib_dirs,
     libraries=libraries,
-    extra_compile_args={
-        'cxx': ['-Wno-attributes'],
-        'nvcc': ['-O3'],
-    },
+    extra_compile_args=['-Wno-attributes'],
     extra_link_args=extra_link_args,
     )
 
