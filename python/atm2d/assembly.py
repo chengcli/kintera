@@ -4,7 +4,7 @@ import torch
 
 from .chemistry import build_chemistry_jacobian, build_photochemistry_jacobian
 from .matrix import SparseSystemMatrix
-from .state import AtmState2D, SpeciesBoundaryConditions2D
+from .atm_state2d import AtmState2D, SpeciesBoundaryConditions2D
 from .transport import build_transport_matrix
 
 

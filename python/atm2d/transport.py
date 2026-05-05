@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 
 from .matrix import SparseSystemMatrix, add_sparse_system_matrices, flatten_state_index
-from .state import AtmState2D, SpeciesBoundaryCondition, SpeciesBoundaryConditions2D
+from .atm_state2d import AtmState2D, SpeciesBoundaryCondition, SpeciesBoundaryConditions2D
 
 GAS_CONSTANT_CGS = 8.31446261815324e7
 

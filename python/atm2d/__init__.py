@@ -3,7 +3,7 @@ from .chemistry import build_chemistry_jacobian, build_photochemistry_jacobian
 from .matrix import SparseSystemMatrix
 from .radiation import RadiativeTransferResult, compute_actinic_flux_disort
 from .solver import solve_sparse_system
-from .state import AtmState2D, SpeciesBoundaryCondition, SpeciesBoundaryConditions2D
+from .atm_state2d import AtmState2D, SpeciesBoundaryCondition, SpeciesBoundaryConditions2D
 from .transport import (
     build_binary_diffusion_matrix,
     build_eddy_diffusion_matrix,

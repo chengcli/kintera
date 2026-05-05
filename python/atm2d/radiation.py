@@ -6,7 +6,7 @@ from math import pi
 import torch
 import pydisort
 
-from .state import AtmState2D
+from .atm_state2d import AtmState2D
 
 AVOGADRO = 6.02214076e23
 
