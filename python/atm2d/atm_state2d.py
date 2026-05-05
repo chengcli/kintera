@@ -8,10 +8,27 @@ import torch
 
 @dataclass
 class SpeciesBoundaryCondition:
+    """Boundary condition for one side of the 2D domain.
+
+    Parameters
+    ----------
+    kind:
+        Either a single string applied to every species or a length-`nspecies`
+        sequence. Supported kinds are ``"dirichlet"`` and ``"neumann"``.
+    value:
+        Boundary value(s). Accepted shapes are scalar, ``(nspecies,)``, or
+        ``(nedge, nspecies)``.
+
+    Notes
+    -----
+    Dirichlet values represent the boundary state itself. Neumann values
+    represent the outward normal derivative imposed on the boundary row.
+    """
     kind: str | Sequence[str]
     value: torch.Tensor | Sequence[float] | float = 0.0
 
     def kinds(self, nspecies: int) -> tuple[str, ...]:
+        """Return one lowercase boundary kind per species."""
         if isinstance(self.kind, str):
             return tuple(self.kind.lower() for _ in range(nspecies))
         if len(self.kind) != nspecies:
@@ -26,6 +43,7 @@ class SpeciesBoundaryCondition:
         dtype: torch.dtype,
         device: torch.device,
     ) -> torch.Tensor:
+        """Broadcast boundary values to ``(nedge, nspecies)``."""
         values = torch.as_tensor(self.value, dtype=dtype, device=device)
         if values.dim() == 0:
             return values.expand(nedge, nspecies)
@@ -42,6 +60,11 @@ class SpeciesBoundaryCondition:
 
 @dataclass
 class SpeciesBoundaryConditions2D:
+    """Species boundary conditions for the four sides of the domain.
+
+    Boundary precedence at corners is:
+    ``left/right`` applied first, then overwritten by ``bottom/top``.
+    """
     left: SpeciesBoundaryCondition | None = None
     right: SpeciesBoundaryCondition | None = None
     bottom: SpeciesBoundaryCondition | None = None
@@ -50,6 +73,30 @@ class SpeciesBoundaryConditions2D:
 
 @dataclass
 class AtmState2D:
+    """Cell-centered atmospheric state on a 2D ``(ncol, nlyr)`` grid.
+
+    Parameters
+    ----------
+    x1f:
+        Vertical face coordinates with shape ``(nlyr + 1,)``.
+    x2f:
+        Horizontal face coordinates with shape ``(ncol + 1,)``.
+    temperature:
+        Cell-centered temperature with shape ``(ncol, nlyr)``.
+    pressure:
+        Cell-centered pressure with shape ``(ncol, nlyr)``.
+    concentration:
+        Cell-centered species concentration with shape
+        ``(ncol, nlyr, nspecies)``.
+    gravity:
+        Gravitational acceleration in CGS units, used by binary diffusion.
+
+    Notes
+    -----
+    The geometry follows the ``snapy`` convention:
+    ``x1`` is vertical, ``x2`` is horizontal, ``f`` denotes face locations,
+    and ``v`` denotes cell centers.
+    """
     x1f: torch.Tensor
     x2f: torch.Tensor
     temperature: torch.Tensor
@@ -92,34 +139,42 @@ class AtmState2D:
 
     @property
     def nlyr(self) -> int:
+        """Number of vertical cells."""
         return int(self.x1v.numel())
 
     @property
     def ncol(self) -> int:
+        """Number of horizontal columns."""
         return int(self.x2v.numel())
 
     @property
     def nspecies(self) -> int:
+        """Number of prognostic species."""
         return int(self.concentration.size(-1))
 
     @property
     def device(self) -> torch.device:
+        """Torch device shared by the state tensors."""
         return self.x1f.device
 
     @property
     def dtype(self) -> torch.dtype:
+        """Floating-point dtype shared by the state tensors."""
         return self.x1f.dtype
 
     @property
     def dx1v(self) -> torch.Tensor:
+        """Spacing between adjacent vertical cell centers."""
         return self._dx1v
 
     @property
     def dx2v(self) -> torch.Tensor:
+        """Spacing between adjacent horizontal cell centers."""
         return self._dx2v
 
     @property
     def temperature_x1f(self) -> torch.Tensor:
+        """Temperature interpolated to interior vertical faces."""
         return 0.5 * (self.temperature[:, 1:] + self.temperature[:, :-1])
 
 

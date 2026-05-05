@@ -24,6 +24,14 @@ def build_implicit_operator(
     dt: float | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
 ) -> SparseSystemMatrix:
+    """Assemble the full implicit operator for transport and chemistry.
+
+    The returned matrix acts on the flattened species state. Transport terms
+    come from ``build_transport_matrix``. Chemistry and photochemistry
+    contribute cell-local Jacobian blocks on the diagonal. When
+    ``include_identity`` is enabled, ``I / dt`` is also added to the diagonal
+    for backward-Euler style steady-state or implicit time-marching solves.
+    """
     operator = build_transport_matrix(
         state,
         kzz,

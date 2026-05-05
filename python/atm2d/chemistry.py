@@ -11,6 +11,11 @@ def build_chemistry_jacobian(
     *,
     photo_inputs: dict[str, torch.Tensor] | None = None,
 ) -> torch.Tensor:
+    """Build the species Jacobian from a `kintera.Kinetics` module.
+
+    Returns a tensor with shape ``(ncol, nlyr, nspecies, nspecies)`` suitable
+    for insertion into the diagonal of an implicit operator.
+    """
     temp_2d, pressure_2d, conc_3d = _normalize_state_tensors(temperature, pressure, concentration)
     ncol, nz, nspecies = conc_3d.shape
 
@@ -36,6 +41,13 @@ def build_photochemistry_jacobian(
     concentration: torch.Tensor,
     actinic_flux: torch.Tensor,
 ) -> torch.Tensor:
+    """Build the species Jacobian from a `kintera.PhotoChem` module.
+
+    This helper explicitly calls
+    ``photo_chem.module("photolysis").update_xs_diss_stacked(temp_flat)``
+    before ``photo_chem.forward(...)``. Callers using ``PhotoChem.forward()``
+    directly must do the same cache priming themselves.
+    """
     temp_2d, _, conc_3d = _normalize_state_tensors(temperature, temperature, concentration)
     ncol, nz, nspecies = conc_3d.shape
     flux_3d = _normalize_actinic_flux(actinic_flux, ncol, nz, dtype=temp_2d.dtype, device=temp_2d.device)

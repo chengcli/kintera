@@ -7,6 +7,20 @@ from .matrix import SparseSystemMatrix
 
 
 def solve_sparse_system(matrix: SparseSystemMatrix, rhs: torch.Tensor) -> torch.Tensor:
+    """Solve ``A x = rhs`` for a state-shaped right-hand side.
+
+    Parameters
+    ----------
+    matrix:
+        Sparse operator assembled by ``atm2d``.
+    rhs:
+        Tensor with shape ``(ncol, nlyr, nspecies)``.
+
+    Notes
+    -----
+    CPU solves reuse a cached SciPy factorization stored on the matrix
+    instance. CUDA solves call the native cuSolver CSR binding.
+    """
     rhs_3d = _normalize_rhs(rhs, matrix)
     rhs_3d = matrix.apply_rhs_overrides(rhs_3d)
     rhs_vec = rhs_3d.reshape(-1)

@@ -17,6 +17,23 @@ def build_eddy_diffusion_matrix(
     kyz: torch.Tensor | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
 ) -> SparseSystemMatrix:
+    """Assemble the turbulent diffusion operator on the 2D species state.
+
+    Parameters
+    ----------
+    kzz, kyy:
+        Cell-centered scalar eddy diffusivities for the vertical and horizontal
+        directions.
+    kzy, kyz:
+        Optional cell-centered cross-diffusion coefficients. If both are
+        provided they are averaged.
+
+    Notes
+    -----
+    Center-defined coefficients are interpolated to faces internally using
+    arithmetic averaging in the interior and constant extrapolation at the
+    domain boundaries.
+    """
     rows: list[torch.Tensor] = []
     cols: list[torch.Tensor] = []
     vals: list[torch.Tensor] = []
@@ -47,6 +64,13 @@ def build_binary_diffusion_matrix(
     gas_constant: float = GAS_CONSTANT_CGS,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
 ) -> SparseSystemMatrix:
+    """Assemble the vertical multicomponent binary-diffusion operator.
+
+    ``binary_diffusion`` is expected at cell centers with shape
+    ``(ncol, nlyr, nspecies, nspecies)`` and is interpolated to vertical faces
+    internally. When ``include_gravity`` is enabled, the molecular-weight
+    separation term is added using the cell-centered thermodynamic state.
+    """
     rows: list[torch.Tensor] = []
     cols: list[torch.Tensor] = []
     vals: list[torch.Tensor] = []
@@ -80,6 +104,13 @@ def build_transport_matrix(
     gas_constant: float = GAS_CONSTANT_CGS,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
 ) -> SparseSystemMatrix:
+    """Assemble the full transport operator from eddy and binary diffusion.
+
+    This is the main entry point for transport-only solves. It combines the
+    scalar eddy-diffusion operator with the optional vertical binary-diffusion
+    operator, then applies any species boundary conditions to the resulting
+    sparse matrix.
+    """
     matrices = [
         build_eddy_diffusion_matrix(
             state,

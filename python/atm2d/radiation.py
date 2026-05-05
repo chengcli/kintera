@@ -13,6 +13,7 @@ AVOGADRO = 6.02214076e23
 
 @dataclass
 class RadiativeTransferResult:
+    """DISORT outputs needed by the photochemistry workflow."""
     wavelength: torch.Tensor
     optical_depth: torch.Tensor
     average_intensity: torch.Tensor
@@ -31,6 +32,17 @@ def compute_actinic_flux_disort(
     actinic_scale: float = 4.0 * pi,
     nstreams: int = 4,
 ) -> RadiativeTransferResult:
+    """Compute cell-centered actinic flux from photoabsorption optical depth.
+
+    Workflow
+    --------
+    1. Interpolate photolysis cross sections onto the DISORT wavelength grid.
+    2. Use the photoabsorption branch only to build total extinction.
+    3. Convert extinction to layer optical depth.
+    4. Run `pydisort`.
+    5. Convert average intensity to actinic flux with ``actinic_scale``,
+       which defaults to ``4π``.
+    """
     photolysis = photo_chem.module("photolysis")
     wavelength = photolysis.buffer("wavelength").to(device=state.device, dtype=state.dtype)
     nwave = int(wavelength.numel())
@@ -80,6 +92,12 @@ def _total_cross_section_by_species(
     temperature: torch.Tensor,
     wavelength: torch.Tensor,
 ) -> torch.Tensor:
+    """Return total absorber cross section by species on the requested grid.
+
+    Only branch ``0`` is used from each interpolated photolysis cross section,
+    matching the convention that branch ``0`` is total photoabsorption and
+    branches ``1:`` are dissociation channels.
+    """
     photolysis = photo_chem.module("photolysis")
     reactions = photo_chem.options.photolysis().reactions()
     species = photo_chem.options.species()

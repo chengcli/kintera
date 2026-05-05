@@ -10,6 +10,13 @@ import torch
 
 @dataclass
 class SparseSystemMatrix:
+    """Global sparse operator over the flattened ``(ncol, nlyr, nspecies)`` state.
+
+    The matrix is stored as CSR with shape
+    ``(ncol * nlyr * nspecies, ncol * nlyr * nspecies)``. Boundary conditions
+    may also attach RHS overrides so the caller can solve with state-shaped
+    tensors directly.
+    """
     ncol: int
     nlyr: int
     nspecies: int
@@ -35,6 +42,7 @@ class SparseSystemMatrix:
         rhs_override_mask: torch.Tensor | None = None,
         rhs_override_values: torch.Tensor | None = None,
     ) -> "SparseSystemMatrix":
+        """Construct a sparse system from a dense square matrix."""
         dense = torch.as_tensor(matrix)
         expected = ncol * nlyr * nspecies
         if dense.shape != (expected, expected):
@@ -66,6 +74,7 @@ class SparseSystemMatrix:
         rhs_override_mask: torch.Tensor | None = None,
         rhs_override_values: torch.Tensor | None = None,
     ) -> "SparseSystemMatrix":
+        """Construct a sparse system from COO triplets."""
         size = ncol * nlyr * nspecies
         index_tensor = torch.as_tensor(indices, dtype=torch.int64, device=device)
         value_tensor = torch.as_tensor(values, dtype=dtype, device=device)
@@ -115,6 +124,7 @@ class SparseSystemMatrix:
         return self.ncol * self.nlyr * self.nspecies
 
     def matvec(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the operator to a state tensor with shape ``(ncol, nlyr, nspecies)``."""
         rhs = _normalize_rhs_tensor(
             x, (self.ncol, self.nlyr, self.nspecies), dtype=self.dtype, device=self.device
         )
@@ -123,6 +133,7 @@ class SparseSystemMatrix:
         return out
 
     def add_diagonal(self, blocks: torch.Tensor) -> "SparseSystemMatrix":
+        """Add cell-local species blocks to the diagonal of the operator."""
         block_tensor = torch.as_tensor(blocks, dtype=self.dtype, device=self.device)
         if block_tensor.shape != (self.ncol, self.nlyr, self.nspecies, self.nspecies):
             raise ValueError("blocks must have shape (ncol, nlyr, nspecies, nspecies)")
@@ -154,6 +165,7 @@ class SparseSystemMatrix:
         rhs_override_mask: torch.Tensor | None,
         rhs_override_values: torch.Tensor | None,
     ) -> "SparseSystemMatrix":
+        """Return a copy with updated RHS override metadata."""
         return SparseSystemMatrix.from_coo(
             self.global_csr.to_sparse_coo().indices(),
             self.global_csr.to_sparse_coo().values(),
@@ -175,6 +187,7 @@ class SparseSystemMatrix:
         rhs_override_mask: torch.Tensor | None = None,
         rhs_override_values: torch.Tensor | None = None,
     ) -> "SparseSystemMatrix":
+        """Return a copy with selected global rows replaced."""
         coo = self.global_csr.to_sparse_coo().coalesce()
         rows = coo.indices()[0]
         keep = ~torch.isin(rows, row_ids.to(device=self.device, dtype=torch.int64))
@@ -209,6 +222,7 @@ class SparseSystemMatrix:
         )
 
     def apply_rhs_overrides(self, rhs: torch.Tensor) -> torch.Tensor:
+        """Overwrite RHS entries required by enforced boundary-condition rows."""
         rhs_3d = _normalize_rhs_tensor(
             rhs, (self.ncol, self.nlyr, self.nspecies), dtype=self.dtype, device=self.device
         )
@@ -217,6 +231,7 @@ class SparseSystemMatrix:
         return torch.where(self.rhs_override_mask, self.rhs_override_values, rhs_3d)
 
     def factorized_cpu_solver(self):
+        """Return a cached SciPy factorization for repeated CPU solves."""
         if self.device.type != "cpu":
             raise ValueError("CPU factorization is only available for CPU matrices")
         if self._cpu_factorized_solver is None:
@@ -233,6 +248,7 @@ class SparseSystemMatrix:
         return self._cpu_factorized_solver
 
     def cuda_csr_indices_int32(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return cached ``int32`` CSR indices for the CUDA direct solver."""
         if self.device.type != "cuda":
             raise ValueError("CUDA CSR index cache is only available for CUDA matrices")
         if self._cuda_crow_indices_int32 is None:
@@ -243,6 +259,7 @@ class SparseSystemMatrix:
 
 
 def add_sparse_system_matrices(*matrices: SparseSystemMatrix) -> SparseSystemMatrix:
+    """Sum multiple sparse operators with identical grid dimensions."""
     if not matrices:
         raise ValueError("at least one matrix is required")
     base = matrices[0]
@@ -269,6 +286,7 @@ def flatten_state_index(
     nlyr: int,
     nspecies: int,
 ) -> torch.Tensor:
+    """Flatten ``(icol, ilev, ispec)`` indices into the global state vector."""
     col_tensor = torch.as_tensor(col_idx, dtype=torch.int64)
     lyr_tensor = torch.as_tensor(lyr_idx, dtype=torch.int64, device=col_tensor.device)
     spc_tensor = torch.as_tensor(species_idx, dtype=torch.int64, device=col_tensor.device)
