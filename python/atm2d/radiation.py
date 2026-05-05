@@ -99,7 +99,7 @@ def _total_cross_section_by_species(
             raise ValueError("photolysis reactions must have exactly one absorber species")
         absorber = next(iter(reactants.keys()))
         absorber_idx = species_index[absorber]
-        sigma_rxn = photolysis.interp_cross_section(rxn_idx, wavelength, temp_flat).sum(-1)
+        sigma_rxn = photolysis.interp_cross_section(rxn_idx, wavelength, temp_flat).select(-1, 0)
         sigma[:, :, :, absorber_idx] += sigma_rxn.reshape(ncol, nz, wavelength.numel())
 
     return sigma

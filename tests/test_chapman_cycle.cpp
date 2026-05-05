@@ -595,6 +595,7 @@ TEST_P(ChapmanCycleTest, TimeMarching) {
   double n_tot = P / (constants::Rgas * T);  // mol/m^3
   auto temp = torch::tensor({T}, torch::device(device).dtype(dtype));
   auto pres = torch::tensor({P}, torch::device(device).dtype(dtype));
+  photo->photolysis->update_xs_diss_stacked(temp);
 
   auto conc = torch::zeros({nspecies}, torch::device(device).dtype(dtype));
   for (int i = 0; i < nspecies; i++) {
@@ -716,6 +717,7 @@ TEST_P(ChapmanCycleTest, ForwardRatesAndJacobianConsistent) {
   auto photo_wavelength = photo->photolysis->wavelength.to(device, dtype);
   auto photo_actinic_flux =
       interpolate_actinic_flux(wavelength, actinic_flux, photo_wavelength);
+  photo->photolysis->update_xs_diss_stacked(temp);
 
   auto [rate_kin, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
   auto rate_photo = photo->forward(temp, conc, photo_actinic_flux);
@@ -777,6 +779,7 @@ TEST_P(ChapmanCycleTest, ReversibleTimeMarchingConverges) {
   double n_tot = P / (constants::Rgas * T);
   auto temp = torch::tensor({T}, torch::device(device).dtype(dtype));
   auto pres = torch::tensor({P}, torch::device(device).dtype(dtype));
+  photo->photolysis->update_xs_diss_stacked(temp);
 
   auto conc = torch::zeros({nspecies}, torch::device(device).dtype(dtype));
   for (int i = 0; i < nspecies; i++) {

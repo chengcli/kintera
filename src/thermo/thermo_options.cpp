@@ -16,8 +16,6 @@ namespace kintera {
 
 extern std::vector<std::string> species_names;
 extern std::vector<double> species_weights;
-extern bool species_initialized;
-
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
@@ -30,9 +28,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename,
   auto config = YAML::LoadFile(filename);
   if (!config["reference-state"]) return nullptr;
 
-  if (!species_initialized) {
-    init_species_from_yaml(filename);
-  }
+  ensure_species_initialized(filename);
 
   return ThermoOptionsImpl::from_yaml(config, verbose);
 }
@@ -40,9 +36,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename,
 ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                                            bool verbose) {
   if (!config["reference-state"]) return nullptr;
-  if (!species_initialized) {
-    init_species_from_yaml(config);
-  }
+  ensure_species_initialized(config);
 
   auto thermo = ThermoOptionsImpl::create();
   thermo->verbose(verbose);
@@ -62,10 +56,6 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
       std::cout << "[ThermoOptions] setting reference pressure Pref = "
                 << thermo->Pref() << " Pa" << std::endl;
     }
-  }
-
-  if (!species_initialized) {
-    init_species_from_yaml(config);
   }
 
   if (config["dynamics"]) {

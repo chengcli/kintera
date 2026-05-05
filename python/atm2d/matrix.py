@@ -236,6 +236,7 @@ class SparseSystemMatrix:
         if self.device.type != "cuda":
             raise ValueError("CUDA CSR index cache is only available for CUDA matrices")
         if self._cuda_crow_indices_int32 is None:
+            _validate_csr_structure(self.global_csr)
             self._cuda_crow_indices_int32 = self.global_csr.crow_indices().to(dtype=torch.int32)
             self._cuda_col_indices_int32 = self.global_csr.col_indices().to(dtype=torch.int32)
         return self._cuda_crow_indices_int32, self._cuda_col_indices_int32
@@ -285,3 +286,21 @@ def _normalize_rhs_tensor(
     if out.shape != shape:
         raise ValueError(f"tensor must have shape {shape}")
     return out
+
+
+def _validate_csr_structure(csr: torch.Tensor) -> None:
+    crow = csr.crow_indices()
+    col = csr.col_indices()
+    values = csr.values()
+
+    if crow.numel() == 0:
+        raise ValueError("CSR crow_indices must be non-empty")
+    if col.numel() != values.numel():
+        raise ValueError("CSR col_indices must have the same length as values")
+
+    nnz = int(values.numel())
+    crow_host = crow.cpu()
+    if int(crow_host[-1].item()) != nnz:
+        raise ValueError("CSR crow_indices end pointer must equal nnz")
+    if crow_host.numel() > 1 and torch.any(crow_host[1:] < crow_host[:-1]).item():
+        raise ValueError("CSR crow_indices must be nondecreasing")

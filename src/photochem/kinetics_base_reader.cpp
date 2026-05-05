@@ -588,27 +588,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
   (void)photo_catalog_path;
   (void)cross_dir;
   auto master = parse_kinetics_base_master(master_input_path);
-
-  species_names.clear();
-  species_weights.clear();
-  species_cref_R.clear();
-  species_uref_R.clear();
-  species_sref_R.clear();
-  species_nasa9_low.clear();
-  species_nasa9_high.clear();
-  species_nasa9_Tmid.clear();
-
-  for (auto const& sp : master.species) {
-    species_names.push_back(sp.name);
-    species_weights.push_back(sp.molecular_weight);
-    species_cref_R.push_back(2.5);
-    species_uref_R.push_back(0.0);
-    species_sref_R.push_back(0.0);
-    species_nasa9_low.push_back(sp.nasa9_low);
-    species_nasa9_high.push_back(sp.nasa9_high);
-    species_nasa9_Tmid.push_back(sp.nasa9_Tmid);
-  }
-  species_initialized = true;
+  init_species_from_kinetics_base(master_input_path);
 
   auto kinet = KineticsOptionsImpl::create();
   kinet->verbose(verbose);

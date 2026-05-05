@@ -9,8 +9,6 @@
 namespace kintera {
 
 extern std::vector<std::string> species_names;
-extern bool species_initialized;
-
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
@@ -31,9 +29,7 @@ PhotoChemOptions PhotoChemOptionsImpl::from_yaml(std::string const& filename,
   auto config = YAML::LoadFile(filename);
   if (!config["reference-state"]) return nullptr;
 
-  if (!species_initialized) {
-    init_species_from_yaml(filename);
-  }
+  ensure_species_initialized(filename);
 
   return PhotoChemOptionsImpl::from_yaml(config, verbose);
 }
@@ -41,9 +37,7 @@ PhotoChemOptions PhotoChemOptionsImpl::from_yaml(std::string const& filename,
 PhotoChemOptions PhotoChemOptionsImpl::from_yaml(YAML::Node const& config,
                                                  bool verbose) {
   if (!config["reference-state"]) return nullptr;
-  if (!species_initialized) {
-    init_species_from_yaml(config);
-  }
+  ensure_species_initialized(config);
 
   auto photo = PhotoChemOptionsImpl::create();
   photo->verbose(verbose);
@@ -129,7 +123,6 @@ torch::Tensor PhotoChemImpl::forward(torch::Tensor temp, torch::Tensor conc,
     return torch::empty(out_shape, temp.options());
   }
 
-  photolysis->update_xs_diss_stacked(temp);
   auto k = photolysis->forward(temp, actinic_flux);
   auto conc_safe = conc.clamp_min(1e-300);
   return k * conc_safe.unsqueeze(-1).pow(react_stoich_).prod(-2);

@@ -174,6 +174,7 @@ def test_photochem_forward():
     temp = torch.tensor([250.0])
     conc = torch.tensor([[1.0e18]])
     wave = module.module("photolysis").buffer("wavelength")
+    module.module("photolysis").update_xs_diss_stacked(temp)
     rate = module.forward(temp, conc, create_uniform_flux(wave, 1.0))
 
     assert rate.dim() == 2

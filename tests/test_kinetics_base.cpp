@@ -255,6 +255,7 @@ TEST_P(DeviceTest, KineticsBaseForward) {
   auto aflux = torch::ones_like(wave) * 1e14;
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
+  photo->photolysis->update_xs_diss_stacked(temp);
   auto photo_rate = photo->forward(temp, conc, aflux);
 
   std::cout << "Rate shape: " << rate.sizes() << std::endl;

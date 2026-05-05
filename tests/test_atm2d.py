@@ -5,6 +5,7 @@ import scipy.sparse.linalg
 import torch
 
 import kintera as kt
+from kintera.atm2d import radiation as atm2d_radiation
 
 
 torch.set_default_dtype(torch.float64)
@@ -463,6 +464,23 @@ def test_implicit_operator_adds_chemistry_and_photochemistry():
     assert implicit_dense.shape == transport_dense.shape
     assert torch.isfinite(implicit_dense).all()
     assert not torch.allclose(implicit_dense, transport_dense)
+
+
+def test_total_cross_section_uses_absorption_branch_only():
+    opts = kt.PhotoChemOptions.from_yaml(str(CHAPMAN_CYCLE_YAML))
+    module = kt.PhotoChem(opts)
+    temperature = torch.full((1, 1), 250.0, dtype=torch.float64)
+    wavelength = module.module("photolysis").buffer("wavelength").to(dtype=torch.float64)
+
+    sigma = atm2d_radiation._total_cross_section_by_species(module, temperature, wavelength)
+    species = opts.species()
+    absorber_idx = species.index("O2")
+    xs = module.module("photolysis").interp_cross_section(0, wavelength, temperature.reshape(-1))
+    expected_absorption = xs[:, 0].reshape(1, 1, wavelength.numel())
+    wrong_summed = xs.sum(-1).reshape(1, 1, wavelength.numel())
+
+    torch.testing.assert_close(sigma[..., absorber_idx], expected_absorption, atol=0.0, rtol=0.0)
+    assert torch.max(torch.abs(sigma[..., absorber_idx] - wrong_summed)).item() > 0.0
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
