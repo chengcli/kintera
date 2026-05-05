@@ -39,9 +39,11 @@ def build_photochemistry_jacobian(
     temp_2d, _, conc_3d = _normalize_state_tensors(temperature, temperature, concentration)
     ncol, nz, nspecies = conc_3d.shape
     flux_3d = _normalize_actinic_flux(actinic_flux, ncol, nz, dtype=temp_2d.dtype, device=temp_2d.device)
+    temp_flat = temp_2d.reshape(-1)
+    photo_chem.module("photolysis").update_xs_diss_stacked(temp_flat)
 
     rate = photo_chem.forward(
-        temp_2d.reshape(-1),
+        temp_flat,
         conc_3d.reshape(-1, nspecies),
         flux_3d.reshape(flux_3d.size(0), -1),
     )

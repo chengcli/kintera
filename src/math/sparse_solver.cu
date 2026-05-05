@@ -113,3 +113,11 @@ torch::Tensor cuda_csr_solve_cusolver(const torch::Tensor& crow_indices,
 }
 
 }  // namespace kintera
+
+extern "C" torch::Tensor kintera_cuda_csr_solve_cusolver(
+    const torch::Tensor& crow_indices, const torch::Tensor& col_indices,
+    const torch::Tensor& values, const torch::Tensor& rhs, double tol,
+    int reorder) {
+  return kintera::cuda_csr_solve_cusolver(crow_indices, col_indices, values,
+                                          rhs, tol, reorder);
+}
