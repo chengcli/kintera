@@ -23,6 +23,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "numpy",
+  "scipy",
   "pyharp>=2.2.0",
 ]
 classifiers = [

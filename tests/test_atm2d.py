@@ -332,6 +332,32 @@ def test_boundary_conditions_apply_on_left_and_top_edges():
     assert dense[top_mid_dirichlet, top_mid_dirichlet].item() == 1.0
 
 
+def test_boundary_corner_precedence_overrides_left_with_top():
+    state = _make_state(ncol=3, nlyr=4, ns=1)
+    kzz = torch.full((state.ncol, state.nlyr), 1.0e5, dtype=torch.float64)
+    kyy = torch.full((state.ncol, state.nlyr), 2.0e5, dtype=torch.float64)
+    bc = kt.SpeciesBoundaryConditions2D(
+        left=kt.SpeciesBoundaryCondition(kind="dirichlet", value=7.0),
+        top=kt.SpeciesBoundaryCondition(kind="neumann", value=torch.tensor([[5.0], [6.0], [7.0]], dtype=torch.float64)),
+    )
+    matrix = kt.build_eddy_diffusion_matrix(state, kzz, kyy=kyy, boundary_conditions=bc)
+    dense = matrix.global_csr.to_dense()
+    rhs = torch.zeros((state.ncol, state.nlyr, state.nspecies), dtype=torch.float64)
+    applied = matrix.apply_rhs_overrides(rhs)
+
+    corner_row = (0 * state.nlyr + (state.nlyr - 1)) * state.nspecies
+    corner_neighbor = (0 * state.nlyr + (state.nlyr - 2)) * state.nspecies
+    row = dense[corner_row]
+    nnz = torch.nonzero(row, as_tuple=False).squeeze(-1)
+
+    assert applied[0, state.nlyr - 1, 0].item() == 5.0
+    assert nnz.numel() == 2
+    assert set(nnz.tolist()) == {corner_neighbor, corner_row}
+    expected = 1.0 / state.dx1v[-1]
+    torch.testing.assert_close(row[corner_neighbor], -expected)
+    torch.testing.assert_close(row[corner_row], expected)
+
+
 def test_actinic_flux_from_disort_supports_2d_state():
     photo_opts = kt.PhotoChemOptions.from_yaml("tests/chapman_cycle.yaml")
     photo = kt.PhotoChem(photo_opts)

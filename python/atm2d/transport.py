@@ -323,29 +323,35 @@ def _apply_boundary_conditions(
         (state.ncol, state.nlyr, state.nspecies), dtype=state.dtype, device=state.device
     )
 
-    row_ids: list[int] = []
-    col_ids: list[int] = []
-    values: list[float] = []
+    row_entries: dict[int, tuple[list[int], list[float]]] = {}
 
     if boundary_conditions.left is not None:
         _apply_single_boundary(
-            row_ids, col_ids, values, override_mask, override_values, state, boundary_conditions.left, side="left"
+            row_entries, override_mask, override_values, state, boundary_conditions.left, side="left"
         )
     if boundary_conditions.right is not None:
         _apply_single_boundary(
-            row_ids, col_ids, values, override_mask, override_values, state, boundary_conditions.right, side="right"
+            row_entries, override_mask, override_values, state, boundary_conditions.right, side="right"
         )
     if boundary_conditions.bottom is not None:
         _apply_single_boundary(
-            row_ids, col_ids, values, override_mask, override_values, state, boundary_conditions.bottom, side="bottom"
+            row_entries, override_mask, override_values, state, boundary_conditions.bottom, side="bottom"
         )
     if boundary_conditions.top is not None:
         _apply_single_boundary(
-            row_ids, col_ids, values, override_mask, override_values, state, boundary_conditions.top, side="top"
+            row_entries, override_mask, override_values, state, boundary_conditions.top, side="top"
         )
 
-    if not row_ids:
+    if not row_entries:
         return matrix
+    row_ids: list[int] = []
+    col_ids: list[int] = []
+    values: list[float] = []
+    for row_index in sorted(row_entries):
+        cols, row_values = row_entries[row_index]
+        row_ids.extend([row_index] * len(cols))
+        col_ids.extend(cols)
+        values.extend(row_values)
     return matrix.replace_rows(
         torch.tensor(row_ids, dtype=torch.int64, device=state.device),
         torch.tensor(col_ids, dtype=torch.int64, device=state.device),
@@ -356,9 +362,7 @@ def _apply_boundary_conditions(
 
 
 def _apply_single_boundary(
-    row_ids: list[int],
-    col_ids: list[int],
-    values: list[float],
+    row_entries: dict[int, tuple[list[int], list[float]]],
     override_mask: torch.Tensor,
     override_values: torch.Tensor,
     state: AtmState2D,
@@ -401,21 +405,21 @@ def _apply_single_boundary(
             override_mask[row_col, row_lyr, ispecies] = True
             override_values[row_col, row_lyr, ispecies] = bc_values[edge_idx, ispecies]
             if kind == "dirichlet":
-                row_ids.append(row_index)
-                col_ids.append(row_index)
-                values.append(1.0)
+                row_entries[row_index] = ([row_index], [1.0])
             elif kind == "neumann":
                 nei_index = int(
                     flatten_state_index(nei_col, nei_lyr, ispecies, state.nlyr, state.nspecies).item()
                 )
                 if side in {"left", "bottom"}:
-                    row_ids.extend([row_index, row_index])
-                    col_ids.extend([row_index, nei_index])
-                    values.extend([-1.0 / float(spacing), 1.0 / float(spacing)])
+                    row_entries[row_index] = (
+                        [row_index, nei_index],
+                        [-1.0 / float(spacing), 1.0 / float(spacing)],
+                    )
                 else:
-                    row_ids.extend([row_index, row_index])
-                    col_ids.extend([nei_index, row_index])
-                    values.extend([-1.0 / float(spacing), 1.0 / float(spacing)])
+                    row_entries[row_index] = (
+                        [nei_index, row_index],
+                        [-1.0 / float(spacing), 1.0 / float(spacing)],
+                    )
             else:
                 raise ValueError("boundary condition kind must be 'none', 'dirichlet', or 'neumann'")
 
