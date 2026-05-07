@@ -164,7 +164,23 @@ jobs:
             cmake --build build --parallel 3
           CIBW_REPAIR_WHEEL_COMMAND_LINUX: |
             export LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/local/lib64:/usr/lib64:$LD_LIBRARY_PATH
-            auditwheel repair --exclude lib*.so -w {dest_dir} {wheel}
+            # Resolve CUDA runtime libraries from torch/lib at runtime instead
+            # of vendoring duplicate copies into the repaired wheel.
+            auditwheel repair \
+              --exclude lib*.so \
+              --exclude libcusolver.so.11 \
+              --exclude libcusolver.so.12 \
+              --exclude libcusparse.so.11 \
+              --exclude libcusparse.so.12 \
+              --exclude libcublas.so.11 \
+              --exclude libcublas.so.12 \
+              --exclude libcublasLt.so.11 \
+              --exclude libcublasLt.so.12 \
+              --exclude libnvJitLink.so.11 \
+              --exclude libnvJitLink.so.12 \
+              --exclude libcudart.so.11.0 \
+              --exclude libcudart.so.12 \
+              -w {dest_dir} {wheel}
         run: |
           pip install cibuildwheel
           python -m cibuildwheel --output-dir wheelhouse
