@@ -167,6 +167,7 @@ jobs:
             # Resolve CUDA runtime libraries from torch/lib at runtime instead
             # of vendoring duplicate copies into the repaired wheel.
             auditwheel repair \
+              --exclude lib*.so \
               --exclude libcusolver.so.11 \
               --exclude libcusolver.so.12 \
               --exclude libcusparse.so.11 \
