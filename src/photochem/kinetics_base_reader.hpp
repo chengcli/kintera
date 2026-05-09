@@ -73,10 +73,32 @@ struct KBPunSpecies {
   std::vector<int> composition;
 };
 
+struct KBPunParticipant {
+  int coefficient = 1;
+  int species_id = 0;
+  char marker = ' ';
+};
+
+struct KBPunRateBlock {
+  double A = 0.0;
+  double b = 0.0;
+  double C = 0.0;
+  double D = 0.0;
+  double E = 0.0;
+  double F = 0.0;
+  double Tmin = 0.0;
+  double Tmax = 0.0;
+  double Fc = 1.0;
+  double Tin = 0.0;
+  double Tout = 0.0;
+};
+
 struct KBPunReaction {
   int id = 0;
-  int reaction_type = 0;
+  int n_reactants = 0;
   int n_products = 0;
+  std::vector<KBPunParticipant> participants;
+  std::vector<KBPunRateBlock> rate_blocks;
   std::vector<int> reactant_ids;
   std::vector<int> product_ids;
   std::string raw_line;
@@ -112,6 +134,16 @@ struct KBTitanNetwork {
   std::vector<std::string> missing_cross_section_files;
 };
 
+struct KBTitanReactionReport {
+  int total_reactions = 0;
+  int selected_photolysis_reactions = 0;
+  int thermal_candidate_reactions = 0;
+  int missing_rate_blocks = 0;
+  std::map<int, int> n_reactants_counts;
+  std::vector<int> selected_photolysis_ids;
+  std::vector<int> unsupported_reaction_ids;
+};
+
 struct KBAtmosphereProfile {
   std::string header;
   std::vector<double> altitude;
@@ -141,6 +173,12 @@ KBCrossSectionFile parse_kinetics_base_cross_section(
 KBTitanNetwork parse_kinetics_base_titan(
     std::string const& pun_path, std::string const& run_input_path,
     std::string const& photo_catalog_path, std::string const& cross_dir);
+
+KBTitanReactionReport classify_kinetics_base_titan_reactions(
+    KBTitanNetwork const& titan);
+
+KBTitanReactionReport classify_kinetics_base_titan_reactions(
+    std::string const& pun_path, std::string const& run_input_path);
 
 void init_species_from_kinetics_base(std::string const& master_input_path);
 

@@ -256,11 +256,22 @@ TEST(KineticsBaseParser, ParseMinimalPunAndRunInput) {
   EXPECT_EQ(pun.species[2].name, "M");
   ASSERT_EQ(pun.reactions.size(), 2);
   EXPECT_EQ(pun.reactions[0].id, 1);
-  EXPECT_EQ(pun.reactions[0].reaction_type, 2);
+  EXPECT_EQ(pun.reactions[0].n_reactants, 2);
+  ASSERT_GE(pun.reactions[0].participants.size(), 2);
+  EXPECT_EQ(pun.reactions[0].participants[0].species_id, 2);
+  EXPECT_EQ(pun.reactions[0].participants[0].marker, '=');
+  EXPECT_EQ(pun.reactions[0].participants[1].coefficient, 2);
+  EXPECT_EQ(pun.reactions[0].participants[1].species_id, 1);
+  ASSERT_EQ(pun.reactions[0].rate_blocks.size(), 1);
+  EXPECT_EQ(pun.reactions[0].rate_blocks[0].A, 1.0e-3);
+  EXPECT_EQ(pun.reactions[0].rate_blocks[0].b, 0.0);
+  EXPECT_EQ(pun.reactions[0].rate_blocks[0].C, 0.0);
   EXPECT_EQ(pun.reactions[0].reactant_ids, std::vector<int>({2}));
   EXPECT_EQ(pun.reactions[0].product_ids, std::vector<int>({1, 1}));
   EXPECT_EQ(pun.reactions[1].id, 2);
-  EXPECT_EQ(pun.reactions[1].reaction_type, 3);
+  EXPECT_EQ(pun.reactions[1].n_reactants, 3);
+  ASSERT_EQ(pun.reactions[1].rate_blocks.size(), 1);
+  EXPECT_EQ(pun.reactions[1].rate_blocks[0].A, 1.0e-12);
   EXPECT_EQ(pun.reactions[1].reactant_ids, std::vector<int>({1, 2}));
   EXPECT_EQ(pun.reactions[1].product_ids, std::vector<int>({3, 1}));
 
@@ -317,6 +328,9 @@ TEST(KineticsBaseParser, ParseExternalTitanPunIfAvailable) {
   ASSERT_FALSE(pun.reactions.empty());
   EXPECT_FALSE(pun.reactions.front().reactant_ids.empty());
   EXPECT_FALSE(pun.reactions.front().product_ids.empty());
+  EXPECT_EQ(pun.reactions.front().n_reactants, 1);
+  ASSERT_EQ(pun.reactions.front().rate_blocks.size(), 3);
+  EXPECT_EQ(pun.reactions.front().rate_blocks.front().A, 0.0);
 
   auto const& selection = titan.selection;
   EXPECT_EQ(selection.nfix, 8);
@@ -332,6 +346,17 @@ TEST(KineticsBaseParser, ParseExternalTitanPunIfAvailable) {
   EXPECT_EQ(titan.catalog.size(), 522);
   EXPECT_EQ(titan.resolved_cross_sections, 522);
   EXPECT_TRUE(titan.missing_cross_section_files.empty());
+
+  auto report = classify_kinetics_base_titan_reactions(titan);
+  EXPECT_EQ(report.total_reactions, 2139);
+  EXPECT_EQ(report.selected_photolysis_reactions, 9);
+  EXPECT_EQ(report.selected_photolysis_ids,
+            std::vector<int>({221, 222, 223, 224, 225, 226, 227, 228, 245}));
+  EXPECT_EQ(report.thermal_candidate_reactions, 2130);
+  EXPECT_EQ(report.n_reactants_counts.at(1), 319);
+  EXPECT_EQ(report.n_reactants_counts.at(2), 1698);
+  EXPECT_EQ(report.n_reactants_counts.at(3), 122);
+  EXPECT_EQ(report.missing_rate_blocks, 0);
 
   auto atmosphere = parse_kinetics_base_atmosphere(
       root + "examples/titan/kintitan.pun_zero_conc_2_mod_atm_orig_3xkzz");

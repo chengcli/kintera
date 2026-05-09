@@ -3,360 +3,658 @@
 ## Goal
 
 Adapt Kintera so it can import and run the full Titan chemistry network from
-`cshsgy/KINETICS-base`, not just the small curated KINETICS-base fixture already
-covered by `tests/kinetics_base`.
+`cshsgy/KINETICS-base` and numerically match the upstream Fortran model for a
+single fresh-start Titan step under the same input files.
 
 The target upstream data set is:
 
-- `general/KINDATA/kindata8master_Cheng.inp`
+- `examples/titan/kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.pun`
+- `examples/titan/kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.special`
+- `examples/titan/ions_c6h7+_H2CN.inp-1`
+- `examples/titan/titan_Cheng_N_ions_H2CN.bc_save`
+- `examples/titan/kintitan.pun_zero_conc_2_mod_atm_orig_3xkzz`
 - `examples/titan/Cheng_catalog_v4.dat`
 - `examples/titan/Cheng_cross/`
-- `examples/titan/kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.pun`
-- `examples/titan/ions_c6h7+_H2CN.inp-1`
+- radiation auxiliaries used through Fortran units `fort.20`, `fort.21`,
+  `fort.27`, `fort.45`, `fort.46`, and `fort.47`
 
-The practical milestone is to load the Titan selected network into
-`KineticsOptions`, construct `Kinetics`, and execute a finite forward pass with
-temperature, pressure, concentrations, and actinic flux tensors.
+The immediate milestone is not "full convergence" or long Titan evolution. It
+is one-step equivalence:
 
-## Current State
+1. Run upstream `titan.release` from a fresh-start patched run input
+   (`ISTART=0`).
+2. Build the same selected Kintera state and operators from the same files.
+3. Advance exactly one comparable step.
+4. Compare selected species number-density profiles against
+   `kintitan.out.pun`.
 
-Kintera currently supports a small KINETICS-base-like input path:
+## Current Status
 
-- `KineticsOptions::from_kinetics_base(master, catalog, cross_dir)`
-- master parser in `src/photolysis/kinetics_base_reader.cpp`
-- catalog parser in `parse_kinetics_base_catalog`
-- cross-section parser in `parse_kinetics_base_cross_section`
-- Python binding in `python/csrc/pykinetics.cpp`
-- focused tests in `tests/test_kinetics_base.cpp` and
-  `tests/test_kinetics_base.py`
+### Completed
 
-This works for `tests/kinetics_base/data/test_master.inp`, which is a small
-network with 10 species and 20 reactions.
+- A dedicated branch, `full-kinetics-support`, exists and has been rebased on
+  current `main`.
+- Optional external KINETICS-base tests are gated by:
+  - `KINTERA_KINETICS_BASE_ROOT`
+  - `KINTERA_KINETICS_BASE_EXECUTABLE`
+- The external Fortran Titan executable can be run from tests with the correct
+  scratch `fort.*` wiring and a patched fresh-start run input.
+- The `.pun` smoke parser can load the full Titan selected network:
+  - `NATOM=8`
+  - `NMOL=268`
+  - `NREACT=2139`
+  - `NPART=517`
+- The run-input selection parser can read:
+  - `NFIX=8`
+  - `NVARYS=0`
+  - `NVARYF=120`
+  - `NPHOTO=9`
+  - selected photolysis ids: `221 222 223 224 225 226 227 228 245`
+- The catalog/cross-section smoke path resolves all 522 entries in
+  `Cheng_catalog_v4.dat`.
+- The atmosphere/profile parser can load the Titan atmosphere file:
+  - 50 altitude levels
+  - density, temperature, pressure, eddy diffusion, and wind profiles
+  - 128 selected species profiles
+- Python exposes `parse_kinetics_base_atmosphere`.
+- A Python one-step equivalence test exists:
+  `test_external_titan_one_step_equivalence_if_available`.
+  It runs Fortran and then constructs the matching Kintera Titan state from the
+  same atmosphere and boundary files.
+- The first one-step output target now hard-passes against `kintitan.out.pun`
+  within the printed precision of the upstream `.pun` output.
 
-The full upstream Titan data is much larger and uses the native KINETICS-base
-workflow:
-
-- `kindata8master_Cheng.inp` is a broad source database, not the selected Titan
-  model alone.
-- `Cheng_ions_c6h7+_v3_H2CN.pun` is the generated selected network. Its header
-  reports `NMOL=268`, `NREACT=2139`, and `NPART=517`.
-- `ions_c6h7+_H2CN.inp-1` selects active species and photolysis reactions for
-  the Titan run. It reports `NFIX=8`, `NVARYF=120`, and `NPHOTO=9`.
-- `Cheng_catalog_v4.dat` maps 522 photolysis branches to 522 cross-section
-  files under `Cheng_cross/`.
-
-## Main Gaps
-
-### 1. Master Parser Is Too Permissive
-
-The current master parser treats any non-species line with `=` as a reaction.
-In the full master file this misclassifies lines such as:
-
-- continuation-only lines like `HF = -223.0`
-- pseudo/aerosol species without elemental composition, such as `SALUMINA`,
-  `SCARBON`, `SH2OS`, `SH2OL`, `VHAZE1`, and `JDUST`
-- some special KINETICS-base metadata lines
-
-This produces false photolysis reactions and missing species references.
-
-### 2. The Selected Titan Network Is In `.pun`, Not Just Master
-
-The full Titan model is not simply "all reactions in `kindata8master_Cheng.inp`".
-The generated `.pun` file contains the selected species, reaction list, indices,
-thermo blocks, and kinetic coefficients used by the Titan example.
-
-Kintera needs either:
-
-- a `.pun` importer, or
-- a faithful reimplementation of the KINETICS-base selection/generation step.
-
-The `.pun` importer is the smaller and more reliable first target.
-
-### 3. Run Input Selection Is Not Represented
-
-`ions_c6h7+_H2CN.inp-1` contains run-specific active sets:
-
-- fixed species
-- varying species
-- photolysis reaction indices
-- wavelength bins
-- boundary/radiation controls
-
-Kintera does not need every transport/radiation field immediately, but it does
-need enough selection metadata to build the same chemistry state vector and
-photolysis subset.
-
-### 4. Full Format Includes Special Kinetics Syntax
-
-The upstream files include rate formats and semantics not covered by the small
-fixture:
-
-- rate constants like `1.803-09`, missing the `E`
-- reactions with one bare rate number rather than full Arrhenius triples
-- pressure-dependent reactions with low/high coefficients
-- ions and electrons
-- pseudo species and particles
-- grain/aerosol or surface reactions
-- `PROD`, `U`, `M`, and other special placeholders
-
-Some of these should become supported features. Others should initially be
-explicitly skipped with diagnostics if they are outside Kintera's chemistry
-scope.
-
-### 5. Photolysis Matching Needs To Scale To Full Catalog
-
-The current catalog/cross-section parser is close to useful, but the full
-catalog has more naming variants:
-
-- excited states, such as `O(1D)`
-- charged species, such as `TI++E`
-- special branch files and absorption files
-- branching ratio files that must be combined with parent absorption
-
-We need comprehensive matching diagnostics: loaded, missing, skipped, and
-branching-ratio-without-parent cases.
-
-## Proposed Architecture
-
-### Add A Dedicated Import Layer
-
-Create a new import module instead of making `kinetics_base_reader.cpp` larger:
-
-- `src/photolysis/kinetics_base_master_reader.*`
-- `src/photolysis/kinetics_base_pun_reader.*`
-- `src/photolysis/kinetics_base_run_input_reader.*`
-- `src/photolysis/kinetics_base_importer.*`
-
-Keep `kinetics_base_reader.*` as a compatibility facade while moving detailed
-format logic into testable units.
-
-### Introduce Structured Data Types
-
-Add intermediate structures before constructing `KineticsOptions`:
-
-- `KBElement`
-- `KBSpeciesRecord`
-- `KBReactionRecord`
-- `KBRateRecord`
-- `KBPunNetwork`
-- `KBRunSelection`
-- `KBPhotolysisCatalog`
-- `KBImportReport`
-
-The importer should produce both:
-
-- `KineticsOptions`
-- a report object with counts, skipped entries, warnings, and source mappings
-
-### Prefer `.pun` For The Full Titan Milestone
-
-Initial full-network path:
+Current accepted one-step tolerance:
 
 ```text
-.pun selected network
-+ run input selection
-+ catalog/cross-section directory
-=> KineticsOptions
-=> Kinetics
+rtol=5.0e-4
+atol=1.0e-6
 ```
 
-Master parsing remains useful for metadata, fallback, and tests, but it should
-not be the only path for full Titan support.
+This tolerance is set by the limited significant digits written in the Fortran
+`.pun` output. The large previous mismatch was traced to state-conversion bugs:
+special fixed profiles such as `U` and `SGA` were incorrectly treated as mixing
+ratios, `ILOWER=5` lower-boundary mixing ratios were not applied, and
+zero-density top layers were not zeroed.
 
-## Implementation Phases
+### Important Correction
 
-### Phase 1: Baseline Fixtures And Diagnostics
+The previous `KBPunReaction::reaction_type` field was misnamed. In the upstream
+Fortran read format, the first two integers after the reaction id are:
 
-1. Add a small script or CMake option to stage external KINETICS-base data from
-   a user-provided path, without vendoring the full upstream data.
-2. Add lightweight parser tests using tiny fixture slices copied into
-   `tests/kinetics_base_full/`.
-3. Add an import report type and expose basic counts:
-   species, thermal reactions, photolysis reactions, cross-section files,
-   skipped reactions, and warnings.
-4. Add robust errors that include source file and line number.
+```text
+NOREACT, NOPROD
+```
+
+They are the number of reactants and products, not a kinetic class. For the
+Titan `.pun`, the observed distribution is:
+
+```text
+NOREACT=1: 319 reactions
+NOREACT=2: 1698 reactions
+NOREACT=3: 122 reactions
+```
+
+Photolysis membership comes from `IPHOTO,IPHOTS,IPHOTR,IPHOTD` in the run input,
+not from this field. The branch now stores this value as `n_reactants` and also
+parses participant slots plus KINETICS-base rate blocks, but classification into
+Kintera reaction option classes is still pending.
+
+## How Far We Are From One-Step Match
+
+### Already usable for matching
+
+- External Fortran oracle execution.
+- Full Titan file discovery and scratch runtime wiring.
+- Parser-level counts for `.pun`, run input, catalog, cross sections, and
+  atmosphere profiles.
+- Kintera 1D transport matrix construction from the parsed atmosphere.
+- A diagnostic comparison harness that can become a hard assertion later.
+
+### Partially usable
+
+- `.pun` reactions: species ids and expanded stoichiometry are parsed, but rate
+  blocks, coefficient chars, temperature ranges, source ids, and semantics are
+  not structured.
+- Atmosphere profiles: numeric sections are parsed, but conversion between
+  KINETICS-base input values, internal number densities, output number
+  densities, and fixed/background species is still ad hoc.
+- Photolysis catalog: files resolve and parse, but selected Titan photolysis
+  reactions are not assembled into `PhotoChemOptions` from `.pun` + run input.
+- Python API: enough exists for the diagnostic, but there is no high-level
+  `from_kinetics_base_titan` importer.
+
+### Not implemented yet
+
+- Species initialization from `.pun` species and thermo blocks.
+- Proper `KBPunReaction` structure for the Fortran line format:
+  - `NOREACT`
+  - `NOPROD`
+  - seven participant slots `(ICOFT, INDXT, CHART)`
+  - three kinetic rate blocks
+  - source traceability
+- Mapping `.pun` thermal reactions into Kintera reaction option classes.
+- Reading and applying `.special` reaction behavior.
+- Building selected-only versus all-species Kintera state consistently.
+- Fixed species and grouped species semantics.
+- Boundary-condition import from `titan_Cheng_N_ions_H2CN.bc_save`.
+- Radiation/actinic-flux equivalence with KINETICS-base.
+- A Kintera time-step path that matches Fortran `NTIME=1`, `DELTIM`, internal
+  chemistry solve, transport update, output timing, and floor/clamp policy.
+- A hard one-step equality/close assertion.
+
+## Main Technical Gaps
+
+### 1. `.pun` Reaction Records Are Underparsed
+
+The upstream Fortran reads each `.pun` reaction with:
+
+```fortran
+NOREACT(I), NOPRODT(I),
+(ICOFT(I,J), INDXT(I,J), CHART(I,J), J=1,7),
+AKT(I), BKT(I), CKT(I), DKT(I), EKT(I), FKT(I), TLT(I), THT(I), FCT(I),
+TINT1(I), TOUTT1(I),
+AKT2(I), BKT2(I), ...
+AKT3(I), BKT3(I), ...
+```
+
+Kintera now keeps:
+
+- reaction id
+- `n_reactants`
+- product count
+- structured participant slots
+- parsed rate blocks
+- expanded reactant ids
+- expanded product ids
+- raw line
+
+This is enough to start reaction classification, but not enough yet to compute
+rates because KINETICS-base rate semantics and special reaction behavior are not
+mapped into Kintera option classes.
+
+Required fix:
+
+- Keep `n_reactants` and `n_products` aligned with the Fortran `NOREACT` and
+  `NOPROD` fields.
+- Use participant records:
+
+```cpp
+struct KBPunParticipant {
+  int coefficient = 1;
+  int species_id = 0;
+  char marker = ' ';
+};
+```
+
+- Use rate block records:
+
+```cpp
+struct KBPunRateBlock {
+  double A = 0.0;
+  double b = 0.0;
+  double C = 0.0;
+  double D = 0.0;
+  double E = 0.0;
+  double F = 0.0;
+  double Tmin = 0.0;
+  double Tmax = 0.0;
+  double Fc = 1.0;
+  double Tin = 0.0;
+  double Tout = 0.0;
+};
+```
+
+- Preserve source line and original KINETICS-base id.
+- Add more tests against one representative reaction of each observed full
+  Titan form.
 
 Acceptance criteria:
 
-- Existing `tests/kinetics_base` still pass.
-- New parser tests cover continuation lines, pseudo species, ions, and `1.803-09`
-  style rates.
+- Full Titan `.pun` still loads 2139 reactions.
+- Rate block 1/2/3 values round-trip from raw lines for at least three known
+  reaction ids.
+- Selected photolysis ids are recognized as photolysis by run input selection,
+  not by `NOREACT`.
 
-### Phase 2: Harden Master Parsing
+### 2. Kinetic Classification Is Missing
 
-1. Require reaction candidates to have a valid left-hand and right-hand side,
-   not just any `=`.
-2. Recognize species lines even when elemental composition is absent but the
-   line is in the species section.
-3. Track source sections instead of guessing from each line independently.
-4. Normalize species names consistently:
-   `^1CH2`, `O^+`, `C2H^-`, `E`, excited states, and charged names.
-5. Parse Fortran-style rates without explicit `E`, such as `1.803-09`.
-6. Preserve line numbers in parsed records.
+Kintera must classify reactions based on the selected run input plus `.pun`
+semantics:
 
-Acceptance criteria:
+- selected photolysis ids become `PhotoChemOptions` reactions
+- normal thermal reactions become `ArrheniusOptions`
+- third-body forms become `ThreeBodyOptions`
+- pressure-dependent low/high forms become `LindemannFalloffOptions` first
+- unsupported `.special`, particle, surface, or grain reactions must be
+  reported explicitly
 
-- `kindata8master_Cheng.inp` can be scanned without false photolysis entries
-  from species metadata.
-- The parser reports meaningful counts and no bogus species like `-223.0`.
-
-### Phase 3: Add `.pun` Reader
-
-1. Parse `.pun` header: `NATOM`, `NMOL`, `NREACT`, `NPART`, `VER`.
-2. Parse element table.
-3. Parse species blocks:
-   species id, name, thermo coefficients, composition, vapor metadata, and
-   reaction index lists.
-4. Parse reaction records and map them to `KBReactionRecord`.
-5. Identify reaction classes:
-   photolysis, Arrhenius, three-body, falloff, particle/surface, special.
-6. Preserve original KINETICS-base ids for traceability.
+The first pass should be conservative. Do not silently skip anything required
+for one-step match.
 
 Acceptance criteria:
 
-- `Cheng_ions_c6h7+_v3_H2CN.pun` loads to an intermediate `KBPunNetwork` with
-  268 species and 2139 reactions.
-- The importer can list the 9 Titan photolysis ids referenced by
-  `ions_c6h7+_H2CN.inp-1`.
+- An import report prints counts:
+  - total `.pun` reactions
+  - selected photolysis reactions
+  - thermal reactions converted by class
+  - reactions skipped with reason
+  - reactions blocked by unsupported special behavior
+- Full Titan selected network can be converted in "report-only" mode without
+  throwing.
+- Strict mode throws if any reaction needed by the selected one-step comparison
+  is unsupported.
 
-### Phase 4: Add Run Input Selection Reader
+### 3. Species Ordering And Fixed Species Need A Policy
 
-1. Parse dimensions from `ions_c6h7+_H2CN.inp-1`.
-2. Parse `IFIX`, `IVARYS`, `IVARYF`, and photolysis index sections.
-3. Map KINETICS-base species ids to Kintera species ordering.
-4. Decide how fixed species enter the Kintera state:
-   include all species in `KineticsOptions`, but allow caller to evolve a subset,
-   or build a selected-only network with fixed species supplied through `extra`.
-5. Document unsupported transport/radiation fields for the chemistry-only
-   importer.
+The run input selects 128 profiles:
 
-Acceptance criteria:
+- 8 fixed species:
+  `JDUST`, `N2`, `E`, `PROD`, `U`, `RAYEAR`, `SGA`, `M`
+- 120 varying-fast species
 
-- The importer can build the same species ordering used by the Titan run input.
-- Fixed/varying species are available in the import report.
+The `.pun` contains 268 species. Kintera needs a consistent state ordering for:
 
-### Phase 5: Convert To Kintera Reaction Options
+- chemistry modules
+- transport solver
+- output comparison
+- fixed/background species
+- species used in reactions but not evolved
 
-1. Convert elementary thermal reactions to `ArrheniusOptions`.
-2. Convert three-body reactions to `ThreeBodyOptions`.
-3. Convert low/high pressure reactions to `LindemannFalloffOptions` first.
-4. Defer unsupported Troe/SRI or special forms unless they are required by the
-   Titan selected network.
-5. Represent photolysis reactions through `PhotolysisOptions`.
-6. Decide policy for unsupported particle/surface reactions:
-   fail by default, optional skip with report, or add a minimal reaction class.
+Recommended policy for the first matching milestone:
 
-Acceptance criteria:
-
-- A `KineticsOptions` can be constructed from the selected Titan `.pun` network.
-- Unsupported reactions are counted and explain why they are unsupported.
-
-### Phase 6: Full Photolysis Catalog Integration
-
-1. Reuse and harden `parse_kinetics_base_catalog`.
-2. Load all catalog entries and verify all referenced files exist.
-3. Parse absorption and branching ratio datasets.
-4. Match parent absorption to branch datasets by parent species and temperature.
-5. Interpolate all cross-sections onto a shared wavelength grid.
-6. Expose diagnostics for unmatched photolysis reactions.
+1. Build a Kintera chemistry option set with all species required by converted
+   reactions.
+2. Build the one-step state with the 128 run-selected species in KINETICS-base
+   order.
+3. Keep fixed species in the state tensor but mark them as fixed for the update
+   and comparison.
+4. Do not remove species from reaction stoichiometry until an explicit
+   selected-only reduction exists.
 
 Acceptance criteria:
 
-- All 522 `Cheng_catalog_v4.dat` entries resolve to files.
-- The 9 selected Titan photolysis reactions have non-empty cross-section data.
+- Import report exposes:
+  - `.pun` id to name
+  - `.pun` id to Kintera state index
+  - fixed/varying flags
+  - output comparison order
+- The diagnostic can compare only the species that Fortran writes to
+  `kintitan.out.pun`.
+- Fixed species differences are either excluded from evolved-species tolerance
+  or checked against the Fortran fixed-species policy explicitly.
 
-### Phase 7: Runtime Validation
+### 4. Atmosphere Unit Conversion Is Now Partially Owned By The Importer
 
-1. Build `Kinetics` from the imported options.
-2. Run `forward(temp, pres, conc, extra)` on CPU with float64.
-3. Use simple positive concentrations and a synthetic actinic flux first.
-4. Verify finite rates and finite species tendencies.
-5. Add a regression fixture with counts and a smoke-test forward pass.
+The input atmosphere file mixes quantities that behave like number densities,
+mixing ratios, and special placeholders. The Fortran output writes number
+densities. The Python importer now owns the initial Titan conversion policy used
+by the one-step equivalence test.
+
+Required fix:
+
+- Continue hardening `KBTitanState`, which currently produces:
+  - `temperature`
+  - `pressure`
+  - number-density concentration tensor
+  - density/background profile
+  - eddy diffusion profile
+  - wind profile
+  - per-species input-unit metadata
+- Cross-check this conversion against the Fortran first output before chemistry
+  by using species where output is known to be direct density conversion.
+- Decide and document how to handle special profiles using `.pun` species
+  metadata rather than name-only Titan special cases:
+  - fixed species with `molecular_weight <= 0`
+  - empty elemental composition
+  - names ending in `*`, such as excited/pseudo species
+  - Titan placeholders such as `M`, `U`, `RAYEAR`, `PROD`, `JDUST`, and grain
+    placeholders such as `GH`, `GCH4`, `GC2H2`, while avoiding a blanket
+    `molecular_weight <= 0` rule for normal gas species such as `CH4`
 
 Acceptance criteria:
 
-- Full Titan selected network constructs successfully.
-- Forward pass returns finite tensors with expected shapes.
-- Test can be skipped unless `KINTERA_KINETICS_BASE_ROOT` is set, avoiding
-  vendoring the large external data.
+- Done: conversion decisions are in `build_kinetics_base_titan_state`, not in the
+  test body.
+- Done: Titan state construction can take the `.pun` file and derive
+  number-density/special profile handling from species metadata. This covers
+  `U`, `SGA`, `M`, `RAYEAR`, `JDUST`, `PROD`, and `*` species without relying
+  only on a hardcoded name list.
+- Done: lower `ILOWER=5` mixing-ratio boundaries are applied for selected
+  species such as `CH4`.
+- Done: zero-density top layers are zeroed to match Fortran output behavior.
+- Remaining: generalize boundary conversion beyond the current lower
+  mixing-ratio case.
 
-### Phase 8: Python API And Example
+### 5. Boundary Conditions Are Partially Imported
 
-Add a high-level Python API:
+The Fortran run uses `fort.15`:
+
+```text
+examples/titan/titan_Cheng_N_ions_H2CN.bc_save
+```
+
+Kintera now applies the lower `ILOWER=5` mixing-ratio boundary needed by the
+current one-step output comparison. Full boundary-condition semantics are not
+implemented yet.
+
+Required fix:
+
+- Parse the boundary file for the selected transport species.
+- Map lower/upper boundary kinds and values into
+  `SpeciesBoundaryConditions2D`.
+- Match KINETICS-base semantics for fixed flux, fixed concentration, no-flux,
+  deposition/escape if present.
+
+Acceptance criteria:
+
+- Done for current one-step output target: lower `ILOWER=5` boundary values are
+  applied during Titan state construction.
+- Remaining: parse all lower/upper boundary kinds into
+  `SpeciesBoundaryConditions2D`.
+- Remaining: quantify transport-only mismatch with full boundary semantics.
+
+### 6. Photolysis And Radiation Are Not Equivalent
+
+The selected Titan run has 9 photolysis reactions, but Kintera currently does
+not build selected Titan `PhotoChemOptions` from the `.pun` network and full
+catalog. The Fortran executable also computes radiation using its wavelength,
+flux, aerosol, and diffusion-radiation files.
+
+Required fix:
+
+- Build selected photolysis reactions from the run input ids.
+- Map each selected `.pun` photolysis id to catalog branch/cross-section data.
+- Combine absorption and branching ratios on the same wavelength grid.
+- Produce an actinic-flux tensor consistent with the Fortran first step.
+- Initially support a "Fortran-provided radiation oracle" mode if direct
+  radiation reproduction is too large for the first match.
+
+Acceptance criteria:
+
+- `PhotoChemOptions` contains exactly the 9 selected photolysis reactions.
+- Cross-section arrays are non-empty and finite for every selected reaction.
+- A photolysis-only diagnostic reports rates from Kintera and Fortran-side
+  `prod+loss`/debug outputs when available.
+
+### 7. Time-Stepping Semantics Are Not Matched
+
+The current diagnostic uses `dt=1.0e-15` only as a placeholder. The Fortran run
+input includes:
+
+```text
+DELTIM=-1.0E-15
+NTIME=1
+ITRY=5
+ISTART=0
+```
+
+Kintera must reproduce the same meaning, not just use the same absolute value.
+
+Required fix:
+
+- Parse run timing fields into structured data.
+- Identify whether negative `DELTIM` triggers internal auto-step behavior in
+  KINETICS-base.
+- Match the Fortran one-step update order:
+  - read/convert atmosphere
+  - update radiation
+  - chemistry rates
+  - transport/boundary update
+  - output/flooring/clamping
+- Decide whether the first hard match compares:
+  - rates/tendencies before stepping
+  - one implicit chemistry step
+  - one full chemistry + transport step
+
+Recommended first hard target:
+
+1. Match parsed initial number-density state.
+2. Match thermal chemistry rate vector for one altitude level with photolysis
+   disabled.
+3. Match photolysis rate vector for one altitude level with chemistry disabled.
+4. Match full one-step output.
+
+## Updated Implementation Roadmap
+
+### Phase A: Lock The Oracle And Diagnostics
+
+Status: mostly complete, with one improvement needed.
+
+Tasks:
+
+1. Done: replace the previous xfail diagnostic with
+   `test_external_titan_one_step_equivalence_if_available`.
+2. Done: store diagnostic metadata in assertion messages:
+   - max absolute difference
+   - max relative difference on nonzero reference entries
+   - number of changed entries
+   - top 10 species by max difference
+3. Done: ensure the C++ and Python external tests use the same `fort.*` wiring.
+
+Acceptance criteria:
+
+- Default tests pass without external data.
+- External one-step equivalence test hard-passes within `.pun` output precision.
+- The diagnostic can identify which species dominate the mismatch.
+
+### Phase B: Rebuild `.pun` Reaction Model
+
+Status: partially implemented.
+
+Tasks:
+
+1. Done: rename `KBPunReaction::reaction_type` to `n_reactants`.
+2. Done: replace expanded-only participant parsing with structured participant
+   slots.
+3. Done: parse rate blocks from the Fortran line format.
+4. Done: preserve expanded reactant/product ids as derived convenience fields.
+5. Next: add `classify_kinetics_base_pun_reaction(...)` with report-only output.
+6. Next: add broader full-Titan fixture assertions for representative reaction
+   ids and nonzero multi-block rates.
+
+Acceptance criteria:
+
+- Parser tests cover one `NOREACT=1`, one `NOREACT=2`, and one `NOREACT=3`
+  Titan line.
+- Existing full Titan parser count test still passes.
+- Import report shows a non-empty classification summary.
+
+### Phase C: Build Titan Species And State Import
+
+Status: partially implemented and used by the hard one-step output test.
+
+Tasks:
+
+1. Done: add `KBTitanState` with selected species names, flags, profiles, and
+   tensors.
+2. Done: move `_initial_concentration_guess` out of the test and into the
+   importer as `build_kinetics_base_titan_state`.
+3. Partially done: implement explicit conversion rules for mixing-ratio versus number-density
+   profile sections.
+4. Done: expose Python API for constructing an `AtmState2D` from Titan files.
+5. Remaining: add fixed-species mask support for future chemistry/transport
+   diagnostics.
+
+Acceptance criteria:
+
+- Done: the 128 selected species are emitted in KINETICS-base order.
+- Done: the state builder creates finite `AtmState2D` tensors with shape
+  `(1, 50, 128)`.
+- Done: conversion decisions are visible in the returned state object.
+
+### Phase D: Convert Thermal Chemistry
+
+Status: not implemented for `.pun`.
+
+Tasks:
+
+1. Initialize species and thermo data from `.pun`, not from the master fixture.
+2. Convert ordinary thermal reactions to `ArrheniusOptions`.
+3. Convert third-body reactions to `ThreeBodyOptions`.
+4. Convert low/high pressure forms to `LindemannFalloffOptions`.
+5. Add unsupported-reaction diagnostics for special/grain/particle forms.
+6. Validate units against current master importer conventions.
+
+Acceptance criteria:
+
+- `KineticsOptions.from_kinetics_base_titan(..., photolysis=False)` constructs.
+- `Kinetics` can run a finite forward pass for all selected altitude levels.
+- A thermal-only rate diagnostic can compare at least one altitude level against
+  Fortran-derived rates or a trusted local reimplementation.
+
+### Phase E: Convert Selected Photolysis
+
+Status: catalog smoke parsing exists, selected photolysis import does not.
+
+Tasks:
+
+1. Build photolysis reactions from selected ids `221-228,245`.
+2. Match selected reactions to catalog entries and cross-section files.
+3. Interpolate onto Kintera's wavelength grid or import the KINETICS-base grid.
+4. Add branch handling for product channels.
+5. Add an option to feed Fortran-equivalent actinic flux into Kintera.
+
+Acceptance criteria:
+
+- `PhotoChemOptions.from_kinetics_base_titan(...)` constructs with 9 reactions.
+- Photolysis rates are finite for the Titan atmosphere.
+- Selected photolysis rate diagnostics are available separately from thermal
+  chemistry.
+
+### Phase F: Import Boundary And Transport Semantics
+
+Status: not implemented.
+
+Tasks:
+
+1. Parse `titan_Cheng_N_ions_H2CN.bc_save`.
+2. Map lower/upper boundary conditions to Kintera boundary condition objects.
+3. Use parsed eddy diffusion and wind consistently.
+4. Decide whether Kintera's 1D transport operator needs a KINETICS-base
+   compatibility mode for grid staggering or flux definitions.
+
+Acceptance criteria:
+
+- Transport-only diagnostic runs with KINETICS-base boundary conditions.
+- Transport-only mismatch is quantified separately from chemistry mismatch.
+
+### Phase G: Assemble One-Step Compatibility Driver
+
+Status: not implemented.
+
+Tasks:
+
+1. Add high-level Python API:
 
 ```python
-opts, report = kt.KineticsOptions.from_kinetics_base_titan(
-    pun_path=".../Cheng_ions_c6h7+_v3_H2CN.pun",
-    run_input_path=".../ions_c6h7+_H2CN.inp-1",
-    catalog_path=".../Cheng_catalog_v4.dat",
-    cross_dir=".../Cheng_cross",
+state, kinetics, photo, report = kt.from_kinetics_base_titan(
+    root="...",
+    fresh_start=True,
 )
 ```
 
-Also add an example:
+2. Add an explicit one-step function:
 
-- `examples/example_kinetics_base_titan.py`
+```python
+next_state, step_report = kt.step_kinetics_base_titan_once(
+    state,
+    kinetics=kinetics,
+    photo_chem=photo,
+    report=report,
+)
+```
 
-The example should print:
-
-- species count
-- reaction count by type
-- selected photolysis count
-- skipped/unsupported count
-- forward tensor shapes
+3. Done for state construction: the current one-step test uses
+   `build_kinetics_base_titan_state` instead of constructing profiles inline.
+4. Tighten the remaining chemistry/radiation work into staged assertions:
+   - parsed-state assertion
+   - thermal-rate assertion
+   - photolysis-rate assertion
+   - transport assertion
+   - full output assertion
 
 Acceptance criteria:
 
-- Example runs against a user-provided external data root.
-- No large KINETICS-base data is committed to this repository.
+- The external diagnostic no longer contains importer policy.
+- Every mismatch belongs to a named report section.
+- The first state/boundary one-step output test is non-xfail.
 
 ## Testing Strategy
 
-### Unit Tests
+### Default Tests
 
-- master line classification
-- species normalization
-- Fortran numeric parsing
-- `.pun` header/species/reaction parsing
-- run input dimension/selection parsing
-- catalog parsing
-- cross-section parsing
+These must not require the external KINETICS-base checkout:
 
-### Integration Tests
+- minimal master importer tests
+- minimal `.pun` and run-input fixture tests
+- minimal atmosphere fixture tests
+- Python package import and binding tests
+- Kzz diffusion smoke test using small fixture species
 
-- existing small KINETICS-base fixture
-- tiny synthetic `.pun` fixture
-- optional full Titan test gated by `KINTERA_KINETICS_BASE_ROOT`
+### Optional External Tests
 
-### Regression Checks
+These run only with:
 
-Expected external Titan counts:
+```text
+KINTERA_KINETICS_BASE_ROOT=/path/to/KINETICS-base
+KINTERA_KINETICS_BASE_EXECUTABLE=/path/to/titan.release
+```
 
-- `.pun`: `NMOL=268`, `NREACT=2139`, `NPART=517`
-- run input: `NFIX=8`, `NVARYF=120`, `NPHOTO=9`
-- catalog entries: `522`
-- cross-section files resolved: `522`
+They should include:
 
-## Open Design Questions
+- parser count smoke test
+- Fortran first-step execution test
+- hard state/boundary one-step equivalence test
+- future chemistry/radiation one-step diagnostics as those modules are imported
 
-1. Should Kintera import all 268 `.pun` species, or only the fixed/varying
-   subset required by the run input?
-2. How should fixed species be supplied during `forward`?
-3. Should particle/aerosol reactions be implemented in Kintera now, skipped, or
-   represented as inert diagnostics?
-4. Should reactions with only one rate coefficient be interpreted as
-   temperature-independent Arrhenius rates with `b=0` and `Ea_R=0`?
-5. How much of KINETICS-base radiation/transport input belongs in Kintera versus
-   the caller?
+### Match Tolerances
 
-## Recommended First PR
+Use staged tolerances:
 
-The first implementation PR should be intentionally narrow:
+1. Parser/state identity:
+   - exact counts and species names
+   - exact selected ids
+2. Initial concentration conversion:
+   - exact or near-exact for finite non-updated profiles after documented unit
+     conversion
+3. Rate-level comparison:
+   - relative tolerance first, with absolute floor for tiny radical/ion entries
+4. Full one-step output:
+   - start with per-species diagnostics
+   - only set global hard tolerances after rate and transport components are
+     independently understood
 
-1. Add parser utilities for KINETICS-base numbers and species normalization.
-2. Harden master line classification.
-3. Add `KBImportReport`.
-4. Add fixture tests for the exact failure modes found in
-   `kindata8master_Cheng.inp`.
+## Open Design Decisions
 
-This reduces risk before adding the larger `.pun` importer.
+1. Should the production importer build all 268 `.pun` species, or a selected
+   128-species state plus fixed/background extras?
+2. Should fixed species remain in the state tensor or enter `Kinetics.forward`
+   through `extra`?
+3. How should `PROD`, `U`, `RAYEAR`, `JDUST`, `SGA`, grain species, and aerosol
+   placeholders be represented in Kintera?
+4. Do we need a KINETICS-base compatibility transport mode, or can existing
+   `atm2d` operators match after boundary/grid conversion?
+5. Should radiation be matched by reproducing KINETICS-base internally, or by
+   allowing an oracle actinic-flux input for the first one-step chemistry match?
+6. The first non-xfail target is now the Fortran fresh-start one-step
+   `kintitan.out.pun` profile output after KINETICS-base state conversion and
+   lower-boundary application. The next non-xfail targets should be
+   thermal-rate and selected-photolysis-rate comparisons.
+
+## Recommended Next PR Scope
+
+The next PR should now focus on converting the structured `.pun` records into a
+reportable importer:
+
+1. Add an import report with classification/skipped counts.
+2. Implement report-only reaction classification from structured `.pun`
+   records plus run-input photolysis ids.
+3. Add representative full-Titan reaction assertions for rate blocks and
+   participant markers.
+4. Move Titan atmosphere concentration conversion out of the test into a
+   reusable importer helper.
+5. Start `KBTitanState` construction for the 128 selected species.
+
+This gives the next implementation phase a reliable foundation before adding
+large chemistry and photolysis conversion code.

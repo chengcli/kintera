@@ -375,15 +375,15 @@ static bool parse_pun_reaction_header(std::string const& line,
   std::istringstream iss(line);
   int id = 0;
   char dot = '\0';
-  int reaction_type = 0;
+  int n_reactants = 0;
   int n_products = 0;
 
   if (!(iss >> id >> dot) || dot != '.') return false;
-  if (!(iss >> reaction_type >> n_products)) return false;
+  if (!(iss >> n_reactants >> n_products)) return false;
 
   reaction = {};
   reaction.id = id;
-  reaction.reaction_type = reaction_type;
+  reaction.n_reactants = n_reactants;
   reaction.n_products = n_products;
   reaction.raw_line = line;
 
@@ -394,10 +394,56 @@ static bool parse_pun_reaction_header(std::string const& line,
           ? line.size()
           : static_cast<size_t>(rate_match->position());
   auto participant_text = line.substr(0, participant_end);
-  auto eq_pos = participant_text.find('=');
-  if (eq_pos == std::string::npos) return true;
+  std::regex participant_re(R"(\(\s*(\d*)\s*\)\s*(\d+)\s*([+=]?))");
+  bool on_products = false;
+  for (std::sregex_iterator it(participant_text.begin(), participant_text.end(),
+                               participant_re);
+       it != std::sregex_iterator(); ++it) {
+    KBPunParticipant participant;
+    participant.coefficient =
+        (*it)[1].str().empty() ? 1 : std::stoi((*it)[1].str());
+    if (participant.coefficient <= 0) participant.coefficient = 1;
+    participant.species_id = std::stoi((*it)[2].str());
+    participant.marker =
+        (*it)[3].str().empty() ? ' ' : static_cast<char>((*it)[3].str()[0]);
+    reaction.participants.push_back(participant);
 
-  auto expand_ids = [](std::string const& side) {
+    if (participant.species_id != 0) {
+      auto& ids = on_products ? reaction.product_ids : reaction.reactant_ids;
+      for (int i = 0; i < participant.coefficient; ++i) {
+        ids.push_back(participant.species_id);
+      }
+    }
+    if (participant.marker == '=') on_products = true;
+  }
+
+  auto values = extract_doubles(line.substr(participant_end));
+  auto make_rate_block = [](std::vector<double> const& values, size_t offset) {
+    KBPunRateBlock block;
+    auto get = [&](size_t index, double fallback) {
+      return offset + index < values.size() ? values[offset + index] : fallback;
+    };
+    block.A = get(0, 0.0);
+    block.b = get(1, 0.0);
+    block.C = get(2, 0.0);
+    block.D = get(3, 0.0);
+    block.E = get(4, 0.0);
+    block.F = get(5, 0.0);
+    block.Tmin = get(6, 0.0);
+    block.Tmax = get(7, 0.0);
+    block.Fc = get(8, 1.0);
+    block.Tin = get(9, 0.0);
+    block.Tout = get(10, 0.0);
+    return block;
+  };
+  for (size_t offset = 0; offset < values.size(); offset += 11) {
+    reaction.rate_blocks.push_back(make_rate_block(values, offset));
+  }
+
+  if (reaction.reactant_ids.empty() && reaction.product_ids.empty()) {
+    auto eq_pos = participant_text.find('=');
+    if (eq_pos == std::string::npos) return true;
+    auto expand_ids = [](std::string const& side) {
     std::vector<int> ids;
     std::regex participant_re(R"(\(\s*(\d*)\s*\)\s*(\d+))");
     for (std::sregex_iterator it(side.begin(), side.end(), participant_re);
@@ -408,10 +454,10 @@ static bool parse_pun_reaction_header(std::string const& line,
       for (int i = 0; i < coeff; ++i) ids.push_back(species_id);
     }
     return ids;
-  };
-
-  reaction.reactant_ids = expand_ids(participant_text.substr(0, eq_pos));
-  reaction.product_ids = expand_ids(participant_text.substr(eq_pos + 1));
+    };
+    reaction.reactant_ids = expand_ids(participant_text.substr(0, eq_pos));
+    reaction.product_ids = expand_ids(participant_text.substr(eq_pos + 1));
+  }
   return true;
 }
 
@@ -890,6 +936,45 @@ KBTitanNetwork parse_kinetics_base_titan(
   }
 
   return network;
+}
+
+KBTitanReactionReport classify_kinetics_base_titan_reactions(
+    KBTitanNetwork const& titan) {
+  KBTitanReactionReport report;
+  report.total_reactions = static_cast<int>(titan.pun.reactions.size());
+
+  std::set<int> selected_photo_ids(
+      titan.selection.photolysis_reaction_ids.begin(),
+      titan.selection.photolysis_reaction_ids.end());
+
+  for (auto const& reaction : titan.pun.reactions) {
+    report.n_reactants_counts[reaction.n_reactants]++;
+    if (reaction.rate_blocks.empty()) {
+      report.missing_rate_blocks++;
+    }
+
+    if (selected_photo_ids.count(reaction.id) != 0) {
+      report.selected_photolysis_reactions++;
+      report.selected_photolysis_ids.push_back(reaction.id);
+      continue;
+    }
+
+    report.thermal_candidate_reactions++;
+    if (reaction.reactant_ids.empty() || reaction.product_ids.empty() ||
+        reaction.rate_blocks.empty()) {
+      report.unsupported_reaction_ids.push_back(reaction.id);
+    }
+  }
+
+  return report;
+}
+
+KBTitanReactionReport classify_kinetics_base_titan_reactions(
+    std::string const& pun_path, std::string const& run_input_path) {
+  KBTitanNetwork titan;
+  titan.pun = parse_kinetics_base_pun(pun_path);
+  titan.selection = parse_kinetics_base_run_input(run_input_path);
+  return classify_kinetics_base_titan_reactions(titan);
 }
 
 void init_species_from_kinetics_base(std::string const& master_input_path) {
