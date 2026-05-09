@@ -307,6 +307,34 @@ static std::vector<int> extract_ints(std::string const& s) {
   return result;
 }
 
+static double parse_fortran_double(std::string text) {
+  if (text.find('e') == std::string::npos &&
+      text.find('E') == std::string::npos) {
+    for (size_t i = 1; i < text.size(); ++i) {
+      if ((text[i] == '+' || text[i] == '-') &&
+          std::isdigit(static_cast<unsigned char>(text[i - 1]))) {
+        text.insert(i, "E");
+        break;
+      }
+    }
+  }
+  return std::stod(text);
+}
+
+static std::vector<double> extract_doubles(std::string const& s) {
+  std::vector<double> result;
+  std::regex number_re(
+      R"([-+]?(?:\d+\.?\d*|\.\d+)(?:(?:[eE][-+]?\d+)|(?:[-+]\d{2,3}))?)");
+  for (std::sregex_iterator it(s.begin(), s.end(), number_re);
+       it != std::sregex_iterator(); ++it) {
+    try {
+      result.push_back(parse_fortran_double(it->str()));
+    } catch (...) {
+    }
+  }
+  return result;
+}
+
 static bool parse_pun_species_header(std::string const& line,
                                      KBPunSpecies& species) {
   static std::regex const header_prefix_re(R"(^\s*\d+\.\s+)");
@@ -533,6 +561,80 @@ KBRunSelection parse_kinetics_base_run_input(std::string const& filepath) {
               "No KINETICS-base species selection found in: ", filepath);
 
   return selection;
+}
+
+KBAtmosphereProfile parse_kinetics_base_atmosphere(
+    std::string const& filepath) {
+  KBAtmosphereProfile profile;
+
+  std::ifstream ifs(filepath);
+  TORCH_CHECK(ifs.good(), "Cannot open KINETICS-base atmosphere file: ",
+              filepath);
+
+  std::string current_section;
+  std::map<std::string, std::vector<double>> sections;
+  std::string line;
+  while (std::getline(ifs, line)) {
+    auto stripped = trim(line);
+    if (stripped.empty()) continue;
+
+    if (stripped[0] == '%') {
+      current_section = trim(stripped.substr(1));
+      if (!current_section.empty() && current_section.back() == '&') {
+        current_section.pop_back();
+      }
+      current_section = normalize_species_name(trim(current_section));
+      sections[current_section] = {};
+      continue;
+    }
+
+    if (current_section.empty()) {
+      if (profile.header.empty()) profile.header = stripped;
+      continue;
+    }
+
+    auto values = extract_doubles(stripped);
+    auto& section_values = sections[current_section];
+    section_values.insert(section_values.end(), values.begin(), values.end());
+  }
+
+  auto take_required = [&](std::string const& name) {
+    auto it = sections.find(name);
+    TORCH_CHECK(it != sections.end(), "Missing KINETICS-base atmosphere section %",
+                name, " in: ", filepath);
+    auto values = std::move(it->second);
+    sections.erase(it);
+    return values;
+  };
+
+  profile.altitude = take_required("ALT");
+  auto nlevel = profile.altitude.size();
+  TORCH_CHECK(nlevel > 0, "Empty KINETICS-base atmosphere profile in: ",
+              filepath);
+
+  auto take_center_values = [&](std::string const& name) {
+    auto values = take_required(name);
+    TORCH_CHECK(values.size() >= nlevel, "KINETICS-base atmosphere section %",
+                name, " has ", values.size(), " values, expected at least ",
+                nlevel, " in: ", filepath);
+    values.resize(nlevel);
+    return values;
+  };
+
+  profile.density = take_center_values("DEN");
+  profile.temperature = take_center_values("TEMP");
+  profile.pressure = take_center_values("PRE");
+  profile.eddy_diffusion = take_center_values("EDDY");
+  profile.wind = take_center_values("WIND");
+  profile.species_profiles = std::move(sections);
+
+  for (auto const& [species, values] : profile.species_profiles) {
+    TORCH_CHECK(values.size() == nlevel, "KINETICS-base species profile %",
+                species, " has ", values.size(), " values, expected ", nlevel,
+                " in: ", filepath);
+  }
+
+  return profile;
 }
 
 KBMasterData parse_kinetics_base_master(std::string const& filepath) {

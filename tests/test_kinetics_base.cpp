@@ -275,6 +275,21 @@ TEST(KineticsBaseParser, ParseMinimalPunAndRunInput) {
   EXPECT_EQ(selection.photolysis_reaction_ids, std::vector<int>({2}));
 }
 
+TEST(KineticsBaseParser, ParseAtmosphereProfile) {
+  auto atmosphere =
+      parse_kinetics_base_atmosphere(data_dir() + "test_titan_atmosphere.pun");
+  EXPECT_EQ(atmosphere.altitude, std::vector<double>({0.0, 1.0, 2.0}));
+  EXPECT_EQ(atmosphere.density.size(), 3);
+  EXPECT_EQ(atmosphere.temperature[1], 110.0);
+  EXPECT_EQ(atmosphere.pressure[2], 6.0e-4);
+  EXPECT_EQ(atmosphere.eddy_diffusion[0], 3.0e3);
+  EXPECT_EQ(atmosphere.wind[2], -1.0);
+  ASSERT_EQ(atmosphere.species_profiles.size(), 3);
+  EXPECT_EQ(atmosphere.species_profiles.at("H")[2], 3.0e-6);
+  EXPECT_EQ(atmosphere.species_profiles.at("CH4")[1], 8.0e-4);
+  EXPECT_EQ(atmosphere.species_profiles.at("M")[0], 1.0e12);
+}
+
 TEST(KineticsBaseParser, ParseExternalTitanPunIfAvailable) {
   const char* root_env = std::getenv("KINTERA_KINETICS_BASE_ROOT");
   if (root_env == nullptr || std::string(root_env).empty()) {
@@ -317,6 +332,18 @@ TEST(KineticsBaseParser, ParseExternalTitanPunIfAvailable) {
   EXPECT_EQ(titan.catalog.size(), 522);
   EXPECT_EQ(titan.resolved_cross_sections, 522);
   EXPECT_TRUE(titan.missing_cross_section_files.empty());
+
+  auto atmosphere = parse_kinetics_base_atmosphere(
+      root + "examples/titan/kintitan.pun_zero_conc_2_mod_atm_orig_3xkzz");
+  EXPECT_EQ(atmosphere.altitude.size(), 50);
+  EXPECT_EQ(atmosphere.density.size(), 50);
+  EXPECT_EQ(atmosphere.temperature.size(), 50);
+  EXPECT_EQ(atmosphere.eddy_diffusion.size(), 50);
+  EXPECT_EQ(atmosphere.species_profiles.size(),
+            selection.fixed_species_ids.size() +
+                selection.varying_fast_species_ids.size());
+  EXPECT_EQ(atmosphere.species_profiles.at("M").size(), 50);
+  EXPECT_EQ(atmosphere.species_profiles.at("CH4").size(), 50);
 }
 
 TEST(KineticsBaseParser, MatchKineticsBaseTitanFirstStepIfAvailable) {

@@ -112,11 +112,25 @@ struct KBTitanNetwork {
   std::vector<std::string> missing_cross_section_files;
 };
 
+struct KBAtmosphereProfile {
+  std::string header;
+  std::vector<double> altitude;
+  std::vector<double> density;
+  std::vector<double> temperature;
+  std::vector<double> pressure;
+  std::vector<double> eddy_diffusion;
+  std::vector<double> wind;
+  std::map<std::string, std::vector<double>> species_profiles;
+};
+
 KBMasterData parse_kinetics_base_master(std::string const& filepath);
 
 KBPunNetwork parse_kinetics_base_pun(std::string const& filepath);
 
 KBRunSelection parse_kinetics_base_run_input(std::string const& filepath);
+
+KBAtmosphereProfile parse_kinetics_base_atmosphere(
+    std::string const& filepath);
 
 std::vector<std::pair<std::string, std::string>> parse_kinetics_base_catalog(
     std::string const& filepath);

@@ -89,6 +89,63 @@ def test_kinetics_module_creation(master_path, catalog_path, cross_dir):
     assert stoich.size(1) == nrxn + n_rev
 
 
+def test_kinetics_base_species_on_1d_kzz_diffusion_solver(master_path):
+    """Use KINETICS-base species in a one-column Kzz diffusion solve."""
+    import kintera as kt
+
+    opts = kt.KineticsOptions.from_kinetics_base(master_path)
+    nspecies = len(opts.species())
+    nlyr = 9
+    ncol = 1
+
+    x1f = torch.linspace(0.0, 8.0e5, nlyr + 1)
+    x2f = torch.tensor([0.0, 1.0])
+    temperature = torch.full((ncol, nlyr), 250.0)
+    pressure = torch.logspace(6.0, 3.0, nlyr).unsqueeze(0)
+
+    vertical_profile = torch.linspace(0.2, 1.0, nlyr).view(ncol, nlyr, 1)
+    species_scale = torch.linspace(1.0, 2.0, nspecies).view(1, 1, nspecies)
+    concentration = 1.0e8 * vertical_profile * species_scale
+    concentration[:, :, 0] = 3.0e8  # Uniform species should remain unchanged.
+
+    state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=temperature,
+        pressure=pressure,
+        concentration=concentration,
+    )
+    kzz = torch.full((ncol, nlyr), 1.0e5)
+    transport = kt.build_transport_matrix(state, kzz)
+
+    dt = 5.0e4
+    system_dense = torch.eye(transport.nstate) - dt * transport.global_csr.to_dense()
+    system = kt.SparseSystemMatrix.from_dense(
+        system_dense,
+        ncol=ncol,
+        nlyr=nlyr,
+        nspecies=nspecies,
+    )
+
+    next_concentration = kt.solve_sparse_system(system, concentration)
+
+    assert next_concentration.shape == concentration.shape
+    torch.testing.assert_close(
+        next_concentration.sum(dim=1),
+        concentration.sum(dim=1),
+        rtol=1.0e-10,
+        atol=1.0e-2,
+    )
+    torch.testing.assert_close(
+        next_concentration[:, :, 0],
+        concentration[:, :, 0],
+        rtol=1.0e-12,
+        atol=1.0e-6,
+    )
+    assert next_concentration[:, -1, 1].item() < concentration[:, -1, 1].item()
+    assert next_concentration[:, 0, 1].item() > concentration[:, 0, 1].item()
+
+
 def test_photochem_forward_with_xsec(master_path, catalog_path, cross_dir):
     """Forward pass with cross-section data loaded."""
     import kintera as kt

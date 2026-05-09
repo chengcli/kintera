@@ -36,6 +36,10 @@ configure_file(
 configure_file(
   ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/test_titan_run.inp
   ${CMAKE_CURRENT_BINARY_DIR}/kinetics_base/data/test_titan_run.inp COPYONLY)
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/test_titan_atmosphere.pun
+  ${CMAKE_CURRENT_BINARY_DIR}/kinetics_base/data/test_titan_atmosphere.pun
+  COPYONLY)
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/cross
      DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/kinetics_base/data)
 
