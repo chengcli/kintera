@@ -14,6 +14,7 @@ from .electron_impact import (
 from .models import KBTitanSourceTerm
 from .parsing import (
     _canonical_kinetics_base_species_name,
+    _infer_kinetics_base_aerosol_path,
     _kinetics_base_reaction_key,
     _kinetics_base_vapor_coefficients_from_pun,
     _normalize_kinetics_base_boundary_species,
@@ -104,6 +105,9 @@ def build_kinetics_base_titan_source_terms(
                 special_photo_parent_species.add(reactants[0])
     reaction_by_id = {reaction.id: reaction for reaction in pun.reactions}
     radiation_inputs = _parse_kinetics_base_run_radiation_inputs(run_input_path)
+    active_photo_reaction_ids = _kinetics_base_active_photo_reaction_ids(
+        radiation_inputs.get("active_photo_reaction_ids")
+    )
     active_opacity_species = _kinetics_base_opacity_species_from_reaction_ids(
         radiation_inputs.get("active_opacity_reaction_ids"),
         reaction_by_id,
@@ -243,6 +247,11 @@ def build_kinetics_base_titan_source_terms(
                         photo_data["scale"] = scale
             if photo_data is not None:
                 if _is_kinetics_base_electron_impact_reaction(products):
+                    if (
+                        active_photo_reaction_ids is not None
+                        and reaction.id not in active_photo_reaction_ids
+                    ):
+                        continue
                     electron_parameters = dict(photo_data)
                     electron_parameters["attenuation"] = "none"
                     electron_scale = _kinetics_base_electron_impact_scale(
@@ -416,4 +425,16 @@ def build_kinetics_base_titan_source_terms(
                 )
 
     return source_terms
+
+
+def _kinetics_base_active_photo_reaction_ids(raw_ids: Any) -> set[int] | None:
+    if not isinstance(raw_ids, list):
+        return None
+    ids: set[int] = set()
+    for raw_id in raw_ids:
+        try:
+            ids.add(int(raw_id))
+        except (TypeError, ValueError):
+            continue
+    return ids
 

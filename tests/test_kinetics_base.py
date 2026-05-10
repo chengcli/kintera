@@ -641,7 +641,7 @@ def test_external_titan_special_placeholders_if_available():
     assert disabled_ids == {187, 2094, 2095, 2096, 2097, 2098, 2099}
     assert unimplemented_ids == set()
     assert ion_recombination_count > 0
-    assert electron_impact_count > 0
+    assert electron_impact_count == 0
 
 
 def test_photochem_forward_with_xsec(master_path, catalog_path, cross_dir):

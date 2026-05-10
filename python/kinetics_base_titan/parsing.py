@@ -30,14 +30,14 @@ def parse_kinetics_base_special(path: str | Path) -> list[KBTitanSpecialEntry]:
 
 def _parse_kinetics_base_run_radiation_inputs(
     path: str | Path | None,
-) -> dict[str, float | bool]:
+) -> dict[str, object]:
     if path is None:
         return {}
     file_path = Path(path)
     if not file_path.exists():
         return {}
     lines = file_path.read_text().splitlines()
-    values: dict[str, float | bool] = {}
+    values: dict[str, object] = {}
 
     def numeric_line_after(label: str, skip: int = 1) -> list[float]:
         for index, line in enumerate(lines):
@@ -89,6 +89,7 @@ def _parse_kinetics_base_run_radiation_inputs(
         active_photo_ids = _collect_numeric_block_after_label(
             lines, "IPHOTO", nphoto + nphots + nphotr + nphotd
         )
+        values["active_photo_reaction_ids"] = active_photo_ids
         values["active_opacity_reaction_ids"] = active_photo_ids[:nphoto]
 
     timing = numeric_line_after("ICYEAR", skip=0)
