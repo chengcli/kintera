@@ -153,6 +153,7 @@ struct KBAtmosphereProfile {
   std::vector<double> eddy_diffusion;
   std::vector<double> wind;
   std::map<std::string, std::vector<double>> species_profiles;
+  std::vector<std::string> mixing_ratio_species_profiles;
 };
 
 KBMasterData parse_kinetics_base_master(std::string const& filepath);

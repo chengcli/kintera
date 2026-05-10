@@ -63,6 +63,10 @@ is one-step equivalence:
   same atmosphere and boundary files.
 - The first one-step output target now hard-passes against `kintitan.out.pun`
   within the printed precision of the upstream `.pun` output.
+- A multi-step external diagnostic now runs `NTIME=10` from the same fresh-start
+  input and repeats the current Kintera transport step with KINETICS-base's
+  negative-`DELTIM` growth rule. This is intentionally `xfail`: it exposes the
+  next missing physics rather than a state-conversion regression.
 
 Current accepted one-step tolerance:
 
@@ -76,6 +80,339 @@ This tolerance is set by the limited significant digits written in the Fortran
 special fixed profiles such as `U` and `SGA` were incorrectly treated as mixing
 ratios, `ILOWER=5` lower-boundary mixing ratios were not applied, and
 zero-density top layers were not zeroed.
+
+Current multi-step diagnostic result:
+
+```text
+NTIME=10
+max_abs_diff=4.629e8, dominated by CH4 but within the one-step print-precision
+relative tolerance
+```
+
+The source-term importer now exposes a unified Python list of source terms:
+
+```text
+KBTitanSourceTerm(kind=...)
+```
+
+The implemented source evaluators now include boundary velocity/flux terms from
+`.bc_save` and paired Titan condensation/sublimation for `.pun` reactions of the
+form `X + SGA <-> GX + U`. This includes the `GCH4` pair:
+
+```text
+freeze: CH4 + SGA -> GCH4
+sublimation: GCH4 + U -> CH4
+```
+
+The source path now uses KINETICS-base's effective negative-`DELTIM` half-decade
+startup growth for this Titan executable. `DELT` is seconds inside the Fortran
+stepper; `TLAP` is the hour accumulator, so source terms must not be multiplied
+by `3600`.
+
+Latest architecture checkpoint:
+
+- `atm2d` now has a local source-term linearization interface that returns both
+  source tendency and cell-local Jacobian blocks.
+- `build_implicit_operator` can include those source Jacobians alongside
+  transport, chemistry, and photochemistry blocks.
+- `build_implicit_step_system` builds the linearized backward-Euler system
+  `(I - dt * (T + J)) c_new = c_old + dt * (S(c_old) - J c_old)`, so source
+  terms can participate in the implicit solve rather than being applied only as
+  an operator-split post-step.
+- The Titan adapter now exposes `pun_photo_rate_reaction`,
+  `pun_electron_impact_reaction`, `pun_thermal_reaction`, Titan
+  condensation/sublimation, and boundary velocity/flux terms through this
+  `atm2d` interface. The reusable physics forms live in `atm2d.source`
+  (`IndexedFirstOrderSource`, `IndexedMassActionSource`,
+  `IndexedReversibleFirstOrderSource`, and boundary source classes); the
+  KINETICS-base module mostly translates parsed input records into those source
+  objects and supplies KINETICS-specific rate profiles.
+- `E` is no longer treated as a fixed/background species in the Titan state.
+  Electron-impact reactions that produce `E` now create a nonzero electron
+  tendency, allowing electron chemistry to evolve instead of being reset to the
+  zero initial profile.
+- `E` and PUN species with nonzero electron pseudo-element composition are now
+  read as number-density profiles rather than mixing ratios. This matches the
+  Titan ion network convention where `E` is electron density and cations such as
+  `CH3+`/`N2+` are encoded with an electron composition of `-1`.
+- Atmosphere profile unit conversion no longer uses the unsafe numeric heuristic
+  `max(value) <= 1 -> mixing ratio`. Mixing ratios are now recognized from the
+  explicit KINETICS profile-section marker (`%SPEC &`), while unmarked profiles
+  default to number density unless a boundary row such as `ILOWER=5` explicitly
+  supplies a mixing ratio.
+- The inspected KINETICS-base Fortran also builds an `ION` classification from
+  the electron pseudo-element. In the current Titan run input `AMBIDIFF=0`, so
+  that ion-specific branch is not active for transport matching yet; it remains a
+  future `atm2d` transport feature if we enable ambipolar diffusion.
+- Ion chemistry does not use a separate global rate-law branch in the inspected
+  KINETICS-base thermal-rate path. `ion + E` recombination is now handled as
+  ordinary mass action, with the `atm2d` mass-action Jacobian fixed so a
+  first-order zero reactant such as initially zero `E` still contributes the
+  correct implicit derivative (`d(k ion E)/dE = k ion`).
+- The multi-step diagnostic now builds the complete Titan source list with
+  run-input radiation gates, catalog/cross-section/flux inputs, 172 `ion + E`
+  thermal reactions, and 25 electron-impact source reactions, then advances
+  through `build_implicit_step_system` instead of an operator-split post-step.
+- The seven known zero-rate `.special` placeholders (`bNO -> bN + O` and the
+  Cheng `2U -> ...` hooks) are now classified as disabled/no-op Titan special
+  placeholders rather than unimplemented physics. The `2U = 2C6H6` hook is also
+  disabled in the inspected KINETICS-base Fortran source for this ion-chemistry
+  case.
+- Remaining source-term caveats are exact KINETICS-base compatibility details
+  such as lower boundary grain-removal rows, which may need boundary-condition
+  rows rather than local source terms.
+
+Current local sweep after implicit ion/electron source updates:
+
+```text
+NTIME=10: finite; max_abs_diff=4.629e8, dominated by CH4
+NTIME=30: finite; max_abs_diff=4.629e8, dominated by CH4; E is high by 0.12
+NTIME=50: finite; no previous 1e36 divergence; largest mismatch is CH4
+          (1.60e12 versus Fortran 4.69e12 near the bottom), with high-altitude
+          ion/electron and grain-source mismatches still visible
+```
+
+The next blocker is no longer the `GCH4` source registry. The remaining large
+multi-step differences are ordinary photochemical/electron/special reactions
+from the `.special` list and KINETICS-base's implicit chemistry update, e.g.
+`CH4 -> CH3+ + H + E`, `N2 -> N+ + N + E`, and other zero-rate special
+photolysis/electron-impact channels that are still reported as
+`unimplemented_special_reaction`.
+
+Follow-up diagnostics after adding a minimal `.pun` thermal chemistry evaluator
+show that ordinary nonzero-rate gas reactions alone do not generate the missing
+radical/ion families from zero initial abundance. A temporary proof using
+Fortran `prod+loss` columns as altitude-dependent first-order rates moves
+`H`, `H2`, and `CH3` off zero and into the right order for the first few steps,
+confirming that the next implementation target is the full zero-rate
+photolysis/electron-impact rate source. The proof does not pass multi-step
+matching because final-output `prod+loss` rates are not the same as KINETICS-base
+J-values during the implicit integration.
+
+Current implementation checkpoint:
+
+- `.pun` thermal reactions with nonzero primary rates are now imported into the
+  unified source list as `pun_thermal_reaction`.
+- Zero-rate catalog matches are split into `pun_photo_rate_reaction` and
+  `pun_electron_impact_reaction`. Solar photolysis is restricted to active
+  `.special` photolysis parents plus explicitly enabled special photo reactions;
+  electron-impact/ionization channels no longer share the solar attenuation path.
+- The solar evaluator now applies the Titan run's solar distance scaling
+  (`AU=32`, so flux is divided by `32^2`) and uses a Python-side `pyharp`
+  radiation backend instead of the earlier hand-written Beer-Lambert attenuation.
+  Gas opacity is built from total absorption cross sections by species, and the
+  reaction/branch cross section is used only for the final J-value integral.
+  Aerosol extinction, single-scattering albedo, and asymmetry-factor inputs are
+  now parsed from the KINETICS-base interpolation files and supplied to DISORT as
+  total optical depth, single-scattering albedo, and Henyey-Greenstein moments.
+  The pyharp call also accepts explicit solar beam cosine (`solar_mu0`), surface
+  albedo, and stream-count inputs instead of hard-coding the initial placeholders.
+  When a KINETICS-base run input is provided, the importer now parses
+  `AU`, `PDAY`, `DLAT`, `MODE`, and startup `HOUR`; for `MODE < 2`, pyharp is
+  evaluated over daylight solar-angle samples and weighted by daylight fraction
+  to approximate the KINETICS-base diurnal-average radiation path.
+  A temporary `photolysis_optical_depth_scale` remains in place while the exact
+  KINETICS-base `ATT0`/difrad treatment is being matched.
+- The electron-impact evaluator currently uses the AU-scaled catalog rate without
+  gas optical-depth attenuation and applies a high-altitude gate. This is a
+  matching scaffold for the ionosphere source profile, not the final `2U`/electron
+  energy deposition model.
+- Several Cheng/Titan hard-coded rate updates from `UPDATE_CHEMB` are now
+  represented in the source importer: `C2H2 -> C2H + H` uses the Fortran `2x`
+  multiplier, selected large-hydrocarbon photolysis reactions clone the
+  corresponding `C4H2` photolysis rates, and
+  `C2H3 + C2H5 -> CH3 + C3H5` uses the Fortran temperature-dependent branch
+  formula.
+
+The next blocker is therefore narrower than reaction discovery. It is matching
+KINETICS-base's actual vertical rate profiles: replace the calibrated solar
+attenuation scale with the real `ATT0`/difrad path, and replace the high-altitude
+electron gate with the Fortran electron-impact/`2U` source profile.
+
+Small-step `dx/dt` diagnostic:
+
+- Add source-tendency diagnostics and compare very short runs (`NTIME=2/3`)
+  against Fortran `prod+loss` instead of relying only on accumulated multi-step
+  concentration error.
+- At `NTIME=2`, `GCH4` is already locally matched:
+
+```text
+GCH4 layer 1: Fortran net source 2.240e7, Kintera source 2.243e7 cm^-3 s^-1
+```
+
+- The same diagnostic exposed two photolysis bugs/physics gaps:
+  - reaction-key construction was ambiguous for ion species containing `+`
+    (`CH3+ + H` could collide with `CH3 + H`);
+  - parent absorption for `CH4` was being overwritten by a later ionization
+    cross-section, causing the neutral branch `CH4 -> CH3 + H` to disappear.
+
+After fixing both, the short-step tendency comparison was more informative but
+still not matched:
+
+```text
+NTIME=2 source tendency, representative largest differences:
+H2   at 635.7 km: Fortran 2.389e0, Kintera 1.057e3 cm^-3 s^-1
+CH3  at 635.7 km: Fortran 1.495e0, Kintera 6.614e2 cm^-3 s^-1
+N2+  at 635.7 km: Fortran 1.048e-1, Kintera 1.871e2 cm^-3 s^-1
+```
+
+This confirmed the next matching work should focus on the photolysis radiation
+field itself rather than downstream integration. The old Beer-Lambert gas
+attenuation has now been replaced by a `pyharp.pydisort` path, but the pyharp
+inputs still need to be made equivalent to KINETICS-base's difrad/aerosol
+treatment.
+
+After splitting solar/electron channels and applying the Titan AU scaling plus a
+temporary optical-depth scale, the same `NTIME=2` tendency diagnostic is much
+closer for the CH4 neutral branches:
+
+```text
+GCH4 at 1.6 km:   Fortran 2.240e7, Kintera 2.243e7 cm^-3 s^-1
+H2   at 404.5 km: Fortran 6.605e0, Kintera 1.013e1 cm^-3 s^-1
+CH3  at 404.5 km: Fortran 4.224e0, Kintera 6.404e0 cm^-3 s^-1
+H    at 499.7 km: Fortran 5.010e0, Kintera 7.212e0 cm^-3 s^-1
+```
+
+The remaining short-step mismatches are now concentrated in N/electron-impact
+profiles:
+
+```text
+N    at 635.7 km: Fortran 1.244e0, Kintera 2.774e1 cm^-3 s^-1
+N2+  at 675.1 km: Fortran 2.187e-1, Kintera ~0 after the 700 km gate
+CH3+ at 716.8 km: Fortran 2.261e-2, Kintera 2.715e-1 cm^-3 s^-1
+```
+
+This is good enough to continue with multi-step diagnostics, but not a hard
+match yet. The next implementation step should use Fortran's electron/N2 special
+rate profile instead of the current altitude gate and calibrated attenuation.
+
+After switching to total cross sections plus the pyharp radiation backend, the
+same `NTIME=2` diagnostic runs successfully. The layer-order conversion is
+important: KINETICS profiles are bottom-up, while the DISORT solve is top-down,
+so optical-depth layers are flipped into pyharp and the returned actinic flux is
+flipped back.
+
+```text
+GCH4 at 1.6 km:   Fortran 2.240e7, Kintera 2.243e7 cm^-3 s^-1
+H2   at 404.5 km: Fortran 6.605e0, Kintera 1.498e0 cm^-3 s^-1
+CH3  at 404.5 km: Fortran 4.224e0, Kintera 9.379e-1 cm^-3 s^-1
+H    at 404.5 km: Fortran 6.527e0, Kintera 1.271e0 cm^-3 s^-1
+```
+
+This is physically cleaner than the Beer-Lambert scaffold but currently
+attenuates the neutral CH4 branches too strongly. Aerosol scattering inputs are
+now wired into `pyharp`, and the beam/surface inputs are no longer hard-coded.
+The first KINETICS-base-style diurnal averaging loop is also in place and has a
+smoke check over all 37 Titan photolysis source terms. The next radiation
+matching step is to rerun the short-step `dx/dt` diagnostic against the Fortran
+oracle, then decide whether the remaining difference is `ATT0` quadrature,
+diffuse scattering (`NZEN`/difrad), or chemistry.
+
+Rerunning the remembered oracle path
+(`KINTERA_KINETICS_BASE_ROOT=/tmp/KINETICS-base-compare`,
+`KINTERA_KINETICS_BASE_EXECUTABLE=/tmp/KINETICS-base-compare-build/bin/titan.release`)
+confirms the C++ oracle test still passes. The Titan run input has
+`NPHOTD=0` and `NZEN=0`, so aerosol extinction/scattering must be disabled for
+this matching case even if the interpolation files are present. After gating
+aerosols by the run input, `GCH4` remains matched, but neutral CH4 photolysis
+tendencies are now too small in the pyharp path:
+
+```text
+GCH4 at 1.6 km:   Fortran 2.240e7, Kintera 2.243e7 cm^-3 s^-1
+H2   at 404.5 km: Fortran 6.605e0, Kintera ~1.0e-3 cm^-3 s^-1
+CH3  at 404.5 km: Fortran 4.224e0, Kintera ~6.5e-4 cm^-3 s^-1
+H    at 404.5 km: Fortran 6.527e0, Kintera ~8.7e-4 cm^-3 s^-1
+```
+
+Follow-up fixes:
+
+- The run-input `IPHOTO` block is now parsed and used to gate total gas opacity.
+  For the remembered Titan input this leaves exactly the nine KINETICS-base
+  `NPHOTO` opacity parents (`H2`, `CH4`, `C2H2`, `C2H4`, `C2H6`, `CH3C2H`,
+  `C3H8`, `C4H2`, and `N2`) instead of summing every catalog parent.
+- Catalog-side stoichiometric prefixes such as `2N` and `2N(2D)` are matched
+  against `.pun` duplicate-product reactions, and solar activation now also
+  admits zero-rate branches whose parent is in the active `NPHOTO` opacity list.
+  For the Cheng Titan N2 parent this fallback is narrowed to the observed
+  Fortran branch `N2 -> N(2D) + N`; `N2 -> 2N` and `N2 -> 2N(2D)` are not active
+  in the short-step `prod+loss` oracle.
+- For `NZEN=0`/`NDISORT=0`, a KINETICS direct-radiation path now evaluates the
+  Fortran-style `ATT0` attenuation in Python using the `CAL_TAU_X` trapezoid
+  column/top-scale-height rule. The pyharp DISORT path remains the scattering
+  backend for cases where the run input enables it.
+- Cross-section files are now aligned by KINETICS wavelength-bin index instead
+  of interpolating on the text wavelength column. This matters for Titan N2
+  opacity files whose `IR1/IR2` indices intentionally do not behave like a
+  plain wavelength table. The exact `N2 = N2` opacity file is also preserved over
+  the later `aN2 = aN2` alias when building active gas opacity.
+- The electron-impact evaluator remains a scaffold, but it now uses
+  channel-dependent effective scales and an explicit altitude multiplier for
+  `N2 -> N2+ + E`. That multiplier is derived from the current Fortran oracle
+  `prod+loss` profile, so it is a matching bridge rather than final electron
+  energy deposition physics.
+- Catalog-side tokens like `+2H` are now parsed correctly, which activates the
+  `CH4 -> (1)CH2 + H + H` branch. For this first-order source path, duplicate
+  product slots are applied once per species to match KINETICS-base `prod+loss`
+  semantics. The inactive Cheng/Titan `CH4 -> (3)CH2 + H + H` branch remains
+  disabled for the current oracle case.
+- The run-input solar distance now follows the Fortran `CALLORBIT`/`ORBIT`
+  calculation before `SOLFLX`, rather than using the nominal `AU` value
+  directly. For the current Titan input this changes the photolysis distance
+  from `32.0 AU` to `31.072 AU` on day 1 and removes most of the remaining
+  uniform neutral-photolysis normalization error.
+- The electron-impact scaffold now also includes oracle-derived altitude
+  multipliers for the CH4 ion channels (`CH3+`, `CH2+`, `H+`, `CH+`, and `C+`)
+  and the three `N+` producing channels. This removes the previous ion-channel
+  high-altitude profile blockers while keeping the temporary profile data
+  clearly isolated.
+- The Cheng/Titan `CH4 -> (3)CH2 + H + H` branch is now applied with the
+  product-only `prod+loss` semantics observed in the Fortran oracle: it
+  contributes to `(3)CH2` production without adding the duplicate-H production
+  or parent-loss entries that are absent from the short-step report.
+
+The current short-step diagnostic has improved the neutral CH4/N2 photolysis
+branches substantially:
+
+```text
+GCH4 at 1.6 km:   Fortran 2.240e7, Kintera 2.243e7 cm^-3 s^-1
+H2   at 404.5 km: Fortran 6.605e0, Kintera 6.728e0 cm^-3 s^-1
+CH3  at 404.5 km: Fortran 4.224e0, Kintera 4.302e0 cm^-3 s^-1
+H    at 404.5 km: Fortran 6.527e0, Kintera 6.648e0 cm^-3 s^-1
+N    at 404.5 km: Fortran 3.853e0, Kintera 4.001e0 cm^-3 s^-1
+N(2D) at 404.5 km: Fortran 3.853e0, Kintera 4.001e0 cm^-3 s^-1
+N2+  at 716.8 km: Fortran 3.020e-1, Kintera 3.239e-1 cm^-3 s^-1
+CH3+ at 716.8 km: Fortran 2.261e-2, Kintera 2.285e-2 cm^-3 s^-1
+CH2+ at 716.8 km: Fortran 6.810e-4, Kintera 6.884e-4 cm^-3 s^-1
+N+   at 635.7 km: Fortran 3.581e-3, Kintera 3.676e-3 cm^-3 s^-1
+(3)CH2 at 404.5 km: Fortran 4.382e-1, Kintera 4.468e-1 cm^-3 s^-1
+```
+
+The next narrow blocker is no longer N2 neutral photolysis or the shared solar
+normalization, and the CH4/N+ ion-profile mismatches are no longer dominant.
+The remaining short-step residuals are the shared neutral photolysis
+normalization (`H2`/`CH3`/`H`/`N`/`N(2D)` are high by about 2-4%), plus the
+small N2+ scaffold residual. The electron-impact altitude multipliers should
+still be replaced by the Fortran electron energy deposition/source-profile path
+before treating them as final physics.
+
+Remaining known Titan physics gaps after the Cheng hard-coded rate update pass:
+
+```text
+unimplemented_special_reaction count: 7
+bNO -> N + O
+2U -> 2C6H6
+2U -> N2+
+2U -> CH4+
+2U -> N+
+2U -> CH2+
+2U -> CH3+
+```
+
+The `2U` reactions are pseudo source placeholders. In the current Fortran source,
+the historical direct `2U` profile assignment is mostly commented out, while
+electron-impact catalog reactions and optional Cheng multipliers remain active.
+For matching, treat `2U` as an unresolved source-profile question rather than a
+normal mass-action reaction.
 
 ### Important Correction
 

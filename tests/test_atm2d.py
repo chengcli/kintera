@@ -466,6 +466,111 @@ def test_implicit_operator_adds_chemistry_and_photochemistry():
     assert not torch.allclose(implicit_dense, transport_dense)
 
 
+def test_implicit_operator_adds_local_source_terms():
+    state = _make_state(ncol=1, nlyr=3, ns=2)
+    kzz = torch.zeros((state.ncol, state.nlyr), dtype=state.dtype)
+
+    class FirstOrderLoss:
+        def __init__(self, species_index: int, rate: float):
+            self.species_index = species_index
+            self.rate = rate
+
+        def linearize(self, source_state):
+            tendency = torch.zeros_like(source_state.concentration)
+            jacobian = torch.zeros(
+                (
+                    source_state.ncol,
+                    source_state.nlyr,
+                    source_state.nspecies,
+                    source_state.nspecies,
+                ),
+                dtype=source_state.dtype,
+                device=source_state.device,
+            )
+            tendency[:, :, self.species_index] = (
+                -self.rate * source_state.concentration[:, :, self.species_index]
+            )
+            jacobian[:, :, self.species_index, self.species_index] = -self.rate
+            return kt.LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+    transport = kt.build_transport_matrix(state, kzz)
+    implicit = kt.build_implicit_operator(
+        state,
+        kzz,
+        source_terms=[FirstOrderLoss(species_index=1, rate=2.5)],
+    )
+
+    delta = implicit.global_csr.to_dense() - transport.global_csr.to_dense()
+    diag = torch.diagonal(delta).reshape(state.ncol, state.nlyr, state.nspecies)
+    torch.testing.assert_close(diag[:, :, 0], torch.zeros_like(diag[:, :, 0]))
+    torch.testing.assert_close(
+        diag[:, :, 1],
+        torch.full((state.ncol, state.nlyr), -2.5, dtype=state.dtype),
+    )
+
+
+def test_mass_action_jacobian_keeps_first_order_zero_reactant_derivative():
+    state = _make_state(ncol=1, nlyr=1, ns=3)
+    state.concentration = torch.tensor([[[5.0, 0.0, 0.0]]], dtype=state.dtype)
+    source = kt.IndexedMassActionSource(
+        reactants=[0, 1],
+        products=[2],
+        reactant_coefficients=[1, 1],
+        product_coefficients=[1],
+        rate_constant=2.0,
+    )
+
+    linearization = source.linearize(state)
+
+    torch.testing.assert_close(
+        linearization.tendency,
+        torch.zeros_like(state.concentration),
+    )
+    assert linearization.jacobian[0, 0, 2, 1].item() == pytest.approx(10.0)
+    assert linearization.jacobian[0, 0, 1, 1].item() == pytest.approx(-10.0)
+
+
+def test_implicit_step_system_solves_first_order_source_implicitly():
+    state = _make_state(ncol=1, nlyr=2, ns=2)
+    state.concentration = torch.tensor([[[4.0, 1.0], [2.0, 3.0]]], dtype=state.dtype)
+    kzz = torch.zeros((state.ncol, state.nlyr), dtype=state.dtype)
+
+    class FirstOrderConversion:
+        def linearize(self, source_state):
+            rate = 2.0
+            tendency = torch.zeros_like(source_state.concentration)
+            jacobian = torch.zeros(
+                (
+                    source_state.ncol,
+                    source_state.nlyr,
+                    source_state.nspecies,
+                    source_state.nspecies,
+                ),
+                dtype=source_state.dtype,
+                device=source_state.device,
+            )
+            source = rate * source_state.concentration[:, :, 0]
+            tendency[:, :, 0] = -source
+            tendency[:, :, 1] = source
+            jacobian[:, :, 0, 0] = -rate
+            jacobian[:, :, 1, 0] = rate
+            return kt.LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+    dt = 0.5
+    matrix, rhs = kt.build_implicit_step_system(
+        state,
+        kzz,
+        dt,
+        source_terms=[FirstOrderConversion()],
+    )
+    next_state = kt.solve_sparse_system(matrix, rhs)
+
+    expected_a = state.concentration[:, :, 0] / (1.0 + 2.0 * dt)
+    expected_b = state.concentration[:, :, 1] + dt * 2.0 * expected_a
+    torch.testing.assert_close(next_state[:, :, 0], expected_a)
+    torch.testing.assert_close(next_state[:, :, 1], expected_b)
+
+
 def test_total_cross_section_uses_absorption_branch_only():
     opts = kt.PhotoChemOptions.from_yaml(str(CHAPMAN_CYCLE_YAML))
     module = kt.PhotoChem(opts)

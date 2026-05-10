@@ -626,11 +626,16 @@ KBAtmosphereProfile parse_kinetics_base_atmosphere(
 
     if (stripped[0] == '%') {
       current_section = trim(stripped.substr(1));
+      bool is_mixing_ratio = false;
       if (!current_section.empty() && current_section.back() == '&') {
         current_section.pop_back();
+        is_mixing_ratio = true;
       }
       current_section = normalize_species_name(trim(current_section));
       sections[current_section] = {};
+      if (is_mixing_ratio) {
+        profile.mixing_ratio_species_profiles.push_back(current_section);
+      }
       continue;
     }
 

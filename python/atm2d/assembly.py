@@ -4,6 +4,7 @@ import torch
 
 from .chemistry import build_chemistry_jacobian, build_photochemistry_jacobian
 from .matrix import SparseSystemMatrix
+from .source import LocalSourceTerm, build_source_linearization
 from .atm_state2d import AtmState2D, SpeciesBoundaryConditions2D
 from .transport import build_transport_matrix
 
@@ -20,6 +21,7 @@ def build_implicit_operator(
     kinetics=None,
     photo_chem=None,
     actinic_flux: torch.Tensor | None = None,
+    source_terms: list[LocalSourceTerm] | None = None,
     include_identity: bool = False,
     dt: float | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
@@ -58,6 +60,10 @@ def build_implicit_operator(
         diag_update = diag_update + build_photochemistry_jacobian(
             photo_chem, state.temperature, state.concentration, actinic_flux
         )
+    if source_terms is not None:
+        diag_update = diag_update + build_source_linearization(
+            state, source_terms
+        ).jacobian
 
     if include_identity:
         if dt is None:
@@ -72,3 +78,53 @@ def build_implicit_operator(
     from .transport import _apply_boundary_conditions
 
     return _apply_boundary_conditions(state, matrix, boundary_conditions)
+
+
+def build_implicit_step_system(
+    state: AtmState2D,
+    kzz: torch.Tensor,
+    dt: float,
+    *,
+    kyy: torch.Tensor | None = None,
+    kzy: torch.Tensor | None = None,
+    kyz: torch.Tensor | None = None,
+    binary_diffusion: torch.Tensor | None = None,
+    molecular_weights: torch.Tensor | None = None,
+    source_terms: list[LocalSourceTerm] | None = None,
+) -> tuple[SparseSystemMatrix, torch.Tensor]:
+    """Build a backward-Euler system with linearized local source terms.
+
+    Source terms are linearized around ``state.concentration`` as
+    ``S(c_new) ~= S(c0) + J(c_new - c0)``. The returned system solves
+    ``(I - dt * (T + J)) c_new = c0 + dt * (S(c0) - J c0)``.
+    """
+
+    source_linearization = None
+    if source_terms is not None:
+        source_linearization = build_source_linearization(state, source_terms)
+    operator = build_implicit_operator(
+        state,
+        kzz,
+        kyy=kyy,
+        kzy=kzy,
+        kyz=kyz,
+        binary_diffusion=binary_diffusion,
+        molecular_weights=molecular_weights,
+        source_terms=source_terms,
+    )
+    identity = torch.eye(operator.nstate, dtype=state.dtype, device=state.device)
+    system = SparseSystemMatrix.from_dense(
+        identity - float(dt) * operator.global_csr.to_dense(),
+        ncol=state.ncol,
+        nlyr=state.nlyr,
+        nspecies=state.nspecies,
+    )
+    rhs = state.concentration
+    if source_linearization is not None:
+        jacobian_state = torch.einsum(
+            "clij,clj->cli",
+            source_linearization.jacobian,
+            state.concentration,
+        )
+        rhs = rhs + float(dt) * (source_linearization.tendency - jacobian_state)
+    return system, rhs
