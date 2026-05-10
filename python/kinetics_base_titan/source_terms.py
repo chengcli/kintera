@@ -23,7 +23,11 @@ from .parsing import (
     parse_kinetics_base_boundary,
     parse_kinetics_base_special,
 )
-from .photochemistry import _kinetics_base_photo_rates
+from .photochemistry import (
+    _is_active_kinetics_base_photo_branch,
+    _kinetics_base_opacity_species_from_reaction_ids,
+    _kinetics_base_photo_rates,
+)
 from .physics import (
     _is_disabled_titan_special_placeholder,
     _pun_thermal_reaction_parameters,

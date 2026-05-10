@@ -11,10 +11,14 @@ from .parsing import (
     _kinetics_base_reaction_key,
     _multiply_kinetics_base_cross_sections,
     _normalize_kinetics_base_photo_species,
+    _parse_kinetics_base_aerosol_extinction,
+    _parse_kinetics_base_aerosol_property,
     _parse_kinetics_base_catalog,
     _parse_kinetics_base_cross_section,
     _parse_kinetics_base_cross_section_on_flux,
+    _parse_kinetics_base_equation,
     _parse_kinetics_base_flux,
+    _kinetics_base_side_key,
 )
 from .radiation import (
     _kinetics_base_direct_actinic_flux,

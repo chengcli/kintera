@@ -16,6 +16,7 @@ from ..atm2d import (
 )
 from .models import KBTitanSourceTerm, KBTitanState
 from .physics import (
+    _kinetics_base_species_mass_amu,
     _pun_rate_constant,
     _titan_sticking_coefficient,
     _titan_sublimation_rate_profile,

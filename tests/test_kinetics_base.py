@@ -40,6 +40,10 @@ def _count_reversible(reactions):
 
 
 def _external_titan_paths():
+    # Local diagnosis build used during development:
+    #   KINTERA_KINETICS_BASE_ROOT=/tmp/KINETICS-base-compare
+    #   KINTERA_KINETICS_BASE_EXECUTABLE=/tmp/KINETICS-base-compare/build/bin/titan.release
+    # Keep tests env-driven so CI and other machines can provide their own oracle.
     root = os.environ.get("KINTERA_KINETICS_BASE_ROOT")
     executable = os.environ.get("KINTERA_KINETICS_BASE_EXECUTABLE")
     if not root or not executable:
