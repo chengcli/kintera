@@ -612,6 +612,38 @@ def _canonical_kinetics_base_species_name(
 ) -> str:
     return canonical_species.get(name.upper(), name)
 
+def _apply_cheng_cold_trap_boundaries(
+    concentration: torch.Tensor,
+    conversion: dict[str, str],
+    density: torch.Tensor,
+    species: list[str],
+) -> None:
+    """Apply the KINETICS-base ``__CHENG`` cold trap boundary condition for CH4.
+
+    In kinetgen1X.F (line 3522) the ``__CHENG`` preprocessing block hardcodes:
+
+        XLOWER(CH4, IL, IN) = 0.0157 * DEN(IL, IN, 24)
+
+    and sets NBOT=24 so the chemistry/transport implicit system starts at level
+    24 (1-indexed, 0-indexed 23, ~500 km altitude), using this mixing ratio as
+    the lower boundary.  The value 0.0157 is the CH4 saturation VMR at Titan's
+    cold trap.  Kintera must pin the same level to the same value to reproduce
+    the KINETICS-base output.
+    """
+    _COLD_TRAP_LEVEL = 23  # 0-indexed; Fortran level 24, ~500 km on Titan
+    _COLD_TRAP_CH4_MR = 0.0157  # saturation mixing ratio at cold trap
+
+    if _COLD_TRAP_LEVEL >= density.numel() or density[_COLD_TRAP_LEVEL] == 0:
+        return
+    species_lower = {name.lower(): i for i, name in enumerate(species)}
+    ch4_idx = species_lower.get("ch4")
+    if ch4_idx is None:
+        return
+    canonical = species[ch4_idx]
+    concentration[_COLD_TRAP_LEVEL, ch4_idx] = _COLD_TRAP_CH4_MR * density[_COLD_TRAP_LEVEL]
+    conversion[canonical] = "kinetics_base_cheng_cold_trap_mixing_ratio"
+
+
 def _apply_lower_mixing_ratio_boundaries(
     concentration: torch.Tensor,
     conversion: dict[str, str],
@@ -619,12 +651,37 @@ def _apply_lower_mixing_ratio_boundaries(
     species: list[str],
     boundary_path: str | Path,
 ) -> None:
-    species_index = {name: i for i, name in enumerate(species)}
-    for kind, value, name in _read_kinetics_base_boundary_file(boundary_path):
-        normalized = _normalize_kinetics_base_boundary_species(name)
-        if kind != 5 or normalized not in species_index:
+    # Build case-insensitive lookup so that bc entries like "gch4" match species "GCH4".
+    species_index_lower = {name.lower(): i for i, name in enumerate(species)}
+    # Last level with non-zero density; escape velocities pin concentration there to 0.
+    nonzero_levels = (density > 0).nonzero(as_tuple=True)[0]
+    last_real = int(nonzero_levels[-1]) if nonzero_levels.numel() > 0 else len(density) - 1
+    for entry in parse_kinetics_base_boundary(boundary_path):
+        normalized = _normalize_kinetics_base_boundary_species(entry.species)
+        if normalized.lower() not in species_index_lower:
             continue
-        j = species_index[normalized]
-        concentration[0, j] = value * density[0]
-        conversion[normalized] = "lower_boundary_mixing_ratio_times_density"
+        j = species_index_lower[normalized.lower()]
+        canonical = species[j]
+        # Lower boundary conditions.
+        if entry.lower_kind == 5:
+            concentration[0, j] = entry.lower_value * density[0]
+            conversion[canonical] = "lower_boundary_mixing_ratio_times_density"
+        elif entry.lower_kind == 2 and entry.lower_value < 0:
+            # Type-2 velocity BC with a negative (downward) deposition velocity.
+            # In KINETICS-base's implicit diffusion-chemistry solver the deposition
+            # term VSTAR1 = GAMA1 * RAMD1 * XLOWER is added to the diagonal and the
+            # RHS of the lowest-level equation, effectively acting as a very strong
+            # loss that drives the surface concentration to zero.  Pin the initial
+            # concentration and the held boundary to 0 to match this behaviour.
+            concentration[0, j] = 0.0
+            conversion[canonical] = "lower_boundary_deposition_velocity_zero"
+        # Upper boundary conditions.
+        if entry.upper_kind == 2 and entry.upper_value > 0:
+            # Type-2 velocity BC with a positive (upward) escape velocity at the top.
+            # In KINETICS-base's BNDRY1, the escape term VSTARN = GAMAN * RAMDN * XUPPER
+            # adds a strong loss on the diagonal of the topmost active level, driving
+            # its concentration to near zero.  Pin the last real level to 0 to reproduce
+            # this behaviour and prevent accumulation that triggers numerical instability.
+            concentration[last_real, j] = 0.0
+            conversion[canonical] = "upper_boundary_escape_velocity_zero"
 

@@ -8,7 +8,7 @@ import torch
 from ..atm2d import AtmState2D
 from ..kintera import parse_kinetics_base_atmosphere, parse_kinetics_base_pun
 from .models import KBTitanState
-from .parsing import _apply_lower_mixing_ratio_boundaries
+from .parsing import _apply_cheng_cold_trap_boundaries, _apply_lower_mixing_ratio_boundaries
 
 
 def kinetics_base_profile_tensor(profile: Any, species: list[str]) -> torch.Tensor:
@@ -59,6 +59,11 @@ def kinetics_base_concentration_from_profile(
         _apply_lower_mixing_ratio_boundaries(
             concentration, conversion, density[:, 0], species, boundary_path
         )
+
+    # Apply KINETICS-base __CHENG cold trap: CH4 at level 24 (0-indexed 23)
+    # is pinned to 0.0157 × DEN[24], overriding the atmosphere-file value.
+    # This must come after boundary_path processing so it takes precedence.
+    _apply_cheng_cold_trap_boundaries(concentration, conversion, density[:, 0], species)
 
     zero_density = density[:, 0] == 0
     if torch.any(zero_density):

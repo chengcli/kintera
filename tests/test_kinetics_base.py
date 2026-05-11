@@ -154,14 +154,32 @@ def _titan_species_in_reference(initial, reference):
     ]
 
 
-def _build_titan_state_from_oracle(initial, species):
+def _build_titan_state_from_oracle(initial, species, boundary_path=None):
     import kintera as kt
 
     titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
-    boundary_path = os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save")
+    if boundary_path is None:
+        boundary_path = os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save")
     return kt.build_kinetics_base_titan_state(
         initial, species=species, boundary_path=boundary_path, pun_path=pun_path
     )
+
+
+def _write_titan_ch4_effective_boundary_input(src, dst, atmosphere):
+    """Use the atmosphere file's CH4 surface mixing ratio as boundary input."""
+    ch4_surface_mixing_ratio = atmosphere.species_profiles["CH4"][0]
+    lines = []
+    with open(src) as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) >= 5 and parts[4] == "CH4" and parts[0] == "5":
+                parts[1] = f"{ch4_surface_mixing_ratio:.8e}"
+                line = (
+                    f"{parts[0]} {parts[1]:<18} {parts[2]} {parts[3]:<18} {parts[4]}\n"
+                )
+            lines.append(line)
+    with open(dst, "w") as f:
+        f.writelines(lines)
 
 
 def _build_titan_source_terms_from_oracle():
@@ -193,11 +211,35 @@ def _solve_titan_transport_steps(
     import kintera as kt
 
     concentration = titan_state.concentration
+    _lower_boundary_conversions = {
+        "lower_boundary_mixing_ratio_times_density",
+        "lower_boundary_deposition_velocity_zero",
+    }
+    _upper_boundary_conversions = {
+        "upper_boundary_escape_velocity_zero",
+    }
+    _cold_trap_conversions = {
+        "kinetics_base_cheng_cold_trap_mixing_ratio",
+    }
     boundary_species = [
         titan_state.species.index(name)
         for name, conversion in titan_state.conversion.items()
-        if conversion == "lower_boundary_mixing_ratio_times_density"
+        if conversion in _lower_boundary_conversions
     ]
+    top_boundary_species = [
+        titan_state.species.index(name)
+        for name, conversion in titan_state.conversion.items()
+        if conversion in _upper_boundary_conversions
+    ]
+    cold_trap_species = [
+        titan_state.species.index(name)
+        for name, conversion in titan_state.conversion.items()
+        if conversion in _cold_trap_conversions
+    ]
+    # Last atmospheric level with non-zero density; escape-velocity species are
+    # pinned to zero there to prevent accumulation and numerical instability.
+    nonzero_levels = (titan_state.density[0] > 0).nonzero(as_tuple=True)[0]
+    last_real_lyr = int(nonzero_levels[-1]) if nonzero_levels.numel() > 0 else titan_state.state.nlyr - 1
     fixed_species = [
         titan_state.species.index(name)
         for name in titan_state.fixed_species
@@ -243,6 +285,13 @@ def _solve_titan_transport_steps(
             concentration[:, 0, boundary_species] = titan_state.concentration[
                 :, 0, boundary_species
             ]
+        if top_boundary_species:
+            concentration[:, last_real_lyr, top_boundary_species] = 0.0
+        _COLD_TRAP_LEVEL = 23  # Fortran level 24 (1-indexed); only CH4 uses NBOT=24
+        if cold_trap_species:
+            concentration[:, _COLD_TRAP_LEVEL, cold_trap_species] = (
+                titan_state.concentration[:, _COLD_TRAP_LEVEL, cold_trap_species]
+            )
         dt *= growth
     return concentration[0]
 
@@ -542,9 +591,19 @@ def test_external_titan_one_step_equivalence_if_available(tmp_path):
     assert "N2" not in initial.mixing_ratio_species_profiles
 
     reference_concentration = kt.kinetics_base_profile_tensor(reference, species)
-    titan_state = _build_titan_state_from_oracle(initial, species)
+    titan_dir, _, _, _, _ = _external_titan_paths()
+    boundary_path = tmp_path / "titan_Cheng_N_ions_H2CN.effective.bc"
+    _write_titan_ch4_effective_boundary_input(
+        os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save"),
+        boundary_path,
+        initial,
+    )
+    titan_state = _build_titan_state_from_oracle(initial, species, boundary_path)
     assert titan_state.concentration.shape == (1, 50, 128)
-    assert titan_state.conversion["CH4"] == "lower_boundary_mixing_ratio_times_density"
+    # KINETICS-base __CHENG overrides the surface type-5 BC with a cold trap at
+    # level 24 (0-indexed 23, ~500 km altitude), so CH4's conversion type reflects
+    # the cold-trap boundary rather than the surface mixing-ratio boundary.
+    assert titan_state.conversion["CH4"] == "kinetics_base_cheng_cold_trap_mixing_ratio"
     assert "E" not in titan_state.fixed_species
     assert titan_state.conversion["E"] == "pun_electron_or_ion_number_density"
     if "CH3+" in titan_state.conversion:
@@ -570,7 +629,14 @@ def test_external_titan_multi_step_equivalence_gap_if_available(tmp_path):
     assert len(initial.altitude) == len(reference.altitude) == 50
 
     reference_concentration = kt.kinetics_base_profile_tensor(reference, species)
-    titan_state = _build_titan_state_from_oracle(initial, species)
+    titan_dir, _, _, _, _ = _external_titan_paths()
+    boundary_path = tmp_path / "titan_Cheng_N_ions_H2CN.effective.bc"
+    _write_titan_ch4_effective_boundary_input(
+        os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save"),
+        boundary_path,
+        initial,
+    )
+    titan_state = _build_titan_state_from_oracle(initial, species, boundary_path)
     source_terms, pun_metadata = _build_titan_source_terms_from_oracle()
     kintera_concentration = _solve_titan_transport_steps(
         titan_state,
@@ -578,13 +644,7 @@ def test_external_titan_multi_step_equivalence_gap_if_available(tmp_path):
         source_terms=source_terms,
         pun_metadata=pun_metadata,
     )
-    try:
-        _assert_titan_equivalence(kintera_concentration, reference_concentration, species)
-    except AssertionError as exc:
-        pytest.xfail(
-            "multi-step Titan source-term path is present but not complete "
-            f"enough for full chemistry convergence yet: {exc}"
-        )
+    _assert_titan_equivalence(kintera_concentration, reference_concentration, species)
 
 
 def test_external_titan_reaction_classification_if_available():
