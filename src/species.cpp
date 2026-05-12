@@ -1,6 +1,6 @@
 // C/C++
 #include <array>
-#include <cstring>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -20,6 +20,7 @@
 // kintera
 #include <configure.h>
 
+#include <kintera/utils/find_resource.hpp>
 #include <kintera/utils/vectors.hpp>
 
 #include "species.hpp"
@@ -40,11 +41,30 @@ struct Nasa9Entry {
   std::array<double, 9> low, high;
 };
 
+namespace {
+void clear_species_registry() {
+  species_names.clear();
+  species_weights.clear();
+  species_cref_R.clear();
+  species_uref_R.clear();
+  species_sref_R.clear();
+  species_nasa9_low.clear();
+  species_nasa9_high.clear();
+  species_nasa9_Tmid.clear();
+}
+
+}  // namespace
+
 static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
   static std::unordered_map<std::string, Nasa9Entry> db;
   if (!db.empty()) return db;
 
-  std::string path = std::string(KINTERA_ROOT_DIR) + "/data/nasa9.dat";
+  std::string path;
+  try {
+    path = find_resource("nasa9.dat");
+  } catch (std::exception const& e) {
+    TORCH_CHECK(false, e.what());
+  }
   std::ifstream ifs(path);
   TORCH_CHECK(ifs.good(), "Cannot open NASA-9 data file: ", path);
 
@@ -84,21 +104,6 @@ static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
   }
   return db;
 }
-
-namespace {
-
-void clear_species_registry() {
-  species_names.clear();
-  species_weights.clear();
-  species_cref_R.clear();
-  species_uref_R.clear();
-  species_sref_R.clear();
-  species_nasa9_low.clear();
-  species_nasa9_high.clear();
-  species_nasa9_Tmid.clear();
-}
-
-}  // namespace
 
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
