@@ -116,14 +116,26 @@ std::string first_existing_path(
 }
 
 std::string resolve_nasa9_path() {
-  return first_existing_path(nasa9_search_candidates());
+  try {
+    return first_existing_path(nasa9_search_candidates());
+  } catch (std::filesystem::filesystem_error const&) {
+    return "";
+  } catch (std::exception const&) {
+    return "";
+  }
 }
 
 std::string describe_nasa9_search_candidates() {
   std::ostringstream oss;
-  auto candidates = nasa9_search_candidates();
-  for (size_t i = 0; i < candidates.size(); ++i) {
-    oss << "\n  - " << candidates[i].string();
+  try {
+    auto candidates = nasa9_search_candidates();
+    for (size_t i = 0; i < candidates.size(); ++i) {
+      oss << "\n  - " << candidates[i].string();
+    }
+  } catch (std::filesystem::filesystem_error const& e) {
+    oss << "\n  - <unable to enumerate search candidates: " << e.what() << ">";
+  } catch (std::exception const& e) {
+    oss << "\n  - <unable to enumerate search candidates: " << e.what() << ">";
   }
   return oss.str();
 }

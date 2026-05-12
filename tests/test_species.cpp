@@ -20,7 +20,10 @@ class ScopedCurrentPath {
     std::filesystem::current_path(std::move(path));
   }
 
-  ~ScopedCurrentPath() { std::filesystem::current_path(original_); }
+  ~ScopedCurrentPath() noexcept {
+    std::error_code ec;
+    std::filesystem::current_path(original_, ec);
+  }
 
  private:
   std::filesystem::path original_;
