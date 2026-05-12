@@ -1,9 +1,6 @@
 // C/C++
 #include <array>
 #include <cctype>
-#include <cstdlib>
-#include <cstring>
-#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -23,6 +20,7 @@
 // kintera
 #include <configure.h>
 
+#include <kintera/utils/find_resource.hpp>
 #include <kintera/utils/vectors.hpp>
 
 #include "species.hpp"
@@ -44,102 +42,6 @@ struct Nasa9Entry {
 };
 
 namespace {
-
-std::vector<std::filesystem::path> virtualenv_site_package_candidates();
-
-std::vector<std::filesystem::path> python_site_package_candidates(
-    std::filesystem::path const& root) {
-  std::vector<std::filesystem::path> candidates;
-  std::error_code ec;
-  if (root.empty() || !std::filesystem::is_directory(root, ec)) {
-    return candidates;
-  }
-
-  for (auto const& entry : std::filesystem::directory_iterator(root, ec)) {
-    if (ec || !entry.is_directory()) continue;
-    auto name = entry.path().filename().string();
-    if (name.rfind("python", 0) != 0) continue;
-    candidates.push_back(entry.path() / "site-packages" / "kintera" / "data" /
-                         "nasa9.dat");
-  }
-  return candidates;
-}
-
-std::vector<std::filesystem::path> virtualenv_site_package_candidates() {
-  std::vector<std::filesystem::path> candidates;
-  for (char const* env_name : {"VIRTUAL_ENV", "CONDA_PREFIX"}) {
-    auto env_root = std::getenv(env_name);
-    if (!env_root || std::strlen(env_root) == 0) continue;
-
-    auto root = std::filesystem::path(env_root);
-    auto lib_candidates = python_site_package_candidates(root / "lib");
-    candidates.insert(candidates.end(), lib_candidates.begin(),
-                      lib_candidates.end());
-    auto lib64_candidates = python_site_package_candidates(root / "lib64");
-    candidates.insert(candidates.end(), lib64_candidates.begin(),
-                      lib64_candidates.end());
-  }
-  return candidates;
-}
-
-std::vector<std::filesystem::path> nasa9_search_candidates() {
-  std::vector<std::filesystem::path> candidates;
-
-  std::error_code ec;
-  const auto cwd = std::filesystem::current_path(ec);
-  if (!ec) {
-    candidates.push_back(cwd / "nasa9.dat");
-    candidates.push_back(cwd / "data" / "nasa9.dat");
-  }
-
-  auto venv_candidates = virtualenv_site_package_candidates();
-  candidates.insert(candidates.end(), venv_candidates.begin(),
-                    venv_candidates.end());
-
-  candidates.push_back(std::filesystem::path(KINTERA_ROOT_DIR) / "data" /
-                       "nasa9.dat");
-  return candidates;
-}
-
-std::string first_existing_path(
-    std::vector<std::filesystem::path> const& candidates) {
-  for (auto const& candidate : candidates) {
-    if (candidate.empty()) continue;
-
-    std::error_code ec;
-    if (std::filesystem::exists(candidate, ec) &&
-        std::filesystem::is_regular_file(candidate, ec)) {
-      return candidate.string();
-    }
-  }
-  return "";
-}
-
-std::string resolve_nasa9_path() {
-  try {
-    return first_existing_path(nasa9_search_candidates());
-  } catch (std::filesystem::filesystem_error const&) {
-    return "";
-  } catch (std::exception const&) {
-    return "";
-  }
-}
-
-std::string describe_nasa9_search_candidates() {
-  std::ostringstream oss;
-  try {
-    auto candidates = nasa9_search_candidates();
-    for (size_t i = 0; i < candidates.size(); ++i) {
-      oss << "\n  - " << candidates[i].string();
-    }
-  } catch (std::filesystem::filesystem_error const& e) {
-    oss << "\n  - <unable to enumerate search candidates: " << e.what() << ">";
-  } catch (std::exception const& e) {
-    oss << "\n  - <unable to enumerate search candidates: " << e.what() << ">";
-  }
-  return oss.str();
-}
-
 void clear_species_registry() {
   species_names.clear();
   species_weights.clear();
@@ -157,9 +59,12 @@ static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
   static std::unordered_map<std::string, Nasa9Entry> db;
   if (!db.empty()) return db;
 
-  std::string path = resolve_nasa9_path();
-  TORCH_CHECK(!path.empty(), "Cannot locate NASA-9 data file. Checked:",
-              describe_nasa9_search_candidates());
+  std::string path;
+  try {
+    path = find_resource("nasa9.dat");
+  } catch (std::exception const& e) {
+    TORCH_CHECK(false, e.what());
+  }
   std::ifstream ifs(path);
   TORCH_CHECK(ifs.good(), "Cannot open NASA-9 data file: ", path);
 

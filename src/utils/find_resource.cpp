@@ -1,10 +1,14 @@
 // C/C++
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
+#include <sstream>
+#include <unordered_set>
 
 // kintera
 #include <configure.h>
@@ -23,6 +27,79 @@ char pathsep = ';';
 char pathsep = ':';
 #endif
 
+namespace {
+
+std::string expand_user_path(std::string const& dir) {
+  std::string d = stripnonprint(dir);
+  if (d.find("~/") == 0 || d.find("~\\") == 0) {
+    char* home = getenv("HOME");  // POSIX systems
+    if (!home) {
+      home = getenv("USERPROFILE");  // Windows systems
+    }
+    if (home) {
+      d = home + d.substr(1, std::string::npos);
+    }
+  }
+  return d;
+}
+
+std::vector<std::string> python_site_package_resource_dirs(
+    std::filesystem::path const& root) {
+  std::vector<std::string> dirs;
+  std::error_code ec;
+  if (root.empty() || !std::filesystem::is_directory(root, ec)) {
+    return dirs;
+  }
+
+  for (auto const& entry : std::filesystem::directory_iterator(root, ec)) {
+    if (ec || !entry.is_directory()) continue;
+    auto name = entry.path().filename().string();
+    if (name.rfind("python", 0) != 0) continue;
+    dirs.push_back(
+        (entry.path() / "site-packages" / "kintera" / "data").string());
+  }
+  return dirs;
+}
+
+std::vector<std::string> virtualenv_resource_directories() {
+  std::vector<std::string> dirs;
+  for (char const* env_name : {"VIRTUAL_ENV", "CONDA_PREFIX"}) {
+    auto env_root = std::getenv(env_name);
+    if (!env_root || std::strlen(env_root) == 0) continue;
+
+    auto root = std::filesystem::path(env_root);
+    auto lib_dirs = python_site_package_resource_dirs(root / "lib");
+    dirs.insert(dirs.end(), lib_dirs.begin(), lib_dirs.end());
+    auto lib64_dirs = python_site_package_resource_dirs(root / "lib64");
+    dirs.insert(dirs.end(), lib64_dirs.begin(), lib64_dirs.end());
+  }
+  return dirs;
+}
+
+std::vector<std::string> normalize_resource_directories(
+    std::vector<std::string> const& dirs) {
+  std::vector<std::string> normalized;
+  std::unordered_set<std::string> seen;
+
+  auto add_dir = [&](std::string const& dir) {
+    auto expanded = expand_user_path(dir);
+    if (!expanded.empty() && seen.insert(expanded).second) {
+      normalized.push_back(expanded);
+    }
+  };
+
+  for (auto const& dir : dirs) {
+    add_dir(dir);
+  }
+  for (auto const& dir : virtualenv_resource_directories()) {
+    add_dir(dir);
+  }
+  add_dir(std::string(KINTERA_ROOT_DIR) + "/data");
+  return normalized;
+}
+
+}  // namespace
+
 std::string stripnonprint(std::string const& s) {
   std::string ss = "";
   for (size_t i = 0; i < s.size(); i++) {
@@ -34,10 +111,11 @@ std::string stripnonprint(std::string const& s) {
 }
 
 char* serialize_search_paths(std::vector<std::string> const& dirs) {
+  auto normalized = normalize_resource_directories(dirs);
   std::string s = "";
-  for (size_t i = 0; i < dirs.size(); i++) {
-    s += dirs[i];
-    if (i + 1 < dirs.size()) {
+  for (size_t i = 0; i < normalized.size(); i++) {
+    s += normalized[i];
+    if (i + 1 < normalized.size()) {
       s += pathsep;
     }
   }
@@ -55,44 +133,38 @@ std::vector<std::string> deserialize_search_paths(char const* p) {
     start = end + 1;
     end = s.find(pathsep, start);
   }
-  dirs.push_back(s.substr(start, end));
-  bool found_root = false;
-  for (auto dir : dirs) {
-    if (dir.find(KINTERA_ROOT_DIR) != std::string::npos) {
-      found_root = true;
-      break;
-    }
+  auto tail = s.substr(start, end);
+  if (!tail.empty()) {
+    dirs.push_back(tail);
   }
-  if (!found_root) {
-    dirs.push_back(std::string(KINTERA_ROOT_DIR) + "/data");
+  return normalize_resource_directories(dirs);
+}
+
+std::vector<std::string> default_resource_directories() {
+  return normalize_resource_directories({".", "data"});
+}
+
+std::vector<std::string> current_resource_directories() {
+  return deserialize_search_paths(search_paths);
+}
+
+std::string describe_resource_directories() {
+  std::ostringstream oss;
+  auto dirs = current_resource_directories();
+  for (auto const& dir : dirs) {
+    oss << "\n'" << dir << "'";
   }
-  return dirs;
+  return oss.str();
 }
 
 void set_default_directories() {
-  std::vector<std::string> input_dirs;
-
-  // always look in the local directory first
-  input_dirs.push_back(".");
-
-  serialize_search_paths(input_dirs);
+  serialize_search_paths(default_resource_directories());
 }
 
 void add_resource_directory(std::string const& dir, bool prepend) {
   std::unique_lock<std::mutex> dirLock(dir_mutex);
-  auto input_dirs = deserialize_search_paths(search_paths);
-  std::string d = stripnonprint(dir);
-
-  // Expand "~/" to user's home directory, if possible
-  if (d.find("~/") == 0 || d.find("~\\") == 0) {
-    char* home = getenv("HOME");  // POSIX systems
-    if (!home) {
-      home = getenv("USERPROFILE");  // Windows systems
-    }
-    if (home) {
-      d = home + d.substr(1, std::string::npos);
-    }
-  }
+  auto input_dirs = current_resource_directories();
+  std::string d = expand_user_path(dir);
 
   // Remove any existing entry for this directory
   auto iter = std::find(input_dirs.begin(), input_dirs.end(), d);
@@ -117,7 +189,7 @@ std::string find_resource(std::string const& name) {
   std::string::size_type ibslash = name.find('\\');
   std::string::size_type icolon = name.find(':');
 
-  std::vector<std::string> dirs = deserialize_search_paths(search_paths);
+  std::vector<std::string> dirs = current_resource_directories();
 
   // Expand "~/" to user's home directory, if possible
   if (name.find("~/") == 0 || name.find("~\\") == 0) {
@@ -161,12 +233,7 @@ std::string find_resource(std::string const& name) {
   }
   std::string msg = "\nResource " + name + " not found in director";
   msg += (nd_ == 1 ? "y " : "ies ");
-  for (size_t i = 0; i < nd_; i++) {
-    msg += "\n'" + dirs[i] + "'";
-    if (i + 1 < nd_) {
-      msg += ", ";
-    }
-  }
+  msg += describe_resource_directories();
   msg += "\n\n";
   msg += "To fix this problem, either:\n";
   msg += "    a) move the missing files into the local directory;\n";
