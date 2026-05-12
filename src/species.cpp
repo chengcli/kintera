@@ -11,10 +11,6 @@
 #include <unordered_set>
 #include <vector>
 
-#if defined(__APPLE__) || defined(__linux__)
-#include <dlfcn.h>
-#endif
-
 // yaml
 #include <yaml-cpp/yaml.h>
 
@@ -49,7 +45,6 @@ struct Nasa9Entry {
 
 namespace {
 
-std::filesystem::path current_module_dir();
 std::vector<std::filesystem::path> virtualenv_site_package_candidates();
 
 std::vector<std::filesystem::path> python_site_package_candidates(
@@ -94,14 +89,6 @@ std::vector<std::filesystem::path> nasa9_search_candidates() {
   candidates.push_back(cwd / "nasa9.dat");
   candidates.push_back(cwd / "data" / "nasa9.dat");
 
-  const auto module_dir = current_module_dir();
-  if (!module_dir.empty()) {
-    candidates.push_back(module_dir / "data" / "nasa9.dat");
-    candidates.push_back(module_dir.parent_path() / "data" / "nasa9.dat");
-    candidates.push_back(module_dir.parent_path() / "kintera" / "data" /
-                         "nasa9.dat");
-  }
-
   auto venv_candidates = virtualenv_site_package_candidates();
   candidates.insert(candidates.end(), venv_candidates.begin(),
                     venv_candidates.end());
@@ -123,21 +110,6 @@ std::string first_existing_path(
     }
   }
   return "";
-}
-
-std::filesystem::path current_module_dir() {
-#if defined(__APPLE__) || defined(__linux__)
-  Dl_info info;
-  if (dladdr(reinterpret_cast<void*>(&current_module_dir), &info) != 0 &&
-      info.dli_fname != nullptr) {
-    std::error_code ec;
-    auto canonical =
-        std::filesystem::weakly_canonical(info.dli_fname, ec).parent_path();
-    if (!canonical.empty()) return canonical;
-    return std::filesystem::path(info.dli_fname).parent_path();
-  }
-#endif
-  return {};
 }
 
 std::string resolve_nasa9_path() {
