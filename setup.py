@@ -130,6 +130,8 @@ ext_module = cpp_extension.CppExtension(
 
 setup(
     package_dir={"kintera": "python"},
+    package_data={"kintera": ["data/*.dat", "lib/*.so", "lib/*.dylib", "*.pyi", "py.typed"]},
+    include_package_data=False,
     ext_modules=[ext_module],
     cmdclass={"build_ext": cpp_extension.BuildExtension},
 )

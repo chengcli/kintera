@@ -1,12 +1,18 @@
 // C/C++
 #include <array>
+#include <cctype>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#if defined(__APPLE__) || defined(__linux__)
+#include <dlfcn.h>
+#endif
 
 // yaml
 #include <yaml-cpp/yaml.h>
@@ -40,11 +46,132 @@ struct Nasa9Entry {
   std::array<double, 9> low, high;
 };
 
+namespace {
+
+std::filesystem::path current_module_dir();
+std::vector<std::filesystem::path> virtualenv_site_package_candidates();
+
+std::vector<std::filesystem::path> python_site_package_candidates(
+    std::filesystem::path const& root) {
+  std::vector<std::filesystem::path> candidates;
+  std::error_code ec;
+  if (root.empty() || !std::filesystem::is_directory(root, ec)) {
+    return candidates;
+  }
+
+  for (auto const& entry : std::filesystem::directory_iterator(root, ec)) {
+    if (ec || !entry.is_directory()) continue;
+    auto name = entry.path().filename().string();
+    if (name.rfind("python", 0) != 0) continue;
+    candidates.push_back(entry.path() / "site-packages" / "kintera" / "data" /
+                         "nasa9.dat");
+  }
+  return candidates;
+}
+
+std::vector<std::filesystem::path> virtualenv_site_package_candidates() {
+  std::vector<std::filesystem::path> candidates;
+  for (char const* env_name : {"VIRTUAL_ENV", "CONDA_PREFIX"}) {
+    auto env_root = std::getenv(env_name);
+    if (!env_root || std::strlen(env_root) == 0) continue;
+
+    auto root = std::filesystem::path(env_root);
+    auto lib_candidates = python_site_package_candidates(root / "lib");
+    candidates.insert(candidates.end(), lib_candidates.begin(),
+                      lib_candidates.end());
+    auto lib64_candidates = python_site_package_candidates(root / "lib64");
+    candidates.insert(candidates.end(), lib64_candidates.begin(),
+                      lib64_candidates.end());
+  }
+  return candidates;
+}
+
+std::vector<std::filesystem::path> nasa9_search_candidates() {
+  std::vector<std::filesystem::path> candidates;
+
+  const auto cwd = std::filesystem::current_path();
+  candidates.push_back(cwd / "nasa9.dat");
+  candidates.push_back(cwd / "data" / "nasa9.dat");
+
+  const auto module_dir = current_module_dir();
+  if (!module_dir.empty()) {
+    candidates.push_back(module_dir / "data" / "nasa9.dat");
+    candidates.push_back(module_dir.parent_path() / "data" / "nasa9.dat");
+    candidates.push_back(module_dir.parent_path() / "kintera" / "data" /
+                         "nasa9.dat");
+  }
+
+  auto venv_candidates = virtualenv_site_package_candidates();
+  candidates.insert(candidates.end(), venv_candidates.begin(),
+                    venv_candidates.end());
+
+  candidates.push_back(std::filesystem::path(KINTERA_ROOT_DIR) / "data" /
+                       "nasa9.dat");
+  return candidates;
+}
+
+std::string first_existing_path(
+    std::vector<std::filesystem::path> const& candidates) {
+  for (auto const& candidate : candidates) {
+    if (candidate.empty()) continue;
+
+    std::error_code ec;
+    if (std::filesystem::exists(candidate, ec) &&
+        std::filesystem::is_regular_file(candidate, ec)) {
+      return candidate.string();
+    }
+  }
+  return "";
+}
+
+std::filesystem::path current_module_dir() {
+#if defined(__APPLE__) || defined(__linux__)
+  Dl_info info;
+  if (dladdr(reinterpret_cast<void*>(&current_module_dir), &info) != 0 &&
+      info.dli_fname != nullptr) {
+    std::error_code ec;
+    auto canonical =
+        std::filesystem::weakly_canonical(info.dli_fname, ec).parent_path();
+    if (!canonical.empty()) return canonical;
+    return std::filesystem::path(info.dli_fname).parent_path();
+  }
+#endif
+  return {};
+}
+
+std::string resolve_nasa9_path() {
+  return first_existing_path(nasa9_search_candidates());
+}
+
+std::string describe_nasa9_search_candidates() {
+  std::ostringstream oss;
+  auto candidates = nasa9_search_candidates();
+  for (size_t i = 0; i < candidates.size(); ++i) {
+    oss << "\n  - " << candidates[i].string();
+  }
+  return oss.str();
+}
+
+void clear_species_registry() {
+  species_names.clear();
+  species_weights.clear();
+  species_cref_R.clear();
+  species_uref_R.clear();
+  species_sref_R.clear();
+  species_nasa9_low.clear();
+  species_nasa9_high.clear();
+  species_nasa9_Tmid.clear();
+}
+
+}  // namespace
+
 static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
   static std::unordered_map<std::string, Nasa9Entry> db;
   if (!db.empty()) return db;
 
-  std::string path = std::string(KINTERA_ROOT_DIR) + "/data/nasa9.dat";
+  std::string path = resolve_nasa9_path();
+  TORCH_CHECK(!path.empty(), "Cannot locate NASA-9 data file. Checked:",
+              describe_nasa9_search_candidates());
   std::ifstream ifs(path);
   TORCH_CHECK(ifs.good(), "Cannot open NASA-9 data file: ", path);
 
@@ -84,21 +211,6 @@ static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
   }
   return db;
 }
-
-namespace {
-
-void clear_species_registry() {
-  species_names.clear();
-  species_weights.clear();
-  species_cref_R.clear();
-  species_uref_R.clear();
-  species_sref_R.clear();
-  species_nasa9_low.clear();
-  species_nasa9_high.clear();
-  species_nasa9_Tmid.clear();
-}
-
-}  // namespace
 
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
