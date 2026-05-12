@@ -140,6 +140,12 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
   // register vapors
   for (const auto& sp : vapor_set) {
     auto it = std::find(species_names.begin(), species_names.end(), sp);
+    TORCH_CHECK(
+        it != species_names.end(),
+        fmt::format(
+            "Vapor species '{}' referenced by reactions was not found in the "
+            "YAML species list",
+            sp));
     int id = it - species_names.begin();
     kinet->vapor_ids().push_back(id);
   }

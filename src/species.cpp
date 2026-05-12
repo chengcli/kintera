@@ -85,9 +85,12 @@ std::vector<std::filesystem::path> virtualenv_site_package_candidates() {
 std::vector<std::filesystem::path> nasa9_search_candidates() {
   std::vector<std::filesystem::path> candidates;
 
-  const auto cwd = std::filesystem::current_path();
-  candidates.push_back(cwd / "nasa9.dat");
-  candidates.push_back(cwd / "data" / "nasa9.dat");
+  std::error_code ec;
+  const auto cwd = std::filesystem::current_path(ec);
+  if (!ec) {
+    candidates.push_back(cwd / "nasa9.dat");
+    candidates.push_back(cwd / "data" / "nasa9.dat");
+  }
 
   auto venv_candidates = virtualenv_site_package_candidates();
   candidates.insert(candidates.end(), venv_candidates.begin(),
