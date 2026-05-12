@@ -120,6 +120,16 @@ per-species coefficient tables and converted to tensors on demand when
 reversible kinetics needs equilibrium constants. `KineticsImpl` no longer owns
 separate cached NASA-9 buffers.
 
+### Kinetics Species Layout
+
+`KineticsOptions.from_yaml(...)` registers kinetics species using reaction-active
+vapors plus cloud species, rather than every species listed in the YAML file.
+In practice this means inert dry carrier species are not included in the
+concentration tensor passed to `Kinetics.forward(...)` or
+`Kinetics.forward_nogil(...)` unless they also participate in the reaction
+mechanism. Callers that derive kinetics concentrations from a larger thermo
+state should narrow or reorder species explicitly to the kinetics species list.
+
 ### Rate Calculation
 
 Photolysis rates are computed by integrating cross-sections weighted by actinic flux:
