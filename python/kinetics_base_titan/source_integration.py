@@ -36,7 +36,14 @@ def apply_kinetics_base_titan_source_terms(
     }
     paired_terms: set[int] = set()
     thermal_terms = [
-        term for term in source_terms if term.kind == "pun_thermal_reaction"
+        term
+        for term in source_terms
+        if term.kind
+        in {
+            "pun_thermal_reaction",
+            "pun_ion_mass_action_reaction",
+            "pun_dissociative_recombination",
+        }
     ]
     if thermal_terms:
         _apply_pun_thermal_reactions(
@@ -58,6 +65,19 @@ def apply_kinetics_base_titan_source_terms(
         )
     for term in source_terms:
         if term.kind == "titan_condensation":
+            if _is_ch4_grain_loading(term):
+                _apply_titan_product_only_condensation_source(
+                    updated,
+                    titan_state,
+                    species_index,
+                    term,
+                    dt,
+                    stick_x=stick_x,
+                    stick_h=stick_h,
+                    pun_metadata=pun_metadata,
+                    temperature=temperature,
+                )
+                continue
             pair_key = (
                 term.reactants[0],
                 term.products[0],
@@ -91,6 +111,19 @@ def apply_kinetics_base_titan_source_terms(
                 )
         elif term.kind == "titan_sublimation":
             if id(term) in paired_terms:
+                continue
+            if _is_ch4_shifted_grain_release(term):
+                _apply_titan_shifted_sublimation_source(
+                    updated,
+                    titan_state,
+                    species_index,
+                    term,
+                    dt,
+                    stick_x=stick_x,
+                    stick_h=stick_h,
+                    pun_metadata=pun_metadata,
+                    temperature=temperature,
+                )
                 continue
             _apply_titan_sublimation_source(
                 updated,
@@ -182,6 +215,20 @@ def _apply_pun_thermal_reactions(
     ) / (1.0 + dt * loss_frequency[stable])
     concentration[:] = torch.clamp(next_concentration, min=0.0)
 
+def _is_ch4_grain_loading(term: KBTitanSourceTerm) -> bool:
+    return (
+        term.kind == "titan_condensation"
+        and term.reactants == ["CH4", "SGA"]
+        and term.products == ["GCH4"]
+    )
+
+def _is_ch4_shifted_grain_release(term: KBTitanSourceTerm) -> bool:
+    return (
+        term.kind == "titan_sublimation"
+        and term.reactants == ["GCH4", "U"]
+        and term.products == ["CH4"]
+    )
+
 def _apply_pun_first_order_reactions(
     concentration: torch.Tensor,
     titan_state: KBTitanState,
@@ -198,17 +245,14 @@ def _apply_pun_first_order_reactions(
         if len(term.reactants) != 1:
             continue
         reactant = species_index.get(term.reactants[0])
-        product_indices: list[int] = []
-        seen_products: set[int] = set()
+        product_coefficients: dict[int, int] = {}
         missing_product = False
         for name in term.products:
             if name not in species_index:
                 missing_product = True
                 continue
             index = species_index[name]
-            if index not in seen_products:
-                seen_products.add(index)
-                product_indices.append(index)
+            product_coefficients[index] = product_coefficients.get(index, 0) + 1
         if reactant is None or missing_product:
             continue
         rate_constant = float(term.parameters.get("rate", 0.0))
@@ -233,8 +277,8 @@ def _apply_pun_first_order_reactions(
         rate = rate_profile * torch.clamp(concentration[:, :, reactant], min=0.0)
         if not bool(term.parameters.get("suppress_reactant_loss", False)):
             loss[:, :, reactant] = loss[:, :, reactant] + rate
-        for product in product_indices:
-            production[:, :, product] = production[:, :, product] + rate
+        for product, coefficient in product_coefficients.items():
+            production[:, :, product] = production[:, :, product] + coefficient * rate
 
     positive = concentration > 0.0
     loss_frequency = torch.zeros_like(concentration)
@@ -272,10 +316,15 @@ def _photo_rate_profile(
     device = concentration.device
     reaction_sigma = torch.tensor(reaction_cross_section, dtype=dtype, device=device)
     flux_tensor = torch.tensor(flux, dtype=dtype, device=device)
+    opacity_concentration = concentration
+    if bool(term.parameters.get("freeze_actinic_flux", False)):
+        initial_concentration = titan_state.concentration
+        if initial_concentration.shape == concentration.shape:
+            opacity_concentration = initial_concentration.to(dtype=dtype, device=device)
     actinic_flux = _kinetics_base_pyharp_actinic_flux(
         term,
         titan_state,
-        concentration,
+        opacity_concentration,
         species_index,
         flux_tensor,
         reaction_sigma.numel(),
@@ -368,6 +417,44 @@ def _apply_titan_condensation_source(
     concentration[:, :, gas_idx] = torch.clamp(concentration[:, :, gas_idx] - delta, min=0.0)
     concentration[:, :, product_idx] = concentration[:, :, product_idx] + delta
 
+def _apply_titan_product_only_condensation_source(
+    concentration: torch.Tensor,
+    titan_state: KBTitanState,
+    species_index: dict[str, int],
+    term: KBTitanSourceTerm,
+    dt: float,
+    *,
+    stick_x: float,
+    stick_h: float,
+    pun_metadata: dict[str, Any] | None,
+    temperature: torch.Tensor,
+) -> None:
+    if len(term.reactants) != 2 or len(term.products) != 1:
+        return
+    gas, surface = term.reactants
+    product = term.products[0]
+    if gas not in species_index or surface not in species_index or product not in species_index:
+        return
+
+    gas_idx = species_index[gas]
+    surface_idx = species_index[surface]
+    product_idx = species_index[product]
+    mass_amu = _kinetics_base_species_mass_amu(gas, pun_metadata)
+    if mass_amu <= 0.0:
+        return
+    explicit_rate = float(term.parameters.get("A", 0.0))
+    if explicit_rate > 0.0:
+        rate_constant = explicit_rate * concentration[:, :, surface_idx]
+    else:
+        sticking = _titan_sticking_coefficient(gas, stick_x=stick_x, stick_h=stick_h)
+        rate_constant = (
+            sticking
+            * _titan_thermal_velocity(temperature, mass_amu)
+            * concentration[:, :, surface_idx]
+        )
+    delta = dt * rate_constant * torch.clamp(concentration[:, :, gas_idx], min=0.0)
+    concentration[:, :, product_idx] = concentration[:, :, product_idx] + delta
+
 def _apply_titan_sublimation_source(
     concentration: torch.Tensor,
     titan_state: KBTitanState,
@@ -410,12 +497,8 @@ def _apply_titan_sublimation_source(
             * mass_amu
         )
     )
-    grain_total = torch.zeros_like(temperature)
-    for name, idx in species_index.items():
-        if name.startswith("G"):
-            grain_total = grain_total + concentration[:, :, idx]
     nsite = torch.tensor(1.5e15, dtype=temperature.dtype, device=temperature.device)
-    ntot = torch.maximum(grain_total, 4.0 * concentration[:, :, sga_idx] * nsite)
+    ntot = 4.0 * concentration[:, :, sga_idx] * nsite
     valid = ntot > 0.0
     rate_constant = torch.zeros_like(temperature)
     rate_constant[valid] = (
@@ -428,6 +511,42 @@ def _apply_titan_sublimation_source(
     delta = torch.minimum(dt * rate_constant * concentration[:, :, grain_idx], concentration[:, :, grain_idx])
     concentration[:, :, grain_idx] = concentration[:, :, grain_idx] - delta
     concentration[:, :, gas_idx] = concentration[:, :, gas_idx] + delta
+
+def _apply_titan_shifted_sublimation_source(
+    concentration: torch.Tensor,
+    titan_state: KBTitanState,
+    species_index: dict[str, int],
+    term: KBTitanSourceTerm,
+    dt: float,
+    *,
+    stick_x: float,
+    stick_h: float,
+    pun_metadata: dict[str, Any] | None,
+    temperature: torch.Tensor,
+) -> None:
+    if len(term.reactants) != 2 or len(term.products) != 1:
+        return
+    grain, _surface = term.reactants
+    gas = term.products[0]
+    if grain not in species_index or gas not in species_index or "SGA" not in species_index:
+        return
+    if "vapor_A" not in term.parameters or concentration.shape[1] < 2:
+        return
+
+    grain_idx = species_index[grain]
+    gas_idx = species_index[gas]
+    mass_amu = _kinetics_base_species_mass_amu(gas, pun_metadata)
+    if mass_amu <= 0.0:
+        return
+    rate_constant = _titan_sublimation_rate_profile(
+        titan_state.state, species_index, term.parameters, gas, mass_amu
+    ).to(dtype=concentration.dtype, device=concentration.device)
+    delta = torch.minimum(
+        dt * rate_constant[:, :-1] * concentration[:, :-1, grain_idx],
+        concentration[:, :-1, grain_idx],
+    )
+    concentration[:, :-1, grain_idx] = concentration[:, :-1, grain_idx] - delta
+    concentration[:, 1:, gas_idx] = concentration[:, 1:, gas_idx] + delta
 
 def _apply_titan_condensation_sublimation_pair(
     concentration: torch.Tensor,
@@ -480,12 +599,8 @@ def _apply_titan_condensation_sublimation_pair(
     condensation_rate = sticking * velocity * concentration[:, :, sga_idx]
 
     n_sat = _titan_saturation_density(sublimation.parameters, temperature)
-    grain_total = torch.zeros_like(temperature)
-    for name, idx in species_index.items():
-        if name.startswith("G"):
-            grain_total = grain_total + concentration[:, :, idx]
     nsite = torch.tensor(1.5e15, dtype=temperature.dtype, device=temperature.device)
-    ntot = torch.maximum(grain_total, 4.0 * concentration[:, :, sga_idx] * nsite)
+    ntot = 4.0 * concentration[:, :, sga_idx] * nsite
     sublimation_rate = torch.zeros_like(temperature)
     valid = ntot > 0.0
     sublimation_rate[valid] = (

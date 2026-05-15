@@ -31,6 +31,14 @@ CLAUDE.md
 
 # test outputs
 examples/*.png
+diagnostics/KINETICS-base-compare/
+diagnostics/kinetics_base_oracle_runs/
+diagnostics/kinetics_base_titan_budget_trace/
+diagnostics/**/titan-*-steps/
+diagnostics/**/prod+loss/
+diagnostics/**/kintitan.out.pun
+diagnostics/**/kintitan.res
+diagnostics/**/titandebug.dat
 
 # outputs
 *.png

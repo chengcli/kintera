@@ -93,6 +93,7 @@ def _kinetics_base_photo_rates(
     active_opacity_species: list[str] | None = None,
     radiation_active_nlyr: Any = None,
     kinetics_direct_radiation: bool = False,
+    freeze_actinic_flux: bool = False,
 ) -> dict[str, dict[str, Any]]:
     if catalog_path is None or cross_dir is None or flux_path is None:
         return {}
@@ -198,6 +199,7 @@ def _kinetics_base_photo_rates(
                 "diurnal_quadrature_points": diurnal_quadrature_points,
                 "radiation_active_nlyr": radiation_active_nlyr,
                 "kinetics_direct_radiation": kinetics_direct_radiation,
+                "freeze_actinic_flux": freeze_actinic_flux,
             }
     return rates
 

@@ -41,11 +41,19 @@ def _count_reversible(reactions):
 
 def _external_titan_paths():
     # Local diagnosis build used during development:
-    #   KINTERA_KINETICS_BASE_ROOT=/tmp/KINETICS-base-compare
-    #   KINTERA_KINETICS_BASE_EXECUTABLE=/tmp/KINETICS-base-compare/build/bin/titan.release
+    #   KINTERA_KINETICS_BASE_ROOT=diagnostics/KINETICS-base-compare
+    #   KINTERA_KINETICS_BASE_EXECUTABLE=diagnostics/KINETICS-base-compare/build/bin/titan.release
     # Keep tests env-driven so CI and other machines can provide their own oracle.
-    root = os.environ.get("KINTERA_KINETICS_BASE_ROOT")
-    executable = os.environ.get("KINTERA_KINETICS_BASE_EXECUTABLE")
+    default_root = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)),
+        "diagnostics",
+        "KINETICS-base-compare",
+    )
+    root = os.environ.get("KINTERA_KINETICS_BASE_ROOT", default_root)
+    executable = os.environ.get(
+        "KINTERA_KINETICS_BASE_EXECUTABLE",
+        os.path.join(root, "build", "bin", "titan.release"),
+    )
     if not root or not executable:
         pytest.skip(
             "set KINTERA_KINETICS_BASE_ROOT and "
@@ -166,18 +174,10 @@ def _build_titan_state_from_oracle(initial, species, boundary_path=None):
 
 
 def _write_titan_ch4_effective_boundary_input(src, dst, atmosphere):
-    """Use the atmosphere file's CH4 surface mixing ratio as boundary input."""
-    ch4_surface_mixing_ratio = atmosphere.species_profiles["CH4"][0]
-    lines = []
+    """Copy the KB boundary file; Cheng cold-trap handling is applied separately."""
+    del atmosphere
     with open(src) as f:
-        for line in f:
-            parts = line.split()
-            if len(parts) >= 5 and parts[4] == "CH4" and parts[0] == "5":
-                parts[1] = f"{ch4_surface_mixing_ratio:.8e}"
-                line = (
-                    f"{parts[0]} {parts[1]:<18} {parts[2]} {parts[3]:<18} {parts[4]}\n"
-                )
-            lines.append(line)
+        lines = f.readlines()
     with open(dst, "w") as f:
         f.writelines(lines)
 
@@ -190,6 +190,7 @@ def _build_titan_source_terms_from_oracle():
         titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
     )
     boundary_path = os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save")
+    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
     return kt.build_kinetics_base_titan_source_terms(
         pun_path,
         special_path=special_path,
@@ -198,6 +199,7 @@ def _build_titan_source_terms_from_oracle():
         photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
         cross_dir=os.path.join(titan_dir, "Cheng_cross"),
         flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
+        truncate_path=truncate_path,
     ), kt.kinetics_base_species_metadata_from_pun(pun_path)
 
 
@@ -211,40 +213,6 @@ def _solve_titan_transport_steps(
     import kintera as kt
 
     concentration = titan_state.concentration
-    _lower_boundary_conversions = {
-        "lower_boundary_mixing_ratio_times_density",
-        "lower_boundary_deposition_velocity_zero",
-    }
-    _upper_boundary_conversions = {
-        "upper_boundary_escape_velocity_zero",
-    }
-    _cold_trap_conversions = {
-        "kinetics_base_cheng_cold_trap_mixing_ratio",
-    }
-    boundary_species = [
-        titan_state.species.index(name)
-        for name, conversion in titan_state.conversion.items()
-        if conversion in _lower_boundary_conversions
-    ]
-    top_boundary_species = [
-        titan_state.species.index(name)
-        for name, conversion in titan_state.conversion.items()
-        if conversion in _upper_boundary_conversions
-    ]
-    cold_trap_species = [
-        titan_state.species.index(name)
-        for name, conversion in titan_state.conversion.items()
-        if conversion in _cold_trap_conversions
-    ]
-    # Last atmospheric level with non-zero density; escape-velocity species are
-    # pinned to zero there to prevent accumulation and numerical instability.
-    nonzero_levels = (titan_state.density[0] > 0).nonzero(as_tuple=True)[0]
-    last_real_lyr = int(nonzero_levels[-1]) if nonzero_levels.numel() > 0 else titan_state.state.nlyr - 1
-    fixed_species = [
-        titan_state.species.index(name)
-        for name in titan_state.fixed_species
-        if name in titan_state.species
-    ]
     transport = kt.build_transport_matrix(titan_state.state, titan_state.kzz)
     atm_sources = (
         kt.build_kinetics_base_titan_atm2d_source_terms(
@@ -253,9 +221,14 @@ def _solve_titan_transport_steps(
         if source_terms is not None
         else None
     )
+    species_diffusion_scale = kt.kinetics_base_titan_species_diffusion_scale(
+        titan_state.species,
+        dtype=titan_state.state.dtype,
+        device=titan_state.state.device,
+    )
     dt = 1.0e-15
-    # The Titan executable grows the negative-DELTIM startup sequence by half
-    # decades for this configuration.
+    # KINETICS-base's Titan run grows the negative-DELTIM startup sequence by
+    # half decades; the stdout sequence is 1e-15, 3.2e-15, 1e-14, ...
     growth = 10.0 ** 0.5
     for _ in range(ntime):
         if atm_sources is not None:
@@ -264,7 +237,11 @@ def _solve_titan_transport_steps(
                 titan_state.state,
                 titan_state.kzz,
                 dt,
+                species_diffusion_scale=species_diffusion_scale,
                 source_terms=atm_sources,
+            )
+            system, rhs = kt.apply_kinetics_base_titan_dirichlet_rows(
+                system, rhs, titan_state
             )
             concentration = kt.solve_sparse_system(system, rhs)
             concentration = torch.clamp(concentration, min=0.0)
@@ -276,22 +253,11 @@ def _solve_titan_transport_steps(
                 nlyr=titan_state.state.nlyr,
                 nspecies=titan_state.state.nspecies,
             )
-            concentration = kt.solve_sparse_system(system, concentration)
-        if fixed_species:
-            concentration[:, :, fixed_species] = titan_state.concentration[
-                :, :, fixed_species
-            ]
-        if boundary_species:
-            concentration[:, 0, boundary_species] = titan_state.concentration[
-                :, 0, boundary_species
-            ]
-        if top_boundary_species:
-            concentration[:, last_real_lyr, top_boundary_species] = 0.0
-        _COLD_TRAP_LEVEL = 23  # Fortran level 24 (1-indexed); only CH4 uses NBOT=24
-        if cold_trap_species:
-            concentration[:, _COLD_TRAP_LEVEL, cold_trap_species] = (
-                titan_state.concentration[:, _COLD_TRAP_LEVEL, cold_trap_species]
+            system, concentration = kt.apply_kinetics_base_titan_dirichlet_rows(
+                system, concentration, titan_state
             )
+            concentration = kt.solve_sparse_system(system, concentration)
+        kt.apply_kinetics_base_titan_boundary_pins(concentration, titan_state)
         dt *= growth
     return concentration[0]
 
@@ -490,6 +456,144 @@ def test_titan_first_order_sources_expose_atm2d_linearization():
     torch.testing.assert_close(linearization.jacobian, expected_jacobian)
 
 
+def test_titan_boundary_pins_are_dirichlet_rows():
+    """Titan fixed cells are enforced inside the linear solve, not only after it."""
+    import kintera as kt
+
+    x1f = torch.tensor([0.0, 1.0, 2.0, 3.0], dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    current = torch.full((1, 3, 2), 9.0, dtype=torch.float64)
+    pinned = torch.tensor([[[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]], dtype=torch.float64)
+    state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=torch.full((1, 3), 250.0, dtype=torch.float64),
+        pressure=torch.full((1, 3), 1.0e4, dtype=torch.float64),
+        concentration=current,
+    )
+    titan_state = kt.KBTitanState(
+        species=["FIXED", "LOWER"],
+        fixed_species=["FIXED"],
+        varying_species=["FIXED", "LOWER"],
+        conversion={"LOWER": "lower_boundary_mixing_ratio_times_density"},
+        concentration=pinned,
+        density=torch.ones((1, 3), dtype=torch.float64),
+        kzz=torch.zeros((1, 3), dtype=torch.float64),
+        state=state,
+    )
+    system = kt.SparseSystemMatrix.from_dense(
+        torch.eye(6, dtype=torch.float64),
+        ncol=1,
+        nlyr=3,
+        nspecies=2,
+    )
+    rhs = current.clone()
+    system, rhs = kt.apply_kinetics_base_titan_dirichlet_rows(
+        system, rhs, titan_state
+    )
+    solved = kt.solve_sparse_system(system, rhs)
+
+    torch.testing.assert_close(solved[:, :, 0], pinned[:, :, 0])
+    assert solved[0, 0, 1].item() == pinned[0, 0, 1].item()
+    assert solved[0, 1, 1].item() == current[0, 1, 1].item()
+
+
+def test_titan_first_order_sources_preserve_product_multiplicity():
+    """Repeated photolysis products contribute stoichiometric coefficients."""
+    import kintera as kt
+
+    x1f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    concentration = torch.tensor([[[3.0, 0.0]]], dtype=torch.float64)
+    state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=torch.full((1, 1), 250.0, dtype=torch.float64),
+        pressure=torch.full((1, 1), 1.0e4, dtype=torch.float64),
+        concentration=concentration,
+    )
+    titan_state = kt.KBTitanState(
+        species=["A", "B"],
+        fixed_species=[],
+        varying_species=["A", "B"],
+        conversion={},
+        concentration=concentration,
+        density=torch.ones((1, 1), dtype=torch.float64),
+        kzz=torch.zeros((1, 1), dtype=torch.float64),
+        state=state,
+    )
+    source = kt.KBTitanSourceTerm(
+        kind="pun_photo_rate_reaction",
+        reaction_id=1,
+        reactants=["A"],
+        products=["B", "B"],
+        parameters={"rate": 2.0, "attenuation": "none"},
+    )
+
+    atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
+        titan_state, [source]
+    )
+    linearization = kt.build_source_linearization(state, atm_sources)
+
+    torch.testing.assert_close(
+        linearization.tendency,
+        torch.tensor([[[-6.0, 12.0]]], dtype=torch.float64),
+    )
+    assert linearization.jacobian[0, 0, 1, 0].item() == 4.0
+
+
+def test_titan_photolysis_can_freeze_actinic_opacity():
+    """KINETICS-base RAD=0 keeps photolysis attenuation tied to the initial state."""
+    import kintera as kt
+
+    x1f = torch.tensor([0.0, 1.0e5, 2.0e5], dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    initial_concentration = torch.zeros((1, 2, 2), dtype=torch.float64)
+    current_concentration = torch.tensor([[[3.0, 0.0], [5.0, 0.0]]], dtype=torch.float64)
+    state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=torch.full((1, 2), 250.0, dtype=torch.float64),
+        pressure=torch.full((1, 2), 1.0e4, dtype=torch.float64),
+        concentration=current_concentration,
+    )
+    titan_state = kt.KBTitanState(
+        species=["A", "B"],
+        fixed_species=[],
+        varying_species=["A", "B"],
+        conversion={},
+        concentration=initial_concentration,
+        density=torch.ones((1, 2), dtype=torch.float64),
+        kzz=torch.zeros((1, 2), dtype=torch.float64),
+        state=state,
+    )
+    source = kt.KBTitanSourceTerm(
+        kind="pun_photo_rate_reaction",
+        reaction_id=1,
+        reactants=["A"],
+        products=["B"],
+        parameters={
+            "wavelengths": [100.0],
+            "cross_section": [1.0],
+            "flux": [2.0],
+            "total_cross_section_by_species": {"A": [100.0]},
+            "radiation_active_nlyr": 2,
+            "solar_mu0": 1.0,
+            "freeze_actinic_flux": True,
+        },
+    )
+
+    atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
+        titan_state, [source]
+    )
+    linearization = kt.build_source_linearization(state, atm_sources)
+
+    torch.testing.assert_close(
+        linearization.tendency,
+        torch.tensor([[[-6.0, 6.0], [-10.0, 10.0]]], dtype=torch.float64),
+    )
+
+
 def test_titan_thermal_and_boundary_sources_expose_atm2d_linearization():
     """Titan thermal and boundary source terms are available to atm2d."""
     import kintera as kt
@@ -556,6 +660,325 @@ def test_titan_thermal_and_boundary_sources_expose_atm2d_linearization():
     torch.testing.assert_close(linearization.jacobian, expected_jacobian)
 
 
+def test_titan_condensation_prefers_explicit_pun_rate():
+    """Special SGA condensation reactions can carry literal KINETICS-base rates."""
+    import kintera as kt
+
+    x1f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    concentration = torch.tensor([[[3.0, 0.2, 0.0]]], dtype=torch.float64)
+    state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=torch.full((1, 1), 250.0, dtype=torch.float64),
+        pressure=torch.full((1, 1), 1.0e4, dtype=torch.float64),
+        concentration=concentration,
+    )
+    titan_state = kt.KBTitanState(
+        species=["H", "SGA", "GH"],
+        fixed_species=[],
+        varying_species=["H", "SGA", "GH"],
+        conversion={},
+        concentration=concentration,
+        density=torch.ones((1, 1), dtype=torch.float64),
+        kzz=torch.zeros((1, 1), dtype=torch.float64),
+        state=state,
+    )
+    condensation = kt.KBTitanSourceTerm(
+        kind="titan_condensation",
+        reaction_id=351,
+        reactants=["H", "SGA"],
+        products=["GH"],
+        parameters={"source": "pun_special", "A": 10.0},
+    )
+
+    atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
+        titan_state, [condensation]
+    )
+    linearization = kt.build_source_linearization(state, atm_sources)
+
+    expected_rate = torch.tensor([[[6.0]]], dtype=torch.float64)
+    torch.testing.assert_close(linearization.tendency[:, :, 0], -expected_rate[:, :, 0])
+    torch.testing.assert_close(linearization.tendency[:, :, 1], torch.zeros((1, 1), dtype=torch.float64))
+    torch.testing.assert_close(linearization.tendency[:, :, 2], expected_rate[:, :, 0])
+
+
+def test_titan_ch4_grain_special_sources_are_product_only_and_shifted():
+    """Cheng CH4 grain loading/release has non-local special semantics."""
+    import kintera as kt
+
+    x1f = torch.tensor([0.0, 1.0, 2.0, 3.0], dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    concentration = torch.tensor(
+        [
+            [
+                [10.0, 0.5, 2.0, 1.0],
+                [20.0, 0.5, 3.0, 1.0],
+                [30.0, 0.5, 5.0, 1.0],
+            ]
+        ],
+        dtype=torch.float64,
+    )
+    state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=torch.full((1, 3), 250.0, dtype=torch.float64),
+        pressure=torch.full((1, 3), 1.0e4, dtype=torch.float64),
+        concentration=concentration,
+    )
+    titan_state = kt.KBTitanState(
+        species=["CH4", "SGA", "GCH4", "U"],
+        fixed_species=[],
+        varying_species=["CH4", "SGA", "GCH4", "U"],
+        conversion={},
+        concentration=concentration,
+        density=torch.ones((1, 3), dtype=torch.float64),
+        kzz=torch.zeros((1, 3), dtype=torch.float64),
+        state=state,
+    )
+    loading = kt.KBTitanSourceTerm(
+        kind="titan_condensation",
+        reaction_id=475,
+        reactants=["CH4", "SGA"],
+        products=["GCH4"],
+        parameters={"source": "pun_special", "A": 2.0},
+    )
+    release = kt.KBTitanSourceTerm(
+        kind="titan_sublimation",
+        reaction_id=1361,
+        reactants=["GCH4", "U"],
+        products=["CH4"],
+        parameters={
+            "source": "pun_special",
+            "vapor_A": 0.0,
+            "vapor_B": 0.0,
+            "vapor_C": 300.0,
+            "vapor_Tmin_C": 0.0,
+            "vapor_Tmax_C": 1000.0,
+        },
+    )
+
+    loading_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
+        titan_state, [loading]
+    )
+    loading_linearization = kt.build_source_linearization(state, loading_sources)
+    expected_loading = 2.0 * concentration[:, :, 1] * concentration[:, :, 0]
+    torch.testing.assert_close(
+        loading_linearization.tendency[:, :, 0],
+        torch.zeros((1, 3), dtype=torch.float64),
+    )
+    torch.testing.assert_close(
+        loading_linearization.tendency[:, :, 2],
+        expected_loading,
+    )
+
+    release_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
+        titan_state, [release]
+    )
+    release_linearization = kt.build_source_linearization(state, release_sources)
+    loss = -release_linearization.tendency[:, :, 2]
+    expected_ch4 = torch.zeros((1, 3), dtype=torch.float64)
+    expected_ch4[:, 1:] = loss[:, :-1]
+    torch.testing.assert_close(
+        release_linearization.tendency[:, :, 0],
+        expected_ch4,
+    )
+    torch.testing.assert_close(
+        release_linearization.tendency[:, -1, 2],
+        torch.zeros((1,), dtype=torch.float64),
+    )
+    system, rhs = kt.build_implicit_step_system(
+        state,
+        torch.zeros((1, 3), dtype=torch.float64),
+        1.0,
+        source_terms=release_sources,
+    )
+    dense = system.global_csr.to_dense()
+    row = (1 * state.nspecies) + 0
+    col = (0 * state.nspecies) + 2
+    torch.testing.assert_close(dense[row, col], -loss[0, 0] / concentration[0, 0, 2])
+    torch.testing.assert_close(rhs[:, 1, 0], concentration[:, 1, 0])
+
+
+def test_titan_sublimation_uses_total_grain_ice_abundance_limiter():
+    """Sublimation switches from site capacity to total ice abundance above a monolayer."""
+    import kintera as kt
+    from kintera.kinetics_base_titan.physics import _titan_sublimation_rate_profile
+
+    x1f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    concentration = torch.tensor([[[1.0, 1.0, 1.2e16, 0.0]]], dtype=torch.float64)
+    state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=torch.full((1, 1), 250.0, dtype=torch.float64),
+        pressure=torch.full((1, 1), 1.0e4, dtype=torch.float64),
+        concentration=concentration,
+    )
+    params = {
+        "vapor_A": 0.0,
+        "vapor_B": 0.0,
+        "vapor_C": 300.0,
+    }
+    species_index = {"SGA": 0, "GCH4": 1, "GC2H2": 2, "GH": 3}
+    limited = _titan_sublimation_rate_profile(state, species_index, params, "CH4", 16.0)
+
+    site_only_concentration = concentration.clone()
+    site_only_concentration[:, :, 2] = 0.0
+    site_only_state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=state.temperature,
+        pressure=state.pressure,
+        concentration=site_only_concentration,
+    )
+    site_only = _titan_sublimation_rate_profile(
+        site_only_state, species_index, params, "CH4", 16.0
+    )
+
+    torch.testing.assert_close(limited, site_only / 2.0)
+
+
+def test_titan_named_grain_species_still_use_eddy_diffusion():
+    """Cheng Titan G-prefixed species are names, not KINETICS grain flags."""
+    import kintera as kt
+
+    scale = kt.kinetics_base_titan_species_diffusion_scale(
+        ["H", "GH", "GCH4", "CH4"],
+        dtype=torch.float64,
+    )
+
+    torch.testing.assert_close(scale, torch.ones(4, dtype=torch.float64))
+
+
+def test_titan_charged_thermal_sources_are_typed_and_linearized():
+    """Charged .pun thermal reactions reuse the mass-action source kernel."""
+    import kintera as kt
+
+    x1f = torch.tensor([0.0, 1.0, 2.0], dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    concentration = torch.tensor(
+        [
+            [
+                [2.0, 3.0, 0.0, 0.0],
+                [5.0, 7.0, 0.0, 0.0],
+            ]
+        ],
+        dtype=torch.float64,
+    )
+    state = kt.AtmState2D(
+        x1f=x1f,
+        x2f=x2f,
+        temperature=torch.full((1, 2), 250.0, dtype=torch.float64),
+        pressure=torch.full((1, 2), 1.0e4, dtype=torch.float64),
+        concentration=concentration,
+    )
+    titan_state = kt.KBTitanState(
+        species=["E", "X+", "A", "B"],
+        fixed_species=[],
+        varying_species=["E", "X+", "A", "B"],
+        conversion={},
+        concentration=concentration,
+        density=torch.ones((1, 2), dtype=torch.float64),
+        kzz=torch.zeros((1, 2), dtype=torch.float64),
+        state=state,
+    )
+    recombination = kt.KBTitanSourceTerm(
+        kind="pun_dissociative_recombination",
+        reaction_id=1,
+        reactants=["E", "X+"],
+        products=["A", "B"],
+        parameters={
+            "A": 0.5,
+            "b": 0.0,
+            "C": 0.0,
+            "D": 0.0,
+            "E": 0.0,
+            "F": 0.0,
+            "Tmin": 1.0,
+            "Tmax": 1.0e9,
+            "reactant_coefficients": [1, 1],
+            "product_coefficients": [1, 1],
+            "reactant_charge": 0,
+            "product_charge": 0,
+            "net_charge_delta": 0,
+            "charge_balanced": True,
+        },
+    )
+
+    atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
+        titan_state, [recombination]
+    )
+    linearization = kt.build_source_linearization(state, atm_sources)
+
+    expected_rate = 0.5 * concentration[:, :, 0] * concentration[:, :, 1]
+    expected_tendency = torch.zeros_like(concentration)
+    expected_tendency[:, :, 0] = -expected_rate
+    expected_tendency[:, :, 1] = -expected_rate
+    expected_tendency[:, :, 2] = expected_rate
+    expected_tendency[:, :, 3] = expected_rate
+    torch.testing.assert_close(linearization.tendency, expected_tendency)
+    assert torch.count_nonzero(linearization.jacobian).item() > 0
+
+
+def test_titan_source_builder_classifies_charged_pun_reactions(tmp_path):
+    """Ion mass-action and recombination terms get explicit source kinds."""
+    import kintera as kt
+
+    pun_path = tmp_path / "charged.pun"
+    pun_path.write_text(
+        "\n".join(
+            [
+                " NATOM NMOL NREACT NPART VER",
+                "    2    5      2     0 5",
+                "N   14.01 C   12.01",
+                "   1. E             1    1      0.00   0  0",
+                "   2. N2+           1    1     28.02   0  0",
+                "   3. N             1    1     14.01   1  0",
+                "   4. CH4           1    1     16.05   0  1",
+                "   5. CH4+          1    1     16.05   0  1",
+                "   1. 2  2  (  )   1+(  )   2=( 2)   3   1.00E-07   0.00       0.0",
+                "   2. 2  2  (  )   2+(  )   4=(  )   5+(  )   3   1.00E-09   0.00       0.0",
+                "",
+            ]
+        )
+    )
+
+    terms = kt.build_kinetics_base_titan_source_terms(pun_path)
+    by_id = {term.reaction_id: term for term in terms}
+
+    assert by_id[1].kind == "pun_dissociative_recombination"
+    assert by_id[1].parameters["charge_balanced"] is True
+    assert by_id[2].kind == "pun_ion_mass_action_reaction"
+    assert by_id[2].parameters["reactant_charge"] == 1
+    assert by_id[2].parameters["product_charge"] == 1
+
+    run_input_path = tmp_path / "charged.inp"
+    run_input_path.write_text(
+        "\n".join(
+            [
+                "NFIX NVARYS NVARYF",
+                "0 0 5",
+                "NPHOTO NPHOTS NPHOTR NPHOTD",
+                "0 0 0 0",
+                "IFIX,IVARYS,IVARYF:",
+                "1 2 3 4 5",
+                "",
+            ]
+        )
+    )
+    report = kt.classify_kinetics_base_titan_reactions(
+        str(pun_path), str(run_input_path)
+    )
+    assert report.charged_species == ["E", "N2+", "CH4+"]
+    assert report.charged_reactions == 2
+    assert report.charged_thermal_candidate_reactions == 2
+    assert report.dissociative_recombination_reactions == 1
+    assert report.ion_mass_action_reactions == 1
+    assert report.charge_balanced_reactions == 2
+    assert report.charge_imbalanced_reaction_ids == []
+
+
 def test_kinetics_base_profile_conversion_does_not_infer_mixing_ratio_from_value():
     """Small number-density profiles must not be treated as mixing ratios."""
     import kintera as kt
@@ -600,9 +1023,9 @@ def test_external_titan_one_step_equivalence_if_available(tmp_path):
     )
     titan_state = _build_titan_state_from_oracle(initial, species, boundary_path)
     assert titan_state.concentration.shape == (1, 50, 128)
-    # KINETICS-base __CHENG overrides the surface type-5 BC with a cold trap at
-    # level 24 (0-indexed 23, ~500 km altitude), so CH4's conversion type reflects
-    # the cold-trap boundary rather than the surface mixing-ratio boundary.
+    # KINETICS-base __CHENG pins CH4's cold-trap boundary row, so CH4's
+    # conversion type reflects that boundary rather than the surface
+    # mixing-ratio input.
     assert titan_state.conversion["CH4"] == "kinetics_base_cheng_cold_trap_mixing_ratio"
     assert "E" not in titan_state.fixed_species
     assert titan_state.conversion["E"] == "pun_electron_or_ion_number_density"
@@ -662,6 +1085,19 @@ def test_external_titan_reaction_classification_if_available():
     assert report.n_reactants_counts[2] == 1698
     assert report.n_reactants_counts[3] == 122
     assert report.missing_rate_blocks == 0
+    assert report.charged_species_count == len(report.charged_species)
+    assert "E" in report.charged_species
+    assert report.charged_reactions > 0
+    assert (
+        report.charge_balanced_reactions + report.charge_imbalanced_reactions
+        == report.charged_reactions
+    )
+    assert report.charged_thermal_candidate_reactions == (
+        report.ion_mass_action_reactions
+        + report.dissociative_recombination_reactions
+    )
+    assert report.dissociative_recombination_reactions > 0
+    assert report.ion_mass_action_reactions > 0
 
 
 def test_external_titan_special_placeholders_if_available():
@@ -692,8 +1128,10 @@ def test_external_titan_special_placeholders_if_available():
         if term.kind == "unimplemented_special_reaction"
     }
     ion_recombination_count = sum(
-        term.kind == "pun_thermal_reaction" and "E" in term.reactants
-        for term in terms
+        term.kind == "pun_dissociative_recombination" for term in terms
+    )
+    ion_mass_action_count = sum(
+        term.kind == "pun_ion_mass_action_reaction" for term in terms
     )
     electron_impact_count = sum(
         term.kind == "pun_electron_impact_reaction" for term in terms
@@ -701,7 +1139,161 @@ def test_external_titan_special_placeholders_if_available():
     assert disabled_ids == {187, 2094, 2095, 2096, 2097, 2098, 2099}
     assert unimplemented_ids == set()
     assert ion_recombination_count > 0
-    assert electron_impact_count == 0
+    assert ion_mass_action_count > 0
+    assert electron_impact_count > 0
+
+
+def test_external_titan_truncate_active_network_if_available():
+    """Titan source terms can be restricted to KINETICS-base's active network."""
+    import kintera as kt
+
+    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
+    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
+    if not os.path.exists(truncate_path):
+        pytest.skip(f"missing external KINETICS-base file: {truncate_path}")
+
+    active_network = kt.parse_kinetics_base_truncate(truncate_path)
+    assert active_network.reaction_mapping[64] == 63
+    assert active_network.reaction_mapping[143] == 120
+    assert active_network.reaction_mapping[260] == 167
+    assert active_network.reaction_mapping[1048] == 0
+    assert active_network.reaction_mapping[1056] == 0
+    assert active_network.reaction_mapping[1057] == 606
+    assert len(active_network.active_reaction_ids) == 1364
+
+    terms = kt.build_kinetics_base_titan_source_terms(
+        pun_path,
+        special_path=os.path.join(
+            titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
+        ),
+        run_input_path=run_input_path,
+        photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
+        cross_dir=os.path.join(titan_dir, "Cheng_cross"),
+        flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
+        truncate_path=truncate_path,
+    )
+    by_id = {term.reaction_id: term for term in terms}
+
+    for reaction_id in {64, 65, 143, 260, 1057}:
+        assert reaction_id in by_id
+    for reaction_id in {1048, 1056}:
+        assert reaction_id not in by_id
+
+
+def test_external_titan_special_index_if_available():
+    """Cheng runtime ISP mappings are available to source-term construction."""
+    import kintera as kt
+
+    titan_dir, _, _, _, _ = _external_titan_paths()
+    special_path = os.path.join(
+        titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
+    )
+
+    special = kt.parse_kinetics_base_special_index(special_path)
+
+    assert special.target_id(381, kind=1) == 9
+    assert special.target_id(503, kind=2) == 10
+    assert special.target_id(537, kind=2) == 202
+    assert special.target_id(538, kind=2) == 203
+    assert special.target_id(539, kind=2) == 247
+    assert special.target_id(540, kind=2) == 246
+    assert special.target_id(229, kind=3) == 222
+
+
+def test_external_titan_ch4_photolysis_branch_loss_if_available():
+    """KINETICS-base Cheng CH4 photo branches share products but not parent loss."""
+    import kintera as kt
+
+    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
+    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
+    terms = kt.build_kinetics_base_titan_source_terms(
+        pun_path,
+        special_path=os.path.join(
+            titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
+        ),
+        run_input_path=run_input_path,
+        photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
+        cross_dir=os.path.join(titan_dir, "Cheng_cross"),
+        flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
+        truncate_path=truncate_path,
+    )
+    ch4_photo = {
+        term.reaction_id: term
+        for term in terms
+        if term.kind == "pun_photo_rate_reaction" and term.reactants == ["CH4"]
+    }
+
+    assert set(ch4_photo) == {5, 6, 7, 8, 9, 222}
+    assert ch4_photo[6].parameters["source"] == "cheng_branch_rate_profile"
+    assert ch4_photo[6].parameters["rate_profile_multiplier"]
+    for reaction_id in {5, 6, 7, 8, 9}:
+        assert ch4_photo[reaction_id].parameters["suppress_reactant_loss"] is True
+    assert ch4_photo[8].products == ["(3)CH2"]
+    assert ch4_photo[222].products == ["CH4"]
+    assert not ch4_photo[222].parameters.get("suppress_reactant_loss", False)
+
+
+def test_external_titan_electron_impact_uses_special_runtime_indices_if_available():
+    """Only Cheng runtime-referenced ionization branches are enabled."""
+    import kintera as kt
+
+    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
+    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
+    terms = kt.build_kinetics_base_titan_source_terms(
+        pun_path,
+        special_path=os.path.join(
+            titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
+        ),
+        run_input_path=run_input_path,
+        photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
+        cross_dir=os.path.join(titan_dir, "Cheng_cross"),
+        flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
+        truncate_path=truncate_path,
+    )
+    electron_impact_ids = {
+        term.reaction_id
+        for term in terms
+        if term.kind == "pun_electron_impact_reaction"
+    }
+
+    assert electron_impact_ids == {202, 203, 246, 247}
+
+
+def test_external_titan_catalog_photolysis_branches_if_available():
+    """Catalog-mapped unary A=0 branches are exposed as Titan photolysis."""
+    import kintera as kt
+
+    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
+    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
+    terms = kt.build_kinetics_base_titan_source_terms(
+        pun_path,
+        special_path=os.path.join(
+            titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
+        ),
+        run_input_path=run_input_path,
+        photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
+        cross_dir=os.path.join(titan_dir, "Cheng_cross"),
+        flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
+        truncate_path=truncate_path,
+    )
+    photolysis_branches = {
+        (tuple(term.reactants), tuple(term.products)): term
+        for term in terms
+        if term.kind == "pun_photo_rate_reaction"
+    }
+
+    expected_branches = [
+        (("C4H4",), ("C4H2", "H2")),
+        (("NH3",), ("NH2", "H")),
+        (("HCN",), ("H", "CN")),
+    ]
+    for branch in expected_branches:
+        term = photolysis_branches[branch]
+        assert term.parameters["source"] == "catalog_flux"
+        assert term.parameters["rate"] > 0.0
+        assert term.parameters["radiation_active_nlyr"] == 40
+        assert term.parameters["freeze_actinic_flux"] is True
+        assert not term.parameters.get("suppress_reactant_loss", False)
 
 
 def test_photochem_forward_with_xsec(master_path, catalog_path, cross_dir):

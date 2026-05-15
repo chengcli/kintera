@@ -131,12 +131,12 @@ def _titan_sublimation_rate_profile(
     sga_idx = species_index["SGA"]
     n_sat = _titan_saturation_density(parameters, state.temperature)
     velocity = _titan_thermal_velocity(state.temperature, mass_amu)
-    grain_total = torch.zeros_like(state.temperature)
-    for name, idx in species_index.items():
-        if name.startswith("G"):
-            grain_total = grain_total + state.concentration[:, :, idx]
     nsite = torch.tensor(1.5e15, dtype=state.dtype, device=state.device)
-    ntot = torch.maximum(grain_total, 4.0 * state.concentration[:, :, sga_idx] * nsite)
+    site_capacity = 4.0 * state.concentration[:, :, sga_idx] * nsite
+    ntot = torch.maximum(
+        _titan_total_grain_ice_abundance(state, species_index),
+        site_capacity,
+    )
     rate = torch.zeros_like(state.temperature)
     valid = ntot > 0.0
     rate[valid] = (
@@ -147,6 +147,23 @@ def _titan_sublimation_rate_profile(
         / ntot[valid]
     )
     return rate
+
+
+def _titan_total_grain_ice_abundance(
+    state: AtmState2D,
+    species_index: dict[str, int],
+) -> torch.Tensor:
+    """Return KB-style ``AIPT9502`` total abundance of G-prefixed ices."""
+
+    total = torch.zeros_like(state.temperature)
+    for name, index in species_index.items():
+        if _is_titan_grain_ice_species(name):
+            total = total + torch.clamp(state.concentration[:, :, index], min=0.0)
+    return total
+
+
+def _is_titan_grain_ice_species(name: str) -> bool:
+    return name.startswith("G")
 
 def _titan_saturation_density(
     parameters: dict[str, float | str | int], temperature: torch.Tensor

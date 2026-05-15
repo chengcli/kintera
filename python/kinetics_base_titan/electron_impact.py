@@ -7,6 +7,16 @@ def _is_kinetics_base_electron_impact_reaction(products: list[str]) -> bool:
 def _kinetics_base_electron_impact_scale(
     reactants: list[str], products: list[str]
 ) -> float:
+    if reactants == ["N2"] and products == ["N2+", "E"]:
+        return 0.97
+    if reactants == ["N2"] and "N+" in products:
+        return 2.5
+    if reactants == ["CH4"] and products == ["CH3+", "H", "E"]:
+        return 0.172
+    if reactants == ["CH4"] and products == ["CH2+", "H2", "E"]:
+        return 0.217
+    if reactants == ["CH4"] and products == ["CH3", "H+", "E"]:
+        return 0.083
     if "N+" in products:
         return 0.0035
     if not reactants:

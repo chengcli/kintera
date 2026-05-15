@@ -166,10 +166,47 @@ PYBIND11_MODULE(kintera, m) {
                      &kintera::KBTitanReactionReport::thermal_candidate_reactions)
       .def_readwrite("missing_rate_blocks",
                      &kintera::KBTitanReactionReport::missing_rate_blocks)
+      .def_readwrite("charged_species_count",
+                     &kintera::KBTitanReactionReport::charged_species_count)
+      .def_readwrite("charged_reactions",
+                     &kintera::KBTitanReactionReport::charged_reactions)
+      .def_readwrite(
+          "charged_thermal_candidate_reactions",
+          &kintera::KBTitanReactionReport::charged_thermal_candidate_reactions)
+      .def_readwrite("ion_mass_action_reactions",
+                     &kintera::KBTitanReactionReport::ion_mass_action_reactions)
+      .def_readwrite(
+          "dissociative_recombination_reactions",
+          &kintera::KBTitanReactionReport::dissociative_recombination_reactions)
+      .def_readwrite(
+          "selected_electron_impact_reactions",
+          &kintera::KBTitanReactionReport::selected_electron_impact_reactions)
+      .def_readwrite("electron_reactant_reactions",
+                     &kintera::KBTitanReactionReport::electron_reactant_reactions)
+      .def_readwrite("electron_product_reactions",
+                     &kintera::KBTitanReactionReport::electron_product_reactions)
+      .def_readwrite("cation_reactant_reactions",
+                     &kintera::KBTitanReactionReport::cation_reactant_reactions)
+      .def_readwrite("cation_product_reactions",
+                     &kintera::KBTitanReactionReport::cation_product_reactions)
+      .def_readwrite("anion_reactant_reactions",
+                     &kintera::KBTitanReactionReport::anion_reactant_reactions)
+      .def_readwrite("anion_product_reactions",
+                     &kintera::KBTitanReactionReport::anion_product_reactions)
+      .def_readwrite("charge_balanced_reactions",
+                     &kintera::KBTitanReactionReport::charge_balanced_reactions)
+      .def_readwrite(
+          "charge_imbalanced_reactions",
+          &kintera::KBTitanReactionReport::charge_imbalanced_reactions)
       .def_readwrite("n_reactants_counts",
                      &kintera::KBTitanReactionReport::n_reactants_counts)
+      .def_readwrite("charged_species",
+                     &kintera::KBTitanReactionReport::charged_species)
       .def_readwrite("selected_photolysis_ids",
                      &kintera::KBTitanReactionReport::selected_photolysis_ids)
+      .def_readwrite(
+          "charge_imbalanced_reaction_ids",
+          &kintera::KBTitanReactionReport::charge_imbalanced_reaction_ids)
       .def_readwrite("unsupported_reaction_ids",
                      &kintera::KBTitanReactionReport::unsupported_reaction_ids);
 

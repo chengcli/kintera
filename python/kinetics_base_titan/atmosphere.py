@@ -5,7 +5,8 @@ from typing import Any
 
 import torch
 
-from ..atm2d import AtmState2D
+from ..atm2d import AtmState2D, SparseSystemMatrix
+from ..atm2d.matrix import flatten_state_index
 from ..kintera import parse_kinetics_base_atmosphere, parse_kinetics_base_pun
 from .models import KBTitanState
 from .parsing import _apply_cheng_cold_trap_boundaries, _apply_lower_mixing_ratio_boundaries
@@ -60,9 +61,10 @@ def kinetics_base_concentration_from_profile(
             concentration, conversion, density[:, 0], species, boundary_path
         )
 
-    # Apply KINETICS-base __CHENG cold trap: CH4 at level 24 (0-indexed 23)
-    # is pinned to 0.0157 × DEN[24], overriding the atmosphere-file value.
-    # This must come after boundary_path processing so it takes precedence.
+    # Apply KINETICS-base __CHENG cold trap: CH4 at and below level 24
+    # (0-indexed 23) is pinned to the prepared atmosphere/boundary values.
+    # This must come after boundary_path processing so the CH4 pin metadata
+    # survives the surface boundary conversion.
     _apply_cheng_cold_trap_boundaries(concentration, conversion, density[:, 0], species)
 
     zero_density = density[:, 0] == 0
@@ -119,6 +121,131 @@ def build_kinetics_base_titan_state(
         density=torch.tensor(atmosphere.density).view(1, -1),
         kzz=torch.tensor(atmosphere.eddy_diffusion).view(1, -1),
         state=state,
+    )
+
+
+def kinetics_base_titan_species_diffusion_scale(
+    species: list[str],
+    *,
+    dtype: torch.dtype | None = None,
+    device: torch.device | str | None = None,
+) -> torch.Tensor:
+    """Return species-wise eddy diffusion scales for the Cheng Titan network."""
+    return torch.ones(len(species), dtype=dtype or torch.get_default_dtype(), device=device)
+
+
+def apply_kinetics_base_titan_boundary_pins(
+    concentration: torch.Tensor,
+    titan_state: KBTitanState,
+) -> torch.Tensor:
+    """Re-apply KINETICS-base Titan fixed/boundary constraints after a solve step.
+
+    KINETICS-base's ``__CHENG`` branch fixes the CH4 cold-trap boundary row, but
+    lower atmospheric levels still evolve over long integrations.
+    """
+    mask, values = kinetics_base_titan_boundary_pin_mask(titan_state)
+    mask = mask.to(device=concentration.device)
+    values = values.to(dtype=concentration.dtype, device=concentration.device)
+    concentration[mask] = values[mask]
+    return concentration
+
+
+def kinetics_base_titan_boundary_pin_mask(
+    titan_state: KBTitanState,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return fixed-value Titan cells matching KINETICS-base boundary semantics."""
+
+    lower_boundary_conversions = {
+        "lower_boundary_mixing_ratio_times_density",
+        "lower_boundary_deposition_velocity_zero",
+    }
+    upper_boundary_conversions = {
+        "upper_boundary_escape_velocity_zero",
+    }
+    cold_trap_conversions = {
+        "kinetics_base_cheng_cold_trap_mixing_ratio",
+    }
+    mask = torch.zeros_like(titan_state.concentration, dtype=torch.bool)
+    values = torch.zeros_like(titan_state.concentration)
+
+    fixed_species = [
+        titan_state.species.index(name)
+        for name in titan_state.fixed_species
+        if name in titan_state.species
+    ]
+    if fixed_species:
+        mask[:, :, fixed_species] = True
+        values[:, :, fixed_species] = titan_state.concentration[:, :, fixed_species]
+
+    lower_boundary_species = [
+        titan_state.species.index(name)
+        for name, conversion in titan_state.conversion.items()
+        if conversion in lower_boundary_conversions
+    ]
+    if lower_boundary_species:
+        mask[:, 0, lower_boundary_species] = True
+        values[:, 0, lower_boundary_species] = titan_state.concentration[
+            :, 0, lower_boundary_species
+        ]
+
+    upper_boundary_species = [
+        titan_state.species.index(name)
+        for name, conversion in titan_state.conversion.items()
+        if conversion in upper_boundary_conversions
+    ]
+    if upper_boundary_species:
+        nonzero_levels = (titan_state.density[0] > 0).nonzero(as_tuple=True)[0]
+        last_real_lyr = (
+            int(nonzero_levels[-1])
+            if nonzero_levels.numel() > 0
+            else titan_state.state.nlyr - 1
+        )
+        mask[:, last_real_lyr, upper_boundary_species] = True
+        values[:, last_real_lyr, upper_boundary_species] = 0.0
+
+    cold_trap_species = [
+        titan_state.species.index(name)
+        for name, conversion in titan_state.conversion.items()
+        if conversion in cold_trap_conversions
+    ]
+    if cold_trap_species:
+        cold_trap_level = 23  # Fortran level 24 (1-indexed); only CH4 uses NBOT=24.
+        mask[:, cold_trap_level, cold_trap_species] = True
+        values[:, cold_trap_level, cold_trap_species] = titan_state.concentration[
+            :, cold_trap_level, cold_trap_species
+        ]
+
+    return mask, values
+
+
+def apply_kinetics_base_titan_dirichlet_rows(
+    system: SparseSystemMatrix,
+    rhs: torch.Tensor,
+    titan_state: KBTitanState,
+) -> tuple[SparseSystemMatrix, torch.Tensor]:
+    """Enforce Titan fixed/boundary cells as Dirichlet rows in an implicit system."""
+
+    mask, values = kinetics_base_titan_boundary_pin_mask(titan_state)
+    pinned = mask.nonzero(as_tuple=False)
+    if pinned.numel() == 0:
+        return system, rhs
+    row_ids = flatten_state_index(
+        pinned[:, 0],
+        pinned[:, 1],
+        pinned[:, 2],
+        system.nlyr,
+        system.nspecies,
+    )
+    unit_values = torch.ones(row_ids.numel(), dtype=system.dtype, device=system.device)
+    return (
+        system.replace_rows(
+            row_ids,
+            row_ids,
+            unit_values,
+            rhs_override_mask=mask.to(device=system.device),
+            rhs_override_values=values.to(dtype=system.dtype, device=system.device),
+        ),
+        rhs,
     )
 
 def kinetics_base_species_metadata_from_pun(pun: str | Path | Any) -> dict[str, Any]:
@@ -183,4 +310,6 @@ def _has_kinetics_base_electron_composition(metadata: Any) -> bool:
 
 def _is_kinetics_base_charged_species_name(name: str) -> bool:
     return name == "E" or name.endswith("+") or name.endswith("-")
+
+
 

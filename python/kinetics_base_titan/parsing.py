@@ -5,7 +5,12 @@ from pathlib import Path
 
 import torch
 
-from .models import KBTitanBoundaryEntry, KBTitanSpecialEntry
+from .models import (
+    KBTitanActiveNetwork,
+    KBTitanBoundaryEntry,
+    KBTitanSpecialEntry,
+    KBTitanSpecialIndex,
+)
 
 
 def parse_kinetics_base_special(path: str | Path) -> list[KBTitanSpecialEntry]:
@@ -27,6 +32,50 @@ def parse_kinetics_base_special(path: str | Path) -> list[KBTitanSpecialEntry]:
         except ValueError:
             continue
     return entries
+
+def parse_kinetics_base_special_index(path: str | Path) -> KBTitanSpecialIndex:
+    """Parse KINETICS-base's special file as an ISP lookup table."""
+
+    return KBTitanSpecialIndex(parse_kinetics_base_special(path))
+
+def parse_kinetics_base_truncate(path: str | Path) -> KBTitanActiveNetwork:
+    """Parse KINETICS-base truncation mappings.
+
+    The reaction mapping is Fortran's IRX array: keys are original .pun reaction
+    ids and nonzero values are operational reaction ids in the truncated model.
+    """
+    lines = Path(path).read_text().splitlines()
+    species_values = _parse_kinetics_base_mapping_array(
+        lines, "MAPPING ARRAY FOR SPECIES"
+    )
+    reaction_values = _parse_kinetics_base_mapping_array(
+        lines, "MAPPING ARRAY FOR REACTIONS"
+    )
+    return KBTitanActiveNetwork(
+        species_mapping={
+            original_id: operational_id
+            for original_id, operational_id in enumerate(species_values, start=1)
+        },
+        reaction_mapping={
+            original_id: operational_id
+            for original_id, operational_id in enumerate(reaction_values, start=1)
+        },
+    )
+
+def _parse_kinetics_base_mapping_array(lines: list[str], label: str) -> list[int]:
+    values: list[int] = []
+    for index, line in enumerate(lines):
+        if not line.strip().upper().startswith(label):
+            continue
+        for current in lines[index + 1 :]:
+            parsed = _parse_float_tokens(current)
+            if values and not parsed:
+                return values
+            if not parsed:
+                continue
+            values.extend(int(value) for value in parsed)
+        return values
+    raise ValueError(f"missing KINETICS-base truncate section: {label}")
 
 def _parse_kinetics_base_run_radiation_inputs(
     path: str | Path | None,
@@ -67,9 +116,13 @@ def _parse_kinetics_base_run_radiation_inputs(
 
     grid = numeric_line_after("NALT1", skip=0)
     if len(grid) >= 2:
-        # KINETICS-base active levels include the zero-altitude level plus the
-        # NALT2 model levels; NALTTP may carry extra high-altitude storage levels.
-        values["radiation_active_nlyr"] = int(grid[1]) + 1
+        # KINETICS-base radiation arrays are dimensioned by NALT2; NALTTP can
+        # carry extra storage rows that should not participate in attenuation.
+        values["radiation_active_nlyr"] = int(grid[1])
+
+    update = numeric_line_after("UPDATE PARAMETERS")
+    if len(update) >= 7:
+        values["freeze_actinic_flux"] = int(update[6]) == 0
 
     radiation = numeric_line_after("BASIC RADIATION PARAMETERS")
     if radiation:
@@ -620,18 +673,12 @@ def _apply_cheng_cold_trap_boundaries(
 ) -> None:
     """Apply the KINETICS-base ``__CHENG`` cold trap boundary condition for CH4.
 
-    In kinetgen1X.F (line 3522) the ``__CHENG`` preprocessing block hardcodes:
-
-        XLOWER(CH4, IL, IN) = 0.0157 * DEN(IL, IN, 24)
-
-    and sets NBOT=24 so the chemistry/transport implicit system starts at level
-    24 (1-indexed, 0-indexed 23, ~500 km altitude), using this mixing ratio as
-    the lower boundary.  The value 0.0157 is the CH4 saturation VMR at Titan's
-    cold trap.  Kintera must pin the same level to the same value to reproduce
-    the KINETICS-base output.
+    The Cheng Titan branch sets the CH4 cold-trap boundary at level 24
+    (1-indexed, 0-indexed 23, ~500 km altitude).  The oracle output keeps the atmosphere file's
+    prepared number density at the cold-trap layer, so kintera marks the species
+    for pinning without recomputing the boundary value from a rounded VMR.
     """
     _COLD_TRAP_LEVEL = 23  # 0-indexed; Fortran level 24, ~500 km on Titan
-    _COLD_TRAP_CH4_MR = 0.0157  # saturation mixing ratio at cold trap
 
     if _COLD_TRAP_LEVEL >= density.numel() or density[_COLD_TRAP_LEVEL] == 0:
         return
@@ -640,7 +687,6 @@ def _apply_cheng_cold_trap_boundaries(
     if ch4_idx is None:
         return
     canonical = species[ch4_idx]
-    concentration[_COLD_TRAP_LEVEL, ch4_idx] = _COLD_TRAP_CH4_MR * density[_COLD_TRAP_LEVEL]
     conversion[canonical] = "kinetics_base_cheng_cold_trap_mixing_ratio"
 
 

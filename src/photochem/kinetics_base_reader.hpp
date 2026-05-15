@@ -139,8 +139,24 @@ struct KBTitanReactionReport {
   int selected_photolysis_reactions = 0;
   int thermal_candidate_reactions = 0;
   int missing_rate_blocks = 0;
+  int charged_species_count = 0;
+  int charged_reactions = 0;
+  int charged_thermal_candidate_reactions = 0;
+  int ion_mass_action_reactions = 0;
+  int dissociative_recombination_reactions = 0;
+  int selected_electron_impact_reactions = 0;
+  int electron_reactant_reactions = 0;
+  int electron_product_reactions = 0;
+  int cation_reactant_reactions = 0;
+  int cation_product_reactions = 0;
+  int anion_reactant_reactions = 0;
+  int anion_product_reactions = 0;
+  int charge_balanced_reactions = 0;
+  int charge_imbalanced_reactions = 0;
   std::map<int, int> n_reactants_counts;
+  std::vector<std::string> charged_species;
   std::vector<int> selected_photolysis_ids;
+  std::vector<int> charge_imbalanced_reaction_ids;
   std::vector<int> unsupported_reaction_ids;
 };
 

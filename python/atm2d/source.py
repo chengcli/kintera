@@ -6,6 +6,7 @@ from typing import Callable, Protocol
 import torch
 
 from .atm_state2d import AtmState2D
+from .matrix import SparseSystemMatrix, add_sparse_system_matrices
 
 
 @dataclass
@@ -53,6 +54,25 @@ def build_source_linearization(
         tendency = tendency + term_tendency
         jacobian = jacobian + term_jacobian
     return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+
+def build_source_global_operator(
+    state: AtmState2D,
+    source_terms: list[LocalSourceTerm],
+) -> SparseSystemMatrix | None:
+    """Combine optional non-local source Jacobians into a global operator."""
+
+    matrices: list[SparseSystemMatrix] = []
+    for term in source_terms:
+        global_operator = getattr(term, "global_operator", None)
+        if global_operator is None:
+            continue
+        matrix = global_operator(state)
+        if matrix is not None:
+            matrices.append(matrix)
+    if not matrices:
+        return None
+    return add_sparse_system_matrices(*matrices)
 
 
 @dataclass

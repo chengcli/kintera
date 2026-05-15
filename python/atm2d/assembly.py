@@ -3,8 +3,12 @@ from __future__ import annotations
 import torch
 
 from .chemistry import build_chemistry_jacobian, build_photochemistry_jacobian
-from .matrix import SparseSystemMatrix
-from .source import LocalSourceTerm, build_source_linearization
+from .matrix import SparseSystemMatrix, add_sparse_system_matrices
+from .source import (
+    LocalSourceTerm,
+    build_source_global_operator,
+    build_source_linearization,
+)
 from .atm_state2d import AtmState2D, SpeciesBoundaryConditions2D
 from .transport import build_transport_matrix
 
@@ -18,6 +22,7 @@ def build_implicit_operator(
     kyz: torch.Tensor | None = None,
     binary_diffusion: torch.Tensor | None = None,
     molecular_weights: torch.Tensor | None = None,
+    species_diffusion_scale: torch.Tensor | None = None,
     kinetics=None,
     photo_chem=None,
     actinic_flux: torch.Tensor | None = None,
@@ -42,6 +47,7 @@ def build_implicit_operator(
         kyz=kyz,
         binary_diffusion=binary_diffusion,
         molecular_weights=molecular_weights,
+        species_diffusion_scale=species_diffusion_scale,
         boundary_conditions=None,
     )
 
@@ -72,6 +78,10 @@ def build_implicit_operator(
         diag_update = diag_update + eye.view(1, 1, state.nspecies, state.nspecies) / dt
 
     matrix = operator.add_diagonal(diag_update)
+    if source_terms is not None:
+        global_source_operator = build_source_global_operator(state, source_terms)
+        if global_source_operator is not None:
+            matrix = add_sparse_system_matrices(matrix, global_source_operator)
     if boundary_conditions is None:
         return matrix
 
@@ -90,6 +100,7 @@ def build_implicit_step_system(
     kyz: torch.Tensor | None = None,
     binary_diffusion: torch.Tensor | None = None,
     molecular_weights: torch.Tensor | None = None,
+    species_diffusion_scale: torch.Tensor | None = None,
     source_terms: list[LocalSourceTerm] | None = None,
 ) -> tuple[SparseSystemMatrix, torch.Tensor]:
     """Build a backward-Euler system with linearized local source terms.
@@ -100,8 +111,10 @@ def build_implicit_step_system(
     """
 
     source_linearization = None
+    global_source_operator = None
     if source_terms is not None:
         source_linearization = build_source_linearization(state, source_terms)
+        global_source_operator = build_source_global_operator(state, source_terms)
     operator = build_implicit_operator(
         state,
         kzz,
@@ -110,6 +123,7 @@ def build_implicit_step_system(
         kyz=kyz,
         binary_diffusion=binary_diffusion,
         molecular_weights=molecular_weights,
+        species_diffusion_scale=species_diffusion_scale,
         source_terms=source_terms,
     )
     identity = torch.eye(operator.nstate, dtype=state.dtype, device=state.device)
@@ -126,5 +140,9 @@ def build_implicit_step_system(
             source_linearization.jacobian,
             state.concentration,
         )
+        if global_source_operator is not None:
+            jacobian_state = jacobian_state + global_source_operator.matvec(
+                state.concentration
+            )
         rhs = rhs + float(dt) * (source_linearization.tendency - jacobian_state)
     return system, rhs

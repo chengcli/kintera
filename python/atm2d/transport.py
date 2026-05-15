@@ -15,6 +15,7 @@ def build_eddy_diffusion_matrix(
     kyy: torch.Tensor | None = None,
     kzy: torch.Tensor | None = None,
     kyz: torch.Tensor | None = None,
+    species_diffusion_scale: torch.Tensor | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
 ) -> SparseSystemMatrix:
     """Assemble the turbulent diffusion operator on the 2D species state.
@@ -37,11 +38,16 @@ def build_eddy_diffusion_matrix(
     rows: list[torch.Tensor] = []
     cols: list[torch.Tensor] = []
     vals: list[torch.Tensor] = []
+    species_scale = _species_diffusion_scale(species_diffusion_scale, state)
     kzz_x1f = _center_to_x1_faces_scalar(kzz, state)
-    _assemble_vertical_scalar_diffusion(rows, cols, vals, state, kzz_x1f[:, 1:-1])
+    _assemble_vertical_scalar_diffusion(
+        rows, cols, vals, state, kzz_x1f[:, 1:-1], species_scale
+    )
     if kyy is not None:
         kyy_x2f = _center_to_x2_faces_scalar(kyy, state)
-        _assemble_horizontal_scalar_diffusion(rows, cols, vals, state, kyy_x2f[1:-1, :])
+        _assemble_horizontal_scalar_diffusion(
+            rows, cols, vals, state, kyy_x2f[1:-1, :], species_scale
+        )
     cross_center = None
     if kzy is not None:
         cross_center = _as_center_scalar(kzy, state)
@@ -50,7 +56,7 @@ def build_eddy_diffusion_matrix(
             cross_center + _as_center_scalar(kyz, state)
         )
     if cross_center is not None and state.ncol > 1 and state.nlyr > 1:
-        _assemble_cross_diffusion(rows, cols, vals, state, cross_center)
+        _assemble_cross_diffusion(rows, cols, vals, state, cross_center, species_scale)
     matrix = _matrix_from_triplets(rows, cols, vals, state)
     return _apply_boundary_conditions(state, matrix, boundary_conditions)
 
@@ -62,6 +68,7 @@ def build_binary_diffusion_matrix(
     *,
     include_gravity: bool = True,
     gas_constant: float = GAS_CONSTANT_CGS,
+    species_diffusion_scale: torch.Tensor | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
 ) -> SparseSystemMatrix:
     """Assemble the vertical multicomponent binary-diffusion operator.
@@ -102,6 +109,7 @@ def build_transport_matrix(
     molecular_weights: torch.Tensor | None = None,
     include_gravity: bool = True,
     gas_constant: float = GAS_CONSTANT_CGS,
+    species_diffusion_scale: torch.Tensor | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
 ) -> SparseSystemMatrix:
     """Assemble the full transport operator from eddy and binary diffusion.
@@ -118,6 +126,7 @@ def build_transport_matrix(
             kyy=kyy,
             kzy=kzy,
             kyz=kyz,
+            species_diffusion_scale=species_diffusion_scale,
             boundary_conditions=None,
         )
     ]
@@ -144,11 +153,12 @@ def _assemble_vertical_scalar_diffusion(
     vals: list[torch.Tensor],
     state: AtmState2D,
     kzz: torch.Tensor,
+    species_scale: torch.Tensor,
 ) -> None:
-    eye = torch.eye(state.nspecies, dtype=state.dtype, device=state.device)
+    diffusion_block = torch.diag(species_scale)
     for icol in range(state.ncol):
         for ilev in range(state.nlyr - 1):
-            block = kzz[icol, ilev] * eye
+            block = kzz[icol, ilev] * diffusion_block
             _add_two_cell_block(rows, cols, vals, state, icol, ilev, icol, ilev + 1, block, axis="z")
 
 
@@ -158,11 +168,12 @@ def _assemble_horizontal_scalar_diffusion(
     vals: list[torch.Tensor],
     state: AtmState2D,
     kyy: torch.Tensor,
+    species_scale: torch.Tensor,
 ) -> None:
-    eye = torch.eye(state.nspecies, dtype=state.dtype, device=state.device)
+    diffusion_block = torch.diag(species_scale)
     for icol in range(state.ncol - 1):
         for ilev in range(state.nlyr):
-            block = kyy[icol, ilev] * eye
+            block = kyy[icol, ilev] * diffusion_block
             _add_two_cell_block(rows, cols, vals, state, icol, ilev, icol + 1, ilev, block, axis="y")
 
 
@@ -210,13 +221,15 @@ def _assemble_cross_diffusion(
     vals: list[torch.Tensor],
     state: AtmState2D,
     kzy_center: torch.Tensor,
+    species_scale: torch.Tensor,
 ) -> None:
+    diffusion_block = torch.diag(species_scale)
     for icol in range(state.ncol):
         for ilev in range(state.nlyr - 1):
             coeff = 0.5 * (kzy_center[icol, ilev] + kzy_center[icol, ilev + 1])
             grad_weights = _average_gradient_weights_y(state, icol, ilev, ilev + 1)
             for src_col, src_lyr, weight in grad_weights:
-                block = coeff * weight * torch.eye(state.nspecies, dtype=state.dtype, device=state.device)
+                block = coeff * weight * diffusion_block
                 _add_scaled_flux_pair(rows, cols, vals, state, icol, ilev, icol, ilev + 1, src_col, src_lyr, block, axis="z")
 
     for icol in range(state.ncol - 1):
@@ -224,7 +237,7 @@ def _assemble_cross_diffusion(
             coeff = 0.5 * (kzy_center[icol, ilev] + kzy_center[icol + 1, ilev])
             grad_weights = _average_gradient_weights_z(state, icol, icol + 1, ilev)
             for src_col, src_lyr, weight in grad_weights:
-                block = coeff * weight * torch.eye(state.nspecies, dtype=state.dtype, device=state.device)
+                block = coeff * weight * diffusion_block
                 _add_scaled_flux_pair(rows, cols, vals, state, icol, ilev, icol + 1, ilev, src_col, src_lyr, block, axis="y")
 
 
@@ -525,6 +538,18 @@ def _as_center_scalar(value: torch.Tensor, state: AtmState2D) -> torch.Tensor:
         return tensor.expand(state.ncol, state.nlyr)
     if tensor.shape != (state.ncol, state.nlyr):
         raise ValueError("centered tensor must have shape (ncol, nlyr)")
+    return tensor
+
+
+def _species_diffusion_scale(
+    value: torch.Tensor | None,
+    state: AtmState2D,
+) -> torch.Tensor:
+    if value is None:
+        return torch.ones(state.nspecies, dtype=state.dtype, device=state.device)
+    tensor = torch.as_tensor(value, dtype=state.dtype, device=state.device)
+    if tensor.shape != (state.nspecies,):
+        raise ValueError("species_diffusion_scale must have shape (nspecies,)")
     return tensor
 
 

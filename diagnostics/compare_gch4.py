@@ -14,25 +14,30 @@ import tempfile
 import torch
 import kintera as kt
 
-TITAN_DIR = "/tmp/KINETICS-base-compare/examples/titan"
+DEFAULT_ROOT = pathlib.Path(__file__).resolve().parent / "KINETICS-base-compare"
+ROOT = pathlib.Path(os.environ.get("KINTERA_KINETICS_BASE_ROOT", DEFAULT_ROOT))
+TITAN_DIR = ROOT / "examples" / "titan"
 PUN_PATH = os.path.join(TITAN_DIR, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.pun")
 RUN_INPUT_PATH = os.path.join(TITAN_DIR, "ions_c6h7+_H2CN.inp-1")
 ATMOSPHERE_PATH = os.path.join(TITAN_DIR, "kintitan.pun_zero_conc_2_mod_atm_orig_3xkzz")
 EXECUTABLE = os.environ.get(
     "KINTERA_KINETICS_BASE_EXECUTABLE",
-    "/tmp/KINETICS-base-compare/build/bin/titan.release",
+    str(ROOT / "build" / "bin" / "titan.release"),
 )
 NTIME = 10
+NETWORK_MODE = os.environ.get("KINTERA_TITAN_NETWORK_MODE", "full")
 
 
 # --------------------------------------------------------------------------- #
 # helpers                                                                      #
 # --------------------------------------------------------------------------- #
 
-def _write_fresh_start_inp(src, dst, ntime):
+def _write_fresh_start_inp(src, dst, ntime, network_mode="full"):
     with open(src) as f:
         text = f.read()
     lines = text.splitlines()
+    if network_mode == "no_grain":
+        _disable_grain_flags(lines)
     for i, line in enumerate(lines):
         if line.strip().startswith("NTIME "):
             for j in range(i + 1, len(lines)):
@@ -48,10 +53,25 @@ def _write_fresh_start_inp(src, dst, ntime):
     raise AssertionError("ISTART field not found")
 
 
-def _run_kinetics_base(ntime, work):
+def _disable_grain_flags(lines):
+    for i, line in enumerate(lines):
+        if line.strip().startswith("FREEZE"):
+            if i + 1 >= len(lines):
+                raise AssertionError("missing gas-grain flag values")
+            parts = lines[i + 1].split()
+            if len(parts) < 2:
+                raise AssertionError("invalid gas-grain flag values")
+            parts[0] = "0"
+            parts[1] = "0"
+            lines[i + 1] = " ".join(parts)
+            return
+    raise AssertionError("gas-grain flag header not found")
+
+
+def _run_kinetics_base(ntime, work, network_mode="full"):
     (work / "prod+loss").mkdir(exist_ok=True)
     inp_dst = work / "fort.81.fresh-start"
-    _write_fresh_start_inp(RUN_INPUT_PATH, inp_dst, ntime)
+    _write_fresh_start_inp(RUN_INPUT_PATH, inp_dst, ntime, network_mode)
     links = {
         "fort.1": PUN_PATH,
         "fort.3": os.path.join(TITAN_DIR, "kintitan.truncate"),
@@ -86,78 +106,68 @@ def _run_kinetics_base(ntime, work):
 
 
 def _write_effective_bc(src, dst, atmosphere):
-    ch4_mr = atmosphere.species_profiles["CH4"][0]
-    lines = []
+    del atmosphere
     with open(src) as f:
-        for line in f:
-            parts = line.split()
-            if len(parts) >= 5 and parts[4] == "CH4" and parts[0] == "5":
-                parts[1] = f"{ch4_mr:.8e}"
-                line = f"{parts[0]} {parts[1]:<18} {parts[2]} {parts[3]:<18} {parts[4]}\n"
-            lines.append(line)
+        lines = f.readlines()
     with open(dst, "w") as f:
         f.writelines(lines)
 
 
 def _run_kintera(titan_state, source_terms, pun_metadata, ntime):
+    source_terms = _filter_source_terms_for_network(source_terms, NETWORK_MODE)
     concentration = titan_state.concentration
-    _lower_boundary_conversions = {
-        "lower_boundary_mixing_ratio_times_density",
-        "lower_boundary_deposition_velocity_zero",
-    }
-    _upper_boundary_conversions = {
-        "upper_boundary_escape_velocity_zero",
-    }
-    _cold_trap_conversions = {
-        "kinetics_base_cheng_cold_trap_mixing_ratio",
-    }
-    boundary_idx = [
-        titan_state.species.index(name)
-        for name, conv in titan_state.conversion.items()
-        if conv in _lower_boundary_conversions
-    ]
-    top_boundary_idx = [
-        titan_state.species.index(name)
-        for name, conv in titan_state.conversion.items()
-        if conv in _upper_boundary_conversions
-    ]
-    cold_trap_idx = [
-        titan_state.species.index(name)
-        for name, conv in titan_state.conversion.items()
-        if conv in _cold_trap_conversions
-    ]
-    nonzero_levels = (titan_state.density[0] > 0).nonzero(as_tuple=True)[0]
-    last_real_lyr = int(nonzero_levels[-1]) if nonzero_levels.numel() > 0 else titan_state.state.nlyr - 1
-    _COLD_TRAP_LEVEL = 23
-    fixed_idx = [
-        titan_state.species.index(name)
-        for name in titan_state.fixed_species
-        if name in titan_state.species
-    ]
     atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
         titan_state, source_terms, pun_metadata=pun_metadata
     )
-    dt = 1e-15
-    growth = 10 ** 0.5
-    for step in range(ntime):
+    species_diffusion_scale = kt.kinetics_base_titan_species_diffusion_scale(
+        titan_state.species,
+        dtype=titan_state.state.dtype,
+        device=titan_state.state.device,
+    )
+    for dt in _fixed_timestep_sequence(ntime):
         titan_state.state.concentration = concentration
         system, rhs = kt.build_implicit_step_system(
-            titan_state.state, titan_state.kzz, dt, source_terms=atm_sources
+            titan_state.state,
+            titan_state.kzz,
+            dt,
+            species_diffusion_scale=species_diffusion_scale,
+            source_terms=atm_sources,
+        )
+        system, rhs = kt.apply_kinetics_base_titan_dirichlet_rows(
+            system,
+            rhs,
+            titan_state,
         )
         concentration = kt.solve_sparse_system(system, rhs)
         concentration = torch.clamp(concentration, min=0.0)
-        if fixed_idx:
-            concentration[:, :, fixed_idx] = titan_state.concentration[:, :, fixed_idx]
-        if boundary_idx:
-            concentration[:, 0, boundary_idx] = titan_state.concentration[:, 0, boundary_idx]
-        if top_boundary_idx:
-            concentration[:, last_real_lyr, top_boundary_idx] = 0.0
-        if cold_trap_idx:
-            concentration[:, _COLD_TRAP_LEVEL, cold_trap_idx] = (
-                titan_state.concentration[:, _COLD_TRAP_LEVEL, cold_trap_idx]
-            )
-        dt *= growth
+        kt.apply_kinetics_base_titan_boundary_pins(concentration, titan_state)
     return concentration[0]  # (nlyr, nspecies)
+
+
+def _fixed_timestep_sequence(ntime):
+    dt = 1.0e-15
+    growth = 10 ** 0.5
+    sequence = []
+    for _ in range(ntime):
+        sequence.append(dt)
+        dt *= growth
+    return sequence
+
+
+def _filter_source_terms_for_network(source_terms, network_mode):
+    if network_mode == "full":
+        return source_terms
+    if network_mode != "no_grain":
+        raise ValueError(f"unknown network mode: {network_mode}")
+    return [
+        term
+        for term in source_terms
+        if not any(_is_grain_related_species(name) for name in term.reactants + term.products)
+    ]
+
+
+def _is_grain_related_species(name):
+    return name in {"SGA", "U"} or name.startswith("G")
 
 
 # --------------------------------------------------------------------------- #
@@ -169,8 +179,8 @@ def main():
         work = pathlib.Path(tmpdir)
 
         # --- run KINETICS-base ---
-        print(f"[1/4] Running KINETICS-base for {NTIME} steps ...")
-        kb_out = _run_kinetics_base(NTIME, work)
+        print(f"[1/4] Running KINETICS-base for {NTIME} steps ({NETWORK_MODE}) ...")
+        kb_out = _run_kinetics_base(NTIME, work, NETWORK_MODE)
 
         initial = kt.parse_kinetics_base_atmosphere(ATMOSPHERE_PATH)
         reference = kt.parse_kinetics_base_atmosphere(str(kb_out))
@@ -209,7 +219,7 @@ def main():
         )
 
         # --- run kintera ---
-        print(f"[4/4] Running kintera for {NTIME} steps ...")
+        print(f"[4/4] Running kintera for {NTIME} steps ({NETWORK_MODE}) ...")
         kt_conc = _run_kintera(titan_state, source_terms, pun_metadata, NTIME)
 
     # --- compare ---

@@ -13,7 +13,9 @@ from ..atm2d import (
     IndexedReversibleFirstOrderSource,
     LocalSourceLinearization,
     LocalSourceTerm,
+    SparseSystemMatrix,
 )
+from ..atm2d.matrix import flatten_state_index
 from .models import KBTitanSourceTerm, KBTitanState
 from .physics import (
     _kinetics_base_species_mass_amu,
@@ -48,7 +50,7 @@ class KBTitanFirstOrderAtm2DSource:
             fixed_species=self.titan_state.fixed_species,
             varying_species=self.titan_state.varying_species,
             conversion=self.titan_state.conversion,
-            concentration=concentration,
+            concentration=self.titan_state.concentration,
             density=self.titan_state.density,
             kzz=self.titan_state.kzz,
             state=state,
@@ -61,17 +63,14 @@ class KBTitanFirstOrderAtm2DSource:
             reactant = species_index.get(term.reactants[0])
             if reactant is None:
                 continue
-            product_indices: list[int] = []
-            seen_products: set[int] = set()
+            product_coefficients: dict[int, int] = {}
             missing_product = False
             for name in term.products:
                 if name not in species_index:
                     missing_product = True
                     continue
                 product = species_index[name]
-                if product not in seen_products:
-                    seen_products.add(product)
-                    product_indices.append(product)
+                product_coefficients[product] = product_coefficients.get(product, 0) + 1
             if missing_product:
                 continue
             rate_profile = _photo_rate_profile(
@@ -101,12 +100,155 @@ class KBTitanFirstOrderAtm2DSource:
                 jacobian[:, :, reactant, reactant] = (
                     jacobian[:, :, reactant, reactant] - rate_profile
                 )
-            for product in product_indices:
-                tendency[:, :, product] = tendency[:, :, product] + rate
+            for product, coefficient in product_coefficients.items():
+                tendency[:, :, product] = tendency[:, :, product] + coefficient * rate
                 jacobian[:, :, product, reactant] = (
-                    jacobian[:, :, product, reactant] + rate_profile
+                    jacobian[:, :, product, reactant] + coefficient * rate_profile
                 )
         return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+
+@dataclass
+class KBTitanProductOnlyCondensationSource:
+    """Titan grain loading source that does not remove the gas parent locally."""
+
+    titan_state: KBTitanState
+    term: KBTitanSourceTerm
+    pun_metadata: dict[str, Any] | None = None
+
+    def linearize(self, state: AtmState2D) -> LocalSourceLinearization:
+        species_index = {name: i for i, name in enumerate(self.titan_state.species)}
+        if len(self.term.reactants) != 2 or len(self.term.products) != 1:
+            return _zero_linearization(state)
+        gas, surface = self.term.reactants
+        grain = self.term.products[0]
+        if gas not in species_index or surface not in species_index or grain not in species_index:
+            return _zero_linearization(state)
+        mass_amu = _kinetics_base_species_mass_amu(gas, self.pun_metadata)
+        if mass_amu <= 0.0:
+            return _zero_linearization(state)
+
+        gas_idx = species_index[gas]
+        surface_idx = species_index[surface]
+        grain_idx = species_index[grain]
+        surface_density = state.concentration[:, :, surface_idx]
+        explicit_rate = float(self.term.parameters.get("A", 0.0))
+        if explicit_rate > 0.0:
+            rate = explicit_rate * surface_density
+        else:
+            rate = (
+                _titan_thermal_velocity(state.temperature, mass_amu)
+                * _titan_sticking_coefficient(gas, stick_x=1.0e-5, stick_h=0.3)
+                * surface_density
+            )
+        gas_value = torch.clamp(state.concentration[:, :, gas_idx], min=0.0)
+        flux = rate * gas_value
+
+        tendency = torch.zeros_like(state.concentration)
+        jacobian = torch.zeros(
+            (state.ncol, state.nlyr, state.nspecies, state.nspecies),
+            dtype=state.dtype,
+            device=state.device,
+        )
+        tendency[:, :, grain_idx] = tendency[:, :, grain_idx] + flux
+        jacobian[:, :, grain_idx, gas_idx] = jacobian[:, :, grain_idx, gas_idx] + rate
+        return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+
+@dataclass
+class KBTitanShiftedSublimationSource:
+    """Titan grain release that deposits gas one vertical level above the grain."""
+
+    titan_state: KBTitanState
+    term: KBTitanSourceTerm
+    pun_metadata: dict[str, Any] | None = None
+
+    def linearize(self, state: AtmState2D) -> LocalSourceLinearization:
+        species_index = {name: i for i, name in enumerate(self.titan_state.species)}
+        if len(self.term.reactants) != 2 or len(self.term.products) != 1:
+            return _zero_linearization(state)
+        grain, _surface = self.term.reactants
+        gas = self.term.products[0]
+        if grain not in species_index or gas not in species_index:
+            return _zero_linearization(state)
+        if "vapor_A" not in self.term.parameters:
+            return _zero_linearization(state)
+        mass_amu = _kinetics_base_species_mass_amu(gas, self.pun_metadata)
+        if mass_amu <= 0.0:
+            return _zero_linearization(state)
+
+        grain_idx = species_index[grain]
+        gas_idx = species_index[gas]
+        rate = _titan_sublimation_rate_profile(
+            state, species_index, self.term.parameters, gas, mass_amu
+        )
+        grain_value = torch.clamp(state.concentration[:, :, grain_idx], min=0.0)
+        flux = rate * grain_value
+
+        tendency = torch.zeros_like(state.concentration)
+        jacobian = torch.zeros(
+            (state.ncol, state.nlyr, state.nspecies, state.nspecies),
+            dtype=state.dtype,
+            device=state.device,
+        )
+        if state.nlyr > 1:
+            active_flux = flux[:, :-1]
+            active_rate = rate[:, :-1]
+            tendency[:, :-1, grain_idx] = tendency[:, :-1, grain_idx] - active_flux
+            tendency[:, 1:, gas_idx] = tendency[:, 1:, gas_idx] + active_flux
+            jacobian[:, :-1, grain_idx, grain_idx] = (
+                jacobian[:, :-1, grain_idx, grain_idx] - active_rate
+            )
+        return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+    def global_operator(self, state: AtmState2D) -> SparseSystemMatrix | None:
+        species_index = {name: i for i, name in enumerate(self.titan_state.species)}
+        if len(self.term.reactants) != 2 or len(self.term.products) != 1:
+            return None
+        grain, _surface = self.term.reactants
+        gas = self.term.products[0]
+        if grain not in species_index or gas not in species_index:
+            return None
+        if "vapor_A" not in self.term.parameters or state.nlyr < 2:
+            return None
+        mass_amu = _kinetics_base_species_mass_amu(gas, self.pun_metadata)
+        if mass_amu <= 0.0:
+            return None
+
+        grain_idx = species_index[grain]
+        gas_idx = species_index[gas]
+        rate = _titan_sublimation_rate_profile(
+            state, species_index, self.term.parameters, gas, mass_amu
+        )
+        active = rate[:, :-1] != 0.0
+        nz = active.nonzero(as_tuple=False)
+        if nz.numel() == 0:
+            return None
+        row_ids = flatten_state_index(
+            nz[:, 0],
+            nz[:, 1] + 1,
+            gas_idx,
+            state.nlyr,
+            state.nspecies,
+        ).to(device=state.concentration.device)
+        col_ids = flatten_state_index(
+            nz[:, 0],
+            nz[:, 1],
+            grain_idx,
+            state.nlyr,
+            state.nspecies,
+        ).to(device=state.concentration.device)
+        values = rate[:, :-1][nz[:, 0], nz[:, 1]]
+        return SparseSystemMatrix.from_coo(
+            torch.stack([row_ids, col_ids]),
+            values,
+            ncol=state.ncol,
+            nlyr=state.nlyr,
+            nspecies=state.nspecies,
+            device=state.concentration.device,
+            dtype=state.dtype,
+        )
+
 
 def build_kinetics_base_titan_atm2d_source_terms(
     titan_state: KBTitanState,
@@ -133,7 +275,11 @@ def build_kinetics_base_titan_atm2d_source_terms(
         )
 
     for term in source_terms:
-        if term.kind == "pun_thermal_reaction":
+        if term.kind in {
+            "pun_thermal_reaction",
+            "pun_ion_mass_action_reaction",
+            "pun_dissociative_recombination",
+        }:
             source = _build_titan_thermal_atm2d_source(titan_state, species_index, term)
             if source is not None:
                 atm_sources.append(source)
@@ -148,6 +294,14 @@ def build_kinetics_base_titan_atm2d_source_terms(
     paired_sublimations: set[int] = set()
     for term in source_terms:
         if term.kind != "titan_condensation":
+            continue
+        if _is_ch4_grain_loading(term):
+            source = KBTitanProductOnlyCondensationSource(
+                titan_state=titan_state,
+                term=term,
+                pun_metadata=pun_metadata,
+            )
+            atm_sources.append(source)
             continue
         pair_key = (
             term.reactants[0],
@@ -167,9 +321,16 @@ def build_kinetics_base_titan_atm2d_source_terms(
             atm_sources.append(source)
     for term in source_terms:
         if term.kind == "titan_sublimation" and id(term) not in paired_sublimations:
-            source = _build_titan_sublimation_atm2d_source(
-                titan_state, species_index, term, pun_metadata
-            )
+            if _is_ch4_shifted_grain_release(term):
+                source = KBTitanShiftedSublimationSource(
+                    titan_state=titan_state,
+                    term=term,
+                    pun_metadata=pun_metadata,
+                )
+            else:
+                source = _build_titan_sublimation_atm2d_source(
+                    titan_state, species_index, term, pun_metadata
+                )
             if source is not None:
                 atm_sources.append(source)
 
@@ -184,6 +345,33 @@ def build_kinetics_base_titan_atm2d_source_terms(
             if source is not None:
                 atm_sources.append(source)
     return atm_sources
+
+
+def _zero_linearization(state: AtmState2D) -> LocalSourceLinearization:
+    return LocalSourceLinearization(
+        tendency=torch.zeros_like(state.concentration),
+        jacobian=torch.zeros(
+            (state.ncol, state.nlyr, state.nspecies, state.nspecies),
+            dtype=state.dtype,
+            device=state.device,
+        ),
+    )
+
+
+def _is_ch4_grain_loading(term: KBTitanSourceTerm) -> bool:
+    return (
+        term.kind == "titan_condensation"
+        and term.reactants == ["CH4", "SGA"]
+        and term.products == ["GCH4"]
+    )
+
+
+def _is_ch4_shifted_grain_release(term: KBTitanSourceTerm) -> bool:
+    return (
+        term.kind == "titan_sublimation"
+        and term.reactants == ["GCH4", "U"]
+        and term.products == ["CH4"]
+    )
 
 def _build_titan_thermal_atm2d_source(
     titan_state: KBTitanState,
@@ -218,7 +406,7 @@ def _build_titan_condensation_atm2d_source(
     species_index: dict[str, int],
     term: KBTitanSourceTerm,
     pun_metadata: dict[str, Any] | None,
-) -> IndexedMassActionSource | None:
+) -> IndexedFirstOrderSource | None:
     if len(term.reactants) != 2 or len(term.products) != 1:
         return None
     gas, surface = term.reactants
@@ -230,16 +418,20 @@ def _build_titan_condensation_atm2d_source(
         return None
 
     def rate_provider(state: AtmState2D) -> torch.Tensor:
-        return _titan_thermal_velocity(state.temperature, mass_amu) * _titan_sticking_coefficient(
-            gas, stick_x=1.0e-5, stick_h=0.3
+        surface_density = state.concentration[:, :, species_index[surface]]
+        explicit_rate = float(term.parameters.get("A", 0.0))
+        if explicit_rate > 0.0:
+            return explicit_rate * surface_density
+        return (
+            _titan_thermal_velocity(state.temperature, mass_amu)
+            * _titan_sticking_coefficient(gas, stick_x=1.0e-5, stick_h=0.3)
+            * surface_density
         )
 
-    return IndexedMassActionSource(
-        reactants=[species_index[gas], species_index[surface]],
+    return IndexedFirstOrderSource(
+        reactant=species_index[gas],
         products=[species_index[product]],
-        reactant_coefficients=[1, 1],
-        product_coefficients=[1],
-        rate_constant=rate_provider,
+        rate=rate_provider,
     )
 
 def _build_titan_sublimation_atm2d_source(
@@ -294,6 +486,9 @@ def _build_titan_condensation_pair_atm2d_source(
 
     def condensation_rate(state: AtmState2D) -> torch.Tensor:
         sga = state.concentration[:, :, species_index["SGA"]]
+        explicit_rate = float(condensation.parameters.get("A", 0.0))
+        if explicit_rate > 0.0:
+            return explicit_rate * sga
         return (
             _titan_thermal_velocity(state.temperature, mass_amu)
             * _titan_sticking_coefficient(gas, stick_x=1.0e-5, stick_h=0.3)

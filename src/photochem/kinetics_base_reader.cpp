@@ -943,10 +943,64 @@ KBTitanNetwork parse_kinetics_base_titan(
   return network;
 }
 
+static int kinetics_base_species_charge(std::string const& name) {
+  if (name == "E") return -1;
+  if (!name.empty() && name.back() == '+') return 1;
+  if (!name.empty() && name.back() == '-') return -1;
+  return 0;
+}
+
+static std::vector<std::string> species_names_from_ids(
+    std::vector<int> const& ids,
+    std::map<int, std::string> const& species_by_id) {
+  std::vector<std::string> names;
+  for (int id : ids) {
+    auto it = species_by_id.find(id);
+    if (it != species_by_id.end()) {
+      names.push_back(it->second);
+    }
+  }
+  return names;
+}
+
+static int total_charge(std::vector<std::string> const& names) {
+  int charge = 0;
+  for (auto const& name : names) {
+    charge += kinetics_base_species_charge(name);
+  }
+  return charge;
+}
+
+static bool has_electron(std::vector<std::string> const& names) {
+  return std::find(names.begin(), names.end(), "E") != names.end();
+}
+
+static bool has_positive_ion(std::vector<std::string> const& names) {
+  return std::any_of(names.begin(), names.end(), [](std::string const& name) {
+    return kinetics_base_species_charge(name) > 0;
+  });
+}
+
+static bool has_negative_ion(std::vector<std::string> const& names) {
+  return std::any_of(names.begin(), names.end(), [](std::string const& name) {
+    return name != "E" && kinetics_base_species_charge(name) < 0;
+  });
+}
+
 KBTitanReactionReport classify_kinetics_base_titan_reactions(
     KBTitanNetwork const& titan) {
   KBTitanReactionReport report;
   report.total_reactions = static_cast<int>(titan.pun.reactions.size());
+
+  std::map<int, std::string> species_by_id;
+  for (auto const& species : titan.pun.species) {
+    species_by_id[species.id] = species.name;
+    if (kinetics_base_species_charge(species.name) != 0) {
+      report.charged_species.push_back(species.name);
+    }
+  }
+  report.charged_species_count =
+      static_cast<int>(report.charged_species.size());
 
   std::set<int> selected_photo_ids(
       titan.selection.photolysis_reaction_ids.begin(),
@@ -958,13 +1012,49 @@ KBTitanReactionReport classify_kinetics_base_titan_reactions(
       report.missing_rate_blocks++;
     }
 
+    auto reactants = species_names_from_ids(reaction.reactant_ids, species_by_id);
+    auto products = species_names_from_ids(reaction.product_ids, species_by_id);
+    int reactant_charge = total_charge(reactants);
+    int product_charge = total_charge(products);
+    bool charged = reactant_charge != 0 || product_charge != 0 ||
+                   has_electron(reactants) || has_electron(products) ||
+                   has_positive_ion(reactants) || has_positive_ion(products) ||
+                   has_negative_ion(reactants) || has_negative_ion(products);
+    if (charged) {
+      report.charged_reactions++;
+      if (reactant_charge == product_charge) {
+        report.charge_balanced_reactions++;
+      } else {
+        report.charge_imbalanced_reactions++;
+        report.charge_imbalanced_reaction_ids.push_back(reaction.id);
+      }
+    }
+    if (has_electron(reactants)) report.electron_reactant_reactions++;
+    if (has_electron(products)) report.electron_product_reactions++;
+    if (has_positive_ion(reactants)) report.cation_reactant_reactions++;
+    if (has_positive_ion(products)) report.cation_product_reactions++;
+    if (has_negative_ion(reactants)) report.anion_reactant_reactions++;
+    if (has_negative_ion(products)) report.anion_product_reactions++;
+
     if (selected_photo_ids.count(reaction.id) != 0) {
       report.selected_photolysis_reactions++;
       report.selected_photolysis_ids.push_back(reaction.id);
+      if (has_electron(products) || has_positive_ion(products) ||
+          has_negative_ion(products)) {
+        report.selected_electron_impact_reactions++;
+      }
       continue;
     }
 
     report.thermal_candidate_reactions++;
+    if (charged) {
+      report.charged_thermal_candidate_reactions++;
+      if (has_electron(reactants) && has_positive_ion(reactants)) {
+        report.dissociative_recombination_reactions++;
+      } else {
+        report.ion_mass_action_reactions++;
+      }
+    }
     if (reaction.reactant_ids.empty() || reaction.product_ids.empty() ||
         reaction.rate_blocks.empty()) {
       report.unsupported_reaction_ids.push_back(reaction.id);

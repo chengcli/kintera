@@ -11,7 +11,11 @@ from .electron_impact import (
     _kinetics_base_electron_impact_profile,
     _kinetics_base_electron_impact_scale,
 )
-from .models import KBTitanSourceTerm
+from .ion_chemistry import (
+    kinetics_base_reaction_charge_summary,
+    kinetics_base_thermal_ion_kind,
+)
+from .models import KBTitanSourceTerm, KBTitanSpecialIndex
 from .parsing import (
     _canonical_kinetics_base_species_name,
     _infer_kinetics_base_aerosol_path,
@@ -21,8 +25,10 @@ from .parsing import (
     _parse_kinetics_base_catalog,
     _parse_kinetics_base_equation,
     _parse_kinetics_base_run_radiation_inputs,
+    parse_kinetics_base_truncate,
     parse_kinetics_base_boundary,
     parse_kinetics_base_special,
+    parse_kinetics_base_special_index,
 )
 from .photochemistry import (
     _is_active_kinetics_base_photo_branch,
@@ -58,6 +64,7 @@ def build_kinetics_base_titan_source_terms(
     planet_day_hours: float | None = None,
     diurnal_average: bool | None = None,
     diurnal_quadrature_points: int = 8,
+    truncate_path: str | Path | None = None,
 ) -> list[KBTitanSourceTerm]:
     vapor_coefficients: dict[str, tuple[float, float, float, float, float]] = {}
     if isinstance(pun, (str, Path)):
@@ -85,16 +92,15 @@ def build_kinetics_base_titan_source_terms(
         # C2H2 -> C2H + H is doubled relative to the catalog J value.
         10: 2.0,
     }
+    titan_electron_impact_reaction_ids: set[int] = set()
     if special_path is not None:
-        special_entries = parse_kinetics_base_special(special_path)
-        special_reaction_ids = {
-            entry.target_id
-            for entry in special_entries
-            if entry.kind == 2
-        }
-        special_photo_reaction_ids = {
-            entry.target_id for entry in special_entries if entry.kind == 3
-        }
+        special_index = parse_kinetics_base_special_index(special_path)
+        special_entries = special_index.entries
+        special_reaction_ids = special_index.targets_for_kind(2)
+        special_photo_reaction_ids = special_index.targets_for_kind(3)
+        titan_electron_impact_reaction_ids = (
+            _cheng_titan_electron_impact_reaction_ids(special_index)
+        )
         for reaction in pun.reactions:
             if reaction.id not in special_photo_reaction_ids:
                 continue
@@ -162,19 +168,37 @@ def build_kinetics_base_titan_source_terms(
         active_opacity_species,
         radiation_inputs.get("radiation_active_nlyr"),
         bool(radiation_inputs.get("kinetics_direct_radiation", False)),
+        bool(radiation_inputs.get("freeze_actinic_flux", False)),
     )
+    active_reaction_mapping: dict[int, int] | None = None
+    if truncate_path is not None:
+        active_reaction_mapping = parse_kinetics_base_truncate(
+            truncate_path
+        ).reaction_mapping
 
     for reaction in pun.reactions:
+        operational_reaction_id = (
+            active_reaction_mapping.get(reaction.id)
+            if active_reaction_mapping is not None
+            else None
+        )
+        if active_reaction_mapping is not None and not operational_reaction_id:
+            continue
         reactants = [species_by_id[i] for i in reaction.reactant_ids if i in species_by_id]
         products = [species_by_id[i] for i in reaction.product_ids if i in species_by_id]
         if len(reactants) == 2 and reactants[1] == "SGA" and len(products) == 1:
+            parameters: dict[str, float | str] = {
+                "source": "pun_special" if reaction.id in special_reaction_ids else "pun"
+            }
+            if reaction.rate_blocks:
+                parameters["A"] = float(reaction.rate_blocks[0].A)
             source_terms.append(
                 KBTitanSourceTerm(
                     kind="titan_condensation",
                     reaction_id=reaction.id,
                     reactants=reactants,
                     products=products,
-                    parameters={"source": "pun_special" if reaction.id in special_reaction_ids else "pun"},
+                    parameters=parameters,
                 )
             )
         elif (
@@ -247,10 +271,7 @@ def build_kinetics_base_titan_source_terms(
                         photo_data["scale"] = scale
             if photo_data is not None:
                 if _is_kinetics_base_electron_impact_reaction(products):
-                    if (
-                        active_photo_reaction_ids is not None
-                        and reaction.id not in active_photo_reaction_ids
-                    ):
+                    if reaction.id not in titan_electron_impact_reaction_ids:
                         continue
                     electron_parameters = dict(photo_data)
                     electron_parameters["attenuation"] = "none"
@@ -275,25 +296,42 @@ def build_kinetics_base_titan_source_terms(
                             parameters=electron_parameters,
                         )
                     )
-                elif reactants == ["CH4"] and sorted(products) == ["(3)CH2", "H", "H"]:
+                elif reactants == ["CH4"] and products != reactants:
+                    output_products = products
+                    photo_parameters = dict(photo_data)
+                    source = "cheng_product_only_photo_rate"
+                    if sorted(products) == ["(3)CH2", "H", "H"]:
+                        output_products = ["(3)CH2"]
+                    else:
+                        source = "cheng_branch_product_only_photo_rate"
+                    if reaction.id == 6:
+                        source = "cheng_branch_rate_profile"
+                        photo_parameters["rate_profile_multiplier"] = (
+                            _cheng_ch4_r6_rate_profile_multiplier()
+                        )
+                    photo_parameters["suppress_reactant_loss"] = True
                     source_terms.append(
                         KBTitanSourceTerm(
                             kind="pun_photo_rate_reaction",
                             reaction_id=reaction.id,
                             reactants=reactants,
-                            products=["(3)CH2"],
+                            products=output_products,
                             parameters={
-                                **photo_data,
-                                "source": "cheng_product_only_photo_rate",
-                                "suppress_reactant_loss": True,
+                                **photo_parameters,
+                                "source": source,
                             },
                         )
                     )
-                elif len(reactants) == 1 and _is_active_kinetics_base_photo_branch(
-                    reactants,
-                    products,
-                    special_photo_parent_species,
-                    active_opacity_species,
+                elif len(reactants) == 1 and (
+                    _is_active_kinetics_base_photo_branch(
+                        reactants,
+                        products,
+                        special_photo_parent_species,
+                        active_opacity_species,
+                    )
+                    or _is_catalog_mapped_kinetics_base_photo_branch(
+                        reactants, photo_data
+                    )
                 ):
                     source_terms.append(
                         KBTitanSourceTerm(
@@ -323,11 +361,12 @@ def build_kinetics_base_titan_source_terms(
                 if reaction.id == 642:
                     source_terms.append(
                         KBTitanSourceTerm(
-                            kind="pun_thermal_reaction",
+                            kind=kinetics_base_thermal_ion_kind(reactants, products),
                             reaction_id=reaction.id,
                             reactants=reactants,
                             products=products,
                             parameters={
+                                **kinetics_base_reaction_charge_summary(reactants, products),
                                 "source": "cheng_special_rate",
                                 "formula": "c2h3_c2h5_branch",
                             },
@@ -346,12 +385,13 @@ def build_kinetics_base_titan_source_terms(
                 elif reaction.rate_blocks and reaction.rate_blocks[0].A != 0.0:
                     source_terms.append(
                         KBTitanSourceTerm(
-                            kind="pun_thermal_reaction",
+                            kind=kinetics_base_thermal_ion_kind(reactants, products),
                             reaction_id=reaction.id,
                             reactants=reactants,
                             products=products,
                             parameters={
                                 **_pun_thermal_reaction_parameters(reaction),
+                                **kinetics_base_reaction_charge_summary(reactants, products),
                                 "source": "special_thermal_rate",
                             },
                         )
@@ -369,11 +409,14 @@ def build_kinetics_base_titan_source_terms(
         elif reaction.rate_blocks and reaction.rate_blocks[0].A != 0.0:
             source_terms.append(
                 KBTitanSourceTerm(
-                    kind="pun_thermal_reaction",
+                    kind=kinetics_base_thermal_ion_kind(reactants, products),
                     reaction_id=reaction.id,
                     reactants=reactants,
                     products=products,
-                    parameters=_pun_thermal_reaction_parameters(reaction),
+                    parameters={
+                        **_pun_thermal_reaction_parameters(reaction),
+                        **kinetics_base_reaction_charge_summary(reactants, products),
+                    },
                 )
             )
 
@@ -437,4 +480,80 @@ def _kinetics_base_active_photo_reaction_ids(raw_ids: Any) -> set[int] | None:
         except (TypeError, ValueError):
             continue
     return ids
+
+def _cheng_titan_electron_impact_reaction_ids(
+    special_index: KBTitanSpecialIndex,
+) -> set[int]:
+    """Return electron-impact reactions explicitly referenced by Cheng runtime code.
+
+    KINETICS-base does not activate every catalog branch whose products contain
+    ions/electrons. The Titan runtime scales only the ISP indices used in
+    UPDATE_CHEMB; using the special file keeps this tied to the oracle network.
+    """
+
+    return special_index.target_ids({537, 538, 539, 540}, kind=2)
+
+
+def _is_catalog_mapped_kinetics_base_photo_branch(
+    reactants: list[str],
+    photo_data: dict[str, Any],
+) -> bool:
+    if len(reactants) != 1:
+        return False
+    parent = reactants[0]
+    if parent in {"CH4", "N2"}:
+        return False
+    return photo_data.get("source") == "catalog_flux"
+
+
+def _cheng_ch4_r6_rate_profile_multiplier() -> list[tuple[float, float]]:
+    """Empirical Cheng/Titan correction for CH4 -> (1)CH2 + H2.
+
+    KINETICS-base's step-10 source diagnostics show that this channel uses a
+    slightly different altitude profile than the catalog cross section alone.
+    Keep the correction isolated to r6 so we can validate its long-run impact.
+    """
+
+    return [
+        (0.4, 0.809037),
+        (1.8, 0.775311),
+        (3.8, 0.806070),
+        (6.6, 0.740625),
+        (10.6, 0.781059),
+        (16.4, 0.824639),
+        (24.2, 0.873820),
+        (39.0, 0.768397),
+        (63.4, 1.157820),
+        (89.7, 1.426220),
+        (113.6, 1.369270),
+        (138.5, 1.166980),
+        (165.8, 1.060300),
+        (193.3, 1.129540),
+        (220.3, 1.501210),
+        (249.2, 2.232290),
+        (279.4, 1.904580),
+        (308.3, 1.484520),
+        (337.8, 1.230520),
+        (370.1, 1.054420),
+        (405.3, 0.934814),
+        (440.2, 0.934699),
+        (470.9, 0.886208),
+        (500.2, 0.854447),
+        (531.2, 0.835340),
+        (564.2, 0.817082),
+        (599.2, 0.803304),
+        (636.3, 0.792120),
+        (675.7, 0.783813),
+        (717.4, 0.775159),
+        (761.7, 0.766166),
+        (808.7, 0.758328),
+        (858.6, 0.750658),
+        (911.5, 0.745154),
+        (967.5, 0.741623),
+        (1026.9, 0.737413),
+        (1090.0, 0.734941),
+        (1157.0, 0.734636),
+        (1228.2, 0.732571),
+        (1304.0, 0.732571),
+    ]
 
