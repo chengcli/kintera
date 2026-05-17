@@ -28,23 +28,27 @@ ATMOSPHERE_PATH = TITAN_DIR / "kintitan.pun_zero_conc_2_mod_atm_orig_3xkzz"
 
 NTIME = int(os.environ.get("KINTERA_TITAN_NTIME", "50"))
 MAX_SUBDIVISIONS = int(os.environ.get("KINTERA_TITAN_MAX_SUBDIV", "20"))
-NEWTON_MAX_ITER = int(os.environ.get("KINTERA_NEWTON_MAX_ITER", "30"))
+# Newton parameters mirror KB's MARCH: ITER=8 max inner iterations, partial
+# step (damp=0.3) so we don't fully converge to the non-physical fixed-point
+# branch at large dt. With these together kintera reproduces KB's mid-altitude
+# chemistry (HCN, C2H6, CH3 lev 15-35) within 1-2x; without them (max_iter=30,
+# damp=1.0) Newton finds a runaway ion solution at lev 0-15 around dt~1e+5 s.
+NEWTON_MAX_ITER = int(os.environ.get("KINTERA_NEWTON_MAX_ITER", "8"))
 # Behavior on Newton iterates that go negative. KB's CONVRG with ICNV=2 takes
 # ABS() (reflects back positive). Set to "abs" to mirror KB; default is
 # clip-to-zero (less aggressive).
 NEWTON_CLIP_NEG = os.environ.get("KINTERA_NEWTON_CLIP_NEGATIVE", "clip")
 _clip_arg = "abs" if NEWTON_CLIP_NEG == "abs" else (NEWTON_CLIP_NEG != "false")
 NEWTON_TOL = float(os.environ.get("KINTERA_NEWTON_TOL", "1e-4"))
-NEWTON_DAMP_FACTOR = float(os.environ.get("KINTERA_NEWTON_DAMP_FACTOR", "1.0"))
-NEWTON_DAMP_TRIGGER = float(os.environ.get("KINTERA_NEWTON_DAMP_TRIGGER", "1.0"))
+NEWTON_DAMP_FACTOR = float(os.environ.get("KINTERA_NEWTON_DAMP_FACTOR", "0.3"))
+NEWTON_DAMP_TRIGGER = float(os.environ.get("KINTERA_NEWTON_DAMP_TRIGGER", "0.5"))
 SCHEDULE = os.environ.get("KINTERA_TITAN_SCHEDULE", "kb")
-# Photochemical QSS initialization: multi-stage chemistry-only BE solver that
-# pushes fast species (ions, radicals) to P=L equilibrium before time-stepping.
-# Stages cascade from dt=1s through QSS_INIT_DT geometrically; each stage
-# starts from the previous stage's near-equilibrium state so slower chemistry
-# chains can propagate without overshoot. Slow species (CH4, N2) barely move
-# because their τ >> stage dts. Set QSS_INIT_DT=0 to disable.
-QSS_INIT_DT = float(os.environ.get("KINTERA_TITAN_QSS_INIT_DT", "86400.0"))
+# Photochemical QSS initialization (multi-stage chemistry-only Newton at growing
+# dt) was useful when the legacy schedule capped at dt=10800s. With the fixed
+# KB schedule (NCYCLE=2, no stage cap) the natural ramp from dt=1e-15 already
+# covers chemistry warmup; QSS init is redundant and tends to over-shoot fast
+# species at lev 0-15. Default off; set KINTERA_TITAN_QSS_INIT_DT > 0 to enable.
+QSS_INIT_DT = float(os.environ.get("KINTERA_TITAN_QSS_INIT_DT", "0"))
 QSS_INIT_MAX_ITER = int(os.environ.get("KINTERA_TITAN_QSS_INIT_MAX_ITER", "100"))
 
 
