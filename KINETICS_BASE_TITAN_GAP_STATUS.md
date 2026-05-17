@@ -2,7 +2,22 @@
 
 这份文档是 Titan/KINETICS-base 兼容工作的当前唯一状态总览。旧的实现计划和阶段性分析文档只保留索引，不再作为事实来源。
 
-## 当前结论
+## 当前结论 (2026-05-17 update)
+
+经过本次大幅 audit + fix，`no_grain` baseline 在 `NTIME=50` 稳定不溢出，并且和 KB-Linux NT=50 oracle 在中高空 (lev 15–35) 多个 neutral species 上对到 1–2x：
+
+- **Schedule fix** (`python/kinetics_base_titan/schedule.py`): KB 实际 `NCYCLE=2`（而不是 inp 上写的 10，原因是 Fortran read 字段顺序读到 `DELTEM=0` 后默认回退到 2），`__EARTH` stage cap 对 Titan 不生效，因此 dt 实际从 1e-15 按 √10 每步 grow 到 NT=50 时 `≈3e9 s`，对应 ~150 年物理时间——KB 早就 long-integration 了，不是我们之前以为的 nanoseconds。
+- **Newton matrix rescaling** (`python/atm2d/newton.py`): chemistry-only Newton 改用 KB 同款的 `B = I/dt - J` 形式求解 `B·Δc = QV`。dt-multiplied 项在 1e+5+ dt 下会损失 13 位精度并把 Newton 推到非物理 fixed-point；rescaling 后稳定到 dt~1e+10。
+- **E in fixed_species** (`python/kinetics_base_titan/atmosphere.py`): KB NFIX=8 包含 E，我们之前只有 7。固定 E 后离子在中高空 cation cascade 不再无限堆积。
+- **Newton ITER/IDAMP 对齐** (`diagnostics/no_grain_stability.py` defaults): `max_iter=8 + damp=0.3` 镜像 KB MARCH 的 `ITER=8 + IDAMP` partial-step 行为，避免在 KB-schedule 大 dt 下 fully converge 到 Newton 的非物理基。
+
+剩余 gap：低空 (lev 0–15) 离子（NH4+、C4H9+、c-C3H3+ 等）仍有 several orders of magnitude 的 over-production。质量守恒在 `no_grain` baseline 下被打破：最终 column N atoms = 2.6× 初始 N2 reservoir。原因是 `N2` 固定 + 大 dt + cascading non-physical Newton solution。**不是单纯 N2 photolysis** 造成的（实验证实：完全 disable N2 photo 后 max|c| 反而更高）；推测属于 large-dt Newton 找到了 chemistry 网络里另一个 fixed-point basin。后续修复方向：
+
+- coupled Newton 也做同款 1/dt rescaling（已尝试，small-dt 受 numerical noise 影响 reject 步太多，需要 conditional/threshold 切换）。
+- 在 chemistry-only Newton 里加 trust-region 或 mass-conservation cap。
+- 找 KB 在 large dt 下避开非物理 fixed-point 的具体机制（可能在 MARCH 的 `IDAMP` 或 `CONVRG` 里）。
+
+## 历史结论 (pre-2026-05-17)
 
 我们已经把大部分“输入语义”和“source 语义”对齐到 KINETICS-base，但长时间积分还没有完全闭合。当前最重要的判断是：
 
