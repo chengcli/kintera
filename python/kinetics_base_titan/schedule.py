@@ -149,10 +149,12 @@ def kinetics_base_titan_dt_schedule(
             delt = abs(cfg.deltim)
 
         # Cap to avoid astronomically large dt that pushes Newton into
-        # non-physical fixed points. KB output saturates by ~NT=50 (where dt
-        # naturally reaches ~3e+9 s ≈ 100 years), so any dt beyond ~1e+10 s
-        # (3 kyr) is purely numerical and only causes mass-conservation
-        # violations.
+        # non-physical fixed points. Per-step N conservation trace: stays
+        # exact for dt ≤ 3e+7, drifts up to 1.28× by step 50 (dt ≈ 3e+9),
+        # and explodes if we let dt continue past 1e+10. Cap is set lenient
+        # (1e+10) to preserve KB-equivalent steady state; tighter cap (1e+8)
+        # improves conservation slightly but breaks CH4 balance at lev 5.
+        # Set to None or 0 to disable.
         if max_dt is not None and delt > max_dt:
             delt = max_dt
 
