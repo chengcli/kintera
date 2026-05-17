@@ -92,6 +92,7 @@ def kinetics_base_titan_dt_schedule(
     *,
     deltim: float = -1.0e-15,
     ncycle: int = _KB_TITAN_EFFECTIVE_NCYCLE,
+    max_dt: float = 1.0e+10,
     branch: int = 1,
 ) -> list[float]:
     """Return KB's per-step ``DELT`` sequence for ``ntime`` steps.
@@ -146,6 +147,14 @@ def kinetics_base_titan_dt_schedule(
                 delt = delt_prev * ramp_factor
         else:
             delt = abs(cfg.deltim)
+
+        # Cap to avoid astronomically large dt that pushes Newton into
+        # non-physical fixed points. KB output saturates by ~NT=50 (where dt
+        # naturally reaches ~3e+9 s ≈ 100 years), so any dt beyond ~1e+10 s
+        # (3 kyr) is purely numerical and only causes mass-conservation
+        # violations.
+        if max_dt is not None and delt > max_dt:
+            delt = max_dt
 
         sequence.append(delt)
         delt_prev = delt

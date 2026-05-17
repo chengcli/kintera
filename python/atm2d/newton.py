@@ -254,6 +254,8 @@ def chemistry_only_newton_step(
     divergence_growth_factor: float = 10.0,
     divergence_threshold: float = 1e6,
     clip_negative: bool | str = True,
+    mass_conservation_cap: bool = True,
+    max_concentration_cap: "torch.Tensor | None" = None,
     record_residuals: bool = False,
 ) -> NewtonResult:
     """Per-cell chemistry-only Newton iteration of one backward-Euler step.
@@ -300,6 +302,29 @@ def chemistry_only_newton_step(
 
     nspecies = state.nspecies
     eye = torch.eye(nspecies, dtype=state.dtype, device=state.device)
+
+    # Mass-conservation cap: no individual species can exceed a reference
+    # density. Without this, Newton at very large dt (~1e+8 s+) finds
+    # non-physical fixed-points where trace species accumulate to 10–1000× the
+    # local density, violating atomic conservation. Mirrors a soft version of
+    # KB CONVRG's behaviour: KB doesn't let trace species explode past the
+    # dominant background density either.
+    #
+    # When ``max_concentration_cap`` is provided (shape (ncol, nlyr, 1) or
+    # (ncol, nlyr) — broadcast to (..., 1)), it's used directly as the per-cell
+    # cap. This should be set to the **initial** total density so the cap
+    # doesn't grow if trace species themselves grow (otherwise the cap becomes
+    # self-fulfilling). When omitted, falls back to ``sum(c0)`` at this BE
+    # step, which is OK at small dt but drifts at large dt.
+    if max_concentration_cap is not None:
+        cap = max_concentration_cap
+        if cap.dim() == 2:
+            cap = cap.unsqueeze(-1)
+        cell_total_density = cap.to(dtype=c0.dtype, device=c0.device)
+    elif mass_conservation_cap:
+        cell_total_density = c0.sum(dim=-1, keepdim=True)  # (ncol, nlyr, 1)
+    else:
+        cell_total_density = None
 
     for k in range(max_iterations):
         state.concentration = c_k
@@ -355,6 +380,13 @@ def chemistry_only_newton_step(
             c_new = torch.abs(c_new)
         elif clip_negative:
             c_new = torch.clamp(c_new, min=0.0)
+
+        # Mass-conservation cap: no individual species can exceed the total
+        # cell density. Without this, Newton at very large dt finds non-physical
+        # fixed-points where trace species accumulate to 10–1000× the local
+        # density.
+        if cell_total_density is not None:
+            c_new = torch.minimum(c_new, cell_total_density)
 
         if concentration_postprocess is not None:
             c_new = concentration_postprocess(c_new)
