@@ -88,7 +88,7 @@ def build_kinetics_base_titan_state(
     selected_species = species or list(atmosphere.species_profiles.keys())
     fixed = fixed_species or [
         name
-        for name in ["JDUST", "N2", "PROD", "U", "RAYEAR", "SGA", "M"]
+        for name in ["JDUST", "N2", "E", "PROD", "U", "RAYEAR", "SGA", "M"]
         if name in selected_species
     ]
     fixed_set = set(fixed)

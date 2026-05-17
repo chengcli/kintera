@@ -102,12 +102,19 @@ def build_implicit_step_system(
     molecular_weights: torch.Tensor | None = None,
     species_diffusion_scale: torch.Tensor | None = None,
     source_terms: list[LocalSourceTerm] | None = None,
+    c0: torch.Tensor | None = None,
 ) -> tuple[SparseSystemMatrix, torch.Tensor]:
     """Build a backward-Euler system with linearized local source terms.
 
     Source terms are linearized around ``state.concentration`` as
-    ``S(c_new) ~= S(c0) + J(c_new - c0)``. The returned system solves
-    ``(I - dt * (T + J)) c_new = c0 + dt * (S(c0) - J c0)``.
+    ``S(c_new) ~= S(c_k) + J(c_k) * (c_new - c_k)`` where ``c_k`` is taken from
+    ``state.concentration``. The returned system solves
+    ``(I - dt * (T + J(c_k))) c_new = c0 + dt * (S(c_k) - J(c_k) c_k)``.
+
+    When ``c0`` is omitted the RHS uses ``state.concentration`` itself as the
+    backward-Euler starting point — this is the original single-shot frozen
+    linearization. Pass ``c0`` explicitly to keep the BE starting point fixed
+    across Newton iterations that re-linearize at successive ``c_k``.
     """
 
     source_linearization = None
@@ -133,7 +140,7 @@ def build_implicit_step_system(
         nlyr=state.nlyr,
         nspecies=state.nspecies,
     )
-    rhs = state.concentration
+    rhs = state.concentration if c0 is None else c0
     if source_linearization is not None:
         jacobian_state = torch.einsum(
             "clij,clj->cli",

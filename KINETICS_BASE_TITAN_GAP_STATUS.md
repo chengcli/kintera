@@ -106,24 +106,147 @@ python -m pytest tests/test_atm2d.py tests/test_kinetics_base.py -q
 
 ### 1. Baseline Stiff-Network Timestep Control
 
-这是当前优先级最高的 gap。
+#### 第一层：subdivision-on-rejection controller（已实现）
 
-问题：
+`python/atm2d/timestep.py` 提供 `adaptive_advance(state, dt_target, step_fn, ...)`，行为：
 
-- kintera 诊断目前仍按 KB negative-`DELTIM` startup sequence 固定推进。
-- 如果某个大步导致 bad solve，当前流程可能在 clamp 后继续推进坏状态。
-- KB/VULCAN 类模型通常会 reject bad step、缩小 timestep、重新求解，而不是接受坏状态。
+- 调用 `step_fn(state, dt)` 拿到 candidate concentration；
+- `default_accept` 检查 non-finite / 严重负值（per-species threshold）/ 绝对量级 cap；
+- reject 则 `dt *= shrink_factor` 重试，accept 则下一次最多 `grow_factor` 放大；
+- 超过 `max_subdivisions` 仍 reject 就抛 `RuntimeError`。
 
-建议：
+`diagnostics/compare_gch4.py` 已切到该 controller；`NTIME` 通过 `KINTERA_TITAN_NTIME` 配置，
+`max_subdivisions` 通过 `KINTERA_TITAN_MAX_SUBDIV` 配置。Unit tests 在
+`tests/test_adaptive_timestep.py`（10/10 passed 纯 python 验证）。
 
-- 先实现一个清晰、可测试的 timestep acceptance controller。
-- 最小版本可以包在现有 backward-Euler implicit solve 外层：
-  - reject non-finite solve；
-  - reject 严重负值；
-  - step doubling 或 embedded estimate 估计误差；
-  - retry with smaller `dt`；
-  - 限制 `dt` 增长。
-- 不建议把半成品 adaptive controller 混进当前 commit；应该作为独立 PR/commit 做。
+验收 (TODO 用户在 macOS 或 docker 环境跑)：
+```bash
+KINTERA_TITAN_NETWORK_MODE=no_grain KINTERA_TITAN_NTIME=50 \
+    python diagnostics/compare_gch4.py
+```
+应无 NaN/Inf，trace 显示 subdivision 增多但不 collapse。
+
+#### KB Fortran timestep 行为 audit（重要发现）
+
+针对 `diagnostics/KINETICS-base-compare/src/KINETGENX/` 的审计揭示：
+
+1. **KB 真实 dt schedule 不是 `1e-15 × √10`**，是 stage-based:
+   - branch 1 (initial): 60s → 600s → 3600s → 7200s → 10800s
+   - branch 2 (subsequent): 600s → 3600s → 7200s → 10800s
+   - 每个 stage 推进固定 `TELAPSE` 累计时间，之后进入下一 stage dt
+   - kintera diagnostic 现有 `_fixed_timestep_sequence`（`1e-15 × 10^0.5`）是诊断脚本自创，不是 KB 等价
+   - 这意味着 `NTIME=50` 那个 `dt~3e9 s` 是 KB **从来不会尝试**的步长
+
+2. **KB `MARCH` 是 true Newton with full Jacobian re-evaluation**:
+   - `HETEROK` 每个 inner iteration 重算 rate coefficient
+   - `BMATRM` 每个 iteration 重组 `B = I/DELT - dF/dC`
+   - 收敛准则: `|10^(log|new|−log|old|) − 1| ≤ CONV`（≈ 1e-4），per species
+   - kintera 是 single frozen linearization — 这是真正的物理 gap
+
+3. **KB 有 step rejection + state rewind**:
+   - `CONVRG` 返回 `IFLAG ∈ {1,2,3,4}`
+   - `IFLAG=2,4` (含负值 or 不收敛) → `RETRY`
+   - `RETRY` 把 `DELT /= 2^(NTRYS−1)`，从 backup `CONCP` 回滚 state
+   - 上限通常 ~8 层 subdivision
+   - 我们 controller 的 reject/subdivide 是同一思路，但没有 Newton 内层
+
+4. **KB 不 clamp**: 负值由 `CONVRG` 检测后触发 reject，而不是 post-hoc clamp。
+
+#### 第二层：true Newton inner iteration（已实现）
+
+`python/atm2d/newton.py` 提供 `newton_implicit_step(state, dt, ...)`，行为：
+
+- 入口：`state.concentration = c_0`（BE 起点）。
+- 每个 iter 重新 build `(I − dt·(T+J(c_k)))` 和 RHS = `c_0 + dt·(S(c_k) − J(c_k) c_k)`
+  （`build_implicit_step_system` 加了可选 `c_0` 参数，让 RHS 用固定 c_0 而不是当前 iterate）。
+- solve → `c_proposed`；可选 damping 把 step scale 下来（KB IDAMP=1 等价）。
+- 收敛判据：per-species fractional change `max |c_{k+1}−c_k| / max(|c_k|, floor)` < `convergence_tol`。
+- **Out-of-basin guard**：iter 1 max_rel > `out_of_basin_threshold`（默认 1.0）→ 立即退出，返回 iter-1 结果（等价 frozen-J）。这避免在 Newton 出 basin 时继续 re-linearize 把状态弄得更糟。
+- **Best-iterate fallback**：max_iter 用完仍未收敛时，返回所有 iter 中 max_rel 最小的那个，而不是最后一个。
+- **Divergence guard**：max_rel 单 iter 涨 10×，或绝对值超 1e6 → 退出。
+- 退出前把 `state.concentration` 恢复成 c_0，让 controller 的 `accept_fn` 用正确的 reference state 算 species scale。
+
+在 `compare_gch4.py` / `no_grain_stability.py` 里，step_fn 把
+`build_implicit_step_system + apply_dirichlet + solve + apply_pins` 整个 BE 单步包成 Newton 内层。
+Controller 的外层 accept_fn 仍负责 reject non-finite / severe negative / magnitude cap。
+
+#### 第三层：Controller rejection memoization（已实现）
+
+`adaptive_advance` 现在 track `min_rejected_dt`，在同一次 advance 里不会再尝试 ≥ 该 dt 的步长。
+这避免了在 stiff zone 反复 "尝试 5e-4 → 被拒 → 降到 2.5e-4 → 接受 → 再尝试 5e-4..." 的浪费。
+
+#### 当前验证 (NTIME=27, no_grain)
+
+`KINTERA_TITAN_NTIME=27 python diagnostics/no_grain_stability.py` 端到端跑通：
+
+```text
+[done] totals: accepted=87 rejected=5
+[done] newton: runs=92 total_iters=159 non_converged=10 avg_iter_per_run=1.73 max_iters_in_step=6
+[done] final max abs concentration: 2.174e+15
+[done] final min concentration:    -1.932e-07
+```
+
+各 step 行为：
+
+| step | dt_target | newton 行为 | 结果 |
+|------|-----------|-------------|------|
+| 1–23 | 1e-15 .. 1e-4 | 1 iter 收敛 | 单步 accept |
+| 24 | 3.16e-4 | iter 1 max_rel=3.3e4 > basin threshold → 返回 iter-1（= frozen-J），min(c)=-1.8e-33 | 单步 accept |
+| 25 | 1e-3 | 在 dt=2.5e-4 处 Newton 收敛；5e-4 reject 1 次后 memo | 4 accept + 2 reject, last_dt=2.5e-4 |
+| 26 | 3.16e-3 | 同上，max safe dt ≈ 4.1e-4 | 12 accept + 1 reject |
+| 27 | 1e-2 | safe dt ~ 3.1e-4 | 47 accept + 2 reject |
+
+stability 达成：无 NaN，无 floor hit，final min(c)=-1.93e-7（trace ion noise，在 tolerance 内）。
+wall time ~5 min。
+
+NTIME ≥ 30 的 dt_target 走到 0.1 s 以上，子步数随 √10 增长几何放大，单跑 wall time
+不可接受。但 NTIME=50 让 dt_target 达 3.16e9 s（积分总时间 4.6 billion s = 146 年），
+本身就不是 KB 等价 schedule — KB 实际 schedule 上限 10800 s。Step 2 换成 KB 的
+stage schedule 后 wall time 才会回到合理量级。
+
+#### 第四层：KB DELTIM ramp + stage schedule（已实现）
+
+`python/kinetics_base_titan/schedule.py` 提供 `kinetics_base_titan_dt_schedule(ntime, deltim=-1e-15, ncycle=10, branch=1)`，精确复刻 KB Fortran 的 schedule（`kinetgen2X.F:14911-14918`）：
+
+- 负 DELTIM 触发 `10^(1/NCYCLE) = 10^0.1 ≈ 1.26×/step` 指数 ramp 从 `|DELTIM|` 起
+- 配合 stage 表（branch 1: `60s → 600s → 3600s → 7200s → 10800s`，TELAPSE 各阶段 `1hr → 1hr → 6hr → 16hr → ∞`）
+- 一旦 ramp 达到 stage TSTEP，DELT 被 cap 到该 stage 值；ESTAGE 累计直到 TELAPSE 后切下一 stage
+
+诊断里 `KINTERA_TITAN_SCHEDULE=kb` (default) / `legacy_sqrt10` 切换。NTIME=50 在 KB ramp 下 dt 从 1e-15 → 7.94e-11 s（与 KB 完全等价）。NTIME=167 才到 stage 1 cap 60s。
+
+#### 第五层：Chemistry-only Newton + operator-split transport（已实现）
+
+audit 揭示我们之前 Newton 把 transport+chemistry 耦合到一个 inner iter，而 KB 是 chemistry-only Newton + 单独的 transport step (`FLOW2D` before/after `MARCH`)。在 stiff dt 下耦合 Newton 跳出 basin，KB 不会。
+
+`python/atm2d/newton.py` 加了 `chemistry_only_newton_step(state, dt, source_terms, ...)`：
+
+- 每个 iter 把 `state.concentration` 设到当前 iterate，build `S(c_k)` 和 `J(c_k)`（per-cell local 已经在 `build_source_linearization`）
+- 求解 per-cell `(I − dt·J(c_k)) Δc = −(c_k − c0 − dt·S(c_k))`
+- batched `torch.linalg.solve(A, rhs)` 对 ncol×nlyr 个 nspecies×nspecies 系统并行
+- damping / out-of-basin guard / best-iterate fallback 都保留
+
+`diagnostics/no_grain_stability.py` 的 step_fn 做 Lie splitting：
+
+1. transport-only BE: `build_implicit_step_system(..., source_terms=None)` 解 `(I − dt·T) c = c0` + Dirichlet
+2. chemistry-only Newton: 从 c_after_transport 开始 per-cell Newton
+3. 都加 boundary pins
+
+`KINTERA_SOLVER_MODE=split` (default) / `coupled` 切换。
+
+**效果对比** (NTIME=200, no_grain, KB schedule, step 117-130 区间):
+
+| 模式 | step 118 (dt=5e-4) | step 124 (dt=2e-3) | step 130 (dt=8e-3) |
+|------|----|----|----|
+| coupled | 2 acc + 1 rej | 12 acc + 1 rej (cascade 起点) | 47 acc + 2 rej |
+| split | 1 acc + 0 rej | 1 acc + 0 rej | 1 acc + 0 rej |
+
+stiff zone 完全消失。dt 直接跟着 KB ramp 走。
+
+#### 后续
+
+- BC type-4 prescribed flux (H/H2 lower-bound upward flux) 当前未 parse — 影响 budget 不影响稳定性
+- Full network (ion + grain) 还需测试
+- KB IFLAG=2 partial-convergence 报告我们没有；KB ICNV=2 negative→abs handling 也没有 — 当前 default_accept 用 severe-negative threshold 替代
 
 ### 2. Full Grain Feedback
 

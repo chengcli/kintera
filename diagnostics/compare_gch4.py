@@ -24,8 +24,9 @@ EXECUTABLE = os.environ.get(
     "KINTERA_KINETICS_BASE_EXECUTABLE",
     str(ROOT / "build" / "bin" / "titan.release"),
 )
-NTIME = 10
+NTIME = int(os.environ.get("KINTERA_TITAN_NTIME", "10"))
 NETWORK_MODE = os.environ.get("KINTERA_TITAN_NETWORK_MODE", "full")
+MAX_SUBDIVISIONS = int(os.environ.get("KINTERA_TITAN_MAX_SUBDIV", "20"))
 
 
 # --------------------------------------------------------------------------- #
@@ -124,23 +125,47 @@ def _run_kintera(titan_state, source_terms, pun_metadata, ntime):
         dtype=titan_state.state.dtype,
         device=titan_state.state.device,
     )
-    for dt in _fixed_timestep_sequence(ntime):
-        titan_state.state.concentration = concentration
+
+    def step_fn(state, dt):
         system, rhs = kt.build_implicit_step_system(
-            titan_state.state,
+            state,
             titan_state.kzz,
             dt,
             species_diffusion_scale=species_diffusion_scale,
             source_terms=atm_sources,
         )
-        system, rhs = kt.apply_kinetics_base_titan_dirichlet_rows(
-            system,
-            rhs,
-            titan_state,
+        system, rhs = kt.apply_kinetics_base_titan_dirichlet_rows(system, rhs, titan_state)
+        new_conc = kt.solve_sparse_system(system, rhs)
+        kt.apply_kinetics_base_titan_boundary_pins(new_conc, titan_state)
+        return new_conc
+
+    total_accept = 0
+    total_reject = 0
+    for k, dt_target in enumerate(_fixed_timestep_sequence(ntime)):
+        titan_state.state.concentration = concentration
+        result = kt.adaptive_advance(
+            titan_state.state,
+            dt_target,
+            step_fn,
+            max_subdivisions=MAX_SUBDIVISIONS,
+            record_trace=True,
         )
-        concentration = kt.solve_sparse_system(system, rhs)
-        concentration = torch.clamp(concentration, min=0.0)
-        kt.apply_kinetics_base_titan_boundary_pins(concentration, titan_state)
+        concentration = result.concentration
+        total_accept += result.accepted_steps
+        total_reject += result.rejected_steps
+        if result.rejected_steps > 0 or result.accepted_steps > 1:
+            reasons = {}
+            for rec in result.records:
+                if rec.action.startswith("reject_"):
+                    reasons[rec.action] = reasons.get(rec.action, 0) + 1
+            reasons_str = ", ".join(f"{k}={v}" for k, v in reasons.items()) or "-"
+            print(
+                f"  step {k+1:>3d}/{ntime}: dt_target={dt_target:.3e} "
+                f"accepted={result.accepted_steps} rejected={result.rejected_steps} "
+                f"last_dt={result.last_accepted_dt:.3e} reasons=[{reasons_str}]"
+            )
+
+    print(f"  totals: accepted={total_accept} rejected={total_reject}")
     return concentration[0]  # (nlyr, nspecies)
 
 
