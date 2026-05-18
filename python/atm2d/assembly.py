@@ -68,7 +68,7 @@ def build_implicit_operator(
         )
     if source_terms is not None:
         diag_update = diag_update + build_source_linearization(
-            state, source_terms
+            state, source_terms,
         ).jacobian
 
     if include_identity:

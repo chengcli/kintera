@@ -30,8 +30,23 @@ RateProvider = Callable[[AtmState2D], torch.Tensor]
 def build_source_linearization(
     state: AtmState2D,
     source_terms: list[LocalSourceTerm],
+    charge_balance_indices: "tuple[list[int], int] | None" = None,
 ) -> LocalSourceLinearization:
-    """Combine local source-term tendencies and Jacobian blocks."""
+    """Combine local source-term tendencies and Jacobian blocks.
+
+    When ``charge_balance_indices=(cation_indices, e_index)`` is provided,
+    fold the implicit constraint ``E = Σ(cations)`` into the Jacobian by
+    propagating ``dF_i/dc_E`` into the cation columns via
+    ``dc_E/dc_X+ = 1``::
+
+        For every species row i:
+            for every cation column j ∈ cation_indices:
+                J[..., i, j] += J[..., i, e_index]
+
+    Without this fold the BE Newton sees ``c_E`` as an independent variable
+    and lags it via post-Newton charge-balance reset (Picard iteration),
+    which causes the cation cascade to keep growing until E catches up.
+    """
 
     tendency = torch.zeros_like(state.concentration)
     jacobian = torch.zeros(
@@ -53,6 +68,18 @@ def build_source_linearization(
             raise ValueError("source jacobian must have shape (ncol, nlyr, nspecies, nspecies)")
         tendency = tendency + term_tendency
         jacobian = jacobian + term_jacobian
+
+    if charge_balance_indices is not None:
+        cation_idx_list, e_index = charge_balance_indices
+        if cation_idx_list:
+            cation_idx = torch.tensor(
+                cation_idx_list, dtype=torch.long, device=jacobian.device
+            )
+            delta = jacobian[..., e_index].clone()  # (ncol, nlyr, nspecies)
+            jacobian = jacobian.clone()
+            jacobian[..., cation_idx] = (
+                jacobian[..., cation_idx] + delta.unsqueeze(-1)
+            )
     return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
 
 
