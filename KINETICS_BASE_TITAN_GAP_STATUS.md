@@ -490,3 +490,45 @@ High-level commit contents:
 - tests covering these semantics.
 
 Do not treat adaptive timestep work as complete in this commit; it should be a follow-up.
+
+## G18 status (2026-05-18): coupled Newton viable but partial
+
+Made newton_implicit_step work robustly at large dt. The key fixes:
+
+1. Removed exit conditions that bail too early at iter 0 from c=0
+   state: out_of_basin_threshold and divergence_threshold defaults to
+   inf, divergence_growth_factor to inf.
+2. Added mass_conservation_cap and max_concentration_cap (same as
+   chemistry-only Newton) so the linear solve can't produce 1e+30+
+   values that drive the Jacobian to NaN.
+3. Added clip_negative parameter to coupled solver.
+
+Result at NT=100 coupled mode vs prior split mode:
+
+  metric              | split  | coupled
+  cation@L30          |  336×  |   12×    <- coupled is 30× better
+  N conservation      | 1.000  | 1.004
+  CH4 lev 5 ratio     | 0.91   | 0.44     
+  CH4 lev 10 ratio    | 0.62   | 2.46
+  H2 lev 10           | 1.70   | 4.71
+  HCN lev 10          | 0.13   | 0.05
+  C2H6 lev 10         | 0.50   | 0.001    <- coupled much worse
+  C2H6 lev 15         | 0.62   | 66×      <- coupled much worse
+  CH3 lev 15          | 3.17   | 0.58
+
+Coupled is now usable and better for cations at large dt (which was
+the primary motivation for G18). It's worse for slow chemistry chains
+because Newton finds a different (transport-balanced) fixed point per
+cell than the chemistry-only Newton does.
+
+A truly correct coupled Newton would include the implicit charge
+balance E = Σ(cations) as part of the Newton Jacobian, so dF_X+/dc_E
+sees the dE/dc_X+ = 1 coupling. Currently we Picard-iterate on
+charge balance via apply_pins inside Newton, which means the Jacobian
+sees the lagged E. That's a substantial refactor of the source-term
+linearization machinery, beyond G18's scope.
+
+Atomic projection should NOT be applied in coupled mode: it causes
+specific cations (C+, C3+) to grow 100-1000× more than coupled-only
+because Newton re-equilibrates around the projected state at the
+next step. (Commit ed746e8.)
