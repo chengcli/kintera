@@ -92,7 +92,7 @@ def kinetics_base_titan_dt_schedule(
     *,
     deltim: float = -1.0e-15,
     ncycle: int = _KB_TITAN_EFFECTIVE_NCYCLE,
-    max_dt: float = 1.0e+10,
+    max_dt: float = 1.0e+9,
     branch: int = 1,
 ) -> list[float]:
     """Return KB's per-step ``DELT`` sequence for ``ntime`` steps.
@@ -148,12 +148,18 @@ def kinetics_base_titan_dt_schedule(
         else:
             delt = abs(cfg.deltim)
 
-        # Cap to avoid astronomically large dt that pushes Newton into
-        # non-physical fixed points. Per-step N conservation trace: stays
-        # exact for dt ≤ 3e+7, drifts up to 1.28× by step 50 (dt ≈ 3e+9),
-        # and explodes if we let dt continue past 1e+10. Cap is set lenient
-        # (1e+10) to preserve KB-equivalent steady state; tighter cap (1e+8)
-        # improves conservation slightly but breaks CH4 balance at lev 5.
+        # Cap to avoid Newton non-physical solutions at very large dt.
+        # The sweep across dt_max ∈ {1e+8, 3e+8, 1e+9, 3e+9, 1e+10} at NT=100
+        # shows a real tradeoff:
+        #   dt_max=1e+8 : cation@lev30 30× over KB, but slow neutrals (CH3,
+        #                 C2H6) collapse — not enough integration time.
+        #   dt_max=1e+10: slow neutrals reach KB level, but cation@lev30
+        #                 blows up to 1300× KB (Newton finds non-physical
+        #                 root for ion species).
+        #   dt_max=1e+9 : best compromise — cation@lev30 335× over (still
+        #                 imperfect), most neutrals within 0.5–3× of KB.
+        # The fundamental fix is the coupled transport+chemistry Newton
+        # (currently chemistry-only + projection); see G11 in GAP_STATUS.
         # Set to None or 0 to disable.
         if max_dt is not None and delt > max_dt:
             delt = max_dt
