@@ -27,8 +27,26 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 
 **结构性下一步候选**:
 1. **Sub-cycled chemistry+transport** in chemistry-only Newton：每个 outer dt 分成 N 个 sub-step（已实现但默认 off, 计算昂贵）
-2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为
+2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为（**G21 试过：uniform sink 太粗暴，over-corrects N(2D) 同时让 cation 爆 428000x，已 revert**）
 3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
+
+**G22/G23 sweep 结果 (2026-05-18)**:
+
+| config | NT | max_dt | matched | cation@L30 |
+| --- | --- | --- | --- | --- |
+| split + chg_fold + atomic_proj + G19 pin | 100 | 1e+9 | 81 | 38x |
+| split + chg_fold + atomic_proj + G19 pin | 200 | 1e+8 | **90** | 97x |
+| split + chg_fold + atomic_proj + G19 pin | 300 | 5e+7 | 83 | 437x |
+| split + chg_fold + atomic_proj + G19 pin | 400 | 1e+8 | 62 | 118x |
+| **coupled** (no chg_fold) + G19 pin | 100 | 1e+9 | **96** | 907x |
+| coupled + chg_fold + G19 pin | 100 | 1e+9 | 86 | 10641x |
+
+Pareto front: 哪个 metric 优先？
+- 想要最多 species match：**coupled 不加 chg_fold** (96/256) — 但 N2+ L30 18000x 爆
+- 想要 cation balance 最干净：**split + chg_fold NT=100** (81/256, cation 38x) — 但 12 个中空 species 0.3<r<3 区间外
+- 综合：**split + chg_fold NT=200/dt=1e+8** (90/256, cation 97x) — 平衡好
+
+Charge-balance Jacobian fold (`KINTERA_CHARGE_BALANCE_JACOBIAN=1`) 在 split 模式 helpful；在 coupled 模式 too aggressive (把 N2+ 从 18000x 拉到 22x 但 NH4+/HCNH+ 直接 collapse 到 0)。两者机制：split 里 fold 只改 cell-local jacobian，coupled 里 fold 改的 jacobian 是 global sparse system 的一部分，互相影响。
 
 ## 当前结论 (2026-05-17 update)
 
