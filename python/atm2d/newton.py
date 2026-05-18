@@ -86,6 +86,7 @@ def newton_implicit_step(
     out_of_basin_threshold: float = 1.0,
     divergence_growth_factor: float = 10.0,
     divergence_threshold: float = 1e6,
+    clip_negative: bool | str = True,
     record_residuals: bool = False,
 ) -> NewtonResult:
     """Run Newton iteration on one backward-Euler step of size ``dt``.
@@ -180,6 +181,13 @@ def newton_implicit_step(
                 c_new = c_proposed
         else:
             c_new = c_proposed
+        # Clip negatives same as chemistry_only_newton_step: tiny rounding
+        # in the global sparse solve can produce sub-floor noise that
+        # otherwise trips adaptive_advance's severe_negative reject path.
+        if clip_negative == "abs":
+            c_new = torch.abs(c_new)
+        elif clip_negative:
+            c_new = torch.clamp(c_new, min=0.0)
         if concentration_postprocess is not None:
             c_new = concentration_postprocess(c_new)
         iters = k + 1

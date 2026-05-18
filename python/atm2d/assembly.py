@@ -133,23 +133,62 @@ def build_implicit_step_system(
         species_diffusion_scale=species_diffusion_scale,
         source_terms=source_terms,
     )
+    # Conditional matrix scaling for numerical conditioning.
+    #
+    # The natural BE system is ``(I - dt*L) c_new = c0 + dt*(S - L*c_k)``
+    # where ``L = T + J(c_k)``. This form is well-conditioned at small dt
+    # (A ≈ I) but at large dt (e.g. dt = 1e+9, |L| ≈ 4e+6) the matrix entries
+    # reach 4e+15 and we lose ~13 digits of precision when solving.
+    #
+    # The 1/dt-scaled form ``(I/dt - L) c_new = c0/dt + (S - L*c_k)`` is
+    # well-conditioned at large dt (entries ~ |L|) but at small dt (e.g.
+    # dt = 1e-15) the diagonal 1/dt = 1e+15 swamps everything and tiny
+    # rounding errors make Newton reject. So we use:
+    #   - natural form when dt < ``RESCALE_THRESHOLD`` (default 1 s)
+    #   - rescaled form when dt >= threshold
+    # Threshold is the geometric mean of dt at which the two forms have
+    # comparable conditioning, ~1 / sqrt(|L|^2). For |L|~4e+6 that's ~5e-4 s;
+    # 1 s is a safe round number on the rescaled side.
+    _RESCALE_THRESHOLD = 1.0
     identity = torch.eye(operator.nstate, dtype=state.dtype, device=state.device)
-    system = SparseSystemMatrix.from_dense(
-        identity - float(dt) * operator.global_csr.to_dense(),
-        ncol=state.ncol,
-        nlyr=state.nlyr,
-        nspecies=state.nspecies,
-    )
-    rhs = state.concentration if c0 is None else c0
-    if source_linearization is not None:
-        jacobian_state = torch.einsum(
-            "clij,clj->cli",
-            source_linearization.jacobian,
-            state.concentration,
+    if float(dt) >= _RESCALE_THRESHOLD:
+        dt_inv = 1.0 / float(dt)
+        system = SparseSystemMatrix.from_dense(
+            dt_inv * identity - operator.global_csr.to_dense(),
+            ncol=state.ncol,
+            nlyr=state.nlyr,
+            nspecies=state.nspecies,
         )
-        if global_source_operator is not None:
-            jacobian_state = jacobian_state + global_source_operator.matvec(
-                state.concentration
+        rhs_c = state.concentration if c0 is None else c0
+        rhs = dt_inv * rhs_c
+        if source_linearization is not None:
+            jacobian_state = torch.einsum(
+                "clij,clj->cli",
+                source_linearization.jacobian,
+                state.concentration,
             )
-        rhs = rhs + float(dt) * (source_linearization.tendency - jacobian_state)
+            if global_source_operator is not None:
+                jacobian_state = jacobian_state + global_source_operator.matvec(
+                    state.concentration
+                )
+            rhs = rhs + (source_linearization.tendency - jacobian_state)
+    else:
+        system = SparseSystemMatrix.from_dense(
+            identity - float(dt) * operator.global_csr.to_dense(),
+            ncol=state.ncol,
+            nlyr=state.nlyr,
+            nspecies=state.nspecies,
+        )
+        rhs = state.concentration if c0 is None else c0
+        if source_linearization is not None:
+            jacobian_state = torch.einsum(
+                "clij,clj->cli",
+                source_linearization.jacobian,
+                state.concentration,
+            )
+            if global_source_operator is not None:
+                jacobian_state = jacobian_state + global_source_operator.matvec(
+                    state.concentration
+                )
+            rhs = rhs + float(dt) * (source_linearization.tendency - jacobian_state)
     return system, rhs
