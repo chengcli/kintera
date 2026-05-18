@@ -252,11 +252,18 @@ def kinetics_base_titan_boundary_pin_mask(
         if conversion in cold_trap_conversions
     ]
     if cold_trap_species:
-        cold_trap_level = 23  # Fortran level 24 (1-indexed); only CH4 uses NBOT=24.
-        mask[:, cold_trap_level, cold_trap_species] = True
-        values[:, cold_trap_level, cold_trap_species] = titan_state.concentration[
-            :, cold_trap_level, cold_trap_species
-        ]
+        # Cheng cold trap pins CH4 to the atm-file mixing-ratio profile at
+        # lev 0–23 (NBOT=24 in 1-indexed Fortran). KB's converged result
+        # holds CH4 at 4e-3 mixing ratio through this whole sub-column;
+        # without pinning lev 1–22 our chemistry destroys CH4 there and
+        # downstream products (HCN, C2 hydrocarbons) collapse with it.
+        cold_trap_top_level = 23
+        mask[:, : cold_trap_top_level + 1, cold_trap_species] = True
+        values[:, : cold_trap_top_level + 1, cold_trap_species] = (
+            titan_state.concentration[
+                :, : cold_trap_top_level + 1, cold_trap_species
+            ]
+        )
 
     return mask, values
 
