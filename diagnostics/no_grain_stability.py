@@ -333,6 +333,7 @@ def main():
             convergence_tol=NEWTON_TOL,
             damping_factor=NEWTON_DAMP_FACTOR,
             damping_trigger=NEWTON_DAMP_TRIGGER,
+            charge_balance_indices=_charge_arg,
             record_residuals=NEWTON_DEBUG,
         )
 

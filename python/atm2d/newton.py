@@ -89,6 +89,7 @@ def newton_implicit_step(
     clip_negative: bool | str = True,
     mass_conservation_cap: bool = True,
     max_concentration_cap: "torch.Tensor | None" = None,
+    charge_balance_indices: "tuple[list[int], int] | None" = None,
     record_residuals: bool = False,
 ) -> NewtonResult:
     """Run Newton iteration on one backward-Euler step of size ``dt``.
@@ -184,6 +185,7 @@ def newton_implicit_step(
             species_diffusion_scale=species_diffusion_scale,
             source_terms=source_terms,
             c0=c0,
+            charge_balance_indices=charge_balance_indices,
         )
         if system_postprocess is not None:
             system, rhs = system_postprocess(system, rhs)

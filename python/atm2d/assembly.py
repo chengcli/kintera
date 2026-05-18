@@ -30,6 +30,7 @@ def build_implicit_operator(
     include_identity: bool = False,
     dt: float | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
+    charge_balance_indices: "tuple[list[int], int] | None" = None,
 ) -> SparseSystemMatrix:
     """Assemble the full implicit operator for transport and chemistry.
 
@@ -69,6 +70,7 @@ def build_implicit_operator(
     if source_terms is not None:
         diag_update = diag_update + build_source_linearization(
             state, source_terms,
+            charge_balance_indices=charge_balance_indices,
         ).jacobian
 
     if include_identity:
@@ -103,6 +105,7 @@ def build_implicit_step_system(
     species_diffusion_scale: torch.Tensor | None = None,
     source_terms: list[LocalSourceTerm] | None = None,
     c0: torch.Tensor | None = None,
+    charge_balance_indices: "tuple[list[int], int] | None" = None,
 ) -> tuple[SparseSystemMatrix, torch.Tensor]:
     """Build a backward-Euler system with linearized local source terms.
 
@@ -120,7 +123,10 @@ def build_implicit_step_system(
     source_linearization = None
     global_source_operator = None
     if source_terms is not None:
-        source_linearization = build_source_linearization(state, source_terms)
+        source_linearization = build_source_linearization(
+            state, source_terms,
+            charge_balance_indices=charge_balance_indices,
+        )
         global_source_operator = build_source_global_operator(state, source_terms)
     operator = build_implicit_operator(
         state,
@@ -132,6 +138,7 @@ def build_implicit_step_system(
         molecular_weights=molecular_weights,
         species_diffusion_scale=species_diffusion_scale,
         source_terms=source_terms,
+        charge_balance_indices=charge_balance_indices,
     )
     # Conditional matrix scaling for numerical conditioning.
     #
