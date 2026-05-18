@@ -142,11 +142,39 @@ def apply_kinetics_base_titan_boundary_pins(
 
     KINETICS-base's ``__CHENG`` branch fixes the CH4 cold-trap boundary row, but
     lower atmospheric levels still evolve over long integrations.
+
+    Also enforces charge neutrality: ``E = Σ(cations) − Σ(anions)`` per cell.
+    KB treats E as one of its NFIX species but its .pun output shows
+    E ≈ Σ(cations) within a few percent, so KB must be recomputing E from
+    charge balance each step (rather than freezing it at the initial-atm
+    value of 0). Without this, kintera's dissociative-recombination
+    reactions ``X+ + E → products`` see rate = 0 (since pinned E = 0) and
+    cations accumulate by 4–10× at the photoionization altitude, then
+    cascade through proton-transfer reactions to multi-OoM excess at lower
+    altitudes — confirmed by diagnostic_tools/rate_diff.
     """
     mask, values = kinetics_base_titan_boundary_pin_mask(titan_state)
     mask = mask.to(device=concentration.device)
     values = values.to(dtype=concentration.dtype, device=concentration.device)
     concentration[mask] = values[mask]
+
+    species = titan_state.species
+    if "E" in species:
+        e_idx = species.index("E")
+        pos_indices = [j for j, n in enumerate(species) if n.endswith("+")]
+        neg_indices = [
+            j for j, n in enumerate(species)
+            if n.endswith("-") and n != "E"
+        ]
+        if pos_indices:
+            pos_sum = concentration[:, :, pos_indices].sum(dim=-1)
+        else:
+            pos_sum = torch.zeros_like(concentration[:, :, 0])
+        if neg_indices:
+            neg_sum = concentration[:, :, neg_indices].sum(dim=-1)
+        else:
+            neg_sum = torch.zeros_like(concentration[:, :, 0])
+        concentration[:, :, e_idx] = torch.clamp(pos_sum - neg_sum, min=0.0)
     return concentration
 
 
