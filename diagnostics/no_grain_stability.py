@@ -307,31 +307,38 @@ def main():
             record_residuals=NEWTON_DEBUG,
         )
 
-    def step_fn_split(state, dt):
-        """Operator-split: transport-only BE step, then chemistry-only Newton.
+    # Sub-cycling: at outer dt > SUBCYCLE_THRESHOLD, internally subdivide
+    # the operator-split step into multiple smaller sub-steps. This stops
+    # transport from over-mixing across many scale heights in one step
+    # (which causes the cation cascade between NT=40 and NT=50 — see
+    # trajectory analysis).
+    #
+    # OFF BY DEFAULT: sub-cycling is mathematically equivalent to lowering
+    # dt_max in the schedule. Compute cost scales linearly with outer
+    # dt / sub_dt, so at large dt the run becomes impractically slow
+    # (NTIME=100 schedule reaches dt=3e+8 by step ~50 — with sub_threshold
+    # 1e+6 that's 300 sub-cycles per outer step). To get the same physics
+    # at lower cost, just lower max_dt in the schedule. Sub-cycling here
+    # is preserved as opt-in infrastructure.
+    SUBCYCLE_THRESHOLD = float(os.environ.get("KINTERA_SUBCYCLE_THRESHOLD", "1e+6"))
+    SUBCYCLE_ENABLED = os.environ.get("KINTERA_SUBCYCLE", "0") == "1"
 
-        Mirrors KINETICS-base which does ``FLOW2D``/diffusion separately from
-        the ``MARCH`` chemistry Newton. Each cell's chemistry residual is
-        independent so Newton converges at much larger ``dt`` than the
-        fully-coupled variant.
-        """
-        pristine_c0 = state.concentration.clone()
-        # Step 1: transport-only backward Euler.
+    def _one_split_substep(state, dt_sub):
+        """One transport-then-chemistry step at dt_sub."""
         transport_system, transport_rhs = kt.build_implicit_step_system(
             state,
             titan_state.kzz,
-            dt,
+            dt_sub,
             species_diffusion_scale=species_diffusion_scale,
             source_terms=None,
         )
         transport_system, transport_rhs = _apply_dirichlet(transport_system, transport_rhs)
         c_after_transport = kt.solve_sparse_system(transport_system, transport_rhs)
         _apply_pins(c_after_transport)
-        # Step 2: per-cell chemistry Newton with c_after_transport as BE start.
         state.concentration = c_after_transport
-        chem_result = kt.chemistry_only_newton_step(
+        return kt.chemistry_only_newton_step(
             state,
-            dt,
+            dt_sub,
             source_terms=atm_sources,
             concentration_postprocess=_apply_pins,
             max_iterations=NEWTON_MAX_ITER,
@@ -341,11 +348,57 @@ def main():
             clip_negative=_clip_arg,
             record_residuals=NEWTON_DEBUG,
         )
+
+    def step_fn_split(state, dt):
+        """Operator-split: transport-only BE step, then chemistry-only Newton.
+
+        Mirrors KINETICS-base which does ``FLOW2D``/diffusion separately from
+        the ``MARCH`` chemistry Newton. Each cell's chemistry residual is
+        independent so Newton converges at much larger ``dt`` than the
+        fully-coupled variant.
+
+        When ``KINTERA_SUBCYCLE=1`` (default) and ``dt > SUBCYCLE_THRESHOLD``,
+        the outer step is internally divided into N sub-cycles of dt/N each
+        so vertical transport doesn't mix species across many scale heights
+        per step. The chemistry Newton sees each sub-step independently.
+        """
+        pristine_c0 = state.concentration.clone()
+
+        if SUBCYCLE_ENABLED and dt > SUBCYCLE_THRESHOLD:
+            n_subcycles = max(2, int(dt / SUBCYCLE_THRESHOLD))
+            dt_sub = dt / n_subcycles
+            chem_result = None
+            agg_iters = 0
+            agg_conv = True
+            for _ in range(n_subcycles):
+                chem_result = _one_split_substep(state, dt_sub)
+                if ATOMIC_PROJECTION:
+                    projected = _project_atomic_budget(chem_result.concentration)
+                    projected = _apply_pins(projected)
+                    chem_result = type(chem_result)(
+                        concentration=projected,
+                        converged=chem_result.converged,
+                        iterations=chem_result.iterations,
+                        max_relative_change=chem_result.max_relative_change,
+                        residual_history=chem_result.residual_history,
+                    )
+                agg_iters += chem_result.iterations
+                agg_conv = agg_conv and chem_result.converged
+                state.concentration = chem_result.concentration
+            assert chem_result is not None
+            # Return aggregate result.
+            final = type(chem_result)(
+                concentration=chem_result.concentration,
+                converged=agg_conv,
+                iterations=agg_iters,
+                max_relative_change=chem_result.max_relative_change,
+                residual_history=chem_result.residual_history,
+            )
+            state.concentration = pristine_c0
+            return final
+
+        chem_result = _one_split_substep(state, dt)
         if ATOMIC_PROJECTION:
-            # Mutate the result's concentration in place to project atomic
-            # mass back onto the initial budget. This is the hard fix for
-            # the residual mass-conservation leak left by chemistry_only_newton
-            # at very large dt.
             projected = _project_atomic_budget(chem_result.concentration)
             projected = _apply_pins(projected)
             chem_result = type(chem_result)(
