@@ -83,10 +83,12 @@ def newton_implicit_step(
     species_scale_floor: float = 1.0,
     damping_trigger: float = 1.0,
     damping_factor: float = 0.5,
-    out_of_basin_threshold: float = 1.0,
-    divergence_growth_factor: float = 10.0,
-    divergence_threshold: float = 1e6,
+    out_of_basin_threshold: float = float("inf"),
+    divergence_growth_factor: float = float("inf"),
+    divergence_threshold: float = float("inf"),
     clip_negative: bool | str = True,
+    mass_conservation_cap: bool = True,
+    max_concentration_cap: "torch.Tensor | None" = None,
     record_residuals: bool = False,
 ) -> NewtonResult:
     """Run Newton iteration on one backward-Euler step of size ``dt``.
@@ -158,6 +160,21 @@ def newton_implicit_step(
     converged = False
     iters = 0
 
+    # Mass-conservation cap: trust region that prevents Newton from
+    # producing per-cell species concentrations larger than the local
+    # atmospheric density. Without this, coupled Newton at large dt
+    # diverges to NaN because the Jacobian doesn't see the implicit
+    # cap on c[j] ≤ total density.
+    if max_concentration_cap is not None:
+        cap = max_concentration_cap
+        if cap.dim() == 2:
+            cap = cap.unsqueeze(-1)
+        cell_total_density = cap.to(dtype=c0.dtype, device=c0.device)
+    elif mass_conservation_cap:
+        cell_total_density = c0.sum(dim=-1, keepdim=True)
+    else:
+        cell_total_density = None
+
     for k in range(max_iterations):
         state.concentration = c_k
         system, rhs = build_implicit_step_system(
@@ -188,6 +205,12 @@ def newton_implicit_step(
             c_new = torch.abs(c_new)
         elif clip_negative:
             c_new = torch.clamp(c_new, min=0.0)
+        # Mass-conservation cap: trust region that bounds the proposed
+        # iterate. Coupled Newton at large dt without this bound can
+        # diverge to non-physical (and eventually NaN) solutions because
+        # the Jacobian sees no upper bound on c.
+        if cell_total_density is not None:
+            c_new = torch.minimum(c_new, cell_total_density)
         if concentration_postprocess is not None:
             c_new = concentration_postprocess(c_new)
         iters = k + 1
