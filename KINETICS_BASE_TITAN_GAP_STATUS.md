@@ -532,3 +532,63 @@ Atomic projection should NOT be applied in coupled mode: it causes
 specific cations (C+, C3+) to grow 100-1000× more than coupled-only
 because Newton re-equilibrates around the projected state at the
 next step. (Commit ed746e8.)
+
+## G18b status (2026-05-18): implicit charge-balance Jacobian fold
+
+Added an option to ``build_source_linearization`` that folds the
+constraint E = Σ(cations) directly into the chemistry Jacobian:
+
+  For each species row i, for each cation column j:
+    J[i, j] += J[i, e_index]
+
+This eliminates the one-iteration Picard lag between Newton solving
+for cations and apply_pins updating E. ``chemistry_only_newton_step``
+now accepts ``charge_balance_indices=(cation_idx, e_index)`` and
+forwards it.
+
+In ``diagnostics/no_grain_stability.py`` the indices are auto-detected
+from species names ("+"-suffixed → cation, "E" → electrons) and passed
+through unless ``KINTERA_CHARGE_BALANCE_JACOBIAN=0`` is set.
+
+### Results at NT=100 split+ChgJac (current best) vs prior split:
+
+| species   | lev | split     | split+ChgJac | KB       |
+|-----------|-----|-----------|--------------|----------|
+| HCN       | 10  | 0.13×     | **0.79×** ✓ | 9.0e+9   |
+| C2H6      | 10  | 0.50×     | **0.92×** ✓ | 3.1e+8   |
+| C2H6      | 15  | 0.62×     | **1.03×** ✓ | 2.4e+8   |
+| C2H6      | 25  | 0.46×     | **1.91×** ✓ | 3.4e+6   |
+| C2H2      | 10  | 0.04×     | **1.24×** ✓ | 1.4e+9   |
+| CH3       | 20  | 0.15×     | **0.96×** ✓ | 8.3e+5   |
+| cation@L30| —   | 336×      | 150×        | 9e+2     |
+| N(2D) L20 | —   | 8×        | 776×        | 30       |
+
+Five mid-altitude slow species now within 1–2× of KB at NT=100. Cation
+residual reduced 2× (still 150×; further improvement blocked on the
+limitations below).
+
+### Tried but rolled back
+
+**Coupled mode + ChgJac fold**: applying the same Jacobian fold inside
+``build_implicit_step_system`` / ``build_implicit_operator`` for the
+fully-coupled Newton was unstable — cation@L30 climbed to 48000× and
+several neutrals exploded by 1000× because the transport+chemistry+
+constraint matrix has ill-conditioned modes the existing sparse solver
+can't dampen. Reverted; the fold is only used in chemistry-only Newton
+(split solver).
+
+### Remaining cation residual mechanism
+
+After Jacobian fold, the residual cation gap is bounded — it's the
+transport-driven mixing at large dt rather than chemistry runaway.
+The chemistry-only Newton plus charge-balance fold finds approximately
+correct per-cell chemistry, but the operator-split transport between
+steps still moves ions across many scale heights at outer dt > 1e+6.
+
+To close that gap further needs either:
+1. coupled (T + J + charge-balance) Newton with proper regularisation
+   for the resulting ill-conditioned modes
+2. sub-cycle the operator split at large dt (implemented as opt-in
+   G7c; cost scales linearly with outer_dt / sub_dt)
+3. integrate at smaller dt_max (already at 1e+9 default; tighter caps
+   improve cations but sacrifice slow-chemistry equilibration)
