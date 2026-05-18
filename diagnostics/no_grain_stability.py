@@ -130,12 +130,150 @@ def main():
     print(f"[setup] initial concentration shape: {tuple(concentration.shape)}")
     print(f"[setup] initial max value: {concentration.max().item():.3e}")
 
+    # Atomic-budget projection: per-column atom counts for N, C, H, O at t=0.
+    # After each chemistry step we rescale non-fixed atom-bearing species so
+    # totals stay near initial — this enforces hard mass conservation even
+    # when the Newton at very-large dt finds a non-physical fixed-point that
+    # creates atoms. Fixed species (N2, CH4 reservoir at low alt via cold trap,
+    # M, JDUST, etc.) are excluded from rescaling — they're our atom source.
+    import re as _re
+
+    def _count_atom(name, element):
+        # Drop charge marker.
+        n = name.rstrip("+-*")
+        cnt = 0
+        i = 0
+        while i < len(n):
+            ch = n[i]
+            if ch == "(":  # skip parenthesized state, e.g., (1)CH2, (2D).
+                while i < len(n) and n[i] != ")":
+                    i += 1
+                i += 1
+                continue
+            # Match element starting here (single-letter or 2-letter capitalized)
+            if ch == element and (i + 1 >= len(n) or not n[i + 1].islower() or
+                                  element == "C" and n[i:i+2] == "Cl"):
+                # Handle 2-letter elements like 'Cl' explicitly if needed
+                pass
+            if n[i:i+len(element)] == element:
+                # Confirm this is element not part of a multichar element name
+                end = i + len(element)
+                if end < len(n) and n[end].islower():
+                    # part of a multichar name like "Cl", "Br" — skip
+                    i += 1
+                    continue
+                # Look for trailing digit
+                if end < len(n) and n[end].isdigit():
+                    cnt += int(n[end])
+                    i = end + 1
+                else:
+                    cnt += 1
+                    i = end
+            else:
+                i += 1
+        return cnt
+
+    fixed_indices = [titan_state.species.index(n) for n in titan_state.fixed_species
+                     if n in titan_state.species]
+    fixed_mask = torch.zeros(len(titan_state.species), dtype=torch.bool, device=concentration.device)
+    fixed_mask[fixed_indices] = True
+
+    # (nspecies,) integer atom-count tensors per element.
+    atom_counts = {}
+    for elem in ["N", "C", "H", "O"]:
+        counts = torch.tensor(
+            [_count_atom(name, elem) for name in titan_state.species],
+            dtype=concentration.dtype, device=concentration.device,
+        )
+        atom_counts[elem] = counts
+
+    # Per-cell initial atom counts (i.e., not column-integrated; rescaling
+    # is per-cell to preserve spatial profile).
+    initial_atoms_per_cell = {
+        elem: (concentration * counts).sum(dim=-1, keepdim=True)  # (1, nlyr, 1)
+        for elem, counts in atom_counts.items()
+    }
+
+    # Per-element budget = initial variable atoms (≈0 for most elements here)
+    # PLUS a chemistry headroom = ATOM_HEADROOM_FRACTION × fixed-species atoms.
+    # This lets photo-chemistry build up trace species up to ~headroom% of the
+    # reservoir over the run; KB's NT=50 trace N column is ~5e+18 vs N2's
+    # 8.45e+21, so a headroom of 1e-3 captures KB's typical maximum. Tighter
+    # = stricter conservation but kills slow chemistry chains; looser = closer
+    # to current 1.28× violation.
+    ATOM_HEADROOM = float(os.environ.get("KINTERA_ATOM_HEADROOM", "1e-3"))
+    fixed_atoms_per_cell = {
+        elem: (concentration * counts * fixed_mask).sum(dim=-1, keepdim=True)
+        for elem, counts in atom_counts.items()
+    }
+    initial_variable_atoms = {
+        elem: (initial_atoms_per_cell[elem] - fixed_atoms_per_cell[elem]).clamp(min=0.0)
+        for elem in atom_counts
+    }
+    variable_atom_budget = {
+        elem: initial_variable_atoms[elem] + ATOM_HEADROOM * fixed_atoms_per_cell[elem]
+        for elem in atom_counts
+    }
+
+    nonfixed_mask = (~fixed_mask).view(1, 1, -1)
+
+    def _project_atomic_budget(c):
+        """Per-cell, per-element atomic conservation: rescale ONLY the species
+        that are above their fair share of the budget, leaving smaller species
+        alone.
+
+        For each element with current variable atoms > budget at a cell:
+        1. Find species containing that element that are > median (the hogs).
+        2. Compute the excess (current - budget).
+        3. Subtract excess proportionally from hog species' atom contribution.
+
+        This preserves slow-chemistry species (which stay small) while clipping
+        the runaway species that are eating the budget.
+        """
+        for elem, counts in atom_counts.items():
+            mask = (counts > 0) & (~fixed_mask)
+            if not mask.any():
+                continue
+            counts_view = counts.view(1, 1, -1)
+            mask_view = mask.view(1, 1, -1)
+            # Per-cell current atoms vs budget.
+            cur = (c * counts_view * mask).sum(dim=-1, keepdim=True)
+            budget = variable_atom_budget[elem]
+            excess = (cur - budget).clamp(min=0.0)
+            if not (excess > 0).any():
+                continue
+            # Identify hog species: those whose atom-contribution exceeds the
+            # mean per-species contribution. Subtract excess proportionally
+            # from hogs only.
+            per_species_atoms = c * counts_view * mask  # (1, nlyr, nspecies)
+            # Per-cell mean across non-fixed atom species
+            n_species_with_elem = mask.sum().clamp(min=1.0).item()
+            mean_atoms = per_species_atoms.sum(dim=-1, keepdim=True) / n_species_with_elem
+            hog_mask = per_species_atoms > mean_atoms  # (1, nlyr, nspecies)
+            hog_atoms = torch.where(hog_mask, per_species_atoms, torch.zeros_like(per_species_atoms))
+            hog_total = hog_atoms.sum(dim=-1, keepdim=True).clamp(min=1.0)
+            # Fraction of excess each hog needs to give up.
+            hog_fraction = hog_atoms / hog_total  # how much of the excess this hog absorbs
+            # Atoms to subtract from each hog species at each cell.
+            atoms_to_subtract = hog_fraction * excess
+            # Translate atoms-to-subtract back into concentration delta:
+            # delta_c[j] = atoms_subtract[j] / counts[j]
+            # But avoid divide-by-zero where counts=0 (mask handles it).
+            counts_safe = counts_view.clamp(min=1.0)
+            delta_c = atoms_to_subtract / counts_safe
+            # Apply only where hog_mask and excess>0.
+            apply_mask = hog_mask & (excess > 0).expand_as(hog_mask)
+            c = torch.where(apply_mask, (c - delta_c).clamp(min=0.0), c)
+        return c
+
     def _apply_dirichlet(system, rhs):
         return kt.apply_kinetics_base_titan_dirichlet_rows(system, rhs, titan_state)
 
     def _apply_pins(new_conc):
         kt.apply_kinetics_base_titan_boundary_pins(new_conc, titan_state)
         return new_conc
+
+    ATOMIC_PROJECTION = os.environ.get("KINTERA_ATOMIC_PROJECTION", "1") == "1"
 
     newton_stats = {"runs": 0, "iters": 0, "non_converged": 0, "max_iters_in_step": 0}
     NEWTON_DEBUG = os.environ.get("KINTERA_NEWTON_DEBUG", "0") == "1"
@@ -195,6 +333,20 @@ def main():
             clip_negative=_clip_arg,
             record_residuals=NEWTON_DEBUG,
         )
+        if ATOMIC_PROJECTION:
+            # Mutate the result's concentration in place to project atomic
+            # mass back onto the initial budget. This is the hard fix for
+            # the residual mass-conservation leak left by chemistry_only_newton
+            # at very large dt.
+            projected = _project_atomic_budget(chem_result.concentration)
+            projected = _apply_pins(projected)
+            chem_result = type(chem_result)(
+                concentration=projected,
+                converged=chem_result.converged,
+                iterations=chem_result.iterations,
+                max_relative_change=chem_result.max_relative_change,
+                residual_history=chem_result.residual_history,
+            )
         state.concentration = pristine_c0
         return chem_result
 
