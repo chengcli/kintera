@@ -42,12 +42,25 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 
 KB 把 bare C atoms 保持得极低 (<10/cm^3 at L30)，意味着 KB 网络里有快速消耗 C 的途径。我们 no_grain 模式 disable 了 grain wall-loss，但 KB 也是同 mode 下保持 C 低——所以是 gas-phase chemistry 而非 grain。
 
-**下一步**：audit C-consuming reactions in our network vs KB; possibly:
-- C + N → CN (or similar)
-- C + H + M → CH + M (3-body)
-- C + neutrals → various
+**G25 audit (用 diagnostic_tools/rate_diff)** — 完成根因 trace：
 
-可以用 `diagnostic_tools/rate_diff.py` 比 C 反应的 prod/loss rate at L30。这是 multi-hour 网络 audit 工作。
+`C` 的主要 production at L30 来自 **cation dissociative recombination**：
+- CH2+ + E → C + H + H： kt 24 vs KB 3.5e-4 (68000x over)
+- C2H2+ + E → (3)CH2 + C： kt 360 vs KB 8.5e-5 (4.2M x over)
+- CH3+ + E → C + H2 + H： kt 87 vs KB 3.4e-4 (255000x over)
+- c-C3H2+ + E → C2H2 + C： kt 19 vs KB 3.6e-6 (5M x over)
+
+C 的 loss 反应 (C + C2H2 → C3H + H, C + C2H2 → c-C3H + H) at L30 实际 **匹配 KB at 1.05x**。所以 C 不是 loss 不够，是 production 过头。
+
+**完整因果链**：
+1. 高空 N2/CH4 等 photoionization → 各种 cation (X+)
+2. X+ + ions 中间反应 → CH2+/CH3+/C2H2+/c-C3H2+ 等"小 carbon cation"积累
+3. 这些 small carbon cation + E → 大量 C (dissociative recomb)
+4. C + hν → C+ + E
+5. C+ + E → C (slow because [E] only 1.46e+3 at L30)
+6. C+ 累积到 3.7e+6 (KB 2e-8)
+
+**真正 root**：第 2 步的小 carbon cation 在 KB 里更快被消耗（或更少产生）。Cheng catalog 的 rate constants 在两边应该相同，所以差异更可能来自 ion-neutral 反应链上某些环节我们错过 / 错算。需要更深网络 audit（multi-hour work）来 close 这个 gap。但当前 106-match 已经是 session 大跃进，剩余 gap 集中在一个特定的 cation cascade。
 
 **G22/G23 sweep 结果 (2026-05-18)**:
 
