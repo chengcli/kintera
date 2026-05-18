@@ -112,10 +112,18 @@ def main():
         kt.kinetics_base_species_metadata_from_pun(str(PUN_PATH)),
     )
 
-    source_terms = [
-        term for term in source_terms
-        if not any(_is_grain_related(name) for name in term.reactants + term.products)
-    ]
+    network_mode = os.environ.get("KINTERA_TITAN_NETWORK_MODE", "no_grain")
+    if network_mode == "no_grain":
+        source_terms = [
+            term for term in source_terms
+            if not any(_is_grain_related(name) for name in term.reactants + term.products)
+        ]
+        print(f"[setup] no_grain mode: filtered to {len(source_terms)} non-grain terms")
+    elif network_mode == "full":
+        print(f"[setup] full mode: all {len(source_terms)} terms (ion + grain)")
+    else:
+        raise ValueError(f"unknown KINTERA_TITAN_NETWORK_MODE: {network_mode}")
+
 
     atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
         titan_state, source_terms, pun_metadata=pun_metadata
