@@ -2,6 +2,34 @@
 
 这份文档是 Titan/KINETICS-base 兼容工作的当前唯一状态总览。旧的实现计划和阶段性分析文档只保留索引，不再作为事实来源。
 
+## 当前结论 (2026-05-18 update — G19 CH4 cold-trap fix)
+
+**最新最佳**: `NT=100 + split + atomic_proj + chgjac + G19 CH4 lev0-23 pin`，对 KB NT=500 oracle:
+- CH4 lev 0/5/10/20/23: **全部 ratio = 1.000x** (G19 修好了 cold trap，之前只 pin lev 23)
+- cation@L30 = **38.6x** (NT=200 之前的 baseline 是 228x，初始 session 是 ~16 OoM 量级)
+- 81 个 species-level pairs 落在 `0.3 < r < 3` 区间（之前约 30）
+- H2/HCN/C2H6/C2H2/CH3 等多个中高空 neutral 进入 ✓ 区间
+
+**G19 root cause**: `apply_kinetics_base_titan_boundary_pins` 的 cold-trap mask 之前只 pin lev 23
+(`NBOT=24` in 1-indexed Fortran)。但 KB 在 `__CHENG` 模式下 lev 0 的 type-5 lower BC 被覆盖为
+4e-3 mixing ratio (atm-file value)，等效地把整段 lev 0–23 都钉在 4e-3，chemistry+diffusion 在这段
+sub-column 不发生 net depletion。我们 pin 只 lev 23 让 lev 0–22 的 CH4 被 chemistry 大量销毁，
+HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation balance。
+
+**剩余主要 gap**:
+- N(2D) lev 20-30 仍 12–70x 偏高。Root-cause 已查明：
+  - 局域 P/L (N2 + hv → N(2D)+N production 与 N(2D)+N2 quenching loss) 给出 [N(2D)]_local_SS ≈ 70000
+  - KB 实际值 ≈ 500（因为 transport 把 N(2D) 从 lev 30 输运到下面快速 quench 区）
+  - 我们的 operator-split 在 dt=1e+9 下 chemistry-step 把 N(2D) 推到 local SS，transport 来不及 fully drain；最终落在 ~6000
+  - 这个机制也部分驱动 cation@L30 残余 38x 偏高（N2+/CN+ + E → N(2D)+... 会过产生 N(2D)，反之 cation 过多也喂 N(2D)）
+- N(2D) 误差不需要单独修——核心还是 transport-chemistry coupling。NT=200 反而比 NT=100 差（Newton convergence 在更大 dt 下退化，partial-converge 误差在 ion zone 累积）
+- HCN lev 20: 0.099x（lev 5 上的 HCN ~3x 偏高，下游 lev 20 偏低，说明 HCN 的 vertical mixing 也没跟上）
+
+**结构性下一步候选**:
+1. **Sub-cycled chemistry+transport** in chemistry-only Newton：每个 outer dt 分成 N 个 sub-step（已实现但默认 off, 计算昂贵）
+2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为
+3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
+
 ## 当前结论 (2026-05-17 update)
 
 经过本次大幅 audit + fix，`no_grain` baseline 在 `NTIME=50` 稳定不溢出，并且和 KB-Linux NT=50 oracle 在中高空 (lev 15–35) 多个 neutral species 上对到 1–2x：
