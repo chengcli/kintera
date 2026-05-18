@@ -225,6 +225,23 @@ def main():
 
     nonfixed_mask = (~fixed_mask).view(1, 1, -1)
 
+    # Cation indices and E index for implicit charge-balance Jacobian
+    # coupling. When passed to chemistry_only_newton_step, each species
+    # row's Jacobian gets dS/dc_E added to the cation columns — propagating
+    # the implicit constraint E = Σ(cations) directly into the Newton
+    # solve instead of via lagged Picard iteration through apply_pins.
+    species_list = titan_state.species
+    cation_indices = [j for j, n in enumerate(species_list) if n.endswith("+")]
+    e_index = species_list.index("E") if "E" in species_list else None
+    if e_index is not None and cation_indices:
+        charge_balance_indices = (cation_indices, e_index)
+    else:
+        charge_balance_indices = None
+    CHARGE_BALANCE_JACOBIAN = (
+        os.environ.get("KINTERA_CHARGE_BALANCE_JACOBIAN", "1") == "1"
+    )
+    _charge_arg = charge_balance_indices if CHARGE_BALANCE_JACOBIAN else None
+
     def _project_atomic_budget(c):
         """Per-cell, per-element atomic conservation: rescale ONLY the species
         that are above their fair share of the budget, leaving smaller species
@@ -352,6 +369,7 @@ def main():
             damping_factor=NEWTON_DAMP_FACTOR,
             damping_trigger=NEWTON_DAMP_TRIGGER,
             clip_negative=_clip_arg,
+            charge_balance_indices=_charge_arg,
             record_residuals=NEWTON_DEBUG,
         )
 

@@ -287,6 +287,7 @@ def chemistry_only_newton_step(
     clip_negative: bool | str = True,
     mass_conservation_cap: bool = True,
     max_concentration_cap: "torch.Tensor | None" = None,
+    charge_balance_indices: "tuple[list[int], int] | None" = None,
     record_residuals: bool = False,
 ) -> NewtonResult:
     """Per-cell chemistry-only Newton iteration of one backward-Euler step.
@@ -357,11 +358,35 @@ def chemistry_only_newton_step(
     else:
         cell_total_density = None
 
+    # Pre-compute cation index tensor for the implicit charge-balance
+    # Jacobian fold. When provided, for each species row i: J[i, j] +=
+    # J[i, e_index] for every cation column j (because dc_E/dc_X+ = 1
+    # given E = Σ(cations)). This propagates the implicit constraint
+    # into the Newton solve so the cation cascade self-recombines via E
+    # without needing Picard iteration through apply_pins.
+    if charge_balance_indices is not None:
+        _cation_idx_list, _e_index = charge_balance_indices
+        _cation_idx = torch.tensor(_cation_idx_list, dtype=torch.long,
+                                    device=c0.device)
+    else:
+        _cation_idx = None
+        _e_index = None
+
     for k in range(max_iterations):
         state.concentration = c_k
         linearization = build_source_linearization(state, source_terms)
         S_at_ck = linearization.tendency  # (ncol, nlyr, nspecies)
         J_at_ck = linearization.jacobian  # (ncol, nlyr, nspecies, nspecies)
+
+        # Fold charge balance into Jacobian: J[..., :, j] += J[..., :, E]
+        # for every cation column j. This is the implicit constraint that
+        # E = Σ(cations) — without it, Newton sees E as independent and
+        # cations accumulate before E "catches up" via apply_pins (one
+        # Picard iteration lag).
+        if _cation_idx is not None:
+            delta = J_at_ck[..., _e_index].clone()  # (ncol, nlyr, nspecies)
+            J_at_ck = J_at_ck.clone()
+            J_at_ck[..., _cation_idx] = J_at_ck[..., _cation_idx] + delta.unsqueeze(-1)
 
         # Backward-Euler residual per cell, scaled by 1/dt (KB BMATRM/RESIDM
         # formulation). This keeps matrix and RHS magnitudes O(|J|) and
