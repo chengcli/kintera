@@ -670,13 +670,19 @@ def _apply_cheng_cold_trap_boundaries(
     conversion: dict[str, str],
     density: torch.Tensor,
     species: list[str],
+    profile_values: dict[str, torch.Tensor] | None = None,
 ) -> None:
     """Apply the KINETICS-base ``__CHENG`` cold trap boundary condition for CH4.
 
     The Cheng Titan branch sets the CH4 cold-trap boundary at level 24
-    (1-indexed, 0-indexed 23, ~500 km altitude).  The oracle output keeps the atmosphere file's
-    prepared number density at the cold-trap layer, so kintera marks the species
-    for pinning without recomputing the boundary value from a rounded VMR.
+    (1-indexed, 0-indexed 23, ~500 km altitude). KB's bc_save lists
+    ``CH4: lower_kind=5 lower_value=4e-4`` as a generic lower-mixing-ratio
+    BC, but that value is the historic surface flux rather than the
+    atmospheric mixing ratio (which is 4e-3 in the atm file). KB ignores
+    the bc_save row for CH4 because the Cheng cold-trap mechanism
+    overrides it.  Match that behaviour by restoring CH4 below the cold
+    trap (lev 0–23) to its atm-file profile value, undoing the rounded
+    4e-4 the lower-BC pass installed.
     """
     _COLD_TRAP_LEVEL = 23  # 0-indexed; Fortran level 24, ~500 km on Titan
 
@@ -688,6 +694,18 @@ def _apply_cheng_cold_trap_boundaries(
         return
     canonical = species[ch4_idx]
     conversion[canonical] = "kinetics_base_cheng_cold_trap_mixing_ratio"
+
+    # Restore CH4 concentration in the lower atmosphere (lev 0 through the
+    # cold trap) from the atm-file profile, overriding any prior lower-BC
+    # mixing-ratio overwrite. This matches KB which uses the atm-file
+    # mixing ratio (4e-3) instead of the bc_save value (4e-4).
+    if profile_values is not None and canonical in profile_values:
+        ch4_profile = profile_values[canonical]
+        # Profile is in mixing ratio (matches the .pun_zero_conc atm file);
+        # convert to number density at the levels we're restoring.
+        nlevs = min(_COLD_TRAP_LEVEL + 1, ch4_profile.shape[0])
+        for L in range(nlevs):
+            concentration[L, ch4_idx] = ch4_profile[L] * density[L]
 
 
 def _apply_lower_mixing_ratio_boundaries(

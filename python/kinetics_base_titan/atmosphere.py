@@ -65,7 +65,22 @@ def kinetics_base_concentration_from_profile(
     # (0-indexed 23) is pinned to the prepared atmosphere/boundary values.
     # This must come after boundary_path processing so the CH4 pin metadata
     # survives the surface boundary conversion.
-    _apply_cheng_cold_trap_boundaries(concentration, conversion, density[:, 0], species)
+    #
+    # Pass the atm-file mixing-ratio profile so the cold trap can restore
+    # CH4 below the trap. The bc_save lower BC for CH4 (mixing-ratio
+    # 4e-4) is incorrect — KB uses the atm-file value (4e-3). Restoring
+    # from the profile fixes the off-by-10× initial CH4 at lev 0–22.
+    profile_values: dict[str, torch.Tensor] = {}
+    for j, name in enumerate(species):
+        if name.lower() == "ch4":
+            # Use raw profile (mixing ratio) values, not the density-multiplied
+            # tensor that's already been modified by the lower-BC pass.
+            raw = kinetics_base_profile_tensor(profile, [name])[:, 0]
+            profile_values[name] = raw
+            break
+    _apply_cheng_cold_trap_boundaries(
+        concentration, conversion, density[:, 0], species, profile_values=profile_values
+    )
 
     zero_density = density[:, 0] == 0
     if torch.any(zero_density):
