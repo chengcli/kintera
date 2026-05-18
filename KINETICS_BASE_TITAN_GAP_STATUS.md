@@ -30,6 +30,25 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为（**G21 试过：uniform sink 太粗暴，over-corrects N(2D) 同时让 cation 爆 428000x，已 revert**）
 3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
 
+**G24 突破 (2026-05-18 后续)**:
+
+`coupled + G19 pin + NT=200 + max_dt=1e+8 + no chg_fold`：**106 matched** （前最佳 90），N(2D)/HCN/C2H6/C2H2 全都 ✓，但 cation@L30 = 4092x。
+
+**Root cause of cation excess at L30 = bare carbon cascade**：
+- `[C] L30 = 7.76e+7`，KB `4.54` → **1.7e+7x over**
+- `[C2] L30 = 4.46e+7`，KB `177` → 2.5e+5x over
+- `[C3] L30 = 1.1e+10`，KB `1.9e+5` → 5.9e+4x over
+- `[C+] L30 = 3.7e+6`，KB `2e-8` → 1.9e+14x over
+
+KB 把 bare C atoms 保持得极低 (<10/cm^3 at L30)，意味着 KB 网络里有快速消耗 C 的途径。我们 no_grain 模式 disable 了 grain wall-loss，但 KB 也是同 mode 下保持 C 低——所以是 gas-phase chemistry 而非 grain。
+
+**下一步**：audit C-consuming reactions in our network vs KB; possibly:
+- C + N → CN (or similar)
+- C + H + M → CH + M (3-body)
+- C + neutrals → various
+
+可以用 `diagnostic_tools/rate_diff.py` 比 C 反应的 prod/loss rate at L30。这是 multi-hour 网络 audit 工作。
+
 **G22/G23 sweep 结果 (2026-05-18)**:
 
 | config | NT | max_dt | matched | cation@L30 |
