@@ -288,9 +288,15 @@ def main():
     SOLVER_MODE = os.environ.get("KINTERA_SOLVER_MODE", "split")
 
     def step_fn_coupled(state, dt):
-        """Original coupled-Newton step (transport + chemistry in one inner iter).
+        """Coupled-Newton step (transport + chemistry in one inner iter).
 
         Set ``KINTERA_SOLVER_MODE=coupled`` to use this path; default ``split``.
+
+        Atomic projection is NOT applied in coupled mode: experimentation
+        showed coupled Newton re-equilibrates around the projected state
+        and finds worse fixed-points than without (e.g. C+ at lev 30 went
+        from 3.8e+3 to 4.3e+6 when projection was added). The coupled
+        solver's own mass cap is the only post-Newton trust region used.
         """
         return kt.newton_implicit_step(
             state,
