@@ -69,8 +69,14 @@ def _fixed_timestep_sequence(ntime):
 
 
 def _kb_timestep_sequence(ntime):
-    """KB Titan stage-based schedule (mirrors DELTIM=-1e-15, NCYCLE=10)."""
-    return kt.kinetics_base_titan_dt_schedule(ntime)
+    """KB Titan stage-based schedule (mirrors DELTIM=-1e-15, NCYCLE=10).
+
+    Override max_dt with ``KINTERA_TITAN_MAX_DT`` (default 1e+9 — KB default).
+    Smaller max_dt keeps transport+chemistry better synchronized at the cost
+    of more steps to reach physical time.
+    """
+    max_dt = float(os.environ.get("KINTERA_TITAN_MAX_DT", "1.0e+9"))
+    return kt.kinetics_base_titan_dt_schedule(ntime, max_dt=max_dt)
 
 
 def _build_sequence(ntime):
