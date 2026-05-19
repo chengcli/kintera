@@ -30,6 +30,42 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为（**G21 试过：uniform sink 太粗暴，over-corrects N(2D) 同时让 cation 爆 428000x，已 revert**）
 3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
 
+**Phase 6a grain audit partial (2026-05-19)**
+
+Antoine vapor-pressure params (vapor_A/B/C) parsed correctly from
+.pun for all grain species (CH4, C2H2, C2H4, C2H6, NH3, HCN, HC3N,
+C3/C4/C5/C6 chains). Saturation density at L5 (T=102.8K) for C2H6:
+n_sat ≈ 1.5e+16/cm³.
+
+Equilibrium analysis at L5 for C2H6:
+  - site_capacity = 4 × SGA × nsite = 4 × 9.3e-6 × 1.5e+15 = 5.58e+10
+    (dominates ``ntot = max(grain_total, site_capacity)``)
+  - Predicted [GC2H6]/[C2H6] ≈ ntot/n_sat = 3.8e-6
+  - Our model:  2.2e-4  (58× above local-equilibrium)
+  - KB:         2.5e-7  (15× below local-equilibrium)
+  - Our/KB ratio: 870×
+
+Sublimation timescale ~10 s, integration runs ~10⁹ s → local
+equilibrium should have been reached many times. The persistent over-
+condensation suggests continuous mass flux from above is faster than
+sublimation can clear. KB sits at 15× below local equilibrium —
+consistent with a fast downward transport flux balanced by slow
+sublimation, but the absolute level is set by the upper-altitude
+production source.
+
+Open questions for future work:
+  - Should ``nsite`` and the site_capacity formula match KB's exact
+    grain-surface model? Cheng et al. published values for monolayer
+    coverage may differ.
+  - Is the "ntot = max(...)" formula right, or should it be additive
+    (gas+ice on grain surface)?
+  - Cation bleed at low alt (G30) produces ~5-120× excess gas neutrals
+    at L5; that's the dominant upstream — fixing it would also fix
+    much of grain over-accumulation.
+
+Phase 6a remains open; grain rate audit alone unlikely to close the
+gap without first fixing the upstream low-alt ion bleed.
+
 **Phase 6b ion-scale sweep complete (2026-05-19)**
 
 Full sweep of `KINTERA_ION_DIFFUSION_SCALE` at NT=100 dt=1e+7 full grain:
