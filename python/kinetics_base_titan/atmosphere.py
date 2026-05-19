@@ -253,17 +253,21 @@ def kinetics_base_titan_boundary_pin_mask(
     ]
     if cold_trap_species:
         # Cheng cold trap pins CH4 to the atm-file mixing-ratio profile at
-        # lev 0–23 (NBOT=24 in 1-indexed Fortran). KB's converged result
-        # holds CH4 at 4e-3 mixing ratio through this whole sub-column;
-        # without pinning lev 1–22 our chemistry destroys CH4 there and
-        # downstream products (HCN, C2 hydrocarbons) collapse with it.
-        cold_trap_top_level = 23
-        mask[:, : cold_trap_top_level + 1, cold_trap_species] = True
-        values[:, : cold_trap_top_level + 1, cold_trap_species] = (
-            titan_state.concentration[
-                :, : cold_trap_top_level + 1, cold_trap_species
-            ]
-        )
+        # lev 0–23 (NBOT=24 in 1-indexed Fortran). Above the cold trap,
+        # KB's converged result still tracks the atm-file CH4 profile
+        # within 2–3% at lev 24–39: KB's vertical mixing of CH4 against
+        # photolysis destruction reaches a quasi-static profile that's
+        # essentially the initial atm. In our operator-split, chemistry
+        # at dt=1e+9 destroys CH4 faster than transport can refill,
+        # collapsing CH4 to ~zero at lev 28+. That cuts the dominant
+        # CH2+/CH3+ loss channel (X+ + CH4 → products), forcing those
+        # cations to recombine with E instead, which produces bare C
+        # at 1e+6× KB rate — the upstream of the C+ runaway.
+        # Pin CH4 across the full atmosphere to match KB's behavior.
+        mask[:, :, cold_trap_species] = True
+        values[:, :, cold_trap_species] = titan_state.concentration[
+            :, :, cold_trap_species
+        ]
 
     return mask, values
 
