@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>kintera × kinetics-base-titan Refactor Schema</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    line-height: 1.5;
+    max-width: 1100px;
+    margin: 2em auto;
+    padding: 0 1.5em;
+    color: #222;
+    background: #fafafa;
+  }
+  h1 { border-bottom: 3px solid #2a6; padding-bottom: 0.2em; }
+  h2 { color: #2a6; border-bottom: 1px solid #ddd; padding-bottom: 0.15em; margin-top: 2em; }
+  h3 { color: #444; margin-top: 1.5em; }
+  code, pre, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.92em; }
+  pre {
+    background: #f0f0f0;
+    border-left: 4px solid #2a6;
+    padding: 0.6em 1em;
+    overflow-x: auto;
+    border-radius: 3px;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1em 0;
+    font-size: 0.95em;
+  }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; vertical-align: top; text-align: left; }
+  th { background: #e8f3ec; }
+  tr:nth-child(even) { background: #f4f4f4; }
+  .core { background: #e8f3ec; }
+  .titan { background: #fff3e0; }
+  .gray  { background: #f0f0f7; }
+  .legend span { padding: 2px 8px; border-radius: 3px; margin-right: 1em; font-size: 0.9em; }
+  .ok    { color: #080; font-weight: bold; }
+  .warn  { color: #b80; font-weight: bold; }
+  .bad   { color: #b00; font-weight: bold; }
+  .tag {
+    display: inline-block;
+    background: #2a6;
+    color: white;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 0.78em;
+    font-weight: bold;
+    margin-right: 4px;
+  }
+  .tag.titan { background: #c70; }
+  .tag.gray  { background: #66c; }
+  .tag.move  { background: #b22; }
+  .tag.keep  { background: #888; }
+  .tag.new   { background: #06a; }
+  ul.tree { list-style: none; padding-left: 1em; font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.93em; }
+  ul.tree li { padding: 1px 0; }
+  ul.tree li::before { content: "├─ "; color: #888; }
+  ul.tree li:last-child::before { content: "└─ "; }
+  ul.tree ul.tree li::before { content: "  ├─ "; }
+  ul.tree ul.tree li:last-child::before { content: "  └─ "; }
+  .summary-box {
+    background: #fff;
+    border: 1px solid #d0e0d0;
+    border-left: 4px solid #2a6;
+    padding: 0.8em 1.2em;
+    margin: 1em 0;
+    border-radius: 3px;
+  }
+  .summary-box.warn { border-left-color: #b80; background: #fff8e8; }
+  .summary-box.bad  { border-left-color: #b00; background: #fff0f0; }
+  .small { font-size: 0.88em; color: #555; }
+</style>
+</head>
+<body>
+
+<h1>kintera × kinetics-base-titan — Refactor Schema</h1>
+
+<p class="small">
+Drafted 2026-05-19 · Branch <code>ions-support-plan</code> · Best matched: 159/531 (30%), cation@L30 = 0.83× KB · Top of branch: <code>302c94d</code>
+</p>
+
+<div class="summary-box">
+<b>One-sentence goal.</b>
+Split the codebase along a <b>physics-generic vs Titan/KB-specific</b> seam so that
+(a) the chemistry/transport solver in <code>python/atm2d/</code> works on <i>any</i> ion-bearing atmosphere
+without knowing about KINETICS-base file formats, and
+(b) <code>python/kinetics_base_titan/</code> shrinks into a thin adapter that loads KB inputs
+and exposes Titan-specific physics knobs.
+</div>
+
+<p class="legend">
+<span class="core">core (kintera)</span>
+<span class="titan">Titan/KB-specific</span>
+<span class="gray">currently entangled — needs splitting</span>
+</p>
+
+<h2>1. Rationale</h2>
+
+<p>This session closed the biggest cation-balance gaps (cation@L30 went from 16+ OoM → 0.83× KB)
+by repeatedly touching code that lives on both sides of the kintera/kinetics_base_titan boundary
+— charge-balance Jacobian fold, atomic-budget projection, dt-cap schedule, cold-trap pin.
+Today most "fix-one-thing" PRs end up <b>mutating both layers</b>, which makes it hard to:</p>
+
+<ul>
+  <li>Use the kintera solver for a non-KB workflow (e.g., a new Jupiter ion run that doesn't read <code>.pun</code> files).</li>
+  <li>Test the solver in isolation (kintera unit tests today need a KB <code>.pun</code> file to construct a state).</li>
+  <li>Reason about KB-correctness vs solver-correctness (G19/G26 was a KB-semantic fix; G18b/G22 was a solver fix; they had to be teased apart by reading commits).</li>
+</ul>
+
+<p>The remaining gaps (ambipolar diffusion, NH₃ low-altitude feedback, grain implementation bugs, HCN sawtooth) all sit cleanly on one side of the seam <i>once</i> the seam is explicit. Drawing the line now keeps that work from re-blurring it.</p>
+
+<h2>2. Three-Layer Model</h2>
+
+<table>
+<tr>
+  <th>Layer</th><th>Concern</th><th>Examples</th><th>Owner</th>
+</tr>
+<tr class="core">
+  <td><b>L1. Solver core</b></td>
+  <td>Generic atmospheric chemistry+transport math. Knows about species, concentrations, Jacobians, BCs — not about file formats or planets.</td>
+  <td>Backward-Euler Newton, transport assembly, mass cap, atomic projection, charge-balance fold, dt schedule controller</td>
+  <td><code>python/atm2d/</code></td>
+</tr>
+<tr class="titan">
+  <td><b>L2. KB adapter</b></td>
+  <td>Parse KB (Fortran) input files into kintera state. Translate KB run-input semantics (FREEZE, SUBLIM, NCYCLE, NFIX, …) into kintera's L1 knobs.</td>
+  <td><code>.pun / .special / .bc_save</code> parsers, atm-file loader, KB schedule reproduction, Titan grain source classes</td>
+  <td><code>python/kinetics_base_titan/</code></td>
+</tr>
+<tr class="gray">
+  <td><b>L3. Driver</b></td>
+  <td>Wire L1 + L2 together for a specific experiment. Sets env-var knobs, dumps state, runs comparisons.</td>
+  <td>Stability runs, NT sweeps, rate diff, trajectory compare</td>
+  <td><code>diagnostics/</code></td>
+</tr>
+</table>
+
+<h2>3. Current State Map</h2>
+
+<p>Files that already sit cleanly on one side:</p>
+
+<table>
+<tr><th>File</th><th>Lines</th><th>Layer</th><th>What it does</th></tr>
+<tr class="core"><td><code>atm2d/atm_state2d.py</code></td><td>217</td><td>L1</td><td><code>AtmState2D</code>, <code>SpeciesBoundaryConditions2D</code> dataclasses</td></tr>
+<tr class="core"><td><code>atm2d/matrix.py</code></td><td>324</td><td>L1</td><td><code>SparseSystemMatrix</code>, COO/CSR plumbing</td></tr>
+<tr class="core"><td><code>atm2d/transport.py</code></td><td>616</td><td>L1</td><td>Eddy diffusion operator, BC application</td></tr>
+<tr class="core"><td><code>atm2d/chemistry.py</code></td><td>125</td><td>L1</td><td>kintera-native chemistry → Jacobian</td></tr>
+<tr class="core"><td><code>atm2d/timestep.py</code></td><td>196</td><td>L1</td><td>Adaptive dt acceptance criteria</td></tr>
+<tr class="core"><td><code>atm2d/solver.py</code></td><td>51</td><td>L1</td><td>Linear solver dispatch</td></tr>
+<tr class="titan"><td><code>kinetics_base_titan/parsing.py</code></td><td>751</td><td>L2</td><td>Parse <code>.pun / .special / .bc_save</code>, build species/reaction lists</td></tr>
+<tr class="titan"><td><code>kinetics_base_titan/source_terms.py</code></td><td>559</td><td>L2</td><td><code>KBTitanSourceTerm</code> dataclass + factories</td></tr>
+<tr class="titan"><td><code>kinetics_base_titan/source_integration.py</code></td><td>669</td><td>L2</td><td>KB rate-constant / photo-rate integration</td></tr>
+<tr class="titan"><td><code>kinetics_base_titan/electron_impact.py</code></td><td>185</td><td>L2</td><td>Cheng electron-impact cross-sections</td></tr>
+<tr class="titan"><td><code>kinetics_base_titan/photochemistry.py</code></td><td>205</td><td>L2</td><td>Cheng catalog integration</td></tr>
+<tr class="titan"><td><code>kinetics_base_titan/radiation.py</code></td><td>321</td><td>L2</td><td>KB actinic-flux radiative transfer</td></tr>
+<tr class="titan"><td><code>kinetics_base_titan/physics.py</code></td><td>207</td><td>L2</td><td>Sticking, thermal-velocity, sublim-rate helpers</td></tr>
+</table>
+
+<p>Files where L1 and L2 concerns are <b>currently mixed</b> — these are the refactor targets:</p>
+
+<table>
+<tr><th>File</th><th>L1-shaped pieces</th><th>L2-shaped pieces</th></tr>
+<tr class="gray">
+  <td><code>atm2d/source.py</code> (271 LOC)</td>
+  <td>
+    <code>LocalSourceLinearization</code>, <code>LocalSourceTerm</code> Protocol,
+    <code>build_source_linearization</code>, <code>build_source_global_operator</code>,
+    <code>IndexedFirstOrderSource</code>, <code>IndexedMassActionSource</code>,
+    <code>IndexedReversibleFirstOrderSource</code>, <code>IndexedBoundary*Source</code>,
+    <b>charge_balance_indices fold</b>
+  </td>
+  <td>—</td>
+</tr>
+<tr class="gray">
+  <td><code>atm2d/newton.py</code> (476 LOC)</td>
+  <td>
+    <code>chemistry_only_newton_step</code> + matrix rescaling + mass cap,
+    <code>newton_implicit_step</code>,
+    Newton damping/divergence policy,
+    <code>charge_balance_indices</code> threading
+  </td>
+  <td>—</td>
+</tr>
+<tr class="gray">
+  <td><code>atm2d/assembly.py</code> (201 LOC)</td>
+  <td>
+    <code>build_implicit_operator</code>, <code>build_implicit_step_system</code>,
+    conditional 1/dt rescaling at large dt
+  </td>
+  <td>—</td>
+</tr>
+<tr class="gray">
+  <td><code>kinetics_base_titan/atmosphere.py</code> (369 LOC)</td>
+  <td>
+    Pin-mask state machine: <code>kinetics_base_titan_boundary_pin_mask</code>,
+    <code>apply_kinetics_base_titan_dirichlet_rows</code> (these are <i>generic</i> Dirichlet-row + post-Newton-pin tooling, with Titan-flavored names).
+    Charge-balance E recompute (<code>E = Σ(cations)</code>) is generic to ionic chemistry.
+  </td>
+  <td>
+    Cheng cold-trap pin (CH4 lev 0–39, G19+G26).
+    Titan-specific conversion strings,
+    KB <code>fixed_species</code> defaulting (JDUST, RAYEAR, …).
+  </td>
+</tr>
+<tr class="gray">
+  <td><code>kinetics_base_titan/atm2d_sources.py</code> (530 LOC)</td>
+  <td>
+    The <code>linearize()</code> protocol mechanics — same pattern as core <code>IndexedFirstOrderSource</code>.
+  </td>
+  <td>
+    <code>KBTitanFirstOrderAtm2DSource</code>, <code>KBTitanProductOnlyCondensationSource</code>,
+    <code>KBTitanShiftedSublimationSource</code> — Titan grain/sublimation physics.
+    <code>_is_ch4_grain_loading</code>, <code>_is_ch4_shifted_grain_release</code> — special-case CHENG branch logic.
+  </td>
+</tr>
+<tr class="gray">
+  <td><code>kinetics_base_titan/schedule.py</code> (173 LOC)</td>
+  <td>
+    Stage-based dt growth controller (<code>dt *= √10</code>, NCYCLE rep, max_dt cap) — this is a generic implicit-marching schedule, not KB-specific.
+  </td>
+  <td>
+    KB default values: NCYCLE=2, DELTIM=1e−15, max_dt=1e+9, no Earth stage cap.
+  </td>
+</tr>
+<tr class="gray">
+  <td><code>diagnostics/no_grain_stability.py</code> (~640 LOC)</td>
+  <td>
+    Atomic-budget projection ("hog" detection),
+    operator-split + chemistry-only-Newton driver loop,
+    QSS init,
+    dump/compare harness.
+    <b>These are reusable across atmospheres.</b>
+  </td>
+  <td>
+    Hardcoded paths to <code>kintitan.pun_*</code>, <code>Cheng_catalog_v4.dat</code> etc.
+  </td>
+</tr>
+</table>
+
+<h2>4. Target Structure</h2>
+
+<p>Proposed <code>python/</code> layout after refactor:</p>
+
+<ul class="tree">
+  <li>python/
+    <ul class="tree">
+      <li><b>atm2d/</b>   &nbsp;<span class="tag">core</span>&nbsp;<span class="small">— pure physics, no I/O</span>
+        <ul class="tree">
+          <li>atm_state2d.py            &nbsp;<span class="tag keep">keep</span></li>
+          <li>matrix.py                 &nbsp;<span class="tag keep">keep</span></li>
+          <li>transport.py              &nbsp;<span class="tag keep">keep</span> + add ambipolar-diffusion hook</li>
+          <li>chemistry.py              &nbsp;<span class="tag keep">keep</span></li>
+          <li>solver.py                 &nbsp;<span class="tag keep">keep</span></li>
+          <li>timestep.py               &nbsp;<span class="tag keep">keep</span></li>
+          <li><b>sources/</b>           &nbsp;<span class="tag new">new pkg</span>&nbsp;<span class="small">— split current source.py</span>
+            <ul class="tree">
+              <li>protocol.py           — <code>LocalSourceTerm</code>, <code>LocalSourceLinearization</code></li>
+              <li>indexed.py            — <code>Indexed{FirstOrder,MassAction,ReversibleFirstOrder,Boundary*}Source</code></li>
+              <li>charge_balance.py     — <code>fold_charge_balance_into_jacobian(...)</code></li>
+              <li>combine.py            — <code>build_source_linearization</code>, <code>build_source_global_operator</code></li>
+            </ul>
+          </li>
+          <li><b>newton/</b>            &nbsp;<span class="tag new">new pkg</span>&nbsp;<span class="small">— split newton.py</span>
+            <ul class="tree">
+              <li>result.py             — <code>NewtonResult</code>, <code>per_species_relative_change</code></li>
+              <li>chemistry_only.py     — <code>chemistry_only_newton_step</code></li>
+              <li>coupled.py            — <code>newton_implicit_step</code></li>
+              <li>policies.py           — damping / divergence / mass-cap / out-of-basin shared helpers</li>
+            </ul>
+          </li>
+          <li>assembly.py               &nbsp;<span class="tag keep">keep</span>&nbsp;<span class="small">— dt-rescaling lives here</span></li>
+          <li><b>pins.py</b>            &nbsp;<span class="tag new">new</span>&nbsp;<span class="small">— promoted from kinetics_base_titan</span>
+            <ul class="tree">
+              <li><code>BoundaryPinSpec</code> dataclass</li>
+              <li><code>build_pin_mask(state, specs) → (mask, values)</code></li>
+              <li><code>apply_pin_mask_to_concentration(c, mask, values)</code></li>
+              <li><code>apply_pin_mask_as_dirichlet_rows(system, rhs, mask)</code></li>
+              <li><code>recompute_charge_balance_e(c, cation_idx, anion_idx, e_idx)</code></li>
+            </ul>
+          </li>
+          <li><b>schedule.py</b>        &nbsp;<span class="tag new">new</span>&nbsp;<span class="small">— promoted from KB</span>
+            <ul class="tree">
+              <li><code>StageScheduleConfig</code>: ncycle, growth, max_dt, start_dt, stage_cap</li>
+              <li><code>stage_schedule(ntime, cfg)</code> returns dt list</li>
+            </ul>
+          </li>
+          <li><b>conservation/</b>      &nbsp;<span class="tag new">new pkg</span>
+            <ul class="tree">
+              <li>atomic.py             — atomic-budget projection (hog detection) lifted from <code>no_grain_stability.py</code></li>
+              <li>charge.py             — charge-balance utilities (cation list, E recompute helper)</li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+
+      <li><b>kinetics_base/</b>   &nbsp;<span class="tag titan">L2</span>&nbsp;<span class="small">— renamed from kinetics_base_titan, "_titan" demoted to submodule</span>
+        <ul class="tree">
+          <li><b>io/</b>                &nbsp;<span class="tag new">new pkg</span>
+            <ul class="tree">
+              <li>pun.py                — parse <code>.pun</code> network (today: parsing.py top half)</li>
+              <li>special.py            — parse <code>.special</code> ISP overrides</li>
+              <li>bc_save.py            — parse <code>.bc_save</code> boundary spec</li>
+              <li>atm.py                — parse <code>kintitan.pun_zero_conc_*</code> atm file</li>
+              <li>cheng_catalog.py      — parse Cheng <code>catalog_v4.dat</code> + cross sections</li>
+            </ul>
+          </li>
+          <li><b>physics/</b>           &nbsp;<span class="tag keep">keep (mostly)</span>
+            <ul class="tree">
+              <li>sticking.py           — Titan sticking-coefficient model</li>
+              <li>thermal.py            — thermal velocity, vapor pressure</li>
+              <li>radiation.py          — KB actinic-flux RT</li>
+              <li>electron_impact.py    — Cheng e-impact</li>
+              <li>photochemistry.py     — Cheng photo integration</li>
+            </ul>
+          </li>
+          <li><b>titan/</b>             &nbsp;<span class="tag titan">Titan-only</span>
+            <ul class="tree">
+              <li>cold_trap.py          — Cheng CH4 cold-trap pin spec (G19+G26)</li>
+              <li>grain.py              — <code>KBTitanProductOnlyCondensationSource</code>, <code>KBTitanShifted...</code></li>
+              <li>defaults.py           — Titan <code>fixed_species</code> list (NFIX=8), Kzz scaling, etc.</li>
+              <li>state_builder.py      — <code>build_titan_state(...)</code> orchestrates io + physics + defaults</li>
+            </ul>
+          </li>
+          <li><b>adapter.py</b>          — translate <code>KBTitanSourceTerm</code> → core <code>LocalSourceTerm</code></li>
+          <li><b>schedule_defaults.py</b> — KB default <code>StageScheduleConfig</code> values</li>
+        </ul>
+      </li>
+
+      <li><b>kintera/</b>   &nbsp;<span class="small">existing public re-exports — update bindings</span></li>
+    </ul>
+  </li>
+</ul>
+
+<h2>5. Migration Matrix</h2>
+
+<table>
+<tr>
+  <th>Symbol</th><th>Today</th><th>Target</th><th>Leverage</th><th>Risk</th>
+</tr>
+<tr>
+  <td><code>charge_balance_indices</code> fold</td>
+  <td><code>atm2d/source.py</code>:72–83 (Jacobian mutation inline)</td>
+  <td><code>atm2d/sources/charge_balance.py</code>: pure function, tested standalone</td>
+  <td>High — unlocks reuse in non-KB ion models, testable in isolation</td>
+  <td>Low — pure refactor, mechanical extraction</td>
+</tr>
+<tr>
+  <td>Atomic-budget projection</td>
+  <td><code>diagnostics/no_grain_stability.py</code>:245–292 (<code>_project_atomic_budget</code> closure)</td>
+  <td><code>atm2d/conservation/atomic.py</code>:
+    <code>project_atomic_budget(c, atom_counts, fixed_mask, budget)</code></td>
+  <td>High — every driver needs this; today copy-paste candidate</td>
+  <td>Low — code is closure-heavy, lift to free function</td>
+</tr>
+<tr>
+  <td>Mass-conservation cap</td>
+  <td><code>atm2d/newton.py</code>:343–359, 419–424 (inline in <code>chemistry_only_newton_step</code>)</td>
+  <td><code>atm2d/newton/policies.py</code>: <code>apply_mass_cap(c, cap)</code></td>
+  <td>Med — shared between coupled + chemistry-only Newton; today duplicated comments</td>
+  <td>Low</td>
+</tr>
+<tr>
+  <td>Conditional 1/dt rescaling</td>
+  <td><code>atm2d/assembly.py</code>:152–193 (inline branch)</td>
+  <td>same file, extracted helper <code>_choose_be_form(dt, …)</code></td>
+  <td>Low — readability only</td>
+  <td>Low</td>
+</tr>
+<tr>
+  <td>Pin mask + Dirichlet rows</td>
+  <td><code>kinetics_base_titan/atmosphere.py</code>:196–340 (Titan-named, includes generic logic)</td>
+  <td><code>atm2d/pins.py</code> (generic) + <code>kinetics_base/titan/state_builder.py</code> (build specs)</td>
+  <td>High — Titan adapter shrinks; generic Dirichlet API surfaces</td>
+  <td>Med — many call sites in diagnostics; needs adapter shims for migration</td>
+</tr>
+<tr>
+  <td>Charge-balance E recompute</td>
+  <td><code>kinetics_base_titan/atmosphere.py</code>:152–193 (inside <code>apply_kinetics_base_titan_boundary_pins</code>)</td>
+  <td><code>atm2d/sources/charge_balance.py</code>: <code>recompute_charge_balance_e(c, cation_idx, anion_idx, e_idx)</code></td>
+  <td>High — generic to any ionic chemistry, currently hidden in "Titan" function</td>
+  <td>Low</td>
+</tr>
+<tr>
+  <td>Stage dt schedule</td>
+  <td><code>kinetics_base_titan/schedule.py</code> (whole file)</td>
+  <td><code>atm2d/schedule.py</code> (generic) + <code>kinetics_base/schedule_defaults.py</code> (Titan/KB defaults)</td>
+  <td>Med</td>
+  <td>Low — defaults are 1 dataclass</td>
+</tr>
+<tr>
+  <td>Cheng cold-trap pin (CH4)</td>
+  <td><code>kinetics_base_titan/atmosphere.py</code>:254–270 (inline in pin mask)</td>
+  <td><code>kinetics_base/titan/cold_trap.py</code>: builds <code>BoundaryPinSpec</code> for CH4 across all levels</td>
+  <td>Med — isolates KB compatibility quirk; documents Cheng semantics in one place</td>
+  <td>Low</td>
+</tr>
+<tr>
+  <td>Titan grain source classes</td>
+  <td><code>kinetics_base_titan/atm2d_sources.py</code>:112–250 (3 classes + helpers)</td>
+  <td><code>kinetics_base/titan/grain.py</code></td>
+  <td>Low (file move) but improves discoverability of Titan grain physics</td>
+  <td>Low</td>
+</tr>
+<tr>
+  <td>KB→atm2d source adapter</td>
+  <td><code>kinetics_base_titan/atm2d_sources.py</code>:253–347 (<code>build_kinetics_base_titan_atm2d_source_terms</code>)</td>
+  <td><code>kinetics_base/adapter.py</code></td>
+  <td>Med — clarifies the L2→L1 boundary</td>
+  <td>Low</td>
+</tr>
+<tr>
+  <td>Sub-cycling driver loop</td>
+  <td><code>diagnostics/no_grain_stability.py</code>:349–436</td>
+  <td><code>atm2d/newton/operator_split.py</code>: <code>operator_split_step(...)</code></td>
+  <td>Med — testable; today only exists inside a 640-LOC diagnostic script</td>
+  <td>Med — many env-var hooks to thread through</td>
+</tr>
+<tr>
+  <td>Ambipolar diffusion (planned)</td>
+  <td>— (does not exist; G30 root cause)</td>
+  <td><code>atm2d/transport.py</code>: new <code>build_ambipolar_diffusion_operator(...)</code> + hooked into <code>build_transport_matrix</code></td>
+  <td><b>High — needed to close NH3 feedback gap</b></td>
+  <td>Med — physics design choice (Schunk &amp; Nagy)</td>
+</tr>
+</table>
+
+<h2>6. Gap-Close Mapping</h2>
+
+<p>Each open gap and which refactor step unblocks it:</p>
+
+<table>
+<tr><th>Gap (from GAP_STATUS)</th><th>Status</th><th>Refactor prereq</th></tr>
+<tr>
+  <td><b>NH3 lev 0–5: 245× over</b><br><span class="small">root: ions reach L0–15, no ambipolar diff</span></td>
+  <td class="bad">open</td>
+  <td>Implement ambipolar diffusion in <code>atm2d/transport.py</code>.
+  Pre-req: clean charge-balance utilities in <code>atm2d/sources/charge_balance.py</code> so the transport layer can ask "what are the cations? where is E?" without depending on KB code.</td>
+</tr>
+<tr>
+  <td><b>GCH4 / GC2H6 over-accumulate</b><br><span class="small">grain implementation bug</span></td>
+  <td class="bad">open</td>
+  <td>Move grain sources to <code>kinetics_base/titan/grain.py</code>. Easier to audit & test in isolation once they're not buried in a 530-LOC <code>atm2d_sources.py</code> with conditional dispatch.</td>
+</tr>
+<tr>
+  <td><b>HCN sawtooth L13–22</b><br><span class="small">operator-split + Newton non-convergence</span></td>
+  <td class="warn">open</td>
+  <td>Extract the operator-split driver to <code>atm2d/newton/operator_split.py</code>. Then we can add an outer iteration that re-balances chemistry+transport, or experiment with sub-cycling per cell, without surgery in a diagnostic.</td>
+</tr>
+<tr>
+  <td><b>Type-4 BC flux parsing</b><br><span class="small">N / N(2D) downward flux</span></td>
+  <td class="warn">task #13</td>
+  <td>Implement in <code>kinetics_base/io/bc_save.py</code> as <code>BoundaryPinSpec</code> producer. Driver code stays unchanged.</td>
+</tr>
+<tr>
+  <td><b>Coupled-Newton instability with charge fold</b><br><span class="small">G23: N2+ explodes</span></td>
+  <td class="warn">open</td>
+  <td>With <code>charge_balance.py</code> isolated, easier to A/B-test fold-during-Newton vs fold-after-Newton policies.</td>
+</tr>
+<tr>
+  <td><b>Reusing solver for non-Titan ion atmospheres</b><br><span class="small">e.g., Jupiter, exoplanet</span></td>
+  <td class="warn">future</td>
+  <td>The whole refactor. Today <code>build_kinetics_base_titan_state</code> is the only way to construct an <code>AtmState2D</code> with ion physics wired up.</td>
+</tr>
+</table>
+
+<h2>7. Backwards-Compat Strategy</h2>
+
+<p>The refactor touches many import paths. To avoid breaking diagnostics in-flight, propose a phased rollout:</p>
+
+<ol>
+  <li><b>Phase 1 — Pure extractions (no behavior change)</b>
+    <ul>
+      <li>Lift <code>atomic projection</code>, <code>charge_balance</code> fold, <code>mass cap</code>, <code>stage schedule</code> into their new homes <i>and</i> re-export from old locations.</li>
+      <li>Add unit tests for each extracted symbol — these have no tests today.</li>
+      <li>Diff <code>kt_g29_full_dt1e7_100.npz</code> before/after to verify bit-identical numerical behavior.</li>
+    </ul>
+  </li>
+  <li><b>Phase 2 — Rename <code>kinetics_base_titan</code> → <code>kinetics_base</code> with <code>titan/</code> submodule</b>
+    <ul>
+      <li>Keep <code>kinetics_base_titan</code> as a shim package re-exporting from <code>kinetics_base.titan</code>.</li>
+      <li>Update <code>diagnostics/</code> and <code>kintera/__init__.py</code> re-exports.</li>
+    </ul>
+  </li>
+  <li><b>Phase 3 — Generic pin mask API</b>
+    <ul>
+      <li>Replace <code>kinetics_base_titan_boundary_pin_mask</code> with a <code>BoundaryPinSpec</code>-driven equivalent.</li>
+      <li>Cheng cold-trap becomes a <code>BoundaryPinSpec</code> factory in <code>kinetics_base/titan/cold_trap.py</code>.</li>
+      <li>Diagnostics get a smaller surface area.</li>
+    </ul>
+  </li>
+  <li><b>Phase 4 — Solver decomposition</b>
+    <ul>
+      <li>Split <code>atm2d/source.py</code> and <code>atm2d/newton.py</code> into the proposed sub-packages.</li>
+      <li>Internal-only refactor; public symbols re-exported from <code>atm2d/__init__.py</code>.</li>
+    </ul>
+  </li>
+  <li><b>Phase 5 — Sub-cycling / operator-split as a first-class L1 API</b>
+    <ul>
+      <li>Move the driver loop from <code>no_grain_stability.py</code> into <code>atm2d/newton/operator_split.py</code>.</li>
+      <li>Drivers in <code>diagnostics/</code> become &lt;100-LOC config wiring.</li>
+    </ul>
+  </li>
+  <li><b>Phase 6 — New physics (ambipolar diffusion, type-4 BC, grain fix)</b>
+    <ul>
+      <li>Now landing into a cleanly separated codebase; PRs touch one layer at a time.</li>
+    </ul>
+  </li>
+</ol>
+
+<h2>8. Acceptance Criteria for the Refactor</h2>
+
+<table>
+<tr><th>Check</th><th>How</th></tr>
+<tr>
+  <td>No numerical regression at any phase</td>
+  <td>Run G29 best config (NT=100, dt=1e+7, full grain) before/after each phase; compare <code>concentration</code> arrays bit-identical (or within 1e−12 if reorderings shift float ops).</td>
+</tr>
+<tr>
+  <td>Solver runnable without KB inputs</td>
+  <td>Add a minimal example in <code>tests/</code> that constructs an <code>AtmState2D</code> from a small hand-built network and runs <code>chemistry_only_newton_step</code> + <code>operator_split_step</code>.</td>
+</tr>
+<tr>
+  <td>kinetics_base imports do not appear in <code>atm2d/</code></td>
+  <td><code>grep -r "kinetics_base" python/atm2d/</code> returns nothing.</td>
+</tr>
+<tr>
+  <td>L1 unit-tested for each extracted concern</td>
+  <td>≥1 test per file in <code>atm2d/sources/</code>, <code>atm2d/conservation/</code>, <code>atm2d/pins.py</code>, <code>atm2d/schedule.py</code>.</td>
+</tr>
+<tr>
+  <td>Refactor delta documented</td>
+  <td>Phase commits reference this schema by section number.</td>
+</tr>
+</table>
+
+<h2>9. Out of Scope (deferred)</h2>
+
+<ul>
+  <li>Splitting <code>kinetics_base/io/pun.py</code> into per-section parsers (the 751-LOC <code>parsing.py</code> stays internally messy — that's a separate cleanup).</li>
+  <li>Replacing env-var driven config in <code>no_grain_stability.py</code> with a typed config dataclass (worth doing, but post-refactor).</li>
+  <li>C++/CUDA backends for the linear solver (touches <code>python/csrc</code>; unrelated).</li>
+  <li>Removing the legacy <code>diagnostics/</code> scripts after they've been replaced with example-driven tests.</li>
+</ul>
+
+<p class="small" style="margin-top: 3em; border-top: 1px solid #ddd; padding-top: 1em;">
+References:<br>
+<code>KINETICS_BASE_TITAN_GAP_STATUS.md</code> — gap roadmap and best-config history<br>
+Top-of-branch commits this session: <code>b0622fa</code> (G19), <code>853b5c9</code> (G26), <code>f5470a1</code> (G29), <code>302c94d</code> (G30)<br>
+Best dumped state: <code>/tmp/kt_g29_full_dt1e7_100.npz</code>
+</p>
+
+</body>
+</html>
