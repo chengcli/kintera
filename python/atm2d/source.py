@@ -7,6 +7,7 @@ import torch
 
 from .atm_state2d import AtmState2D
 from .matrix import SparseSystemMatrix, add_sparse_system_matrices
+from .sources.charge_balance import fold_charge_balance_into_jacobian
 
 
 @dataclass
@@ -71,15 +72,9 @@ def build_source_linearization(
 
     if charge_balance_indices is not None:
         cation_idx_list, e_index = charge_balance_indices
-        if cation_idx_list:
-            cation_idx = torch.tensor(
-                cation_idx_list, dtype=torch.long, device=jacobian.device
-            )
-            delta = jacobian[..., e_index].clone()  # (ncol, nlyr, nspecies)
-            jacobian = jacobian.clone()
-            jacobian[..., cation_idx] = (
-                jacobian[..., cation_idx] + delta.unsqueeze(-1)
-            )
+        jacobian = fold_charge_balance_into_jacobian(
+            jacobian, cation_indices=cation_idx_list, e_index=e_index
+        )
     return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
 
 
