@@ -279,94 +279,51 @@ def main():
     SUBCYCLE_THRESHOLD = float(os.environ.get("KINTERA_SUBCYCLE_THRESHOLD", "1e+6"))
     SUBCYCLE_ENABLED = os.environ.get("KINTERA_SUBCYCLE", "0") == "1"
 
-    def _one_split_substep(state, dt_sub):
-        """One transport-then-chemistry step at dt_sub."""
-        transport_system, transport_rhs = kt.build_implicit_step_system(
-            state,
-            titan_state.kzz,
-            dt_sub,
-            species_diffusion_scale=species_diffusion_scale,
-            source_terms=None,
-        )
-        transport_system, transport_rhs = _apply_dirichlet(transport_system, transport_rhs)
-        c_after_transport = kt.solve_sparse_system(transport_system, transport_rhs)
-        _apply_pins(c_after_transport)
-        state.concentration = c_after_transport
-        return kt.chemistry_only_newton_step(
-            state,
-            dt_sub,
-            source_terms=atm_sources,
-            concentration_postprocess=_apply_pins,
-            max_iterations=NEWTON_MAX_ITER,
-            convergence_tol=NEWTON_TOL,
-            damping_factor=NEWTON_DAMP_FACTOR,
-            damping_trigger=NEWTON_DAMP_TRIGGER,
-            clip_negative=_clip_arg,
-            charge_balance_indices=_charge_arg,
-            record_residuals=NEWTON_DEBUG,
-        )
+    def _between_substeps(c):
+        """Composite post-step: atomic-budget projection + boundary pins.
+        Only applied when ATOMIC_PROJECTION is enabled."""
+        if ATOMIC_PROJECTION:
+            c = _project_atomic_budget(c)
+        c = _apply_pins(c)
+        return c
+
+    _newton_kwargs = dict(
+        max_iterations=NEWTON_MAX_ITER,
+        convergence_tol=NEWTON_TOL,
+        damping_factor=NEWTON_DAMP_FACTOR,
+        damping_trigger=NEWTON_DAMP_TRIGGER,
+        clip_negative=_clip_arg,
+        charge_balance_indices=_charge_arg,
+        record_residuals=NEWTON_DEBUG,
+    )
 
     def step_fn_split(state, dt):
         """Operator-split: transport-only BE step, then chemistry-only Newton.
 
-        Mirrors KINETICS-base which does ``FLOW2D``/diffusion separately from
-        the ``MARCH`` chemistry Newton. Each cell's chemistry residual is
-        independent so Newton converges at much larger ``dt`` than the
-        fully-coupled variant.
-
-        When ``KINTERA_SUBCYCLE=1`` (default) and ``dt > SUBCYCLE_THRESHOLD``,
-        the outer step is internally divided into N sub-cycles of dt/N each
-        so vertical transport doesn't mix species across many scale heights
-        per step. The chemistry Newton sees each sub-step independently.
+        Delegates to :func:`kintera.atm2d.newton.operator_split_advance`
+        with KB-Titan-specific Dirichlet rows / pins and the
+        ATOMIC_PROJECTION composite between sub-steps. The KB-Titan
+        wiring stays here in the driver; the operator-split mechanics
+        live in :mod:`kintera.atm2d.newton.operator_split`.
         """
-        pristine_c0 = state.concentration.clone()
-
         if SUBCYCLE_ENABLED and dt > SUBCYCLE_THRESHOLD:
             n_subcycles = max(2, int(dt / SUBCYCLE_THRESHOLD))
-            dt_sub = dt / n_subcycles
-            chem_result = None
-            agg_iters = 0
-            agg_conv = True
-            for _ in range(n_subcycles):
-                chem_result = _one_split_substep(state, dt_sub)
-                if ATOMIC_PROJECTION:
-                    projected = _project_atomic_budget(chem_result.concentration)
-                    projected = _apply_pins(projected)
-                    chem_result = type(chem_result)(
-                        concentration=projected,
-                        converged=chem_result.converged,
-                        iterations=chem_result.iterations,
-                        max_relative_change=chem_result.max_relative_change,
-                        residual_history=chem_result.residual_history,
-                    )
-                agg_iters += chem_result.iterations
-                agg_conv = agg_conv and chem_result.converged
-                state.concentration = chem_result.concentration
-            assert chem_result is not None
-            # Return aggregate result.
-            final = type(chem_result)(
-                concentration=chem_result.concentration,
-                converged=agg_conv,
-                iterations=agg_iters,
-                max_relative_change=chem_result.max_relative_change,
-                residual_history=chem_result.residual_history,
-            )
-            state.concentration = pristine_c0
-            return final
+        else:
+            n_subcycles = 1
 
-        chem_result = _one_split_substep(state, dt)
-        if ATOMIC_PROJECTION:
-            projected = _project_atomic_budget(chem_result.concentration)
-            projected = _apply_pins(projected)
-            chem_result = type(chem_result)(
-                concentration=projected,
-                converged=chem_result.converged,
-                iterations=chem_result.iterations,
-                max_relative_change=chem_result.max_relative_change,
-                residual_history=chem_result.residual_history,
-            )
-        state.concentration = pristine_c0
-        return chem_result
+        return kt.atm2d.newton.operator_split_advance(
+            state,
+            dt,
+            n_subcycles=n_subcycles,
+            kzz=titan_state.kzz,
+            source_terms=atm_sources,
+            species_diffusion_scale=species_diffusion_scale,
+            transport_system_postprocess=_apply_dirichlet,
+            transport_concentration_postprocess=_apply_pins,
+            chemistry_postprocess=_apply_pins,
+            between_substeps_postprocess=_between_substeps if ATOMIC_PROJECTION else None,
+            newton_kwargs=_newton_kwargs,
+        )
 
     def step_fn(state, dt):
         if SOLVER_MODE == "coupled":

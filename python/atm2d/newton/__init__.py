@@ -10,6 +10,7 @@
 
 from .chemistry_only import chemistry_only_newton_step
 from .coupled import newton_implicit_step
+from .operator_split import operator_split_advance, operator_split_step
 from .result import (
     ConcentrationPostprocess,
     NewtonResult,
@@ -24,4 +25,6 @@ __all__ = [
     "per_species_relative_change",
     "newton_implicit_step",
     "chemistry_only_newton_step",
+    "operator_split_step",
+    "operator_split_advance",
 ]
