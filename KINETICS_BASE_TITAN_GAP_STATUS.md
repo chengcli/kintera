@@ -30,6 +30,30 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为（**G21 试过：uniform sink 太粗暴，over-corrects N(2D) 同时让 cation 爆 428000x，已 revert**）
 3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
 
+**G30 root cause (2026-05-19): low-altitude ion feedback loop**
+
+rate_diff(NH3) trace reveals NH3 L0-5 over by 30-70x driven by:
+- NH4+ + E → NH3 + H 在 L0-5 跑 (kt 6e+11 vs KB 0)
+- NH3 + HCNH+ → NH4+ + HCN 跑 (kt -4e+8 vs KB 0)
+- NH2 + H2CN → NH3 + HCN 跑 (kt 5.8e+9 vs KB 5e-10)
+
+KB 在 L0-15 cations ~0, E ~0：
+- NH4+ L0/L5: 0 / 0
+- E L0/L5: 0 / 0
+- C2H5+/C6H7+ at L5: 0 / 0
+
+我们的 model 在 L0 有：NH4+ 3e+8, E 1.9e+9。Cations 通过 eddy diffusion 从 production zone (L25+) 向下扩散，在 L0-15 累积成 feedback loop。我们的 NH3 build up 到 9e+9 at L0 (KB 1.35e+8 → 69x over) 喂入更多 cation 产生。
+
+**KB 没有这个 problem 的原因（推测）**：
+- KB 总 integration 时间不一样（NCYCLE schedule 不同）
+- KB 的离子-离子或离子-中性反应平衡更好
+- Eddy diffusion 速率有差异？需 audit `eddy_diffusion` profile
+
+**候选修法**：
+- 给所有 cations 加 deposition velocity 在 lower BC (强 sink at L0)
+- 或：rate-limit cation downward transport
+- 或：调 vertical diffusion 让 ions decay faster as they go down
+
 **G29 (2026-05-19): FULL grain + dt=1e+7 — best so far**
 
 `KINTERA_TITAN_NETWORK_MODE=full KINTERA_TITAN_MAX_DT=1e+7 NT=100 split + chg_fold + atomic_proj + G19/G26 CH4 pin`:
