@@ -30,6 +30,36 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为（**G21 试过：uniform sink 太粗暴，over-corrects N(2D) 同时让 cation 爆 428000x，已 revert**）
 3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
 
+**Refactor complete (2026-05-19): REFACTOR_SCHEMA Phases 1–6**
+
+Per REFACTOR_SCHEMA.html, 9 commits split L1 (kintera solver core) from
+L2 (KB Titan adapter):
+
+  - Phase 1a–1c: extracted atomic projection, charge-balance fold,
+    stage schedule → `atm2d.conservation`, `atm2d.sources`, `atm2d.schedule`
+  - Phase 1d: 13 unit tests for extracted helpers
+  - Phase 2: renamed `kinetics_base_titan` → `kinetics_base.titan` + shim
+  - Phase 3: generic `BoundaryPinSpec` API → `atm2d.pins`
+  - Phase 4a: split `source.py` → `atm2d/sources/{protocol,indexed,combine}.py`
+  - Phase 4b: split `newton.py` → `atm2d/newton/{result,coupled,chemistry_only}.py`
+  - Phase 5: operator-split driver → `atm2d.newton.operator_split`
+  - Phase 6b: `ion_scale` knob in species_diffusion_scale (crude ambipolar)
+  - Phase 6c: confirmed type-4 BC was already wired (N/N(2D) flux)
+
+Every phase verified bit-identical against `/tmp/baseline_g29.npz`
+(`np.array_equal == True`, max abs diff = 0).
+
+Remaining physics gaps:
+  - Phase 6a (grain rate-constant audit): deferred — GCH4/GC2H6
+    over-condensation at lev 5 likely downstream of gas excess from
+    low-alt cation bleed; address upstream first.
+  - Phase 6b proper ambipolar: needs co-solved ions+electrons, not a
+    single uniform scale. Sweep showed uniform scale doesn't improve
+    matched count (baseline 159 > all alternatives).
+  - True closure of NH3 feedback / cation bleed: requires either
+    per-species diffusion model or longer integration with stable
+    Newton (NT≫100 currently regresses).
+
 **G30 root cause (2026-05-19): low-altitude ion feedback loop**
 
 rate_diff(NH3) trace reveals NH3 L0-5 over by 30-70x driven by:
