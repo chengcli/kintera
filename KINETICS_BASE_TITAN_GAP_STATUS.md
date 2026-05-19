@@ -30,6 +30,39 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为（**G21 试过：uniform sink 太粗暴，over-corrects N(2D) 同时让 cation 爆 428000x，已 revert**）
 3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
 
+**G26+G28 (2026-05-19): cation balance huge win**
+
+CH4 full-column pin (G26: lev 0-39) + dt=1e+8 cap + split solver +
+charge fold + atomic projection 在 NT=100 给出:
+
+- **cation@L30 = 2.22x** (G24 best was 4092x; 1800x better)
+- **103 / 531 species-lev pairs ∈ (0.3, 3.0)** (G24 best 106; ~similar)
+- 151 / 531 ∈ (0.1, 10x)  — 28%
+- 237 / 531 ∈ (0.01, 100x) — 45%
+- 主要 cation (NH4+/HCNH+/c-C3H3+/C6H5+/l-C3H3+) 都在 0.1-10x
+
+**G27 grain mode 探索 (false start)**:
+
+KB oracle `kb_run_500` 是 `FREEZE=1 SUBLIM=-1` (grain ON) — 我们一直在
+no_grain 比 grain，**apples to oranges**。但启用我们的 grain
+(`KINTERA_TITAN_NETWORK_MODE=full`) 反而 cation 117x → 100 matched:
+GCH4 在 lev 0-5 累积 591x，GC2H6 913x — 我们的 grain 实现有 bug，让
+grain species 在低空 over-accumulate 而 gas-phase 不 release。
+正确路径是先修 grain implementation OR 让 KB 重跑 no_grain 给我们 fair oracle。
+
+**剩余 outliers (best config: no_grain + G19/G26 + split + dt=1e+8 NT=100)**:
+
+1. **HCN profile 锯齿** L13-22 间 0 ↔ 1e+8 隔层振荡 — operator-split + Newton 没收敛到 tandem，相邻 cells 不同步
+2. **NH3 lev 0-5: 1000x over** — 推测 NH4+ + E → NH3 + H 过快或没 NH3 loss
+3. **C3H 系 isomers**: t-C3H2, l-C3H2, l-C3H, c-C3H, c-C3H2 都 0 — 缓慢链没建立
+4. **NH chain**: NH, NH2, NH3 in some bands all 0 → slow N chemistry chain 没完全展开
+5. **N(2D) L20 = 0 (但 L20 KB 只 30)** — borderline，需更长 integration
+
+未来工作方向：
+- Fix grain mode (G27 follow-on)：让 KB 用 FREEZE=0 跑 no_grain，得到 fair NT=500 oracle
+- Fix HCN sawtooth：可能需要在 Newton 里加 spatial coupling 或更细 sub-cycle
+- Trace NH3 production overshoot
+
 **G24 突破 (2026-05-18 后续)**:
 
 `coupled + G19 pin + NT=200 + max_dt=1e+8 + no chg_fold`：**106 matched** （前最佳 90），N(2D)/HCN/C2H6/C2H2 全都 ✓，但 cation@L30 = 4092x。
