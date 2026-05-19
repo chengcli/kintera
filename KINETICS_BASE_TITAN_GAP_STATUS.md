@@ -30,6 +30,25 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为（**G21 试过：uniform sink 太粗暴，over-corrects N(2D) 同时让 cation 爆 428000x，已 revert**）
 3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
 
+**G29 (2026-05-19): FULL grain + dt=1e+7 — best so far**
+
+`KINTERA_TITAN_NETWORK_MODE=full KINTERA_TITAN_MAX_DT=1e+7 NT=100 split + chg_fold + atomic_proj + G19/G26 CH4 pin`:
+
+- **cation@L30 = 0.83×** (within 20% of KB)
+- **159 / 531 species-lev pairs ∈ (0.3, 3.0×)** — 30%
+- 239 / 531 ∈ (0.1, 10×) — 45%
+- 314 / 531 ∈ (0.01, 100×) — 59%
+- 98 / 531 ∈ (1/1.5, 1.5×) — 18.5% within sub-factor-of-1.5
+- 关键 cation 全在 0.5-3× 区间：HCNH+ 1.63 ✓, CH3+ 0.71 ✓, C+ 1.97 ✓, C4H2 3.3, C2H2 0.44 ✓
+
+**关键洞见**: KB oracle 是 FREEZE=1 SUBLIM=-1 (grain ON)，我们之前 no_grain 比较是 apples to oranges。让 grain ON 同时把 dt 限制到 1e+7 (而不是 1e+8 或 1e+9)，可以让 grain<->gas 平衡稳住，避免 GCH4 在低空 runaway。
+
+剩余 outliers：
+- GCH4 lev 5: 137× over (still implementation bug)
+- GC2H6 lev 25: 597× over
+- NH4+ L30: 0.004× (way under)
+- HCN lev 10: 0 (sawtooth pattern remains)
+
 **G26+G28 (2026-05-19): cation balance huge win**
 
 CH4 full-column pin (G26: lev 0-39) + dt=1e+8 cap + split solver +
