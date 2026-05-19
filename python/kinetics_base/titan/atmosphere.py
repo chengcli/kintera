@@ -142,11 +142,38 @@ def build_kinetics_base_titan_state(
 def kinetics_base_titan_species_diffusion_scale(
     species: list[str],
     *,
+    ion_scale: float = 1.0,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
 ) -> torch.Tensor:
-    """Return species-wise eddy diffusion scales for the Cheng Titan network."""
-    return torch.ones(len(species), dtype=dtype or torch.get_default_dtype(), device=device)
+    """Return species-wise eddy diffusion scales for the Cheng Titan network.
+
+    By default every species uses the same eddy diffusion as the neutral
+    bath (``scale = 1.0``), matching KB which puts all 119 non-electron
+    species into a single DIFFUS group.
+
+    Phase 6b: when ``ion_scale < 1.0``, cations (species ending in ``+``)
+    and anions (ending in ``-`` except ``E``) get their eddy diffusion
+    multiplied by ``ion_scale``. This is a crude approximation to
+    ambipolar diffusion: at low altitudes our model lets cations bleed
+    from the photoionization zone (L25+) down to L0–15, where they
+    feed back into NH3 chemistry. KB's converged state has cations ≈ 0
+    at L0–15. Reducing ion diffusion suppresses that downward bleed.
+
+    True plasma ambipolar coupling would require co-solving ions and
+    electrons; this single-knob approximation is the minimum viable
+    fix that the existing :func:`build_transport_matrix` already
+    supports via :class:`species_diffusion_scale`.
+    """
+    target_dtype = dtype or torch.get_default_dtype()
+    scale = torch.ones(len(species), dtype=target_dtype, device=device)
+    if ion_scale != 1.0:
+        for i, name in enumerate(species):
+            if name == "E":
+                continue
+            if name.endswith("+") or name.endswith("-"):
+                scale[i] = ion_scale
+    return scale
 
 
 def _titan_pin_specs(titan_state: KBTitanState) -> list:
