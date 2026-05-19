@@ -149,54 +149,23 @@ def kinetics_base_titan_species_diffusion_scale(
     return torch.ones(len(species), dtype=dtype or torch.get_default_dtype(), device=device)
 
 
-def apply_kinetics_base_titan_boundary_pins(
-    concentration: torch.Tensor,
-    titan_state: KBTitanState,
-) -> torch.Tensor:
-    """Re-apply KINETICS-base Titan fixed/boundary constraints after a solve step.
+def _titan_pin_specs(titan_state: KBTitanState) -> list:
+    """Build the list of :class:`BoundaryPinSpec` describing KB Titan's
+    boundary semantics.
 
-    KINETICS-base's ``__CHENG`` branch fixes the CH4 cold-trap boundary row, but
-    lower atmospheric levels still evolve over long integrations.
+    Four pin sources:
 
-    Also enforces charge neutrality: ``E = Σ(cations) − Σ(anions)`` per cell.
-    KB treats E as one of its NFIX species but its .pun output shows
-    E ≈ Σ(cations) within a few percent, so KB must be recomputing E from
-    charge balance each step (rather than freezing it at the initial-atm
-    value of 0). Without this, kintera's dissociative-recombination
-    reactions ``X+ + E → products`` see rate = 0 (since pinned E = 0) and
-    cations accumulate by 4–10× at the photoionization altitude, then
-    cascade through proton-transfer reactions to multi-OoM excess at lower
-    altitudes — confirmed by diagnostic_tools/rate_diff.
+    1. **Fixed species** (KB ``NFIX``: ``JDUST``, ``N2``, ``E``, ``PROD``,
+       ``U``, ``RAYEAR``, ``SGA``, ``M``). All levels pinned to the initial
+       concentration.
+    2. **Lower-boundary mixing-ratio / deposition species** (KB ``type=5``
+       and ``type=2`` lower BC). Lev 0 pinned.
+    3. **Upper-boundary escape species** (KB ``type=2`` positive upper BC).
+       Last real lev pinned to 0 (escape sink).
+    4. **Cheng cold-trap species** (CH4 in the Cheng branch). All levels
+       pinned to the atm-file profile (G19+G26).
     """
-    mask, values = kinetics_base_titan_boundary_pin_mask(titan_state)
-    mask = mask.to(device=concentration.device)
-    values = values.to(dtype=concentration.dtype, device=concentration.device)
-    concentration[mask] = values[mask]
-
-    species = titan_state.species
-    if "E" in species:
-        e_idx = species.index("E")
-        pos_indices = [j for j, n in enumerate(species) if n.endswith("+")]
-        neg_indices = [
-            j for j, n in enumerate(species)
-            if n.endswith("-") and n != "E"
-        ]
-        if pos_indices:
-            pos_sum = concentration[:, :, pos_indices].sum(dim=-1)
-        else:
-            pos_sum = torch.zeros_like(concentration[:, :, 0])
-        if neg_indices:
-            neg_sum = concentration[:, :, neg_indices].sum(dim=-1)
-        else:
-            neg_sum = torch.zeros_like(concentration[:, :, 0])
-        concentration[:, :, e_idx] = torch.clamp(pos_sum - neg_sum, min=0.0)
-    return concentration
-
-
-def kinetics_base_titan_boundary_pin_mask(
-    titan_state: KBTitanState,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return fixed-value Titan cells matching KINETICS-base boundary semantics."""
+    from ...atm2d.pins import BoundaryPinSpec
 
     lower_boundary_conversions = {
         "lower_boundary_mixing_ratio_times_density",
@@ -208,68 +177,152 @@ def kinetics_base_titan_boundary_pin_mask(
     cold_trap_conversions = {
         "kinetics_base_cheng_cold_trap_mixing_ratio",
     }
-    mask = torch.zeros_like(titan_state.concentration, dtype=torch.bool)
-    values = torch.zeros_like(titan_state.concentration)
 
-    fixed_species = [
-        titan_state.species.index(name)
+    specs: list[BoundaryPinSpec] = []
+    species = titan_state.species
+    c0 = titan_state.concentration
+
+    fixed_indices = [
+        species.index(name)
         for name in titan_state.fixed_species
-        if name in titan_state.species
+        if name in species
     ]
-    if fixed_species:
-        mask[:, :, fixed_species] = True
-        values[:, :, fixed_species] = titan_state.concentration[:, :, fixed_species]
+    if fixed_indices:
+        specs.append(
+            BoundaryPinSpec(
+                species_indices=fixed_indices,
+                level_indices=None,
+                values=c0,
+            )
+        )
 
-    lower_boundary_species = [
-        titan_state.species.index(name)
-        for name, conversion in titan_state.conversion.items()
-        if conversion in lower_boundary_conversions
+    lower_boundary_indices = [
+        species.index(name)
+        for name, conv in titan_state.conversion.items()
+        if conv in lower_boundary_conversions
     ]
-    if lower_boundary_species:
-        mask[:, 0, lower_boundary_species] = True
-        values[:, 0, lower_boundary_species] = titan_state.concentration[
-            :, 0, lower_boundary_species
-        ]
+    if lower_boundary_indices:
+        specs.append(
+            BoundaryPinSpec(
+                species_indices=lower_boundary_indices,
+                level_indices=[0],
+                values=c0,
+            )
+        )
 
-    upper_boundary_species = [
-        titan_state.species.index(name)
-        for name, conversion in titan_state.conversion.items()
-        if conversion in upper_boundary_conversions
+    upper_boundary_indices = [
+        species.index(name)
+        for name, conv in titan_state.conversion.items()
+        if conv in upper_boundary_conversions
     ]
-    if upper_boundary_species:
+    if upper_boundary_indices:
         nonzero_levels = (titan_state.density[0] > 0).nonzero(as_tuple=True)[0]
         last_real_lyr = (
             int(nonzero_levels[-1])
             if nonzero_levels.numel() > 0
             else titan_state.state.nlyr - 1
         )
-        mask[:, last_real_lyr, upper_boundary_species] = True
-        values[:, last_real_lyr, upper_boundary_species] = 0.0
+        # Pin upper-boundary species at last_real_lyr to 0 (escape sink).
+        zeros = torch.zeros_like(c0)
+        specs.append(
+            BoundaryPinSpec(
+                species_indices=upper_boundary_indices,
+                level_indices=[last_real_lyr],
+                values=zeros,
+            )
+        )
 
-    cold_trap_species = [
-        titan_state.species.index(name)
-        for name, conversion in titan_state.conversion.items()
-        if conversion in cold_trap_conversions
+    cold_trap_indices = [
+        species.index(name)
+        for name, conv in titan_state.conversion.items()
+        if conv in cold_trap_conversions
     ]
-    if cold_trap_species:
-        # Cheng cold trap pins CH4 to the atm-file mixing-ratio profile at
-        # lev 0–23 (NBOT=24 in 1-indexed Fortran). Above the cold trap,
-        # KB's converged result still tracks the atm-file CH4 profile
-        # within 2–3% at lev 24–39: KB's vertical mixing of CH4 against
-        # photolysis destruction reaches a quasi-static profile that's
-        # essentially the initial atm. In our operator-split, chemistry
-        # at dt=1e+9 destroys CH4 faster than transport can refill,
-        # collapsing CH4 to ~zero at lev 28+. That cuts the dominant
-        # CH2+/CH3+ loss channel (X+ + CH4 → products), forcing those
-        # cations to recombine with E instead, which produces bare C
-        # at 1e+6× KB rate — the upstream of the C+ runaway.
-        # Pin CH4 across the full atmosphere to match KB's behavior.
-        mask[:, :, cold_trap_species] = True
-        values[:, :, cold_trap_species] = titan_state.concentration[
-            :, :, cold_trap_species
-        ]
+    if cold_trap_indices:
+        # G19+G26: Cheng cold trap pins CH4 to the atm-file profile across
+        # all levels. KB's converged CH4 profile tracks the atm-file values
+        # within 2-3% from lev 0 through lev 39; without this pin our
+        # chemistry destroys CH4 above the cold trap and triggers the
+        # bare-C cascade that produces C+ runaway. See GAP_STATUS §G19/G26.
+        specs.append(
+            BoundaryPinSpec(
+                species_indices=cold_trap_indices,
+                level_indices=None,
+                values=c0,
+            )
+        )
 
-    return mask, values
+    return specs
+
+
+def _titan_charge_balance_indices(species: list[str]) -> "tuple[list[int], list[int], int] | None":
+    """Return ``(cation_indices, anion_indices, e_index)`` if ``E`` is in
+    ``species``; otherwise ``None``. Cations end with ``+``; anions end
+    with ``-`` excluding ``E`` itself."""
+    if "E" not in species:
+        return None
+    e_index = species.index("E")
+    cation_indices = [j for j, n in enumerate(species) if n.endswith("+")]
+    anion_indices = [
+        j for j, n in enumerate(species)
+        if n.endswith("-") and n != "E"
+    ]
+    return cation_indices, anion_indices, e_index
+
+
+def apply_kinetics_base_titan_boundary_pins(
+    concentration: torch.Tensor,
+    titan_state: KBTitanState,
+) -> torch.Tensor:
+    """Re-apply KINETICS-base Titan fixed/boundary constraints after a solve step.
+
+    Generic pin assembly + charge-balance reset, parameterised by KB
+    Titan's boundary conventions. Internally builds a list of
+    :class:`atm2d.pins.BoundaryPinSpec` and delegates to the generic
+    ``apply_pin_mask_to_concentration`` + ``recompute_charge_balance_e``.
+
+    KINETICS-base's ``__CHENG`` branch fixes the CH4 cold-trap boundary
+    row, but lower atmospheric levels still evolve over long
+    integrations. We also enforce charge neutrality: KB treats ``E`` as
+    one of its NFIX species but its .pun output shows ``E ≈ Σ(cations)``
+    within a few percent, so we recompute ``E`` from the cation sum.
+    """
+    from ...atm2d.pins import (
+        apply_pin_mask_to_concentration,
+        build_pin_mask,
+        recompute_charge_balance_e,
+    )
+
+    specs = _titan_pin_specs(titan_state)
+    mask, values = build_pin_mask(titan_state.state, specs)
+    mask = mask.to(device=concentration.device)
+    values = values.to(dtype=concentration.dtype, device=concentration.device)
+    concentration = apply_pin_mask_to_concentration(concentration, mask, values)
+
+    indices = _titan_charge_balance_indices(titan_state.species)
+    if indices is not None:
+        cation_indices, anion_indices, e_index = indices
+        concentration = recompute_charge_balance_e(
+            concentration,
+            cation_indices=cation_indices,
+            anion_indices=anion_indices,
+            e_index=e_index,
+        )
+    return concentration
+
+
+def kinetics_base_titan_boundary_pin_mask(
+    titan_state: KBTitanState,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return fixed-value Titan cells matching KINETICS-base boundary semantics.
+
+    Thin wrapper that builds a Titan-specific list of
+    :class:`atm2d.pins.BoundaryPinSpec` and assembles them via the
+    generic :func:`atm2d.pins.build_pin_mask`.
+    """
+    from ...atm2d.pins import build_pin_mask
+
+    specs = _titan_pin_specs(titan_state)
+    return build_pin_mask(titan_state.state, specs)
 
 
 def apply_kinetics_base_titan_dirichlet_rows(
@@ -277,30 +330,14 @@ def apply_kinetics_base_titan_dirichlet_rows(
     rhs: torch.Tensor,
     titan_state: KBTitanState,
 ) -> tuple[SparseSystemMatrix, torch.Tensor]:
-    """Enforce Titan fixed/boundary cells as Dirichlet rows in an implicit system."""
+    """Enforce Titan fixed/boundary cells as Dirichlet rows in an implicit system.
+
+    Thin wrapper around :func:`atm2d.pins.apply_pin_mask_as_dirichlet_rows`.
+    """
+    from ...atm2d.pins import apply_pin_mask_as_dirichlet_rows
 
     mask, values = kinetics_base_titan_boundary_pin_mask(titan_state)
-    pinned = mask.nonzero(as_tuple=False)
-    if pinned.numel() == 0:
-        return system, rhs
-    row_ids = flatten_state_index(
-        pinned[:, 0],
-        pinned[:, 1],
-        pinned[:, 2],
-        system.nlyr,
-        system.nspecies,
-    )
-    unit_values = torch.ones(row_ids.numel(), dtype=system.dtype, device=system.device)
-    return (
-        system.replace_rows(
-            row_ids,
-            row_ids,
-            unit_values,
-            rhs_override_mask=mask.to(device=system.device),
-            rhs_override_values=values.to(dtype=system.dtype, device=system.device),
-        ),
-        rhs,
-    )
+    return apply_pin_mask_as_dirichlet_rows(system, rhs, mask, values)
 
 def kinetics_base_species_metadata_from_pun(pun: str | Path | Any) -> dict[str, Any]:
     if isinstance(pun, (str, Path)):
