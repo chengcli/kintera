@@ -30,6 +30,29 @@ HCN/C2 hydrocarbons 等依赖 CH4 的产物随之崩塌；连锁影响 cation ba
 2. **Implicit transport in chemistry Newton** — 给 Jacobian 加 `-Kzz/dz^2` 的对角项，复制 KB DIFFUS 的"chemistry sees transport sink"行为（**G21 试过：uniform sink 太粗暴，over-corrects N(2D) 同时让 cation 爆 428000x，已 revert**）
 3. 重启 G18 coupled Newton 调研：之前因 small-dt 受 numerical noise 影响 reject 步太多，配合 1/dt rescaling 已经一半 working；剩下的是稳定 small-dt 行为
 
+**Phase 6b ion-scale sweep complete (2026-05-19)**
+
+Full sweep of `KINTERA_ION_DIFFUSION_SCALE` at NT=100 dt=1e+7 full grain:
+
+| scale  | matched | cation@L30 | NH3@L5 | note |
+|--------|---------|------------|--------|------|
+| 0.0    | 145     | 0.52×      | 0.00×  | NH3 zero (chain doesn't reach L5) |
+| 1e-5   | 149     | 0.46×      | 13.8×  | |
+| 1e-4   | 123     | 299×       | 92×    | unstable |
+| 1e-3   | 146     | 2.01×      | 4×     | best NH3 |
+| 1e-2   | 132     | 0.27×      | 240×   | unstable NH3 |
+| 1e-1   | 135     | 1.75×      | 145×   | unstable NH3 |
+| **1.0**| **159** | 0.83×      | 28×    | **baseline, best matched** |
+| 2.0    | 123     | 0.15×      | 33×    | |
+| 5.0    | 141     | 2.6×       | 30×    | |
+| 10.0   | 110     | 2.0×       | 7.5×   | |
+
+Baseline scale=1.0 wins matched count by ≥10 against any alternative
+(both directions). Uniform ion-scale is the wrong shape of physics —
+real ambipolar coupling needs ions and electrons to co-move, not just
+diffuse together with a shared multiplier. Punting full ambipolar to
+future work; the env-var knob is left as infrastructure.
+
 **Refactor complete (2026-05-19): REFACTOR_SCHEMA Phases 1–6**
 
 Per REFACTOR_SCHEMA.html, 9 commits split L1 (kintera solver core) from
