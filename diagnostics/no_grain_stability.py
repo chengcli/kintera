@@ -150,42 +150,7 @@ def main():
     # when the Newton at very-large dt finds a non-physical fixed-point that
     # creates atoms. Fixed species (N2, CH4 reservoir at low alt via cold trap,
     # M, JDUST, etc.) are excluded from rescaling — they're our atom source.
-    import re as _re
-
-    def _count_atom(name, element):
-        # Drop charge marker.
-        n = name.rstrip("+-*")
-        cnt = 0
-        i = 0
-        while i < len(n):
-            ch = n[i]
-            if ch == "(":  # skip parenthesized state, e.g., (1)CH2, (2D).
-                while i < len(n) and n[i] != ")":
-                    i += 1
-                i += 1
-                continue
-            # Match element starting here (single-letter or 2-letter capitalized)
-            if ch == element and (i + 1 >= len(n) or not n[i + 1].islower() or
-                                  element == "C" and n[i:i+2] == "Cl"):
-                # Handle 2-letter elements like 'Cl' explicitly if needed
-                pass
-            if n[i:i+len(element)] == element:
-                # Confirm this is element not part of a multichar element name
-                end = i + len(element)
-                if end < len(n) and n[end].islower():
-                    # part of a multichar name like "Cl", "Br" — skip
-                    i += 1
-                    continue
-                # Look for trailing digit
-                if end < len(n) and n[end].isdigit():
-                    cnt += int(n[end])
-                    i = end + 1
-                else:
-                    cnt += 1
-                    i = end
-            else:
-                i += 1
-        return cnt
+    from kintera.atm2d.conservation import project_atomic_budget, count_atoms
 
     fixed_indices = [titan_state.species.index(n) for n in titan_state.fixed_species
                      if n in titan_state.species]
@@ -196,7 +161,7 @@ def main():
     atom_counts = {}
     for elem in ["N", "C", "H", "O"]:
         counts = torch.tensor(
-            [_count_atom(name, elem) for name in titan_state.species],
+            [count_atoms(name, elem) for name in titan_state.species],
             dtype=concentration.dtype, device=concentration.device,
         )
         atom_counts[elem] = counts
@@ -249,53 +214,14 @@ def main():
     _charge_arg = charge_balance_indices if CHARGE_BALANCE_JACOBIAN else None
 
     def _project_atomic_budget(c):
-        """Per-cell, per-element atomic conservation: rescale ONLY the species
-        that are above their fair share of the budget, leaving smaller species
-        alone.
-
-        For each element with current variable atoms > budget at a cell:
-        1. Find species containing that element that are > median (the hogs).
-        2. Compute the excess (current - budget).
-        3. Subtract excess proportionally from hog species' atom contribution.
-
-        This preserves slow-chemistry species (which stay small) while clipping
-        the runaway species that are eating the budget.
-        """
-        for elem, counts in atom_counts.items():
-            mask = (counts > 0) & (~fixed_mask)
-            if not mask.any():
-                continue
-            counts_view = counts.view(1, 1, -1)
-            mask_view = mask.view(1, 1, -1)
-            # Per-cell current atoms vs budget.
-            cur = (c * counts_view * mask).sum(dim=-1, keepdim=True)
-            budget = variable_atom_budget[elem]
-            excess = (cur - budget).clamp(min=0.0)
-            if not (excess > 0).any():
-                continue
-            # Identify hog species: those whose atom-contribution exceeds the
-            # mean per-species contribution. Subtract excess proportionally
-            # from hogs only.
-            per_species_atoms = c * counts_view * mask  # (1, nlyr, nspecies)
-            # Per-cell mean across non-fixed atom species
-            n_species_with_elem = mask.sum().clamp(min=1.0).item()
-            mean_atoms = per_species_atoms.sum(dim=-1, keepdim=True) / n_species_with_elem
-            hog_mask = per_species_atoms > mean_atoms  # (1, nlyr, nspecies)
-            hog_atoms = torch.where(hog_mask, per_species_atoms, torch.zeros_like(per_species_atoms))
-            hog_total = hog_atoms.sum(dim=-1, keepdim=True).clamp(min=1.0)
-            # Fraction of excess each hog needs to give up.
-            hog_fraction = hog_atoms / hog_total  # how much of the excess this hog absorbs
-            # Atoms to subtract from each hog species at each cell.
-            atoms_to_subtract = hog_fraction * excess
-            # Translate atoms-to-subtract back into concentration delta:
-            # delta_c[j] = atoms_subtract[j] / counts[j]
-            # But avoid divide-by-zero where counts=0 (mask handles it).
-            counts_safe = counts_view.clamp(min=1.0)
-            delta_c = atoms_to_subtract / counts_safe
-            # Apply only where hog_mask and excess>0.
-            apply_mask = hog_mask & (excess > 0).expand_as(hog_mask)
-            c = torch.where(apply_mask, (c - delta_c).clamp(min=0.0), c)
-        return c
+        """Driver-local wrapper around :func:`project_atomic_budget` that
+        binds the closed-over ``atom_counts``/``fixed_mask``/budget."""
+        return project_atomic_budget(
+            c,
+            atom_counts=atom_counts,
+            fixed_mask=fixed_mask,
+            budget=variable_atom_budget,
+        )
 
     def _apply_dirichlet(system, rhs):
         return kt.apply_kinetics_base_titan_dirichlet_rows(system, rhs, titan_state)
