@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import torch
 
-from ..atm2d import (
+from ...atm2d import (
     AtmState2D,
     IndexedBoundaryFluxSource,
     IndexedBoundaryVelocitySource,
@@ -15,7 +15,7 @@ from ..atm2d import (
     LocalSourceTerm,
     SparseSystemMatrix,
 )
-from ..atm2d.matrix import flatten_state_index
+from ...atm2d.matrix import flatten_state_index
 from .models import KBTitanSourceTerm, KBTitanState
 from .physics import (
     _kinetics_base_species_mass_amu,

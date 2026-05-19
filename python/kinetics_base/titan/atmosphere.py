@@ -5,9 +5,9 @@ from typing import Any
 
 import torch
 
-from ..atm2d import AtmState2D, SparseSystemMatrix
-from ..atm2d.matrix import flatten_state_index
-from ..kintera import parse_kinetics_base_atmosphere, parse_kinetics_base_pun
+from ...atm2d import AtmState2D, SparseSystemMatrix
+from ...atm2d.matrix import flatten_state_index
+from ...kintera import parse_kinetics_base_atmosphere, parse_kinetics_base_pun
 from .models import KBTitanState
 from .parsing import _apply_cheng_cold_trap_boundaries, _apply_lower_mixing_ratio_boundaries
 

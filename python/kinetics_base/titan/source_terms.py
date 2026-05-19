@@ -5,7 +5,7 @@ from typing import Any
 
 import torch
 
-from ..kintera import parse_kinetics_base_pun
+from ...kintera import parse_kinetics_base_pun
 from .electron_impact import (
     _is_kinetics_base_electron_impact_reaction,
     _kinetics_base_electron_impact_profile,

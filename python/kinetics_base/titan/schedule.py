@@ -24,7 +24,7 @@ function is a thin KB-defaults wrapper.
 
 from __future__ import annotations
 
-from ..atm2d.schedule import StageScheduleConfig, stage_schedule
+from ...atm2d.schedule import StageScheduleConfig, stage_schedule
 
 
 # Default NCYCLE applied by KB when the inp file's 7th field is absent

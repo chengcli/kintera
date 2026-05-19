@@ -5,7 +5,7 @@ from typing import Any
 
 import torch
 
-from ..atm2d import AtmState2D
+from ...atm2d import AtmState2D
 
 
 @dataclass
