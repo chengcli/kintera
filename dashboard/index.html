@@ -130,9 +130,9 @@
 
 <h1>kintera × KB Titan — Current State Dashboard</h1>
 <p class="small">
-  Generated 2026-05-21 · Branch <code>ions-support-plan</code> @ commit <code>1c8110b</code>
-  · pushed to <a href="https://github.com/chengcli/kintera/tree/ions-support-plan">github.com/chengcli/kintera</a>
-  · best config: full grain + dt=1e+7 + NT=100 + split solver + chg fold + atomic projection + G19/G26 CH4 pin
+  Generated 2026-05-21 (updated post-G18-redux) · Branch <code>ions-support-plan</code> · pushed to
+  <a href="https://github.com/chengcli/kintera/tree/ions-support-plan">github.com/chengcli/kintera</a>
+  · best config: full grain + dt=1e+7 + NT=100 + <b>coupled</b> solver + chg fold + atomic projection + G19/G26 CH4 pin
 </p>
 
 <nav class="nav">
@@ -149,29 +149,29 @@
 
 <div class="stat-grid">
   <div class="stat">
-    <div class="v">159</div>
-    <div class="l">species-lev pairs<br>in 0.3-3× of KB <br><span class="small">(of 531 with KB>1)</span></div>
+    <div class="v">180</div>
+    <div class="l">species-lev pairs<br>in 0.3-3× of KB <br><span class="small">(of 531 with KB>1; was 159 split)</span></div>
   </div>
   <div class="stat">
-    <div class="v">30 %</div>
+    <div class="v">34 %</div>
     <div class="l">match rate at 0.3-3× tolerance</div>
   </div>
   <div class="stat">
-    <div class="v">45 %</div>
-    <div class="l">match rate at 0.1-10× tolerance</div>
+    <div class="v">10</div>
+    <div class="l">species w/ sawtooth oscillation<br><span class="small">(was 66 in split mode)</span></div>
   </div>
   <div class="stat">
-    <div class="v">0.83×</div>
-    <div class="l">cation@L30 total<br>(KB-relative)</div>
+    <div class="v">13.9×</div>
+    <div class="l">cation@L30 total<br>(KB-relative; was 0.83× in split)</div>
   </div>
 </div>
 
 <div class="summary-box">
-  <b>Where we started this session</b> (NT=200 dt=1e+9 split): cation@L30 ≈ 4092× KB (one species, C+, was 1.9e+14×).
-  Bare-C/C+ cascade traced to CH4 destruction above the cold trap.
-  <b>G19/G26 fix</b>: extend Cheng cold-trap pin from lev 23 → lev 0-39 → CH4 stays at 4e-3 mixing ratio everywhere → C+ runaway eliminated.
-  <b>G29</b>: switching from no_grain → full-grain mode (matching KB's FREEZE=1 SUBLIM=-1) + dropping dt cap to 1e+7
-  produced our current 159-matched best.
+  <b>Latest result — G18 redux landed.</b> After diagnosing the sawtooth oscillation in §5 (5 hypotheses ruled out,
+  transport-only smoothes perfectly), switched to <b>coupled transport+chemistry Newton</b>:
+  matched count <b>159 → 180</b>, oscillating species <b>66 → 10</b>. H2/HCN/C6H6 profiles now smooth and monotonic.
+  Trade-off: cation@L30 regressed from 0.83× to 13.9× (down from earlier coupled-without-fold's 23.7× — chg fold helped),
+  and H2 sits at ~0.3% of KB (depleted by escape boundary). Net: more species, cleaner shapes, lighter total mass.
 </div>
 
 <h2 id="refactor">2. Refactor structure (Phases 1-6)</h2>
@@ -303,6 +303,23 @@
   enforces spatial continuity across cells via the transport coupling in the Jacobian.
 </div>
 
+<div class="summary-box">
+  <b>✓ G18 redux landed</b> — coupled Newton at G29 config (full grain + dt=1e+7 + NT=100):
+
+  <table style="margin: 0.5em 0">
+    <tr><th>config</th><th>matched</th><th>osc species</th><th>cation@L30</th><th>H2 shape</th></tr>
+    <tr><td>split (former best)</td><td>159</td><td>66</td><td>0.83×</td><td>sawtooth</td></tr>
+    <tr><td>coupled, no chg fold</td><td>168</td><td>13</td><td>23.7×</td><td>smooth</td></tr>
+    <tr style="background:#e8f3ec"><td><b>coupled + chg fold, NT=100</b></td><td><b>180</b></td><td><b>10</b></td><td>13.9×</td><td>smooth</td></tr>
+    <tr><td>coupled + chg fold, NT=200</td><td>177</td><td>12</td><td>27.2×</td><td>smooth</td></tr>
+  </table>
+
+  Cost: cation@L30 regresses (0.83 → 13.9×) because coupled solver finds a different fixed point. H2 sits ~500× under KB
+  due to escape — the smooth profile actually allows H2 to diffuse upward and be lost via the escape BC; in split mode
+  the zigzag effectively "trapped" H2 below the escape zone non-physically. NT=200 retains 3× more H2 but matches fewer
+  species overall. <b>NT=100 coupled+chg is the final best</b>: 180/531 = 34% matched, profiles cleanly smooth.
+</div>
+
 <h2 id="explored">6. What we've already explored (and found insufficient)</h2>
 
 <div class="fig">
@@ -366,20 +383,22 @@
   </tr>
 </table>
 
-<h3>Recommendation</h3>
-<div class="summary-box warn">
-  Diagnosis converged: <b>#1 (Coupled Newton G18 redux)</b> is the only fix for the zigzag.
+<h3>Recommendation — G18 redux LANDED</h3>
+<div class="summary-box">
+  ✓ Coupled solver retried and worked: <b>180 matched (was 159 split)</b>, 10 oscillating species (was 66).
+  Phase 3 generic pin API + G19/G26 CH4 pin + grain mode were the missing pieces that made the coupled solver
+  stable this time around. Now we're at the natural endpoint of what the refactor enables.
+  <br><br>
+  Future directions (deferred — natural break point):
   <ul style="margin: 0.5em 0">
-    <li>5 hypotheses ruled out (atomic projection variants, apply_pins, sub-cycling, longer integration).</li>
-    <li>Transport-only stress test (Σ:7→0 H2 flips after 100 steps) proves transport is innocent.</li>
-    <li>The chemistry-only Newton's per-cell independence IS the cause; only spatial coupling in the Jacobian fixes it.</li>
-    <li>The refactor we just did set up the ingredients: <code>newton.coupled.newton_implicit_step</code> already accepts
-        <code>charge_balance_indices</code>; <code>BoundaryPinSpec</code> can supply Dirichlet rows; <code>operator_split</code> is no longer required.</li>
-    <li>G18 had stability issues at small dt — but with G19/G26 CH4 pin + Phase 3 generic pin API + Phase 4b refactored Newton,
-        the conditions are different. Worth one focused retry.</li>
+    <li><b>Reduce H2 depletion</b>: coupled lets H2 diffuse to escape; KB has H2~1e+11 we have ~2.6e+8. Could tune
+        upper-BC escape velocity, or accept as physical correctness.</li>
+    <li><b>Cation@L30 13.9×</b>: still over. Different fixed-point from split. Per-reaction audit at L25-L35 might
+        find specific over-active recombinations.</li>
+    <li><b>Real ambipolar diffusion</b>: co-solved ions+electrons (Phase 6b's deferred direction). The uniform-scale
+        knob is already in place.</li>
+    <li><b>Push and merge</b>: refactor + dashboard + 180-matched baseline is publishable as-is.</li>
   </ul>
-  Alternative if you'd rather not invest 1-2 sessions: <b>accept current state as the operator-split limit</b>, ship the
-  refactor + 159-matched baseline, document oscillation as a known limitation of chemistry-only solver.
 </div>
 
 <h3>Or stop here?</h3>
