@@ -338,6 +338,24 @@
   (kbv is large, our value is tiny → far below 0.3× threshold).
 </div>
 
+<div class="summary-box warn">
+  <b>Deep-dive (HCNH+, NH3) — followed up at user's request</b>:
+  <ul style="margin: 0.5em 0">
+    <li>NH3 at L20 is itself 400× under KB. NH2 is 5600× under. Going up the chain: NH at L20 actually <i>matches</i>
+        KB (1.0×), and the N(2D)+CH4→NH+CH3 entry reaction matches too (1.3×).</li>
+    <li>The break is in the NH2↔NH3 cycle: NH3 production at L20 needs NH2+H+M→NH3+M, but our [NH2] is 5600× low,
+        and our [NH3] is too low to photolyse back to NH2. <b>Circular dependency settling at a low equilibrium.</b></li>
+    <li>Why coupled is in a different equilibrium than split: in split mode, cation bleed to low alt provided a parallel
+        NH3 source (NH4++E→NH3). In coupled mode (correctly) cations stay at high alt — that parallel source is gone,
+        and the surviving NH→NH2→NH3 chain has no kickstart to escape the low-NH3 basin.</li>
+    <li>NT=200 only marginally helped (NH3@L0: 2→9.56). The chain is in a stable low fixed point; longer integration
+        won't drag it up.</li>
+    <li>Likely fix: either re-introduce a small low-alt N-radical source we're missing (KB may have something in its
+        photolysis tables we don't), OR re-investigate whether KB's NT=500 has a different physical setup. <b>Real
+        physics audit, not a bug.</b></li>
+  </ul>
+</div>
+
 <h2 id="osc">7. ⚠ Original sawtooth analysis (kept for reference)</h2>
 
 <div class="fig">
