@@ -180,7 +180,20 @@
   After fix: <b>NH3@L20 went from 6.9e+5 → 9.7e+7</b> (140× higher, now 0.35× of KB).
   <b>NH2@L20: 3.7e+5 → 1.9e+8</b> (520× higher, 0.09× of KB). The cliff at L14-15 collapsed.
   Low-altitude NH3 still 1-10 (vs KB's 1e+8) — that's now diffusion-time-limited, not chemistry-blocked.
-  Could close further with longer integration now that the production zone is real.
+</div>
+
+<div class="summary-box warn">
+  <b>⚠️ NT=200 longer-integration test — got <i>worse</i>, not better.</b>
+  Matching dropped <b>186 → 92</b> (35% → 17%). What overshoots:
+  <ul>
+    <li><b>H2 explodes</b> to 4–5e+11 at every level (KB: 1.24e+11 at L0 dropping 5 orders to 7e+6 at L30 — KB's profile is escape-shaped, ours is flat).</li>
+    <li><b>C2H3CN</b> 5× over (3e+10 at L0 vs KB 6.6e+9). <b>C6N2</b> 1e+8× over at L25.</li>
+    <li><b>NH3</b> now 1.7e+9 at L0–L20 (12× KB!) but cliffs to ~7 at L25+. Cliff moved, not closed.</li>
+    <li>Newton non-convergence: 171/200 steps hit max_iter=8.</li>
+  </ul>
+  <b>The remaining gap is NOT integration time</b> — it's missing high-altitude loss. H2 escape velocity (7.49e+4 cm/s, type-2 BC) IS configured + last-real-lyr pin IS applied, yet H2 still pools 5 orders above KB at L30. That implies either (a) chemistry produces H2 5+ orders too fast, or (b) eddy diffusion is too slow to evacuate the column to the top sink, or (c) photolysis of large organics (which sinks H2 in KB) is too weak.
+  <br><br>
+  Saved as memory: <code>project-nt-sweet-spot</code>. <b>Next: trace H2 production/loss rate-by-rate at L25 vs KB</b> to find which side of the imbalance is wrong.
 </div>
 
 <div class="summary-box">
