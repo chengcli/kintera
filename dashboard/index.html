@@ -133,6 +133,9 @@
   Generated 2026-05-21 (updated post-G18-redux) · Branch <code>ions-support-plan</code> · pushed to
   <a href="https://github.com/chengcli/kintera/tree/ions-support-plan">github.com/chengcli/kintera</a>
   · best config: full grain + dt=1e+7 + NT=100 + <b>coupled</b> solver + chg fold + atomic projection + G19/G26 CH4 pin
+
+  <br><br>
+  <b>⚠️ Match-count attribution correction (2026-05-21):</b> The 186 / 35% headline was measured in <code>no_grain</code> mode (the diagnostics runner's <b>default</b>). In the apples-to-apples <code>full</code> grain mode that matches KB's <code>FREEZE=1 SUBLIM=-1</code> setup, the parser fix moved match count <b>159 → 163</b> — only +4, not +27. The no_grain mode wins on aggregate because grain chemistry isn't consuming cations at low altitude, inflating the cation match count. Reproducing 186 requires <code>KINTERA_TITAN_NETWORK_MODE</code> unset (no_grain); the honest KB-comparison number is <b>163</b>.
 </p>
 
 <nav class="nav">
