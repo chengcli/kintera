@@ -474,6 +474,62 @@ plt.savefig(FIGDIR / "10_refactor_structure.png", dpi=110, bbox_inches="tight")
 plt.close()
 
 
+# ----- Figure 13: zigzag verification (coupled vs split for the worst species) -----
+print("[fig13] zigzag verification (coupled vs split) ...")
+
+# Reload split-mode baseline for comparison
+import os
+SPLIT_DUMP = "/tmp/kt_g29_full_dt1e7_100.npz"  # leftover from earlier G29 work
+if os.path.exists(SPLIT_DUMP):
+    d_split = np.load(SPLIT_DUMP, allow_pickle=True)
+    sp_split = [str(x) for x in d_split["species"]]
+    c_split = d_split["concentration"]
+else:
+    sp_split = None
+    c_split = None
+
+# Pick the species that were originally worst oscillators
+zigzag_targets = ["H2", "HCN", "C6H6", "CN", "C8H3", "c-C3H2",
+                  "NH3", "NH2", "C5H3", "C3H7", "C4N2", "N(2D)"]
+fig, axes = plt.subplots(3, 4, figsize=(16, 11), sharey=True)
+for ax, name in zip(axes.flat, zigzag_targets):
+    if name not in SPECIES:
+        ax.set_visible(False)
+        continue
+    j = SPECIES.index(name)
+    kb_prof = np.asarray(KB.get(name, np.zeros(NLYR)))
+    ax.semilogx(np.maximum(C[:, j], 1e-15), ALT[:NLYR],
+                "C2-", lw=2, label="coupled (now)", marker="o", markersize=3)
+    if c_split is not None and name in sp_split:
+        j_split = sp_split.index(name)
+        ax.semilogx(np.maximum(c_split[:, j_split], 1e-15), ALT[:NLYR],
+                    "C3-", lw=1.2, alpha=0.6, label="split (was)", marker="x", markersize=3)
+    ax.semilogx(np.maximum(kb_prof, 1e-15), ALT[:NLYR],
+                "k--", lw=1.5, alpha=0.6, label="KB")
+    ax.set_title(name)
+    ax.set_xlim(1e-3, 1e15)
+    ax.set_ylim(0, 700)
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=7, loc="upper right")
+
+axes[2, 0].set_xlabel("number density [cm⁻³]")
+axes[2, 1].set_xlabel("number density [cm⁻³]")
+axes[2, 2].set_xlabel("number density [cm⁻³]")
+axes[2, 3].set_xlabel("number density [cm⁻³]")
+axes[0, 0].set_ylabel("altitude [km]")
+axes[1, 0].set_ylabel("altitude [km]")
+axes[2, 0].set_ylabel("altitude [km]")
+
+plt.suptitle(
+    "Zigzag verification — 12 worst-oscillating species\n"
+    "GREEN = current (coupled), RED = previous (split, sawtooth), BLACK DASH = KB",
+    y=1.005,
+)
+plt.tight_layout()
+plt.savefig(FIGDIR / "13_zigzag_verify.png", dpi=110)
+plt.close()
+
+
 # ----- Figure 12: oscillation in lower atmosphere -----
 print("[fig12] oscillation in lower atm ...")
 def osc_score(profile, hi=30):

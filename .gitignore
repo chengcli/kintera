@@ -42,6 +42,7 @@ diagnostics/**/titandebug.dat
 
 # outputs
 *.png
+!dashboard/figs/*.png
 examples/*.pdf
 
 # vulcan test temp

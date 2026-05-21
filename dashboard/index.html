@@ -136,7 +136,10 @@
 </p>
 
 <nav class="nav">
+  <a href="matching.html"><b>→ per-species matching detail (sortable/filterable)</b></a> &nbsp;|&nbsp;
   <a href="#headline">Headline metrics</a>
+  <a href="#changes">Changes since last dashboard</a>
+  <a href="#zigzag-verify">Zigzag verify</a>
   <a href="#refactor">Refactor state</a>
   <a href="#match">Match analysis</a>
   <a href="#gaps">Remaining gaps</a>
@@ -274,7 +277,50 @@
   why a single knob isn't enough.
 </div>
 
-<h2 id="osc">5. ⚠ NEW: lower-atmosphere sawtooth oscillation (user-flagged)</h2>
+<h2 id="changes">5. What changed since the first dashboard (84f3950 → 1d178c2)</h2>
+
+<div class="summary-box">
+  <b>Surprise finding</b>: between making the first dashboard and the current 180-matched best,
+  <b>zero production code changed</b>. The G18-redux improvement came entirely from running the
+  coupled solver (available since Phase 4b) at the post-G29 config (already committed before the dashboard).
+  All experimental fixes I tried (column-hog projection, soft-clamp scaling, no-post-transport-pin,
+  charge-balance-only postprocess, sub-cycling, longer NT) were either bit-identical to baseline or worse,
+  and got reverted. The "fix" was a configuration discovery, not a code change.
+
+  <table style="margin: 0.5em 0">
+    <tr><th>commit</th><th>files</th><th>what</th></tr>
+    <tr><td><code>e787971</code></td>
+        <td><code>dashboard/index.html</code>, <code>dashboard/make_figures.py</code>,
+            <code>.claude/skills/kb-titan-dashboard/SKILL.md</code></td>
+        <td>Build the dashboard + persistent skill</td></tr>
+    <tr><td><code>1d178c2</code></td>
+        <td><code>dashboard/index.html</code></td>
+        <td>Log G18-redux landing (180 matched, 10 osc)</td></tr>
+    <tr><td>(uncommitted)</td>
+        <td><code>dashboard/matching.html</code>, <code>make_matching_review.py</code>, <code>figs/13_*</code></td>
+        <td>Per-species matching detail view + zigzag verification figure</td></tr>
+  </table>
+
+  Production code (everything under <code>python/</code> and <code>diagnostics/</code>) is unchanged from
+  <code>e787971</code> onward. The refactor + physics work done before this window stands at:
+  Phase 1-6 refactor (9 commits), G19/G26 CH4 pin, ion_scale knob, atomic projection, charge balance fold.
+</div>
+
+<h2 id="zigzag-verify">6. Zigzag verification — coupled vs split per-species</h2>
+
+<div class="fig">
+  <img src="figs/13_zigzag_verify.png" alt="zigzag verification">
+  <div class="fig-caption">
+    Fig 13 · Vertical profiles of 12 worst-oscillating species. <b>Green dots</b> (current, coupled mode):
+    clean monotonic curves matching KB's qualitative shape. <b>Red x-markers</b> (previous split mode):
+    visible zigzag with random zero-cells between high-value cells. <b>Black dashed</b>: KB-500 oracle.
+    H2/HCN/C6H6/CN/c-C3H2/NH3/NH2 all show clear "before-after" difference. The vertical drops to 1e-15
+    in the coupled profiles are floor values where coupled converged exactly to zero (which is itself
+    a real Newton solution at low altitudes, not numerical noise).
+  </div>
+</div>
+
+<h2 id="osc">7. ⚠ Original sawtooth analysis (kept for reference)</h2>
 
 <div class="fig">
   <img src="figs/12_oscillation.png" alt="oscillation analysis">
