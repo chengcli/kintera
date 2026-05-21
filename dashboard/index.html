@@ -212,7 +212,13 @@
     <tr><td>C+</td><td>78,000×</td><td>664,000×</td></tr>
     <tr><td>CH4+</td><td>10×</td><td>23×</td></tr>
   </table>
-  N2+ (the dominant H2 sink at altitude in KB) is 10× under-produced. Excess HCNH+, HN2+, C+ are stealing the electron budget. <b>Next investigation:</b> the cation-balance issue isn't a single rxn — it's a network-level miscalibration likely related to electron-ion recombination or primary ionization source distribution. See <code>project-nt-sweet-spot</code> memory.
+  N2+ (the dominant H2 sink at altitude in KB) is 10× under-produced. Excess HCNH+, HN2+, C+ are stealing the electron budget.
+  <br><br>
+  <b>🎯 Root cause identified:</b> kintera's electron-impact reactions (N2/CH4 photoionization) use a <b>hardcoded altitude-profile scaffold</b> in <code>python/kinetics_base/titan/electron_impact.py</code> — explicitly labeled "Temporary Cheng/Titan matching scaffold until the Fortran electron energy deposition profile is implemented." Only 4 reactions get electron-impact treatment (rxn 202 CH4→CH3+, 203 CH4→CH2+, 246 N2→N+, 247 N2→N2+), activated via Cheng <code>.special</code> ISP indices 537–540. The N2→N2+ scale is 0.97 and the altitude profile is a 17-pt lookup table (0.0 at low alt → 13.8 at 1303km).
+  <br><br>
+  This scaffold happens to be calibrated near NT=100; longer integration exposes its inaccuracy, which is why NT=150/200 blow up. <b>Proper fix:</b> implement first-principles electron energy deposition from the cross-section files in <code>examples/titan/Cheng_cross/CROSS_N2=N2+*.DAT</code>. Retuning the scaffold is a stopgap that won't generalize.
+  <br><br>
+  Saved as memory: <code>project-electron-impact-scaffold</code>.
 </div>
 
 <div class="summary-box">
