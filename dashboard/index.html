@@ -152,21 +152,35 @@
 
 <div class="stat-grid">
   <div class="stat">
-    <div class="v">180</div>
-    <div class="l">species-lev pairs<br>in 0.3-3× of KB <br><span class="small">(of 531 with KB>1; was 159 split)</span></div>
+    <div class="v">186</div>
+    <div class="l">species-lev pairs<br>in 0.3-3× of KB <br><span class="small">(of 531; was 180 pre-parser-fix)</span></div>
   </div>
   <div class="stat">
-    <div class="v">34 %</div>
+    <div class="v">35 %</div>
     <div class="l">match rate at 0.3-3× tolerance</div>
   </div>
   <div class="stat">
-    <div class="v">10</div>
+    <div class="v">9</div>
     <div class="l">species w/ sawtooth oscillation<br><span class="small">(was 66 in split mode)</span></div>
   </div>
   <div class="stat">
-    <div class="v">13.9×</div>
-    <div class="l">cation@L30 total<br>(KB-relative; was 0.83× in split)</div>
+    <div class="v">11.9×</div>
+    <div class="l">cation@L30 total<br>(KB-relative; was 13.9× pre-fix)</div>
   </div>
+</div>
+
+<div class="summary-box">
+  <b>🔥 Critical parser bug fix landed (<code>8f65e53</code>)</b>. The "missing N source" the user
+  asked us to dig for turned out to be a spurious mass-non-conserving SINK in the parser:
+  reactions like <code>2 NH2 + M → bN2H4 + M</code> where <code>bN2H4</code> isn't in our species list
+  were being silently reduced to <code>2 NH2 + M → M</code> — destroying NH2 with no product.
+  At KB-level [NH2]=4e+9 the fake sink alone drained 8.6e+8 NH2/cm³/s, trapping the NH chain
+  in a low-equilibrium basin.
+  <br><br>
+  After fix: <b>NH3@L20 went from 6.9e+5 → 9.7e+7</b> (140× higher, now 0.35× of KB).
+  <b>NH2@L20: 3.7e+5 → 1.9e+8</b> (520× higher, 0.09× of KB). The cliff at L14-15 collapsed.
+  Low-altitude NH3 still 1-10 (vs KB's 1e+8) — that's now diffusion-time-limited, not chemistry-blocked.
+  Could close further with longer integration now that the production zone is real.
 </div>
 
 <div class="summary-box">
