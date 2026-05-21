@@ -339,21 +339,32 @@
 </div>
 
 <div class="summary-box warn">
-  <b>Deep-dive (HCNH+, NH3) — followed up at user's request</b>:
+  <b>Deep-dive (HCNH+, NH3) — second round at user's request</b>:
+  <br><br>
+  <b>Newton convergence diagnostic</b>:
   <ul style="margin: 0.5em 0">
-    <li>NH3 at L20 is itself 400× under KB. NH2 is 5600× under. Going up the chain: NH at L20 actually <i>matches</i>
-        KB (1.0×), and the N(2D)+CH4→NH+CH3 entry reaction matches too (1.3×).</li>
-    <li>The break is in the NH2↔NH3 cycle: NH3 production at L20 needs NH2+H+M→NH3+M, but our [NH2] is 5600× low,
-        and our [NH3] is too low to photolyse back to NH2. <b>Circular dependency settling at a low equilibrium.</b></li>
-    <li>Why coupled is in a different equilibrium than split: in split mode, cation bleed to low alt provided a parallel
-        NH3 source (NH4++E→NH3). In coupled mode (correctly) cations stay at high alt — that parallel source is gone,
-        and the surviving NH→NH2→NH3 chain has no kickstart to escape the low-NH3 basin.</li>
-    <li>NT=200 only marginally helped (NH3@L0: 2→9.56). The chain is in a stable low fixed point; longer integration
-        won't drag it up.</li>
-    <li>Likely fix: either re-introduce a small low-alt N-radical source we're missing (KB may have something in its
-        photolysis tables we don't), OR re-investigate whether KB's NT=500 has a different physical setup. <b>Real
-        physics audit, not a bug.</b></li>
+    <li>NEWTON_DEBUG showed <b>71/100 outer steps hit max_iter=8 without converging</b>. Raised max_iter→20:
+        still 71/100 non-converged. Raised → damping 0.5 + iter=15: 66/100 non-converged. Newton is not
+        iteration-budget-limited; it's at a fixed point of damped iteration that doesn't satisfy tolerance.</li>
+    <li>Disabling atomic projection: <b>bit-identical</b> result (projection isn't called in coupled mode anyway).</li>
+    <li>Disabling charge fold and varying ion_scale: documented earlier — uniform scale is wrong shape.</li>
   </ul>
+  <b>Diffusion sanity check</b>:
+  <ul style="margin: 0.5em 0">
+    <li>HCN at L20 = 3.71e+8 (matches KB 4.7e+8 to 0.79×). HCN diffuses smoothly L20→L0 with ~30km scale length,
+        consistent with a slow loss (τ~300 yr) but reaching the right shape.</li>
+    <li><b>NH3 has a HARD CLIFF at L14-L15</b>: L15 = 1.38e+3, L14 = 6.4e+1, L13 = 18, L12 = 0. Diffusion alone
+        should give log-linear gradient; this is a discontinuous jump.</li>
+    <li>The cliff is exactly at the photolysis penetration depth. Above L14, NH3 photolysis (NH3→NH2+H) drives
+        a self-replenishing cycle with NH2+H+M→NH3. Below L14, no photolysis → no cycle → NH3 must come from
+        diffusion. But diffusion can't fill against… whatever's keeping L0-L13 NH3 at zero.</li>
+    <li>HCN doesn't have this cliff: it has no analogous chemistry at L14, so diffusion just works.</li>
+  </ul>
+  <b>Honest assessment</b>: the chemistry network's coupled solution at L14 has a property we don't yet understand
+  that forbids NH3 from diffusing in. Could be: a numerical artifact in the linearized Jacobian (negative-eigenvalue
+  cliff in the NH-chain coupling), a missing reaction, or a real bistability that KB's slower bootstrap escaped.
+  Requires a per-cell rate audit at L14 specifically. The 180-matched baseline is on non-converged Newton iterates;
+  with stricter Newton, matched count actually drops (175 → 170).
 </div>
 
 <h2 id="osc">7. ⚠ Original sawtooth analysis (kept for reference)</h2>
