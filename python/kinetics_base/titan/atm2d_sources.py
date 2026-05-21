@@ -380,7 +380,16 @@ def _build_titan_thermal_atm2d_source(
 ) -> IndexedMassActionSource | None:
     reactants = [species_index[name] for name in term.reactants if name in species_index]
     products = [species_index[name] for name in term.products if name in species_index]
-    if len(reactants) != len(term.reactants) or not products:
+    # Drop the entire reaction if ANY reactant or product is missing from the
+    # species set. Previously we kept reactions where only some products were
+    # missing — that silently broke mass conservation: e.g.
+    # ``2 NH2 + M → bN2H4 + M`` with ``bN2H4`` not in species reduced to
+    # ``2 NH2 + M → M``, which destroys NH2 without producing anything.
+    # At KB-level [NH2]=4e+9, that fake sink drained 8.6e+8 /cm³/s of NH2,
+    # collapsing the NH chain into a low-equilibrium basin.
+    if len(reactants) != len(term.reactants) or len(products) != len(term.products):
+        return None
+    if not products:
         return None
     reactant_coeffs = list(term.parameters.get("reactant_coefficients", []))
     product_coeffs = list(term.parameters.get("product_coefficients", []))
