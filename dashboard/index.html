@@ -193,7 +193,26 @@
   </ul>
   <b>The remaining gap is NOT integration time</b> — it's missing high-altitude loss. H2 escape velocity (7.49e+4 cm/s, type-2 BC) IS configured + last-real-lyr pin IS applied, yet H2 still pools 5 orders above KB at L30. That implies either (a) chemistry produces H2 5+ orders too fast, or (b) eddy diffusion is too slow to evacuate the column to the top sink, or (c) photolysis of large organics (which sinks H2 in KB) is too weak.
   <br><br>
-  Saved as memory: <code>project-nt-sweet-spot</code>. <b>Next: trace H2 production/loss rate-by-rate at L25 vs KB</b> to find which side of the imbalance is wrong.
+  <b>Bisect NT=100 → NT=150 → NT=200:</b>
+  <ul>
+    <li>NT=100: matched 186/531 (35%), H2max=1.27e+10</li>
+    <li>NT=150: matched 95/531 (18%), <b>H2max=1.24e+12 (100× jump from NT=100)</b></li>
+    <li>NT=200: matched 92/531 (17%), H2max=1.70e+12</li>
+  </ul>
+  Damage happens between NT=100 and NT=150 — once H2 crosses some threshold, it goes runaway. <code>rate_diff H2 500</code> shows the production rates at L20 match KB within ±15%, so the imbalance is on the LOSS side at L25+.
+  <br><br>
+  <b>Cation mix at L25–L36 is dramatically wrong:</b>
+  <table style="margin: 0.5em 0; border-collapse: collapse;">
+    <tr><th style="padding: 2px 8px; border-bottom: 1px solid #ccc;">cation</th><th style="padding: 2px 8px; border-bottom: 1px solid #ccc;">L30 kt/KB</th><th style="padding: 2px 8px; border-bottom: 1px solid #ccc;">L34 kt/KB</th></tr>
+    <tr><td><b>N2+</b></td><td>0.1×</td><td>0.1×</td></tr>
+    <tr><td>N+</td><td>0.3×</td><td>0.3×</td></tr>
+    <tr><td>CH3+</td><td>0.2×</td><td>0.4×</td></tr>
+    <tr><td>HN2+</td><td>13×</td><td>13×</td></tr>
+    <tr><td>HCNH+</td><td>57×</td><td>31×</td></tr>
+    <tr><td>C+</td><td>78,000×</td><td>664,000×</td></tr>
+    <tr><td>CH4+</td><td>10×</td><td>23×</td></tr>
+  </table>
+  N2+ (the dominant H2 sink at altitude in KB) is 10× under-produced. Excess HCNH+, HN2+, C+ are stealing the electron budget. <b>Next investigation:</b> the cation-balance issue isn't a single rxn — it's a network-level miscalibration likely related to electron-ion recombination or primary ionization source distribution. See <code>project-nt-sweet-spot</code> memory.
 </div>
 
 <div class="summary-box">
