@@ -474,6 +474,105 @@ plt.savefig(FIGDIR / "10_refactor_structure.png", dpi=110, bbox_inches="tight")
 plt.close()
 
 
+# ----- Figure 14: residual oscillation diagnosis (mostly noise) -----
+print("[fig14] residual oscillation analysis ...")
+import os
+
+def real_osc_flips(profile, kb_profile):
+    """Flips where BOTH neighbors KB>=1 and >1 OoM swing."""
+    log_p = np.log10(np.maximum(profile, 1e-15))
+    flips = []
+    for i in range(2, 49):
+        if kb_profile[i-1] < 1 or kb_profile[i] < 1 or kb_profile[i+1] < 1:
+            continue
+        d1 = log_p[i] - log_p[i-1]
+        d2 = log_p[i+1] - log_p[i]
+        if d1 * d2 < 0 and (abs(d1) > 1.0 or abs(d2) > 1.0):
+            flips.append(i)
+    return flips
+
+# Tally flips by altitude band, for coupled (current) and split (was)
+SPLIT_DUMP = "/tmp/kt_g29_full_dt1e7_100.npz"
+if os.path.exists(SPLIT_DUMP):
+    d_split_ = np.load(SPLIT_DUMP, allow_pickle=True)
+    sp_split_ = [str(x) for x in d_split_["species"]]
+    c_split_ = d_split_["concentration"]
+
+bands = [(0, 10), (10, 20), (20, 30), (30, 50)]
+band_labels = ["L0-10\n(0-90km)", "L10-20\n(90-400km)", "L20-30\n(400-700km)", "L30-50\n(700+km)"]
+SKIP_TYPES = {"N2", "M", "JDUST", "PROD", "SGA", "U", "RAYEAR"}
+
+split_band_flips = [0] * len(bands)
+coupled_band_flips = [0] * len(bands)
+for name in SPECIES:
+    if name.endswith("+") or name.endswith("-") or name.startswith("G") or name in SKIP_TYPES:
+        continue
+    j = SPECIES.index(name)
+    kbprof = np.asarray(KB.get(name, np.zeros(NLYR)))
+    # coupled
+    flips = real_osc_flips(C[:, j], kbprof)
+    for fl in flips:
+        for bi, (lo, hi) in enumerate(bands):
+            if lo <= fl < hi:
+                coupled_band_flips[bi] += 1
+                break
+    # split
+    if os.path.exists(SPLIT_DUMP) and name in sp_split_:
+        j_s = sp_split_.index(name)
+        flips_s = real_osc_flips(c_split_[:, j_s], kbprof)
+        for fl in flips_s:
+            for bi, (lo, hi) in enumerate(bands):
+                if lo <= fl < hi:
+                    split_band_flips[bi] += 1
+                    break
+
+# Match rate by altitude band
+def matched_in_band(c, sp_, kb, lo, hi):
+    gd = total = 0
+    for j, n in enumerate(sp_):
+        for L in range(lo, hi):
+            kbv = kb.get(n, [0]*50)[L]
+            if kbv < 1: continue
+            total += 1
+            r = c[L, j]/kbv if kbv else 0
+            if 0.3 < r < 3: gd += 1
+    return gd, total
+
+split_match = [matched_in_band(c_split_, sp_split_, KB, lo, hi) for lo, hi in bands]
+coupled_match = [matched_in_band(C, SPECIES, KB, lo, hi) for lo, hi in bands]
+
+fig, (axL, axR) = plt.subplots(1, 2, figsize=(15, 5.5))
+xs = np.arange(len(bands))
+axL.bar(xs - 0.2, split_band_flips, width=0.4, color="C3", label="split (was)")
+axL.bar(xs + 0.2, coupled_band_flips, width=0.4, color="C2", label="coupled (now)")
+axL.set_xticks(xs)
+axL.set_xticklabels(band_labels)
+axL.set_ylabel("real oscillation flips (KB≥1 neighbors, >1 OoM)")
+axL.set_title("Oscillation flips per altitude band — split vs coupled\n"
+              "Coupled wins everywhere; residual at L30-50 in upper-mesosphere is real but small")
+axL.legend()
+axL.grid(True, alpha=0.3, axis="y")
+
+# Right: matched percentage per band
+split_pct = [100 * g / t if t else 0 for g, t in split_match]
+coupled_pct = [100 * g / t if t else 0 for g, t in coupled_match]
+axR.bar(xs - 0.2, split_pct, width=0.4, color="C3", label="split (was)")
+axR.bar(xs + 0.2, coupled_pct, width=0.4, color="C2", label="coupled (now)")
+for i, ((sg, st), (cg, ct)) in enumerate(zip(split_match, coupled_match)):
+    axR.text(i - 0.2, split_pct[i] + 1, f"{sg}/{st}", ha="center", fontsize=8)
+    axR.text(i + 0.2, coupled_pct[i] + 1, f"{cg}/{ct}", ha="center", fontsize=8)
+axR.set_xticks(xs)
+axR.set_xticklabels(band_labels)
+axR.set_ylabel("% species-lev pairs matched (0.3-3×)")
+axR.set_ylim(0, 60)
+axR.set_title("Match rate per altitude band — coupled improves L0-30,\nslight regression at L30-50 (escape zone)")
+axR.legend()
+axR.grid(True, alpha=0.3, axis="y")
+plt.tight_layout()
+plt.savefig(FIGDIR / "14_osc_by_band.png", dpi=110)
+plt.close()
+
+
 # ----- Figure 13: zigzag verification (coupled vs split for the worst species) -----
 print("[fig13] zigzag verification (coupled vs split) ...")
 

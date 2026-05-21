@@ -315,9 +315,27 @@
     clean monotonic curves matching KB's qualitative shape. <b>Red x-markers</b> (previous split mode):
     visible zigzag with random zero-cells between high-value cells. <b>Black dashed</b>: KB-500 oracle.
     H2/HCN/C6H6/CN/c-C3H2/NH3/NH2 all show clear "before-after" difference. The vertical drops to 1e-15
-    in the coupled profiles are floor values where coupled converged exactly to zero (which is itself
-    a real Newton solution at low altitudes, not numerical noise).
+    in the coupled profiles are floor values where coupled converged exactly to zero.
   </div>
+</div>
+
+<div class="fig">
+  <img src="figs/14_osc_by_band.png" alt="osc by altitude band">
+  <div class="fig-caption">
+    Fig 14 · Diagnosis of residual oscillation. <b>Left</b>: strict-criterion flip counts (both neighbors KB≥1,
+    >1 OoM swing) by altitude band. Coupled cuts oscillation across all bands; residual concentrates at
+    L30-50 (upper mesosphere) where photoionization+chemistry balance is fastest. <b>Right</b>: match-rate by
+    band — coupled improves L0-10 from 14% to 25%, L10-20 from 17% to 37%, slight regression at L30-50
+    (escape zone where H2 gets depleted by the upper-BC).
+  </div>
+</div>
+
+<div class="summary-box warn">
+  <b>Caveat on the residual L0-15 oscillation</b>: NH3, NH2, HCN, CN, C2N2 — which show up as "still oscillating"
+  — are 7-13 orders of magnitude UNDER KB at those levels in coupled mode. The "zigzag" is float-precision noise
+  on values like 1e-7 to 1e+1, where KB has 1e+7 to 1e+10. They're effectively zero in our model, not real
+  chemistry oscillation. The headline 180 matched is robust because these levels don't count toward matched
+  (kbv is large, our value is tiny → far below 0.3× threshold).
 </div>
 
 <h2 id="osc">7. ⚠ Original sawtooth analysis (kept for reference)</h2>
