@@ -333,6 +333,34 @@ def _photo_rate_profile(
     )
     if actinic_flux is None:
         return None
+
+    # Secondary electron impact ionization: when set, each absorbed photon
+    # creates (1 + n_sec) ion-electron pairs, where n_sec = (E_γ - threshold)/W
+    # is the number of secondary ionizations a primary electron at kinetic
+    # energy (E_γ - threshold) can create before thermalizing. W is the mean
+    # energy per ion pair (Cravens-style). Wavelengths are in Ångstroms
+    # (12400 eV·Å / λ_Å = photon energy in eV).
+    secondary = term.parameters.get("secondary_impact")
+    if isinstance(secondary, dict):
+        try:
+            threshold_eV = float(secondary["threshold_eV"])
+            W_eV = float(secondary["W_eV"])
+        except (KeyError, TypeError, ValueError):
+            threshold_eV = None
+            W_eV = None
+        if threshold_eV is not None and W_eV is not None and W_eV > 0.0:
+            wl_tensor = torch.tensor(wavelengths, dtype=dtype, device=device)
+            safe_wl = torch.clamp(wl_tensor, min=0.1)
+            photon_energy_eV = 12400.0 / safe_wl
+            excess = torch.clamp(photon_energy_eV - threshold_eV, min=0.0)
+            n_sec = excess / W_eV
+            secondary_factor = 1.0 + n_sec
+            return (
+                actinic_flux
+                * reaction_sigma.view(1, 1, -1)
+                * secondary_factor.view(1, 1, -1)
+            ).sum(dim=-1)
+
     return (actinic_flux * reaction_sigma.view(1, 1, -1)).sum(dim=-1)
 
 def _rate_profile_multiplier_on_state_grid(

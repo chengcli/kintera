@@ -12,6 +12,50 @@ def _global_scale() -> float:
         return 1.0
 
 
+def _kinetics_base_electron_impact_secondary_params(
+    reactants: list[str], products: list[str]
+) -> dict[str, float] | None:
+    """Return ``{"threshold_eV": float, "W_eV": float}`` for an electron-impact
+    reaction so that ``_photo_rate_profile`` can apply the secondary-electron
+    multiplier ``(1 + (E_γ - threshold)/W)`` per wavelength bin.
+
+    Returning ``None`` means "fall back to the hardcoded altitude scaffold."
+
+    Channel ionization thresholds are from NIST WebBook. W (mean energy per
+    ion-pair) defaults to ~36 eV for N2 and ~28 eV for CH4 (Cravens 2008,
+    Wedlund 2011); can be overridden via ``KINTERA_EI_W_N2`` and
+    ``KINTERA_EI_W_CH4`` env vars for sweeps.
+    """
+    import os
+    if not reactants:
+        return None
+    if reactants == ["N2"] and products == ["N2+", "E"]:
+        try:
+            W = float(os.environ.get("KINTERA_EI_W_N2", "36.0"))
+        except (TypeError, ValueError):
+            W = 36.0
+        return {"threshold_eV": 15.58, "W_eV": W}
+    if reactants == ["N2"] and "N+" in products:
+        try:
+            W = float(os.environ.get("KINTERA_EI_W_N2", "36.0"))
+        except (TypeError, ValueError):
+            W = 36.0
+        return {"threshold_eV": 24.3, "W_eV": W}
+    if reactants == ["CH4"] and products == ["CH3+", "H", "E"]:
+        try:
+            W = float(os.environ.get("KINTERA_EI_W_CH4", "28.0"))
+        except (TypeError, ValueError):
+            W = 28.0
+        return {"threshold_eV": 14.3, "W_eV": W}
+    if reactants == ["CH4"] and products == ["CH2+", "H2", "E"]:
+        try:
+            W = float(os.environ.get("KINTERA_EI_W_CH4", "28.0"))
+        except (TypeError, ValueError):
+            W = 28.0
+        return {"threshold_eV": 15.1, "W_eV": W}
+    return None
+
+
 def _is_kinetics_base_electron_impact_reaction(products: list[str]) -> bool:
     return "E" in products or any(product.endswith("+") for product in products)
 

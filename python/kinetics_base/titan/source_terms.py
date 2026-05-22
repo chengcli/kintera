@@ -10,6 +10,7 @@ from .electron_impact import (
     _is_kinetics_base_electron_impact_reaction,
     _kinetics_base_electron_impact_profile,
     _kinetics_base_electron_impact_scale,
+    _kinetics_base_electron_impact_secondary_params,
 )
 from .ion_chemistry import (
     kinetics_base_reaction_charge_summary,
@@ -274,19 +275,50 @@ def build_kinetics_base_titan_source_terms(
                     if reaction.id not in titan_electron_impact_reaction_ids:
                         continue
                     electron_parameters = dict(photo_data)
-                    electron_parameters["attenuation"] = "none"
                     electron_scale = _kinetics_base_electron_impact_scale(
                         reactants, products
                     )
-                    electron_parameters["rate"] = (
-                        float(electron_parameters.get("rate", 0.0)) * electron_scale
-                    )
                     electron_parameters["electron_impact_scale"] = electron_scale
-                    profile = _kinetics_base_electron_impact_profile(reactants, products)
-                    if profile is not None:
-                        electron_parameters["rate_profile_multiplier"] = profile
+                    secondary_params = (
+                        _kinetics_base_electron_impact_secondary_params(
+                            reactants, products
+                        )
+                    )
+                    use_secondary = (
+                        secondary_params is not None
+                        and isinstance(electron_parameters.get("cross_section"), list)
+                        and isinstance(electron_parameters.get("flux"), list)
+                        and isinstance(electron_parameters.get("wavelengths"), list)
+                    )
+                    if use_secondary:
+                        # Electron transport path: integrate σ(λ) × F_att(λ, z)
+                        # × (1 + (E_γ - threshold)/W) over wavelength via the
+                        # standard photo-rate pipeline. Fold the channel
+                        # branching ratio into σ so the integral produces a
+                        # channel-scaled rate.
+                        electron_parameters["cross_section"] = [
+                            float(value) * electron_scale
+                            for value in electron_parameters["cross_section"]
+                        ]
+                        electron_parameters["rate"] = (
+                            float(electron_parameters.get("rate", 0.0))
+                            * electron_scale
+                        )
+                        electron_parameters["secondary_impact"] = secondary_params
                     else:
-                        electron_parameters["min_altitude_km"] = 650.0
+                        # Legacy scaffold path: use hardcoded altitude profile.
+                        electron_parameters["attenuation"] = "none"
+                        electron_parameters["rate"] = (
+                            float(electron_parameters.get("rate", 0.0))
+                            * electron_scale
+                        )
+                        profile = _kinetics_base_electron_impact_profile(
+                            reactants, products
+                        )
+                        if profile is not None:
+                            electron_parameters["rate_profile_multiplier"] = profile
+                        else:
+                            electron_parameters["min_altitude_km"] = 650.0
                     source_terms.append(
                         KBTitanSourceTerm(
                             kind="pun_electron_impact_reaction",
