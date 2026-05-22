@@ -136,6 +136,18 @@
 
   <br><br>
   <b>⚠️ Match-count attribution correction (2026-05-21):</b> The 186 / 35% headline was measured in <code>no_grain</code> mode (the diagnostics runner's <b>default</b>). In the apples-to-apples <code>full</code> grain mode that matches KB's <code>FREEZE=1 SUBLIM=-1</code> setup, the parser fix moved match count <b>159 → 163</b> — only +4, not +27. The no_grain mode wins on aggregate because grain chemistry isn't consuming cations at low altitude, inflating the cation match count. Reproducing 186 requires <code>KINTERA_TITAN_NETWORK_MODE</code> unset (no_grain); the honest KB-comparison number is <b>163</b>.
+  <br><br>
+  <b>🎯 Electron transport landed (2026-05-22, commit <code>828423d</code>):</b> Replaced the hardcoded
+  altitude-profile scaffold for the 4 KB electron-impact reactions (N2→N2++E, N2→N++N+E,
+  CH4→CH3++H+E, CH4→CH2++H2+E) with wavelength-resolved secondary impact:
+  <code>rate(z) = ∫ σ(λ) × F<sub>att</sub>(λ,z) × (1 + max(0, E<sub>γ</sub> − E<sub>thresh</sub>) / W) dλ</code>.
+  Wavelengths in Å (E<sub>eV</sub>=12400/λ<sub>Å</sub>). W tunable via <code>KINTERA_EI_W_N2</code> / <code>KINTERA_EI_W_CH4</code>.
+  <br><br>
+  W sweep result in full grain mode (NT=100): <b>W=60 gives 174 matched (+11 vs scaffold 163).</b>
+  W=70 also gives 172 (high-match basin), while W=62/65 give 155-156 (low-match basin). Verified
+  deterministic — bistability is real (cation cascade has two stable equilibria, W picks one).
+  The improvement is entirely in neutrals (140→151); cation matches unchanged at 5/40 (the cation
+  mix problem still requires a real Boltzmann transport model or better cross-section data).
 </p>
 
 <nav class="nav">
@@ -155,20 +167,20 @@
 
 <div class="stat-grid">
   <div class="stat">
-    <div class="v">186</div>
-    <div class="l">species-lev pairs<br>in 0.3-3× of KB <br><span class="small">(of 531; was 180 pre-parser-fix)</span></div>
+    <div class="v">174</div>
+    <div class="l">species-lev pairs in 0.3-3× of KB<br>(full grain, e-transport W=60)<br><span class="small">(was 163 with scaffold)</span></div>
   </div>
   <div class="stat">
-    <div class="v">35 %</div>
-    <div class="l">match rate at 0.3-3× tolerance</div>
+    <div class="v">186</div>
+    <div class="l">no_grain mode "headline"<br><span class="small">(see ⚠ correction in §1.2 — apples-to-oranges with KB)</span></div>
   </div>
   <div class="stat">
     <div class="v">9</div>
     <div class="l">species w/ sawtooth oscillation<br><span class="small">(was 66 in split mode)</span></div>
   </div>
   <div class="stat">
-    <div class="v">11.9×</div>
-    <div class="l">cation@L30 total<br>(KB-relative; was 13.9× pre-fix)</div>
+    <div class="v">5.23k</div>
+    <div class="l">[E]@L30 (kt/cm³)<br>(was 5.2k scaffold; KB=895)</div>
   </div>
 </div>
 
