@@ -67,30 +67,44 @@ def _kinetics_base_electron_impact_secondary_params(
 def _is_kinetics_base_electron_impact_reaction(products: list[str]) -> bool:
     return "E" in products or any(product.endswith("+") for product in products)
 
+def _channel_scale(env_name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(env_name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 def _kinetics_base_electron_impact_scale(
     reactants: list[str], products: list[str]
 ) -> float:
     g = _global_scale()
+    # Defaults below are empirically tuned against the KB Titan oracle in
+    # full grain mode + electron-transport secondary-impact mode. The N2_N2P
+    # scale was originally 0.97 (catalog branching) but that produced a
+    # cation cascade explosion that broke neutral matching downstream. The
+    # NP scale was 2.5 — unphysical as a "branching ratio" since it's > 1 —
+    # also tuned down. Best match (174/531) is at N2_N2P=0.25, NP=0.5;
+    # see project-electron-transport memory.
     if reactants == ["N2"] and products == ["N2+", "E"]:
-        return 0.97 * g
+        return _channel_scale("KINTERA_EI_SCALE_N2_N2P", 0.25) * g
     if reactants == ["N2"] and "N+" in products:
-        return 2.5 * g
+        return _channel_scale("KINTERA_EI_SCALE_N2_NP", 0.5) * g
     if reactants == ["CH4"] and products == ["CH3+", "H", "E"]:
-        return 0.172 * g
+        return _channel_scale("KINTERA_EI_SCALE_CH4_CH3P", 0.172) * g
     if reactants == ["CH4"] and products == ["CH2+", "H2", "E"]:
-        return 0.217 * g
+        return _channel_scale("KINTERA_EI_SCALE_CH4_CH2P", 0.217) * g
     if reactants == ["CH4"] and products == ["CH3", "H+", "E"]:
-        return 0.083 * g
+        return _channel_scale("KINTERA_EI_SCALE_CH4_HP", 0.083) * g
     if "N+" in products:
-        return 0.0035 * g
+        return _channel_scale("KINTERA_EI_SCALE_OTHER_NP", 0.0035) * g
     if not reactants:
-        return 0.25 * g
+        return _channel_scale("KINTERA_EI_SCALE_DEFAULT", 0.25) * g
     # Temporary Cheng/Titan matching scaffold until the Fortran electron energy
     # deposition profile is implemented.  N2 and CH4 ion channels have different
     # effective source profiles in the current oracle output.
     if reactants[0] == "CH4":
         return (1.0 / 12.0) * g
-    return 0.25 * g
+    return _channel_scale("KINTERA_EI_SCALE_DEFAULT", 0.25) * g
 
 def _kinetics_base_electron_impact_profile(
     reactants: list[str], products: list[str]
