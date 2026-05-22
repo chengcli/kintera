@@ -1,5 +1,16 @@
 from __future__ import annotations
 
+import os
+
+
+def _global_scale() -> float:
+    # KINTERA_EI_SCALE multiplies every electron-impact branching ratio so we
+    # can sweep total ionization without re-editing the per-channel tables.
+    try:
+        return float(os.environ.get("KINTERA_EI_SCALE", "1.0"))
+    except (TypeError, ValueError):
+        return 1.0
+
 
 def _is_kinetics_base_electron_impact_reaction(products: list[str]) -> bool:
     return "E" in products or any(product.endswith("+") for product in products)
@@ -7,26 +18,27 @@ def _is_kinetics_base_electron_impact_reaction(products: list[str]) -> bool:
 def _kinetics_base_electron_impact_scale(
     reactants: list[str], products: list[str]
 ) -> float:
+    g = _global_scale()
     if reactants == ["N2"] and products == ["N2+", "E"]:
-        return 0.97
+        return 0.97 * g
     if reactants == ["N2"] and "N+" in products:
-        return 2.5
+        return 2.5 * g
     if reactants == ["CH4"] and products == ["CH3+", "H", "E"]:
-        return 0.172
+        return 0.172 * g
     if reactants == ["CH4"] and products == ["CH2+", "H2", "E"]:
-        return 0.217
+        return 0.217 * g
     if reactants == ["CH4"] and products == ["CH3", "H+", "E"]:
-        return 0.083
+        return 0.083 * g
     if "N+" in products:
-        return 0.0035
+        return 0.0035 * g
     if not reactants:
-        return 0.25
+        return 0.25 * g
     # Temporary Cheng/Titan matching scaffold until the Fortran electron energy
     # deposition profile is implemented.  N2 and CH4 ion channels have different
     # effective source profiles in the current oracle output.
     if reactants[0] == "CH4":
-        return 1.0 / 12.0
-    return 0.25
+        return (1.0 / 12.0) * g
+    return 0.25 * g
 
 def _kinetics_base_electron_impact_profile(
     reactants: list[str], products: list[str]
