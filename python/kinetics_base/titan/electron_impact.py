@@ -29,29 +29,37 @@ def _kinetics_base_electron_impact_secondary_params(
     import os
     if not reactants:
         return None
+    # Defaults are W_N2 = W_CH4 = 60 eV, empirically chosen against the
+    # NT=100 full-grain KB Titan oracle (commit 4ad2f6d). With our limited
+    # cross-section data (6 wavelength bins in 120-220 Å), W must be larger
+    # than the textbook 36 / 28 eV (Cravens 2008) to avoid over-counting
+    # secondaries; a sweep over W ∈ {12, 36, 40, 50, 55, 60, 62, 65, 70, 80,
+    # 100, 150} showed W=60 lands in a high-match basin (174 species-level
+    # pairs vs 163 scaffold), with W=70 also in the same basin (172). W=62/65
+    # fall into a low basin (155-156) — cation cascade bistability.
     if reactants == ["N2"] and products == ["N2+", "E"]:
         try:
-            W = float(os.environ.get("KINTERA_EI_W_N2", "36.0"))
+            W = float(os.environ.get("KINTERA_EI_W_N2", "60.0"))
         except (TypeError, ValueError):
-            W = 36.0
+            W = 60.0
         return {"threshold_eV": 15.58, "W_eV": W}
     if reactants == ["N2"] and "N+" in products:
         try:
-            W = float(os.environ.get("KINTERA_EI_W_N2", "36.0"))
+            W = float(os.environ.get("KINTERA_EI_W_N2", "60.0"))
         except (TypeError, ValueError):
-            W = 36.0
+            W = 60.0
         return {"threshold_eV": 24.3, "W_eV": W}
     if reactants == ["CH4"] and products == ["CH3+", "H", "E"]:
         try:
-            W = float(os.environ.get("KINTERA_EI_W_CH4", "28.0"))
+            W = float(os.environ.get("KINTERA_EI_W_CH4", "60.0"))
         except (TypeError, ValueError):
-            W = 28.0
+            W = 60.0
         return {"threshold_eV": 14.3, "W_eV": W}
     if reactants == ["CH4"] and products == ["CH2+", "H2", "E"]:
         try:
-            W = float(os.environ.get("KINTERA_EI_W_CH4", "28.0"))
+            W = float(os.environ.get("KINTERA_EI_W_CH4", "60.0"))
         except (TypeError, ValueError):
-            W = 28.0
+            W = 60.0
         return {"threshold_eV": 15.1, "W_eV": W}
     return None
 
