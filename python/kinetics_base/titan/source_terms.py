@@ -331,11 +331,13 @@ def build_kinetics_base_titan_source_terms(
                 elif reactants == ["CH4"] and products != reactants:
                     output_products = products
                     photo_parameters = dict(photo_data)
-                    source = "cheng_product_only_photo_rate"
-                    if sorted(products) == ["(3)CH2", "H", "H"]:
-                        output_products = ["(3)CH2"]
-                    else:
-                        source = "cheng_branch_product_only_photo_rate"
+                    source = "cheng_branch_product_only_photo_rate"
+                    # NOTE: previously, the products of CH4 → (3)CH2 + H + H
+                    # (KB rxn 8) were stripped to just [(3)CH2], suppressing
+                    # the 2 H atoms. KB-state-injected diagnostic showed this
+                    # as a KB-only reaction in (3)CH2's prod/loss, peaking at
+                    # 4.4e-1 — i.e., kintera produces (3)CH2 but no H. The
+                    # strip is unnecessary; restoring full products.
                     if reaction.id == 6:
                         source = "cheng_branch_rate_profile"
                         photo_parameters["rate_profile_multiplier"] = (
