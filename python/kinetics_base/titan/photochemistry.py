@@ -63,7 +63,15 @@ def _is_active_kinetics_base_photo_branch(
         and parent == "N2"
         and parent in active_opacity_species
     ):
-        return sorted(products) == ["N", "N(2D)"]
+        # KB activates two non-ionizing N2 photolysis branches:
+        #   N2 → N + N(2D)   (KB Reactions.dat rxn 167, our pun rxn 249)
+        #   N2 → N + N       (KB Reactions.dat rxn 166, our pun rxn 259)
+        # Both have cross-section files (CROSS_N2=2N_LORES1.DAT and
+        # CROSS_N2=N2D+N.DAT) and contribute to N production. Previously
+        # only N+N(2D) was admitted, leaving rxn 259 as KB-only in N's
+        # prod+loss diagnostic with peak rate 7.24e-1.
+        sorted_p = sorted(products)
+        return sorted_p == ["N", "N(2D)"] or sorted_p == ["N", "N"]
     if parent == "CH4" and sorted(products) == ["(3)CH2", "H", "H"]:
         return False
     if not special_photo_parent_species or parent in special_photo_parent_species:
