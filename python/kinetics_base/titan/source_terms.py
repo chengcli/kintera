@@ -346,19 +346,20 @@ def build_kinetics_base_titan_source_terms(
                 elif reactants == ["CH4"] and products != reactants:
                     output_products = products
                     photo_parameters = dict(photo_data)
-                    source = "cheng_branch_product_only_photo_rate"
-                    # NOTE: previously, the products of CH4 → (3)CH2 + H + H
-                    # (KB rxn 8) were stripped to just [(3)CH2], suppressing
-                    # the 2 H atoms. KB-state-injected diagnostic showed this
-                    # as a KB-only reaction in (3)CH2's prod/loss, peaking at
-                    # 4.4e-1 — i.e., kintera produces (3)CH2 but no H. The
-                    # strip is unnecessary; restoring full products.
+                    source = "cheng_branch_photo_rate"
+                    # KB consumes CH4 in each photolysis branch at the
+                    # branching-weighted rate. Diagnostic showed CH4 loss
+                    # = -4.87 at L20 (sum of branches) while kintera had 0
+                    # because suppress_reactant_loss=True silenced the loss.
+                    # Each branch's rate already includes the channel
+                    # branching ratio (b_i × σ_total), so sum_i b_i = 1 and
+                    # the per-branch consumption sums to the total CH4
+                    # absorption rate — no double-counting.
                     if reaction.id == 6:
                         source = "cheng_branch_rate_profile"
                         photo_parameters["rate_profile_multiplier"] = (
                             _cheng_ch4_r6_rate_profile_multiplier()
                         )
-                    photo_parameters["suppress_reactant_loss"] = True
                     source_terms.append(
                         KBTitanSourceTerm(
                             kind="pun_photo_rate_reaction",
