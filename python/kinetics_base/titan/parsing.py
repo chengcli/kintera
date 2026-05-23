@@ -550,6 +550,14 @@ def _parse_kinetics_base_equation(equation: str) -> tuple[list[str], list[str]]:
     return _parse_kinetics_base_side(left), _parse_kinetics_base_side(right)
 
 def _parse_kinetics_base_side(side: str) -> list[str]:
+    # Catalog entries sometimes concatenate a species and a following
+    # coefficient without whitespace, e.g. "1,3-C4H6+2H" (from
+    # CROSS_C4H8=1,3-C4H6+2H_LORES1.DAT) or "CL+2F". Insert a separator
+    # before "+digit" so the whitespace split picks up both tokens. Guard
+    # against breaking doubly-charged cations like "C++" by requiring the
+    # preceding character to be alphanumeric (not "+").
+    import re
+    side = re.sub(r"(?<=[A-Za-z0-9])\+(?=\d)", " +", side)
     species: list[str] = []
     for raw in side.split():
         raw = raw.lstrip("+")
