@@ -273,6 +273,21 @@ def build_kinetics_base_titan_source_terms(
             if photo_data is not None:
                 if _is_kinetics_base_electron_impact_reaction(products):
                     if reaction.id not in titan_electron_impact_reaction_ids:
+                        # NOT in the special-scaffold allow-list (ISP 537-540 for
+                        # N2/CH4). KB still runs these as catalog photo reactions
+                        # via cross-section × actinic flux. Previously we
+                        # silently dropped them — diagnostic showed KB-only
+                        # rxns like 159 (NH3 → NH3+ + E) here. Build as a
+                        # standard pun_photo_rate_reaction.
+                        source_terms.append(
+                            KBTitanSourceTerm(
+                                kind="pun_photo_rate_reaction",
+                                reaction_id=reaction.id,
+                                reactants=reactants,
+                                products=products,
+                                parameters={**photo_data, "source": "catalog_flux"},
+                            )
+                        )
                         continue
                     electron_parameters = dict(photo_data)
                     electron_scale = _kinetics_base_electron_impact_scale(
