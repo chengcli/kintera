@@ -151,20 +151,30 @@ class IndexedReversibleFirstOrderSource:
 
 @dataclass
 class IndexedBoundaryFluxSource:
-    """A constant flux applied to one vertical boundary cell."""
+    """A constant flux applied to one vertical boundary cell.
+
+    ``level`` overrides the default boundary index (0 for lower, ``nlyr-1``
+    for upper). This is needed when the grid extends above the physically
+    meaningful column (e.g. KINETICS-base layouts with density=0 padding
+    above the exobase): the escape flux must be applied at the topmost
+    *real* layer, not at the array tail where the cell is empty.
+    """
 
     species: int
     value: float
     boundary: str
+    level: int | None = None
 
     def linearize(self, state: AtmState2D) -> LocalSourceLinearization:
         tendency = torch.zeros_like(state.concentration)
         jacobian = _empty_jacobian(state)
         dz = _vertical_cell_widths(state)
         if self.boundary == "lower":
-            tendency[:, 0, self.species] = tendency[:, 0, self.species] + self.value / dz[0]
+            idx = 0 if self.level is None else self.level
+            tendency[:, idx, self.species] = tendency[:, idx, self.species] + self.value / dz[idx]
         elif self.boundary == "upper":
-            tendency[:, -1, self.species] = tendency[:, -1, self.species] - self.value / dz[-1]
+            idx = -1 if self.level is None else self.level
+            tendency[:, idx, self.species] = tendency[:, idx, self.species] - self.value / dz[idx]
         else:
             raise ValueError("boundary must be 'lower' or 'upper'")
         return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
@@ -172,31 +182,38 @@ class IndexedBoundaryFluxSource:
 
 @dataclass
 class IndexedBoundaryVelocitySource:
-    """A velocity flux applied to one vertical boundary cell."""
+    """A velocity flux applied to one vertical boundary cell.
+
+    ``level`` overrides the default boundary index (see
+    :class:`IndexedBoundaryFluxSource` for rationale).
+    """
 
     species: int
     value: float
     boundary: str
+    level: int | None = None
 
     def linearize(self, state: AtmState2D) -> LocalSourceLinearization:
         tendency = torch.zeros_like(state.concentration)
         jacobian = _empty_jacobian(state)
         dz = _vertical_cell_widths(state)
         if self.boundary == "lower":
-            rate = self.value / dz[0]
-            tendency[:, 0, self.species] = (
-                tendency[:, 0, self.species] + rate * state.concentration[:, 0, self.species]
+            idx = 0 if self.level is None else self.level
+            rate = self.value / dz[idx]
+            tendency[:, idx, self.species] = (
+                tendency[:, idx, self.species] + rate * state.concentration[:, idx, self.species]
             )
-            jacobian[:, 0, self.species, self.species] = (
-                jacobian[:, 0, self.species, self.species] + rate
+            jacobian[:, idx, self.species, self.species] = (
+                jacobian[:, idx, self.species, self.species] + rate
             )
         elif self.boundary == "upper":
-            rate = self.value / dz[-1]
-            tendency[:, -1, self.species] = (
-                tendency[:, -1, self.species] - rate * state.concentration[:, -1, self.species]
+            idx = -1 if self.level is None else self.level
+            rate = self.value / dz[idx]
+            tendency[:, idx, self.species] = (
+                tendency[:, idx, self.species] - rate * state.concentration[:, idx, self.species]
             )
-            jacobian[:, -1, self.species, self.species] = (
-                jacobian[:, -1, self.species, self.species] - rate
+            jacobian[:, idx, self.species, self.species] = (
+                jacobian[:, idx, self.species, self.species] - rate
             )
         else:
             raise ValueError("boundary must be 'lower' or 'upper'")

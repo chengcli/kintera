@@ -208,10 +208,14 @@ def _titan_pin_specs(titan_state: KBTitanState) -> list:
         "lower_boundary_mixing_ratio_times_density",
         "lower_boundary_deposition_velocity_zero",
     }
-    upper_boundary_conversions = {
-        "upper_boundary_escape_velocity_zero",
-    }
     cold_trap_conversions = {
+        # KB's Cheng branch (kinetgen1X.F:3517-3526) overrides CH4 XLOWER at
+        # the surface only. Matching that literally caused the bare-C cascade
+        # (Newton singular at step 45) because no_grain mode has no grain
+        # freezing to recreate the cold-trap structure above the surface.
+        # Until grain freezing chemistry is plumbed through, keep the
+        # all-levels CH4 pin in no_grain runs — set by the cheng cold-trap
+        # conversion tag.
         "kinetics_base_cheng_cold_trap_mixing_ratio",
     }
 
@@ -247,27 +251,13 @@ def _titan_pin_specs(titan_state: KBTitanState) -> list:
             )
         )
 
-    upper_boundary_indices = [
-        species.index(name)
-        for name, conv in titan_state.conversion.items()
-        if conv in upper_boundary_conversions
-    ]
-    if upper_boundary_indices:
-        nonzero_levels = (titan_state.density[0] > 0).nonzero(as_tuple=True)[0]
-        last_real_lyr = (
-            int(nonzero_levels[-1])
-            if nonzero_levels.numel() > 0
-            else titan_state.state.nlyr - 1
-        )
-        # Pin upper-boundary species at last_real_lyr to 0 (escape sink).
-        zeros = torch.zeros_like(c0)
-        specs.append(
-            BoundaryPinSpec(
-                species_indices=upper_boundary_indices,
-                level_indices=[last_real_lyr],
-                values=zeros,
-            )
-        )
+    # Upper-boundary escape (KB bc_save upper_kind=2) is no longer pinned to
+    # 0 at the top level. The `upper_boundary_velocity` source term in
+    # source_terms.py applies the Jeans-style v_esc * n loss at the top
+    # cell directly; pinning to 0 short-circuited that physics and prevented
+    # H/H2 from accumulating against the escape flux. Removing the pin lets
+    # the transport module's velocity boundary handle escape as configured
+    # in bc_save (e.g. 1.44e5 cm/s for H, 7.49e4 for H2).
 
     cold_trap_indices = [
         species.index(name)
@@ -275,11 +265,6 @@ def _titan_pin_specs(titan_state: KBTitanState) -> list:
         if conv in cold_trap_conversions
     ]
     if cold_trap_indices:
-        # G19+G26: Cheng cold trap pins CH4 to the atm-file profile across
-        # all levels. KB's converged CH4 profile tracks the atm-file values
-        # within 2-3% from lev 0 through lev 39; without this pin our
-        # chemistry destroys CH4 above the cold trap and triggers the
-        # bare-C cascade that produces C+ runaway. See GAP_STATUS §G19/G26.
         specs.append(
             BoundaryPinSpec(
                 species_indices=cold_trap_indices,

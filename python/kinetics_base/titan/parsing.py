@@ -695,17 +695,17 @@ def _apply_cheng_cold_trap_boundaries(
     species: list[str],
     profile_values: dict[str, torch.Tensor] | None = None,
 ) -> None:
-    """Apply the KINETICS-base ``__CHENG`` cold trap boundary condition for CH4.
+    """Apply the KINETICS-base ``__CHENG`` cold trap CH4 condition.
 
-    The Cheng Titan branch sets the CH4 cold-trap boundary at level 24
-    (1-indexed, 0-indexed 23, ~500 km altitude). KB's bc_save lists
-    ``CH4: lower_kind=5 lower_value=4e-4`` as a generic lower-mixing-ratio
-    BC, but that value is the historic surface flux rather than the
-    atmospheric mixing ratio (which is 4e-3 in the atm file). KB ignores
-    the bc_save row for CH4 because the Cheng cold-trap mechanism
-    overrides it.  Match that behaviour by restoring CH4 below the cold
-    trap (lev 0–23) to its atm-file profile value, undoing the rounded
-    4e-4 the lower-BC pass installed.
+    KB's Cheng branch (kinetgen1X.F:3517-3526) overrides bc_save CH4 with
+    ``XLOWER(ISP(CH4)) = 0.0157 * DEN(_, _, 24)`` at the surface only,
+    letting interior chemistry + diffusion + grain freezing reproduce the
+    cold-trap profile. Trying that literally in no_grain mode (no grain
+    freezing available) triggered the bare-C cascade and a singular Newton
+    matrix at step 45. Until grain freezing is wired through the no_grain
+    path, retain the historical all-levels CH4 pin tagged with this
+    conversion type so atmosphere.py installs a BoundaryPinSpec matching
+    the atm-file CH4 profile.
     """
     _COLD_TRAP_LEVEL = 23  # 0-indexed; Fortran level 24, ~500 km on Titan
 
@@ -718,14 +718,8 @@ def _apply_cheng_cold_trap_boundaries(
     canonical = species[ch4_idx]
     conversion[canonical] = "kinetics_base_cheng_cold_trap_mixing_ratio"
 
-    # Restore CH4 concentration in the lower atmosphere (lev 0 through the
-    # cold trap) from the atm-file profile, overriding any prior lower-BC
-    # mixing-ratio overwrite. This matches KB which uses the atm-file
-    # mixing ratio (4e-3) instead of the bc_save value (4e-4).
     if profile_values is not None and canonical in profile_values:
         ch4_profile = profile_values[canonical]
-        # Profile is in mixing ratio (matches the .pun_zero_conc atm file);
-        # convert to number density at the levels we're restoring.
         nlevs = min(_COLD_TRAP_LEVEL + 1, ch4_profile.shape[0])
         for L in range(nlevs):
             concentration[L, ch4_idx] = ch4_profile[L] * density[L]
@@ -763,12 +757,13 @@ def _apply_lower_mixing_ratio_boundaries(
             concentration[0, j] = 0.0
             conversion[canonical] = "lower_boundary_deposition_velocity_zero"
         # Upper boundary conditions.
-        if entry.upper_kind == 2 and entry.upper_value > 0:
-            # Type-2 velocity BC with a positive (upward) escape velocity at the top.
-            # In KINETICS-base's BNDRY1, the escape term VSTARN = GAMAN * RAMDN * XUPPER
-            # adds a strong loss on the diagonal of the topmost active level, driving
-            # its concentration to near zero.  Pin the last real level to 0 to reproduce
-            # this behaviour and prevent accumulation that triggers numerical instability.
-            concentration[last_real, j] = 0.0
-            conversion[canonical] = "upper_boundary_escape_velocity_zero"
+        # Note: upper_kind == 2 with positive value is a Jeans-style escape
+        # velocity. We previously pinned the top level to 0 to mimic KB's
+        # BNDRY1 diagonal-loss term, but that pin overrode the actual escape
+        # physics and blocked the upper-atmosphere flux profile from
+        # equilibrating against the v_esc * n loss. The `upper_boundary_velocity`
+        # source built by source_terms.py handles the loss correctly using
+        # the bc_save velocity values (e.g. 1.44e5 cm/s for H, 7.49e4 for H2)
+        # — we now let it run and stop pinning. See _apply_cheng_cold_trap_boundaries
+        # for the analogous CH4 cold-trap fix.
 

@@ -334,6 +334,16 @@ def build_kinetics_base_titan_atm2d_source_terms(
             if source is not None:
                 atm_sources.append(source)
 
+    # KB grids commonly pad above the exobase with density=0 layers (e.g.
+    # nlyr=50 but last nonzero density at L39). Upper-boundary velocity/flux
+    # escape physics must apply at the topmost *real* layer, not at the
+    # array tail. Compute last_real_lyr once and pass to the builder.
+    nonzero_levels = (titan_state.density[0] > 0).nonzero(as_tuple=True)[0]
+    last_real_lyr = (
+        int(nonzero_levels[-1])
+        if nonzero_levels.numel() > 0
+        else titan_state.state.nlyr - 1
+    )
     for term in source_terms:
         if term.kind in {
             "lower_boundary_velocity",
@@ -341,7 +351,9 @@ def build_kinetics_base_titan_atm2d_source_terms(
             "upper_boundary_velocity",
             "upper_boundary_flux",
         }:
-            source = _build_titan_boundary_atm2d_source(species_index, term)
+            source = _build_titan_boundary_atm2d_source(
+                species_index, term, last_real_lyr=last_real_lyr
+            )
             if source is not None:
                 atm_sources.append(source)
     return atm_sources
@@ -551,6 +563,8 @@ def _build_titan_condensation_pair_atm2d_source(
 def _build_titan_boundary_atm2d_source(
     species_index: dict[str, int],
     term: KBTitanSourceTerm,
+    *,
+    last_real_lyr: int | None = None,
 ) -> IndexedBoundaryFluxSource | IndexedBoundaryVelocitySource | None:
     species = term.reactants or term.products
     if not species or species[0] not in species_index:
@@ -562,10 +576,14 @@ def _build_titan_boundary_atm2d_source(
     if term.kind == "lower_boundary_flux":
         return IndexedBoundaryFluxSource(species=index, value=value, boundary="lower")
     if term.kind == "upper_boundary_flux":
-        return IndexedBoundaryFluxSource(species=index, value=value, boundary="upper")
+        return IndexedBoundaryFluxSource(
+            species=index, value=value, boundary="upper", level=last_real_lyr
+        )
     if term.kind == "lower_boundary_velocity":
         return IndexedBoundaryVelocitySource(species=index, value=value, boundary="lower")
     if term.kind == "upper_boundary_velocity":
-        return IndexedBoundaryVelocitySource(species=index, value=value, boundary="upper")
+        return IndexedBoundaryVelocitySource(
+            species=index, value=value, boundary="upper", level=last_real_lyr
+        )
     return None
 
