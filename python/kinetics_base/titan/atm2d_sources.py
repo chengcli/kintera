@@ -398,8 +398,23 @@ def _build_titan_thermal_atm2d_source(
     if len(product_coeffs) != len(products):
         product_coeffs = [1] * len(products)
 
+    # Check for KB UPDATE_CHEMB hand-coded overrides (kinetgen1X.F:6803-7384).
+    # Many Titan reactions have Moses 2005 / Cheng 2013 formulas that REPLACE
+    # the catalog (.pun-file) rate constant. Failing to apply these gives
+    # 10× rate errors (see project-diagnostic-findings memory + the
+    # kb-fortran-map skill for the catalog of overrides).
+    from .chemb_overrides import has_titan_chemb_override, titan_chemb_rate_constant
+    override_id = term.reaction_id if has_titan_chemb_override(term.reaction_id) else None
+
     def rate_provider(state: AtmState2D) -> torch.Tensor:
         density = titan_state.density.to(dtype=state.dtype, device=state.device)
+        if override_id is not None:
+            T = state.temperature
+            # density tensor needs same shape as T for broadcasting
+            d = density.expand_as(T) if density.shape != T.shape else density
+            k = titan_chemb_rate_constant(override_id, T, d)
+            if k is not None:
+                return k
         return _pun_rate_constant(term.parameters, state.temperature, density)
 
     return IndexedMassActionSource(
