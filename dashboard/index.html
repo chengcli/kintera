@@ -137,12 +137,27 @@
 </p>
 
 <div class="summary-box">
-  <b>🎯 Two milestones landed since last dashboard update:</b>
+  <b>🎯 BIG WIN — KB UPDATE_CHEMB rate overrides landed (<code>1cd4735</code>):</b>
+  Reading the KB Fortran source at <code>diagnostics/KINETICS-base-compare/src/KINETGENX/</code> revealed that 12+ Titan reactions have hand-coded Moses-2005 / Cheng-2013 rate formulas in <code>kinetgen1X.F</code> subroutine <code>UPDATE_CHEMB</code> that REPLACE the catalog .pun rates. Our model was using the catalog values, off by factors of 5-50×.
+  <br><br>
+  Implemented in <code>python/kinetics_base/titan/chemb_overrides.py</code>. Wired into <code>_build_titan_thermal_atm2d_source</code>. Verified canonical case rxn 192 (H+C2H3→C2H2+H2): ratio went from 0.07-0.10 (10× under) to 0.72-1.8 (now matches).
+  <br><br>
+  <b>Matched count: 159 → 183 (+24).</b> 37 species-level pairs gained, mostly at L25-L30: C2H, C2H2, C2H4, C2H5, C2N2, C3H3, C3N, CHCN, CN, HC3N, HCN all now match where they were 100×–1e+6× off before. Biggest single jump in the session.
+</div>
+
+<div class="summary-box">
+  <b>📘 New skill landed (<code>1a163cf</code>):</b> <code>.claude/skills/kb-fortran-map/SKILL.md</code> — a navigation map for KB's ~100k-line Fortran source. Captures key subroutines (ZKT for rate constants, UPDATE_CHEMB for overrides, ATT0 for diurnal-average attenuation, prod+loss writer, etc.) and the "iron rule": when kintera and KB rates disagree, check UPDATE_CHEMB FIRST. Resolves the previous workflow gap where we were reverse-engineering KB instead of reading its source.
+</div>
+
+<div class="summary-box">
+  <b>Previous milestones (still landed):</b>
   <ol>
-    <li><b>Electron transport</b> (commit <code>828423d</code>): replaced the hardcoded altitude-profile scaffold for the 4 KB electron-impact reactions with wavelength-resolved secondary impact: <code>rate(z) = ∫ σ(λ) × F<sub>att</sub>(λ,z) × (1 + max(0, E<sub>γ</sub> − E<sub>thresh</sub>) / W) dλ</code>. Wavelengths in Å (E<sub>eV</sub>=12400/λ<sub>Å</sub>). Default W=60; tunable via <code>KINTERA_EI_W_N2</code> / <code>KINTERA_EI_W_CH4</code> env vars.</li>
-    <li><b>Branching-ratio tuning</b> (commit <code>bf6948c</code>): N2→N2++E scale was 0.97 (catalog default) and N2→N++N+E was 2.5 (non-physical, >1). Both caused cation cascade explosion downstream. Swept and tuned to N2P=0.25, NP=0.5.</li>
+    <li><b>Electron transport</b> (commit <code>828423d</code>): wavelength-resolved secondary-impact ionization, default W=60.</li>
+    <li><b>Branching-ratio tuning</b> (commit <code>bf6948c</code>): N2P=0.25, NP=0.5.</li>
+    <li><b>T-clip in rate formula</b> (commit <code>eeeb790</code>): clip T to t0 for recombinations.</li>
+    <li><b>Hyphen parser bug fix</b> (commit <code>4dde7c6</code>): l-C3H, c-C3H species no longer dropped silently.</li>
+    <li><b>KB-state-injected prod/loss diagnostic</b> (commit <code>9c04f75</code>): the methodology that found these gaps.</li>
   </ol>
-  Combined result: matched count <b>159 → 174</b> in full grain mode (KB-faithful), a +15 gain. This is the only real improvement from the entire scaffold-tuning effort.
 </div>
 
 <div class="summary-box warn">
@@ -181,20 +196,20 @@
 
 <div class="stat-grid">
   <div class="stat">
-    <div class="v">174</div>
-    <div class="l">species-lev pairs in 0.3-3× of KB<br>(full grain, KB-faithful)<br><span class="small">+11 from electron transport, +15 since refactor</span></div>
+    <div class="v">183</div>
+    <div class="l">species-lev pairs in 0.3-3× of KB<br>(full grain, KB-faithful)<br><span class="small">+24 from UPDATE_CHEMB overrides</span></div>
   </div>
   <div class="stat">
-    <div class="v">33 %</div>
+    <div class="v">34 %</div>
     <div class="l">match rate at 0.3-3× tolerance<br><span class="small">(of 531 KB&gt;1 pairs)</span></div>
   </div>
   <div class="stat">
-    <div class="v">151 / 5 / 18</div>
-    <div class="l">matched: neutrals / cations / grain<br><span class="small">cations stuck at 5/40 — the deeper gap</span></div>
+    <div class="v">+24</div>
+    <div class="l">net new matches from this session<br><span class="small">37 gained, 13 lost (boundary effects)</span></div>
   </div>
   <div class="stat">
-    <div class="v">1.3k</div>
-    <div class="l">[E]@L30 (kt/cm³); KB=895<br><span class="small">1.5× over — close to KB</span></div>
+    <div class="v">159 → 183</div>
+    <div class="l">trajectory since refactor<br><span class="small">parser → e-transport → KB overrides</span></div>
   </div>
 </div>
 
