@@ -230,25 +230,113 @@ def _rxn_329_h_c4h3_c4h2_h2(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
     return None  # type: ignore
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Additional overrides verified via .special ISP→reaction_id mapping 2026-05-23
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _rxn_534_2ch3_m_c2h6(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(326) → rxn 534. 2CH3 + M → C2H6 + M. kinetgen1X.F:7181-7191."""
+    rk3 = torch.where(
+        t <= 300.0,
+        6.15e-18 * torch.pow(t, -3.5),
+        3.51e-7 * torch.pow(t, -7.03) * torch.exp(-1390.0 / t),
+    )
+    rk2 = 1.12e-9 * torch.pow(t, -0.5) * torch.exp(-25.0 / t)
+    # variable Fc; approximate as the constant 0.6 default
+    return _troe_falloff(rk3, rk2, d, fc=0.6)
+
+
+def _rxn_540_ch3_c2h5_m_c3h8(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(245) → rxn 540. CH3 + C2H5 + M → C3H8 + M (the formula in KB has
+    a 10× multiplier vs zkcalcx). kinetgen1X.F:7219-7225."""
+    rk3 = 3.7e-19 * torch.pow(t, -3.0) * torch.exp(-300.0 / t)
+    rk2 = 9.5e-10 * torch.pow(t, -0.54) * torch.exp(117.0 / t)
+    return 10.0 * _troe_falloff(rk3, rk2, d, fc=0.6)
+
+
+def _rxn_543_ch3_c3h3_m_c4h6a(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(481) → rxn 543. CH3 + C3H3 + M → 1-C4H6 + M. kinetgen1X.F:7205-7211."""
+    rk3 = 9.0e-19 * torch.pow(t, -3.0) * torch.exp(-300.0 / t)
+    rk2 = torch.full_like(t, 9.96e-12)
+    return _troe_falloff(rk3, rk2, d, fc=0.6)
+
+
+def _rxn_544_ch3_c3h3_m_c4h6b(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(482) → rxn 544. CH3 + C3H3 + M → 1,2-C4H6 + M. kinetgen1X.F:7213-7218."""
+    rk3 = 6.0e-19 * torch.pow(t, -3.0) * torch.exp(-300.0 / t)
+    rk2 = torch.full_like(t, 6.64e-12)
+    return _troe_falloff(rk3, rk2, d, fc=0.6)
+
+
+def _rxn_638_2c2h3_m_c4h6c(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(483) → rxn 638. 2C2H3 + M → 1,3-C4H6 + M. kinetgen1X.F:7227-7232."""
+    rk3 = 5.0e-18 * torch.pow(t, -3.75) * torch.exp(-300.0 / t)
+    rk2 = torch.full_like(t, 1.4e-10)
+    return _troe_falloff(rk3, rk2, d, fc=0.6)
+
+
+def _rxn_637_2c2h3_c2h4_c2h2(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(484) → rxn 637. 2C2H3 → C2H4 + C2H2. kinetgen1X.F:7233-7236.
+    Special: rk2(of rxn 638) - zk(638) × density."""
+    rk2 = torch.full_like(t, 1.4e-10)
+    k_638 = _rxn_638_2c2h3_m_c4h6c(t, d)
+    return torch.clamp(rk2 - k_638 * d, min=0.0)
+
+
+def _rxn_551_ch3_c3h7_m_c4h10(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(244) → rxn 551. CH3 + C3H7 + M → C4H10 + M. kinetgen1X.F:7238-7247."""
+    rk3 = torch.where(
+        t <= 200.0,
+        7.07e-22 * torch.exp(255.0 / t),
+        4.46e-26 * torch.exp(2189.0 / t),
+    )
+    rk2 = 3.2e-10 * torch.pow(t, -0.32)
+    return _troe_falloff(rk3, rk2, d, fc=0.6)
+
+
+def _rxn_642_c2h3_c2h5_ch3_c3h5(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(485) → rxn 642. C2H3 + C2H5 → CH3 + C3H5. kinetgen1X.F:7249-7253."""
+    F = 2.5e-36 * torch.pow(t, 11.25) * torch.exp(3289.0 / t)
+    return 2.5e-11 * (F / (F + 1.0))
+
+
+def _rxn_643_c2h3_c2h5_m_c4h8(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(486) → rxn 643. C2H3 + C2H5 + M → C4H8 + M (uses zkcalc not zkcalcx).
+    kinetgen1X.F:7255-7260."""
+    F = 2.5e-36 * torch.pow(t, 11.25) * torch.exp(3289.0 / t)
+    rk3 = 7.5e-17 * torch.pow(t, -3.0) * torch.exp(-300.0 / t)
+    rk2 = 2.5e-11 / (F + 1.0)
+    # zkcalc(rk2, rk3, dd) — note argument order!
+    return _lindemann(rk2, rk3, d)
+
+
 # Map kintera reaction_id → override callable
 # Verified ISP→reaction_id mapping (from .special file):
 _RXN_OVERRIDES: dict[int, Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = {
-    289: _rxn_289_2h_m_h2,
-    294: _rxn_294_h_ch3_m_ch4,
-    298: _rxn_298_h_c2h2_m_c2h3,
-    299: _rxn_299_h_c2h3_c2h2_h2,  # the rxn 192 we diagnosed (kintera ID 299, KB Reactions.dat 192)
-    300: _rxn_300_h_c2h3_m_c2h4,
-    302: _rxn_302_h_c2h4_m_c2h5,
-    305: _rxn_305_h_c2h5_m_c2h6,
-    308: _rxn_308_h_c3h3_m_ch3c2h,
-    451: _rxn_451_ch_ch4_c2h4_h,
-    537: _rxn_537_ch3_c2h3_c3h5_h,
-    538: _rxn_538_ch3_c2h3_m_c3h6,
-    633: _rxn_633_c2h3_h2_c2h4_h,
-    # Unverified mappings (formula transcribed; ID may need confirmation):
-    # 306: _rxn_306_h_c3h2_m_c3h3,
-    # 309: _rxn_309_h_c3h3_m_ch2cch2,
-    # 321: _rxn_321_2ch3_m_c2h6,
+    # Already-landed in 1cd4735:
+    289: _rxn_289_2h_m_h2,            # ISP(466) 2H+M=H2+M
+    294: _rxn_294_h_ch3_m_ch4,        # ISP(311) H+CH3+M=CH4+M
+    298: _rxn_298_h_c2h2_m_c2h3,      # ISP(467) H+C2H2+M=C2H3+M
+    299: _rxn_299_h_c2h3_c2h2_h2,     # ISP(468) H+C2H3=C2H2+H2  ← canonical case
+    300: _rxn_300_h_c2h3_m_c2h4,      # ISP(313) H+C2H3+M=C2H4+M
+    302: _rxn_302_h_c2h4_m_c2h5,      # ISP(465) H+C2H4+M=C2H5+M
+    305: _rxn_305_h_c2h5_m_c2h6,      # ISP(469) H+C2H5+M=C2H6+M
+    308: _rxn_308_h_c3h3_m_ch3c2h,    # ISP(471) H+C3H3+M=CH3C2H+M
+    451: _rxn_451_ch_ch4_c2h4_h,      # ISP(476) CH+CH4=C2H4+H
+    537: _rxn_537_ch3_c2h3_c3h5_h,    # ISP(479) CH3+C2H3=C3H5+H
+    538: _rxn_538_ch3_c2h3_m_c3h6,    # ISP(478) CH3+C2H3+M=C3H6+M
+    633: _rxn_633_c2h3_h2_c2h4_h,     # ISP(475) C2H3+H2=C2H4+H
+    # New (this commit, verified via .special):
+    534: _rxn_534_2ch3_m_c2h6,        # ISP(326) 2CH3+M=C2H6+M
+    540: _rxn_540_ch3_c2h5_m_c3h8,    # ISP(245) CH3+C2H5+M=C3H8+M  (10× multiplier!)
+    543: _rxn_543_ch3_c3h3_m_c4h6a,   # ISP(481) CH3+C3H3+M=1-C4H6+M
+    544: _rxn_544_ch3_c3h3_m_c4h6b,   # ISP(482) CH3+C3H3+M=1,2-C4H6+M
+    637: _rxn_637_2c2h3_c2h4_c2h2,    # ISP(484) 2C2H3=C2H4+C2H2
+    638: _rxn_638_2c2h3_m_c4h6c,      # ISP(483) 2C2H3+M=1,3-C4H6+M
+    642: _rxn_642_c2h3_c2h5_ch3_c3h5, # ISP(485) C2H3+C2H5=CH3+C3H5
+    643: _rxn_643_c2h3_c2h5_m_c4h8,   # ISP(486) C2H3+C2H5+M=C4H8+M
+    551: _rxn_551_ch3_c3h7_m_c4h10,   # ISP(244) CH3+C3H7+M=C4H10+M
 }
 
 
