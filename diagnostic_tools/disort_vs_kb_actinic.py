@@ -211,6 +211,103 @@ def main(target_pun_id: int = 10) -> None:
         print(f"  L{L:<2d}  {initial.altitude[L]:>7.1f}  "
               f"{kt_J:>12.3e}  {kb_J:>12.3e}  {ratio:>8.3f}  {tau_w_avg:>9.3f}  {n_reactant_per_lev[L]:>10.2e}")
 
+    # ----- Per-species, per-wavelength dtau dump -----
+    # dtau_k(z, lambda) = sigma_k(lambda) * 0.5*(n_k(z) + n_k(z+1)) * dz_layer
+    # The total column tau above level L is sum_{i=L}^{top-1} dtau_layer(i)
+    # plus a scale-height top contribution.
+    opacity_dict = target_term.parameters.get("total_cross_section_by_species", {})
+    active_nlyr_full = int(target_term.parameters.get("radiation_active_nlyr") or
+                           titan_state.state.nlyr)
+    active_nlyr = min(active_nlyr_full, titan_state.state.nlyr)
+    alt_km = initial.altitude
+    print(f"\n=== Per-species column tau dump (active_nlyr={active_nlyr}) ===")
+    print(f"  (cumulative tau from top of radiation, summed over wavelength)")
+    species_taus: dict[str, np.ndarray] = {}
+    for sp_name, sigma_list in opacity_dict.items():
+        if sp_name not in species_index or not isinstance(sigma_list, list):
+            continue
+        sp_idx = species_index[sp_name]
+        sigma_sp = np.array(sigma_list)  # (nwave,)
+        n_sp = titan_state.concentration[0, :, sp_idx].cpu().numpy()  # (nlyr,)
+        # Build cumulative column above each level (top → bottom)
+        col_lambda = np.zeros((active_nlyr, len(sigma_sp)))
+        # Top-layer scale-height contribution
+        if active_nlyr >= 2:
+            c0 = n_sp[active_nlyr - 2]
+            c1 = n_sp[active_nlyr - 1]
+            dz_top_km = alt_km[active_nlyr - 1] - alt_km[active_nlyr - 2]
+            if c0 > 0 and c1 > 0 and c0 != c1:
+                H_km = abs(dz_top_km / np.log(c1 / c0))
+            else:
+                H_km = 10.0
+            col_lambda[active_nlyr - 1] = H_km * 1e5 * c1 * sigma_sp
+        # Trapezoid going down
+        for i in range(active_nlyr - 2, -1, -1):
+            dz_km = alt_km[i + 1] - alt_km[i]
+            ext_layer = 0.5 * (n_sp[i] + n_sp[i + 1]) * sigma_sp
+            col_lambda[i] = col_lambda[i + 1] + ext_layer * dz_km * 1e5
+        species_taus[sp_name] = col_lambda.sum(axis=-1)  # collapse wavelengths
+
+    # Show cumulative tau per species at L5, L10, L20, L35
+    print(f"  {'species':>8s}  {'τ@L35':>9s}  {'τ@L20':>9s}  {'τ@L10':>9s}  {'τ@L5':>9s}")
+    for sp_name, taus in species_taus.items():
+        row = f"  {sp_name:>8s}"
+        for L in [35, 20, 10, 5]:
+            if L < len(taus):
+                row += f"  {taus[L]:>9.2e}"
+            else:
+                row += f"  {'-':>9s}"
+        print(row)
+
+    # ----- Per-wavelength dtau dump at L5 and L20 -----
+    for audit_L in [20, 5]:
+        if audit_L >= active_nlyr:
+            continue
+        print(f"\n=== Per-species per-wavelength tau breakdown at L{audit_L} "
+              f"(alt={alt_km[audit_L]:.1f} km) ===")
+        # Identify wavelengths that contribute meaningfully to this reaction's J
+        contribs_L = sigma.cpu().numpy() * af[audit_L]
+        wave_idx_sorted = np.argsort(-contribs_L)[:8]
+        # For each contributing wavelength, show per-species cumulative tau and total
+        print(f"  Top 8 contributing wavelengths (by J at L{audit_L}):")
+        header = f"    {'wl(A)':>7s}  {'F_z/F_top':>9s}"
+        for sp_name in opacity_dict.keys():
+            if sp_name in species_index:
+                header += f"  {sp_name:>9s}"
+        header += f"  {'sum_tau':>9s}"
+        print(header)
+        for w_i in wave_idx_sorted:
+            if contribs_L[w_i] <= 0:
+                continue
+            row = f"    {wavelengths[w_i]:>7.1f}  {af[audit_L, w_i]/max(f_top[w_i], 1):>9.3f}"
+            total_tau = 0.0
+            for sp_name, sigma_list in opacity_dict.items():
+                if sp_name not in species_index:
+                    continue
+                sp_idx = species_index[sp_name]
+                sigma_w = sigma_list[w_i]
+                n_sp = titan_state.concentration[0, :, sp_idx].cpu().numpy()
+                tau_sp_w = 0.0
+                if active_nlyr >= 2 and audit_L < active_nlyr - 1:
+                    # top-layer scale height contribution
+                    c0 = n_sp[active_nlyr - 2]
+                    c1 = n_sp[active_nlyr - 1]
+                    dz_top_km = alt_km[active_nlyr - 1] - alt_km[active_nlyr - 2]
+                    if c0 > 0 and c1 > 0 and c0 != c1:
+                        H_km = abs(dz_top_km / np.log(c1 / c0))
+                    else:
+                        H_km = 10.0
+                    tau_sp_w += H_km * 1e5 * c1 * sigma_w
+                    # layers from active_nlyr-2 down to audit_L
+                    for i in range(active_nlyr - 2, audit_L - 1, -1):
+                        dz_km = alt_km[i + 1] - alt_km[i]
+                        ext_layer = 0.5 * (n_sp[i] + n_sp[i + 1]) * sigma_w
+                        tau_sp_w += ext_layer * dz_km * 1e5
+                total_tau += tau_sp_w
+                row += f"  {tau_sp_w:>9.2e}"
+            row += f"  {total_tau:>9.2e}"
+            print(row)
+
     # ----- Snapshot at one level: per-wavelength comparison -----
     audit_level = int(__import__("os").environ.get("AUDIT_LEVEL", "5"))
     print(f"\n=== Per-wavelength audit at L{audit_level} (alt={initial.altitude[audit_level]:.1f} km) ===")
