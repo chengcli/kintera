@@ -753,4 +753,161 @@ plt.savefig(FIGDIR / "11_next_steps.png", dpi=110, bbox_inches="tight")
 plt.close()
 
 
+# ----- Figure 15: progress arc and electron-transport gain -----
+print("[fig15] progress arc through 2026-05 ...")
+import matplotlib.patches as mpatches
+fig, (axL, axR) = plt.subplots(1, 2, figsize=(15, 6))
+
+# Left: progress timeline
+milestones = [
+    ("159", "G29 full grain\n(pre-parser-fix)"),
+    ("163", "+ parser fix\n(8f65e53)"),
+    ("174", "+ e-transport\nW=60, N2P=0.25"),
+]
+xs = list(range(len(milestones)))
+ys = [int(m[0]) for m in milestones]
+axL.plot(xs, ys, "-o", color="#2a6", lw=2.5, ms=11)
+for i, (val, label) in enumerate(milestones):
+    axL.annotate(f"{val}", (i, ys[i]), textcoords="offset points",
+                 xytext=(0, 12), ha="center", fontsize=14, fontweight="bold", color="#2a6")
+    axL.annotate(label, (i, ys[i]), textcoords="offset points",
+                 xytext=(0, -28), ha="center", fontsize=10)
+axL.set_xticks(xs)
+axL.set_xticklabels(["", "", ""])
+axL.set_ylim(150, 185)
+axL.set_ylabel("matched species-level pairs / 531", fontsize=11)
+axL.set_title("Progress in full grain mode (KB-faithful)", fontsize=12)
+axL.grid(True, alpha=0.3)
+axL.axhline(531, ls=":", color="gray", alpha=0.5)
+axL.text(2, 530, "KB self-match = 531", ha="right", fontsize=8, color="gray")
+
+# Right: per-category match breakdown for best config
+def category_counts(c, species, kb):
+    n_neutr=t_neutr=n_cat=t_cat=n_grain=t_grain=0
+    for j, n in enumerate(species):
+        kbv = kb.get(n)
+        if kbv is None: continue
+        kind = ('grain' if (n.startswith('G') or n in {'SGA','U'})
+                else 'cat' if n.endswith('+')
+                else 'neutr')
+        for lev in [0,5,10,15,20,25,30,35]:
+            if kbv[lev] < 1: continue
+            r = c[lev,j]/kbv[lev]
+            if kind == 'grain':
+                t_grain += 1; n_grain += int(0.3<r<3.0)
+            elif kind == 'cat':
+                t_cat += 1; n_cat += int(0.3<r<3.0)
+            else:
+                t_neutr += 1; n_neutr += int(0.3<r<3.0)
+    return (n_neutr,t_neutr,n_cat,t_cat,n_grain,t_grain)
+nn,tn,nc,tc,ng,tg = category_counts(C, SPECIES, KB)
+cats = ["neutral", "cation", "grain"]
+matched_count_per = [nn, nc, ng]
+total_count = [tn, tc, tg]
+unmatched = [t - m for m, t in zip(matched_count_per, total_count)]
+x = np.arange(len(cats))
+w = 0.6
+b1 = axR.bar(x, matched_count_per, w, color="#2a6", label="matched (kt/KB ∈ [0.3, 3])")
+b2 = axR.bar(x, unmatched, w, bottom=matched_count_per, color="#bbb", label="unmatched")
+for i, (m, t) in enumerate(zip(matched_count_per, total_count)):
+    axR.text(i, t + 8, f"{m}/{t}\n({100*m/t:.0f}%)", ha="center", fontsize=11, fontweight="bold")
+axR.set_xticks(x)
+axR.set_xticklabels(cats, fontsize=12)
+axR.set_ylabel("species × level samples", fontsize=11)
+axR.set_title("Where the 357 unmatched pairs live", fontsize=12)
+axR.legend(loc="upper right")
+axR.set_ylim(0, 500)
+plt.suptitle(f"Current state — N2P=0.25, NP=0.5, W=60, full grain mode (174/531 = 33%)",
+             fontsize=13, y=1.02)
+plt.tight_layout()
+plt.savefig(FIGDIR / "15_progress_arc.png", dpi=110, bbox_inches="tight")
+plt.close()
+
+
+# ----- Figure 16: H feedback loop diagram + altitude profile -----
+print("[fig16] H feedback loop ...")
+fig, (axL, axR) = plt.subplots(1, 2, figsize=(15, 6))
+
+# Left: altitude profile [H], [C], [C2H2] showing the cliff
+alt_km = ALT
+axL.semilogy(alt_km, C[:, SPECIES.index('H')], "-o", ms=4, color="#c33", label="[H] kt")
+axL.semilogy(alt_km, KB['H'][:len(alt_km)], "--", color="#c33", alpha=0.5, label="[H] KB")
+axL.semilogy(alt_km, C[:, SPECIES.index('C')], "-s", ms=4, color="#888", label="[C] kt")
+axL.semilogy(alt_km, KB['C'][:len(alt_km)], "--", color="#888", alpha=0.5, label="[C] KB")
+axL.semilogy(alt_km, C[:, SPECIES.index('C2H2')] + 1e-12, "-^", ms=4, color="#36c", label="[C2H2] kt")
+axL.semilogy(alt_km, KB['C2H2'][:len(alt_km)], "--", color="#36c", alpha=0.5, label="[C2H2] KB")
+axL.set_xlabel("altitude (km)", fontsize=11)
+axL.set_ylabel("concentration (cm⁻³)", fontsize=11)
+axL.set_ylim(1e-4, 1e+12)
+axL.legend(loc="lower right", fontsize=9, ncol=3)
+axL.grid(True, alpha=0.3)
+axL.set_title("H/C/C2H2 altitude profiles — cliff at L24+", fontsize=12)
+axL.axvspan(700, 1000, alpha=0.15, color="red")
+axL.text(850, 1e+10, "H runaway\nzone", ha="center", fontsize=10, color="#a33")
+
+# Right: feedback loop diagram
+axR.axis("off")
+axR.set_xlim(0, 100)
+axR.set_ylim(0, 100)
+
+def feedback_box(x, y, label, color="#eef"):
+    axR.add_patch(plt.Rectangle((x-9, y-4), 18, 8, facecolor=color, ec="black", lw=1.5))
+    axR.text(x, y, label, ha="center", va="center", fontsize=11, fontweight="bold")
+
+def arrow(x1, y1, x2, y2, label, color="black"):
+    axR.annotate("", xy=(x2, y2), xytext=(x1, y1),
+                 arrowprops=dict(arrowstyle="->", lw=2.5, color=color))
+    mx, my = (x1+x2)/2, (y1+y2)/2
+    axR.text(mx+2, my+2, label, fontsize=9, color=color, fontstyle="italic")
+
+feedback_box(50, 90, "[H] high\n(1700× KB)", "#fcc")
+feedback_box(85, 60, "C+H₂ chain", "#fec")
+feedback_box(70, 25, "[C₃] high\n(50,000× KB)", "#fec")
+feedback_box(30, 25, "[C] high\n(4 billion× KB)", "#fec")
+feedback_box(15, 60, "H+CH→C+H₂", "#fec")
+
+arrow(50, 86, 17, 64, "L25+", color="#a33")
+arrow(15, 56, 30, 29, "kt=433× KB", color="#a33")
+arrow(34, 25, 65, 25, "C+C₂→C₃", color="#a33")
+arrow(70, 29, 85, 56, "[C₃] feeds chain", color="#a33")
+arrow(85, 64, 54, 86, "C₃+H₂→C₃H+H\n(1.6 billion× KB)", color="#c00")
+
+axR.text(50, 8, "AUTOCATALYTIC: each step amplifies [H]\n→ structural ceiling at 174 matched",
+         ha="center", fontsize=11, color="#a00", fontweight="bold")
+
+axR.set_title("Why we plateau at 174 — H positive feedback loop", fontsize=12)
+
+plt.tight_layout()
+plt.savefig(FIGDIR / "16_h_feedback.png", dpi=110, bbox_inches="tight")
+plt.close()
+
+
+# ----- Figure 17: electron-transport W sweep -----
+print("[fig17] electron-transport W sweep ...")
+W_sweep = [12, 36, 40, 50, 55, 60, 62, 65, 70, 80, 100, 150]
+W_matched = [156, 158, 162, 157, 162, 174, 156, 155, 172, 161, 164, 168]
+fig, ax = plt.subplots(figsize=(11, 5))
+ax.plot(W_sweep, W_matched, "-o", ms=8, color="#2a6", lw=2)
+ax.axhline(163, ls="--", color="#888", label="scaffold baseline = 163")
+ax.fill_between(W_sweep, 150, 165, color="#fee", alpha=0.4)
+ax.fill_between(W_sweep, 165, 180, color="#efe", alpha=0.4)
+for x, y in zip(W_sweep, W_matched):
+    ax.annotate(f"{y}", (x, y), textcoords="offset points",
+                xytext=(0, 8), ha="center", fontsize=9,
+                color="#2a6" if y > 165 else "#a33", fontweight="bold")
+ax.set_xlabel("W (mean energy per ion pair, eV)", fontsize=11)
+ax.set_ylabel("matched species-level pairs / 531", fontsize=11)
+ax.set_title("Electron-transport W sweep — bimodal landscape, W=60/70 win",
+             fontsize=12)
+ax.set_xscale("log")
+ax.grid(True, alpha=0.3)
+ax.legend()
+ax.text(60, 178, "high basin\n(174, 172)", ha="center", fontsize=10,
+        color="#2a6", fontweight="bold")
+ax.text(63, 152, "low basin\n(155-156)", ha="center", fontsize=10, color="#a33")
+plt.tight_layout()
+plt.savefig(FIGDIR / "17_W_sweep.png", dpi=110, bbox_inches="tight")
+plt.close()
+
+
 print("[done] generated", len(list(FIGDIR.glob("*.png"))), "figures in", FIGDIR)

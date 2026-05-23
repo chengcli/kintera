@@ -130,37 +130,51 @@
 
 <h1>kintera × KB Titan — Current State Dashboard</h1>
 <p class="small">
-  Generated 2026-05-21 (updated post-G18-redux) · Branch <code>ions-support-plan</code> · pushed to
+  Updated 2026-05-23 · Branch <code>ions-support-plan</code> · latest commits:
+  <code>bf6948c</code> (N2 EI scales tuned), <code>0b350da</code> (light_scale knob) ·
   <a href="https://github.com/chengcli/kintera/tree/ions-support-plan">github.com/chengcli/kintera</a>
-  · best config: full grain + dt=1e+7 + NT=100 + <b>coupled</b> solver + chg fold + atomic projection + G19/G26 CH4 pin
-
-  <br><br>
-  <b>⚠️ Match-count attribution correction (2026-05-21):</b> The 186 / 35% headline was measured in <code>no_grain</code> mode (the diagnostics runner's <b>default</b>). In the apples-to-apples <code>full</code> grain mode that matches KB's <code>FREEZE=1 SUBLIM=-1</code> setup, the parser fix moved match count <b>159 → 163</b> — only +4, not +27. The no_grain mode wins on aggregate because grain chemistry isn't consuming cations at low altitude, inflating the cation match count. Reproducing 186 requires <code>KINTERA_TITAN_NETWORK_MODE</code> unset (no_grain); the honest KB-comparison number is <b>163</b>.
-  <br><br>
-  <b>🎯 Electron transport landed (2026-05-22, commit <code>828423d</code>):</b> Replaced the hardcoded
-  altitude-profile scaffold for the 4 KB electron-impact reactions (N2→N2++E, N2→N++N+E,
-  CH4→CH3++H+E, CH4→CH2++H2+E) with wavelength-resolved secondary impact:
-  <code>rate(z) = ∫ σ(λ) × F<sub>att</sub>(λ,z) × (1 + max(0, E<sub>γ</sub> − E<sub>thresh</sub>) / W) dλ</code>.
-  Wavelengths in Å (E<sub>eV</sub>=12400/λ<sub>Å</sub>). W tunable via <code>KINTERA_EI_W_N2</code> / <code>KINTERA_EI_W_CH4</code>.
-  <br><br>
-  W sweep result in full grain mode (NT=100): <b>W=60 gives 174 matched (+11 vs scaffold 163).</b>
-  W=70 also gives 172 (high-match basin), while W=62/65 give 155-156 (low-match basin). Verified
-  deterministic — bistability is real (cation cascade has two stable equilibria, W picks one).
-  The improvement is entirely in neutrals (140→151); cation matches unchanged at 5/40 (the cation
-  mix problem still requires a real Boltzmann transport model or better cross-section data).
+  · best config: <b>full grain + dt=1e+7 + NT=100 + coupled solver + e-transport (W=60) + N2 EI scales N2P=0.25, NP=0.5</b>
 </p>
+
+<div class="summary-box">
+  <b>🎯 Two milestones landed since last dashboard update:</b>
+  <ol>
+    <li><b>Electron transport</b> (commit <code>828423d</code>): replaced the hardcoded altitude-profile scaffold for the 4 KB electron-impact reactions with wavelength-resolved secondary impact: <code>rate(z) = ∫ σ(λ) × F<sub>att</sub>(λ,z) × (1 + max(0, E<sub>γ</sub> − E<sub>thresh</sub>) / W) dλ</code>. Wavelengths in Å (E<sub>eV</sub>=12400/λ<sub>Å</sub>). Default W=60; tunable via <code>KINTERA_EI_W_N2</code> / <code>KINTERA_EI_W_CH4</code> env vars.</li>
+    <li><b>Branching-ratio tuning</b> (commit <code>bf6948c</code>): N2→N2++E scale was 0.97 (catalog default) and N2→N++N+E was 2.5 (non-physical, >1). Both caused cation cascade explosion downstream. Swept and tuned to N2P=0.25, NP=0.5.</li>
+  </ol>
+  Combined result: matched count <b>159 → 174</b> in full grain mode (KB-faithful), a +15 gain. This is the only real improvement from the entire scaffold-tuning effort.
+</div>
+
+<div class="summary-box warn">
+  <b>🚧 Hit a structural ceiling at 174 matched.</b>
+  Past this point, hardcode tuning doesn't help. The remaining gap is an <b>autocatalytic H feedback loop</b>
+  in the upper atmosphere (see Fig 16). Diagnostic chain (rate_diff vs KB-500):
+  <ul>
+    <li>[H]@L30 = 5.75e+9 vs KB 3.43e+6 → <b>1700× over</b></li>
+    <li>Reaction <code>H + CH → C + H2</code> rate ratio at L30: <b>433× over KB</b></li>
+    <li>[C]@L30 = 1.8e+10 vs KB 4.5 → <b>4 billion× over</b></li>
+    <li>[C3]@L30 = 1e+10 vs KB 1.9e+5 → 50,000× over</li>
+    <li>Reaction <code>C3 + H2 → C3H + H</code> rate ratio at L30: <b>1.6 billion× over KB</b></li>
+  </ul>
+  This is a positive feedback chain: high [H] → makes C → makes C3 → C3 + H2 → makes more H. Tested fixes (none broke past 174):
+  <ul>
+    <li>NT extension (100→150→200): made matched count <i>worse</i> (174→95→92, runaway)</li>
+    <li>EI scale sweep: 28 configs tested, N2P=0.25, NP=0.5 is sharp local optimum</li>
+    <li>CH4 scale sweep: 8 configs, no improvement</li>
+    <li>Light-species (H/H2) diffusion boost: <i>increases</i> [H] (counter-intuitive — chain is autocatalytic)</li>
+  </ul>
+</div>
 
 <nav class="nav">
   <a href="matching.html"><b>→ per-species matching detail (sortable/filterable)</b></a> &nbsp;|&nbsp;
-  <a href="#headline">Headline metrics</a>
-  <a href="#changes">Changes since last dashboard</a>
-  <a href="#zigzag-verify">Zigzag verify</a>
-  <a href="#refactor">Refactor state</a>
-  <a href="#match">Match analysis</a>
-  <a href="#gaps">Remaining gaps</a>
-  <a href="#osc">⚠ Oscillation</a>
-  <a href="#explored">What we've explored</a>
-  <a href="#next">Next steps</a>
+  <a href="#headline">1. Headline + current state</a>
+  <a href="#refactor">2. Refactor</a>
+  <a href="#match">3. Match analysis</a>
+  <a href="#gaps">4. Remaining gaps</a>
+  <a href="#changes">5. Changes log</a>
+  <a href="#zigzag-verify">6. Zigzag verify</a>
+  <a href="#explored">7. Sweeps tested</a>
+  <a href="#next">8. Next steps</a>
 </nav>
 
 <h2 id="headline">1. Headline metrics</h2>
@@ -168,19 +182,40 @@
 <div class="stat-grid">
   <div class="stat">
     <div class="v">174</div>
-    <div class="l">species-lev pairs in 0.3-3× of KB<br>(full grain, e-transport W=60)<br><span class="small">(was 163 with scaffold)</span></div>
+    <div class="l">species-lev pairs in 0.3-3× of KB<br>(full grain, KB-faithful)<br><span class="small">+11 from electron transport, +15 since refactor</span></div>
   </div>
   <div class="stat">
-    <div class="v">186</div>
-    <div class="l">no_grain mode "headline"<br><span class="small">(see ⚠ correction in §1.2 — apples-to-oranges with KB)</span></div>
+    <div class="v">33 %</div>
+    <div class="l">match rate at 0.3-3× tolerance<br><span class="small">(of 531 KB&gt;1 pairs)</span></div>
   </div>
   <div class="stat">
-    <div class="v">9</div>
-    <div class="l">species w/ sawtooth oscillation<br><span class="small">(was 66 in split mode)</span></div>
+    <div class="v">151 / 5 / 18</div>
+    <div class="l">matched: neutrals / cations / grain<br><span class="small">cations stuck at 5/40 — the deeper gap</span></div>
   </div>
   <div class="stat">
-    <div class="v">5.23k</div>
-    <div class="l">[E]@L30 (kt/cm³)<br>(was 5.2k scaffold; KB=895)</div>
+    <div class="v">1.3k</div>
+    <div class="l">[E]@L30 (kt/cm³); KB=895<br><span class="small">1.5× over — close to KB</span></div>
+  </div>
+</div>
+
+<div class="fig">
+  <img src="figs/15_progress_arc.png" alt="progress arc + matched by category">
+  <div class="fig-caption">
+    <b>Fig 15</b> · Progress in full grain mode through 2026-05. Three landed milestones: G29 baseline (159), parser fix (+4 → 163), electron transport + branching ratios (+11 → 174). Right panel: where the 357 unmatched pairs live — 302 neutrals, 35 cations, 20 grain pairs still outside the 0.3-3× match band.
+  </div>
+</div>
+
+<div class="fig">
+  <img src="figs/16_h_feedback.png" alt="H feedback loop">
+  <div class="fig-caption">
+    <b>Fig 16</b> · The autocatalytic H feedback loop that caps progress at 174 matched. Left: altitude profiles of [H], [C], [C2H2]. All three diverge dramatically from KB above 700km. Right: the closed chain. Each arrow has the rate ratio vs KB measured at L30 via <code>rate_diff</code>.
+  </div>
+</div>
+
+<div class="fig">
+  <img src="figs/17_W_sweep.png" alt="W sweep landscape">
+  <div class="fig-caption">
+    <b>Fig 17</b> · Electron-transport W parameter sweep. Bimodal landscape: W=60/70 land in a "high-match" basin (174/172); W=62/65 fall to "low" basin (155/156); textbook W=36 gives 158. Verified deterministic (bit-identical re-run). The bistability is the cation cascade having two stable equilibria; W selects which one.
   </div>
 </div>
 
@@ -480,7 +515,19 @@
   species overall. <b>NT=100 coupled+chg is the final best</b>: 180/531 = 34% matched, profiles cleanly smooth.
 </div>
 
-<h2 id="explored">6. What we've already explored (and found insufficient)</h2>
+<h2 id="explored">7. What we've already explored (and found insufficient)</h2>
+
+<div class="summary-box">
+  <b>Tuning sweeps run 2026-05-22/23 (all in full grain mode at NT=100):</b>
+  <ul>
+    <li><b>EI W sweep</b> (mean energy per ion pair): W ∈ {12, 36, 40, 50, 55, 60, 62, 65, 70, 80, 100, 150}. Best W=60 → 174. Bimodal landscape (Fig 17).</li>
+    <li><b>N2 branching scales</b>: N2_N2P ∈ {0.05, 0.1, 0.15, 0.18, 0.2, 0.25, 0.3, 0.5, 0.97, 1.0, 2.0, 3.0, 5.0, 10.0} × N2_NP ∈ {0.1, 0.25, 0.4, 0.5, 1.0, 1.25, 2.5} — 28 configs. Best N2P=0.25, NP=0.5 → 174.</li>
+    <li><b>CH4 branching scales</b>: CH3P ∈ {0.025, 0.05, 0.1, 0.172, 0.3, 0.5} × CH2P ∈ {0.0, 0.05, 0.1, 0.2, 0.217, 0.3, 0.5} — 8 configs. None beat defaults.</li>
+    <li><b>Split W_N2 / W_CH4</b>: 3 configs. Uniform W=60 wins.</li>
+    <li><b>Light-species (H/H2) diffusion boost</b>: scale ∈ {2, 5, 10, 100}. All hurt or unchanged matched count.</li>
+    <li><b>NT extension</b>: NT ∈ {100, 150, 200}. Longer integration <i>worse</i> (174→95→92, H2 runaway).</li>
+  </ul>
+</div>
 
 <div class="fig">
   <img src="figs/4_ion_scale_pareto.png" alt="ion scale sweep">
@@ -501,13 +548,11 @@
   </div>
 </div>
 
-<h2 id="next">6. Next-step options</h2>
+<h2 id="next">8. Next-step options — breaking past 174</h2>
 
-<div class="fig">
-  <img src="figs/11_next_steps.png" alt="next steps">
-  <div class="fig-caption">
-    Fig 11 · Four candidate next steps with effort/risk/reward estimates.
-  </div>
+<div class="summary-box">
+  <b>The 174 ceiling is bounded by the H feedback loop (Fig 16).</b> All hardcode-tuning paths have been exhausted.
+  To go higher, we need to break the autocatalytic chain. Three categories of intervention, ordered by physical fidelity:
 </div>
 
 <h3>Decision matrix</h3>
@@ -515,59 +560,40 @@
   <tr><th>#</th><th>Option</th><th>Effort</th><th>Risk</th><th>Best-case outcome</th></tr>
   <tr>
     <td>1</td>
-    <td><b>Diagnose NT&gt;100 regression</b><br><span class="small">why does matched count drop at longer integration?</span></td>
-    <td>~1 hr</td>
-    <td class="warn">medium</td>
-    <td>If root cause is Newton fixed-point or projection over-trim, fixing it unlocks NT&gt;500 = direct KB-time-equivalent. Could push matched count substantially.</td>
+    <td><b>Multi-level H escape BC</b><br><span class="small">currently pin only at L39; KB integrates flux across upper N levels</span></td>
+    <td>~half day</td>
+    <td class="ok">low</td>
+    <td>Sinks H across L34-L39 instead of just L39. Increases H loss rate without changing chemistry. Could break feedback chain.</td>
   </tr>
   <tr>
     <td>2</td>
-    <td><b>Real ambipolar diffusion</b><br><span class="small">co-solved ions + E plasma</span></td>
+    <td><b>Implement molecular diffusion for light species</b><br><span class="small">H/H2 have huge D_mol — KB's solver includes this implicitly</span></td>
     <td>1-2 sessions</td>
-    <td class="bad">high</td>
-    <td>Closes G30 NH3 feedback root cause. Cascades to grain (G25) and downstream cation imbalance fixes. Highest leverage if it works.</td>
+    <td class="warn">medium</td>
+    <td>Properly evacuates H/H2 column. Physically motivated, generalizes beyond Titan. May also fix H2-at-L0 gap (KB has 1e+11 we have 1e+8).</td>
   </tr>
   <tr>
     <td>3</td>
-    <td><b>Per-reaction audit for CH3/HCN mid-altitude</b><br><span class="small">extend G25 methodology</span></td>
-    <td>~1 hr/species</td>
-    <td class="ok">low</td>
-    <td>May find specific rate-constant divergence vs KB. Variable reward — might confirm no bug exists.</td>
+    <td><b>Audit cation recombination products</b><br><span class="small">CH3+ + E → C + H2 + H etc. — branch ratios may be over-active</span></td>
+    <td>~1 hr/cation</td>
+    <td class="warn">medium</td>
+    <td>If specific recombination channel is over-producing C/H, reducing it breaks the chain at the source. Per-channel; small per-step risk.</td>
   </tr>
   <tr>
     <td>4</td>
-    <td><b>Non-Titan L1 example</b><br><span class="small">validate refactor seam</span></td>
+    <td><b>PR what we have</b><br><span class="small">stop tuning, ship the 174-matched baseline</span></td>
     <td>~30 min</td>
     <td class="ok">low</td>
-    <td>Refactor health-check; doesn't move KB metrics but confirms L1 is reusable.</td>
+    <td>Lock in +15 progress + electron-transport infrastructure. Tackle remaining physics in follow-up PRs.</td>
   </tr>
 </table>
 
-<h3>Recommendation — G18 redux LANDED</h3>
+<h3>Recommendation</h3>
 <div class="summary-box">
-  ✓ Coupled solver retried and worked: <b>180 matched (was 159 split)</b>, 10 oscillating species (was 66).
-  Phase 3 generic pin API + G19/G26 CH4 pin + grain mode were the missing pieces that made the coupled solver
-  stable this time around. Now we're at the natural endpoint of what the refactor enables.
+  Option 1 (multi-level escape BC) is the cleanest next intervention — physically motivated, low risk, breaks the feedback chain directly at the H side. If it doesn't suffice, option 2 (molecular diffusion) is the proper-physics follow-up.
   <br><br>
-  Future directions (deferred — natural break point):
-  <ul style="margin: 0.5em 0">
-    <li><b>Reduce H2 depletion</b>: coupled lets H2 diffuse to escape; KB has H2~1e+11 we have ~2.6e+8. Could tune
-        upper-BC escape velocity, or accept as physical correctness.</li>
-    <li><b>Cation@L30 13.9×</b>: still over. Different fixed-point from split. Per-reaction audit at L25-L35 might
-        find specific over-active recombinations.</li>
-    <li><b>Real ambipolar diffusion</b>: co-solved ions+electrons (Phase 6b's deferred direction). The uniform-scale
-        knob is already in place.</li>
-    <li><b>Push and merge</b>: refactor + dashboard + 180-matched baseline is publishable as-is.</li>
-  </ul>
+  <b>Option 4 (PR what we have) is also a defensible stopping point.</b> The refactor + parser fix + electron transport + branching ratio tuning together represent a coherent landed improvement. The remaining gap is well-characterized (H feedback loop), and follow-up work can be a separate PR.
 </div>
-
-<h3>Or stop here?</h3>
-<p>
-  Current state is publishable in spirit: the refactor lands a clean L1/L2 separation that any future
-  contributor can extend, and we've documented the gaps with root-cause traces. The 159-matched baseline
-  is a 5× improvement on session start. If the goal is "merge to main", we could PR the
-  <code>ions-support-plan</code> branch as-is and tackle remaining physics in follow-up PRs.
-</p>
 
 <p class="small" style="margin-top: 3em; border-top: 1px solid #ddd; padding-top: 1em;">
   Files referenced:
