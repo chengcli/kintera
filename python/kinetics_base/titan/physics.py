@@ -60,10 +60,19 @@ def _pun_rate_constant(
     t0 = float(parameters.get("Tmin", 1.0)) or 1.0
     if a <= 0.0:
         return torch.zeros_like(temperature)
+    # KB clips T to max(T, t0) for the (T/t0)^b factor: when T < t0 (e.g.
+    # T=64K at upper atmosphere for a recombination with reference 300K),
+    # the power term becomes 1.0 instead of (t0/T)^|b| > 1 — without
+    # clipping our model over-rates 5 cation+E recombinations by ~2.5x at
+    # cold altitudes. The exp(c/T) Arrhenius factor uses raw T (KB doesn't
+    # clip activation-energy attenuation). Confirmed via KB-state-injected
+    # prod/loss diff (commit 9c04f75): rxn 776 (CH2+ + E -> C + 2H) at L30
+    # was 2.7x over KB before this fix.
+    t_eff = torch.where(temperature < t0, torch.full_like(temperature, t0), temperature)
     if b > 0.0:
-        rate = a * torch.pow(temperature / t0, b) * torch.exp(c / temperature)
+        rate = a * torch.pow(t_eff / t0, b) * torch.exp(c / temperature)
     else:
-        rate = a * torch.pow(t0 / temperature, abs(b)) * torch.exp(c / temperature)
+        rate = a * torch.pow(t0 / t_eff, abs(b)) * torch.exp(c / temperature)
 
     d = float(parameters.get("D", 0.0))
     e = float(parameters.get("E", 0.0))
