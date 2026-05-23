@@ -140,14 +140,18 @@ def main():
     # downward ion bleed from the L25+ photoionization zone to L0-15
     # where it feeds back into NH3 chemistry.
     ion_diffusion_scale = float(os.environ.get("KINTERA_ION_DIFFUSION_SCALE", "1.0"))
+    light_diffusion_scale = float(os.environ.get("KINTERA_LIGHT_DIFFUSION_SCALE", "1.0"))
     species_diffusion_scale = kt.kinetics_base_titan_species_diffusion_scale(
         titan_state.species,
         ion_scale=ion_diffusion_scale,
+        light_scale=light_diffusion_scale,
         dtype=titan_state.state.dtype,
         device=titan_state.state.device,
     )
     if ion_diffusion_scale != 1.0:
         print(f"[setup] ion_diffusion_scale = {ion_diffusion_scale}")
+    if light_diffusion_scale != 1.0:
+        print(f"[setup] light_diffusion_scale = {light_diffusion_scale}")
 
     concentration = titan_state.concentration.clone()
     print(f"[setup] initial concentration shape: {tuple(concentration.shape)}")

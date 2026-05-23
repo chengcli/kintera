@@ -143,6 +143,7 @@ def kinetics_base_titan_species_diffusion_scale(
     species: list[str],
     *,
     ion_scale: float = 1.0,
+    light_scale: float = 1.0,
     dtype: torch.dtype | None = None,
     device: torch.device | str | None = None,
 ) -> torch.Tensor:
@@ -173,6 +174,15 @@ def kinetics_base_titan_species_diffusion_scale(
                 continue
             if name.endswith("+") or name.endswith("-"):
                 scale[i] = ion_scale
+    # Light-species amplification: H and H2 have much higher molecular
+    # diffusion coefficients than the bath. KB's transport solver includes
+    # this implicitly; ours uses a single eddy diffusion. ``light_scale`` >
+    # 1 mimics the extra D for H/H2 — needed to evacuate over-production
+    # at L24+ to the escape boundary fast enough.
+    if light_scale != 1.0:
+        for i, name in enumerate(species):
+            if name in {"H", "H2"}:
+                scale[i] = light_scale
     return scale
 
 
