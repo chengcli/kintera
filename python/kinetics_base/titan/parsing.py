@@ -569,13 +569,19 @@ def _parse_kinetics_base_side(side: str) -> list[str]:
         count = 1
         name = raw
         if raw and raw[0].isdigit():
-            prefix = ""
-            rest = raw
-            while rest and rest[0].isdigit():
-                prefix += rest[0]
-                rest = rest[1:]
-            count = int(prefix)
-            name = rest
+            # Only treat leading digits as a stoichiometric coefficient when
+            # they are immediately followed by a letter (e.g. "2H", "2C2H2").
+            # Tokens like "1-C4H6", "1,2-C4H6", "1,3-C4H6" begin with a digit
+            # that is part of the species name; previously the digits were
+            # silently stripped, turning "1-C4H6" into "-C4H6" and breaking
+            # the catalog→pun key match for every 1-C4H6 / 1,2-C4H6 / 1,3-C4H6
+            # photolysis branch (KB-only rxns 65, 66, 72, 73 etc).
+            digit_end = 0
+            while digit_end < len(raw) and raw[digit_end].isdigit():
+                digit_end += 1
+            if digit_end < len(raw) and raw[digit_end].isalpha():
+                count = int(raw[:digit_end])
+                name = raw[digit_end:]
         if name:
             species.extend([_normalize_kinetics_base_photo_species(name)] * count)
     return species
