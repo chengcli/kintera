@@ -269,3 +269,27 @@ def titan_chemb_rate_constant(
     if fn is None:
         return None
     return fn(temperature, density)
+
+
+def titan_electron_temperature(altitude_km: torch.Tensor) -> torch.Tensor:
+    """Edberg et al. 2009 electron temperature profile for Titan.
+
+    Transcribed from `kinetgen1X.F:9296-9305` (FUNCTION TELEC):
+        ALT < 1000 km:  T_e = 4.325 * 1000 - 3992.7 = 332.3 K (constant)
+        1000 <= ALT < 2000:  T_e = 4.325*ALT - 3992.7  (linear ramp)
+        ALT >= 2000:  T_e = 0.577*ALT + 3453
+
+    Used by KB in `kinetgen1X.F:6763-6781` to override the rate constant
+    for ALL reactions whose 2nd reactant is E (electron) — recombination
+    reactions get T_e instead of gas T. At altitudes > 1000 km this is
+    MUCH higher than gas T (which is ~150 K at L30 of Titan's atmosphere),
+    making recombinations slower than the gas-T value would suggest.
+    """
+    out = torch.empty_like(altitude_km)
+    above_2000 = altitude_km >= 2000.0
+    middle = (altitude_km >= 1000.0) & ~above_2000
+    below_1000 = altitude_km < 1000.0
+    out[below_1000] = 4.325 * 1000.0 - 3992.7  # = 332.3 K
+    out[middle] = 4.325 * altitude_km[middle] - 3992.7
+    out[above_2000] = 0.577 * altitude_km[above_2000] + 3453.0
+    return out

@@ -403,19 +403,36 @@ def _build_titan_thermal_atm2d_source(
     # the catalog (.pun-file) rate constant. Failing to apply these gives
     # 10× rate errors (see project-diagnostic-findings memory + the
     # kb-fortran-map skill for the catalog of overrides).
-    from .chemb_overrides import has_titan_chemb_override, titan_chemb_rate_constant
+    from .chemb_overrides import (
+        has_titan_chemb_override,
+        titan_chemb_rate_constant,
+        titan_electron_temperature,
+    )
     override_id = term.reaction_id if has_titan_chemb_override(term.reaction_id) else None
+    # Electron-temperature recombination: KB applies T_e (Edberg 2009) instead
+    # of gas T for reactions whose second reactant is E. kinetgen1X.F:6763-6781.
+    use_telec = (
+        len(term.reactants) == 2
+        and "E" == term.reactants[1]
+    )
 
     def rate_provider(state: AtmState2D) -> torch.Tensor:
         density = titan_state.density.to(dtype=state.dtype, device=state.device)
+        T = state.temperature
+        if use_telec:
+            # Replace gas T with T_e(alt) for the rate calc. titan_state.state.x1v
+            # is altitude in cm; convert to km.
+            alt_km = titan_state.state.x1v.to(dtype=T.dtype, device=T.device) / 1.0e5
+            # Broadcast over column axis: x1v is (nlyr,), T is (ncol, nlyr).
+            te = titan_electron_temperature(alt_km).view(1, -1).expand_as(T)
+            return _pun_rate_constant(term.parameters, te, density)
         if override_id is not None:
-            T = state.temperature
             # density tensor needs same shape as T for broadcasting
             d = density.expand_as(T) if density.shape != T.shape else density
             k = titan_chemb_rate_constant(override_id, T, d)
             if k is not None:
                 return k
-        return _pun_rate_constant(term.parameters, state.temperature, density)
+        return _pun_rate_constant(term.parameters, T, density)
 
     return IndexedMassActionSource(
         reactants=reactants,
