@@ -555,7 +555,16 @@ def _parse_kinetics_base_side(side: str) -> list[str]:
         raw = raw.lstrip("+")
         if raw == "+":
             continue
-        if raw in {"M", "E"} or "-" in raw:
+        # Skip bath gas / electron symbols. The previous ``"-" in raw`` check
+        # was too aggressive: it also dropped legitimate hyphenated species
+        # names like ``l-C3H``, ``c-C3H2``, ``1,2-C4H6`` and their cations.
+        # Result: KB's photo reactions on these species (rxn 22 and similar)
+        # were never built in kintera, leaving a permanent KB-only gap.
+        if raw in {"M", "E", "-"}:
+            continue
+        if raw.endswith("-") and raw != "-":
+            # Anion notation like "E-" (we don't have any in this network,
+            # but keep the guard so future networks parse correctly).
             continue
         count = 1
         name = raw
