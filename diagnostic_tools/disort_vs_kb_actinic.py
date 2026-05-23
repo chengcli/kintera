@@ -191,15 +191,44 @@ def main(target_pun_id: int = 10) -> None:
     print(f"  KB alt[-1]={kb_alt[-1]}, kt alt[-1]={initial.altitude[-1]:.1f}")
 
     print(f"\nPer-level J(z) [s^-1]:")
-    print(f"  {'lev':>3s}  {'alt(km)':>7s}  {'kt_J':>12s}  {'kb_J':>12s}  {'kt/kb':>8s}  {'kt_n':>10s}")
+    print(f"  {'lev':>3s}  {'alt(km)':>7s}  {'kt_J':>12s}  {'kb_J':>12s}  {'kt/kb':>8s}  {'tau_sum':>9s}  {'kt_n':>10s}")
+    # tau at each level summed over wavelengths (rough scalar tau)
+    af = actinic[0].cpu().numpy()  # (nlyr, nwave)
+    # Reconstruct column tau as -log(actinic/top_flux), averaged over wavelengths
+    # with positive flux (to avoid log of 0)
+    f_top = top_flux.cpu().numpy()
     for L in [0, 5, 10, 15, 20, 25, 30, 35, 39]:
         if L >= len(j_kt_per_lev):
             continue
         kt_J = j_kt_per_lev[L]
         kb_J = kb_rate_per_lev[L] / max(n_reactant_per_lev[L], 1e-30)
         ratio = kt_J / kb_J if kb_J > 0 else float("nan")
+        # tau per wavelength = -log(actinic/top)/(diurnal_atten_top)
+        # but better: tau ≈ -log(actinic/F_top) summed and averaged
+        with np.errstate(divide="ignore", invalid="ignore"):
+            tau_per_w = -np.log(np.clip(af[L] / np.maximum(f_top, 1.0), 1e-300, 1.0))
+        tau_w_avg = tau_per_w[np.isfinite(tau_per_w)].mean() if np.any(np.isfinite(tau_per_w)) else float("nan")
         print(f"  L{L:<2d}  {initial.altitude[L]:>7.1f}  "
-              f"{kt_J:>12.3e}  {kb_J:>12.3e}  {ratio:>8.3f}  {n_reactant_per_lev[L]:>10.2e}")
+              f"{kt_J:>12.3e}  {kb_J:>12.3e}  {ratio:>8.3f}  {tau_w_avg:>9.3f}  {n_reactant_per_lev[L]:>10.2e}")
+
+    # ----- Snapshot at one level: per-wavelength comparison -----
+    audit_level = int(__import__("os").environ.get("AUDIT_LEVEL", "5"))
+    print(f"\n=== Per-wavelength audit at L{audit_level} (alt={initial.altitude[audit_level]:.1f} km) ===")
+    print(f"  Sum(sigma*F_top) [s^-1, no atten] = {(sigma.cpu().numpy() * f_top).sum():.3e}")
+    print(f"  Sum(sigma*actinic) [s^-1, kintera attenuated] = {j_kt_per_lev[audit_level]:.3e}")
+    print(f"  KB J at this level = {kb_rate_per_lev[audit_level] / max(n_reactant_per_lev[audit_level], 1e-30):.3e}")
+    print()
+    print(f"  Top {{n_wave with biggest contribution to j_kt at this level}}:")
+    contribs = sigma.cpu().numpy() * af[audit_level]  # per-wavelength contribution to J(z)
+    order = np.argsort(-contribs)
+    wavelengths_arr = np.array(wavelengths)
+    cross_arr = sigma.cpu().numpy()
+    print(f"    {'wl(A)':>7s}  {'sigma':>10s}  {'F_top':>10s}  {'F_z':>10s}  {'F_z/F_top':>9s}  {'contribJ':>10s}")
+    for i in order[:12]:
+        if contribs[i] <= 0:
+            break
+        print(f"    {wavelengths_arr[i]:>7.1f}  {cross_arr[i]:>10.3e}  {f_top[i]:>10.3e}  "
+              f"{af[audit_level, i]:>10.3e}  {af[audit_level, i]/max(f_top[i], 1):>9.3f}  {contribs[i]:>10.3e}")
 
 
 if __name__ == "__main__":
