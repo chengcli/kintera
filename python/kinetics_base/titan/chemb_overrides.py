@@ -19,6 +19,7 @@ docstrings refer to that file.
 """
 from __future__ import annotations
 
+import math
 from typing import Callable
 
 import torch
@@ -296,19 +297,41 @@ def _rxn_551_ch3_c3h7_m_c4h10(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
 
 
 def _rxn_642_c2h3_c2h5_ch3_c3h5(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
-    """ISP(485) → rxn 642. C2H3 + C2H5 → CH3 + C3H5. kinetgen1X.F:7249-7253."""
-    F = 2.5e-36 * torch.pow(t, 11.25) * torch.exp(3289.0 / t)
+    """ISP(485) → rxn 642. C2H3 + C2H5 → CH3 + C3H5. kinetgen1X.F:7249-7253.
+
+    Numerically stable form: F/(F+1) = 1/(1 + 1/F) = sigmoid(log F) when
+    F is computed in log-space to avoid overflow at low T.
+    """
+    log_F = math.log(2.5e-36) + 11.25 * torch.log(torch.clamp(t, min=1.0)) + 3289.0 / torch.clamp(t, min=1.0)
+    log_F = torch.clamp(log_F, max=80.0)
+    F = torch.exp(log_F)
     return 2.5e-11 * (F / (F + 1.0))
 
 
 def _rxn_643_c2h3_c2h5_m_c4h8(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
     """ISP(486) → rxn 643. C2H3 + C2H5 + M → C4H8 + M (uses zkcalc not zkcalcx).
-    kinetgen1X.F:7255-7260."""
-    F = 2.5e-36 * torch.pow(t, 11.25) * torch.exp(3289.0 / t)
+    kinetgen1X.F:7255-7260.
+
+    KB convention: zk(643) stores the THREE-body rate constant (cm⁶/s)
+    because IndexedMassActionSource multiplies by all 3 reactants ([M]
+    included). We need to return k_low / (1 + k_low × M / k_inf) to keep
+    units in cm⁶/s.
+
+    Note also that ``rk2 = 2.5e-11 / (F + 1)`` can underflow at low T
+    where F = 2.5e-36 × T^11.25 × exp(3289/T) overflows. We clamp F to
+    avoid NaN/Inf in the Newton solver.
+    """
+    # Clamp the exponent to avoid float overflow; at T=64, exp(3289/64)~2e22
+    # which is still finite, but on cold cells the multiplication can blow
+    # up float math.
+    log_F = math.log(2.5e-36) + 11.25 * torch.log(torch.clamp(t, min=1.0)) + 3289.0 / torch.clamp(t, min=1.0)
+    log_F = torch.clamp(log_F, max=80.0)  # exp(80) ~ 5e+34, well below float32 max
+    F = torch.exp(log_F)
     rk3 = 7.5e-17 * torch.pow(t, -3.0) * torch.exp(-300.0 / t)
     rk2 = 2.5e-11 / (F + 1.0)
-    # zkcalc(rk2, rk3, dd) — note argument order!
-    return _lindemann(rk2, rk3, d)
+    # Return 3-body form (cm⁶/s): k_low / (1 + k_low × M / k_inf)
+    ratio = rk3 * d / torch.clamp(rk2, min=1e-300)
+    return rk3 / (1.0 + ratio)
 
 
 # Map kintera reaction_id → override callable
@@ -327,21 +350,23 @@ _RXN_OVERRIDES: dict[int, Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] 
     537: _rxn_537_ch3_c2h3_c3h5_h,    # ISP(479) CH3+C2H3=C3H5+H
     538: _rxn_538_ch3_c2h3_m_c3h6,    # ISP(478) CH3+C2H3+M=C3H6+M
     633: _rxn_633_c2h3_h2_c2h4_h,     # ISP(475) C2H3+H2=C2H4+H
-    # The 9 additional Jupiter Moses-2005 overrides (rxn 534, 540, 543, 544,
-    # 551, 637, 638, 642, 643) made the Newton step go singular at step 50
-    # — they're transcribed below and verified but not currently wired up.
-    # Need to investigate per-reaction which one is destabilizing (likely
-    # 540's 10x multiplier or 642's exp(3289/T) at low T overflows).
-    # Disabled 2026-05-23 pending stability fix.
-    # 534: _rxn_534_2ch3_m_c2h6,
-    # 540: _rxn_540_ch3_c2h5_m_c3h8,
-    # 543: _rxn_543_ch3_c3h3_m_c4h6a,
-    # 544: _rxn_544_ch3_c3h3_m_c4h6b,
-    # 637: _rxn_637_2c2h3_c2h4_c2h2,
-    # 638: _rxn_638_2c2h3_m_c4h6c,
-    # 642: _rxn_642_c2h3_c2h5_ch3_c3h5,
-    # 643: _rxn_643_c2h3_c2h5_m_c4h8,
-    # 551: _rxn_551_ch3_c3h7_m_c4h10,
+    # 9 additional Jupiter Moses-2005 overrides, re-enabled 2026-05-23 with
+    # numerical-stability fixes:
+    #   - rxn 642 and 643's F = 2.5e-36 × T^11.25 × exp(3289/T) is computed
+    #     in log space and clamped to log(F) <= 80 to prevent float overflow
+    #     at cold cells.
+    #   - rxn 643 now returns the 3-body form (cm⁶/s) instead of the
+    #     effective bimolecular form (cm³/s), matching the convention used
+    #     by IndexedMassActionSource.
+    534: _rxn_534_2ch3_m_c2h6,        # ISP(326) 2CH3+M=C2H6+M
+    540: _rxn_540_ch3_c2h5_m_c3h8,    # ISP(245) CH3+C2H5+M=C3H8+M  (10× multiplier!)
+    543: _rxn_543_ch3_c3h3_m_c4h6a,   # ISP(481) CH3+C3H3+M=1-C4H6+M
+    544: _rxn_544_ch3_c3h3_m_c4h6b,   # ISP(482) CH3+C3H3+M=1,2-C4H6+M
+    637: _rxn_637_2c2h3_c2h4_c2h2,    # ISP(484) 2C2H3=C2H4+C2H2
+    638: _rxn_638_2c2h3_m_c4h6c,      # ISP(483) 2C2H3+M=1,3-C4H6+M
+    642: _rxn_642_c2h3_c2h5_ch3_c3h5, # ISP(485) C2H3+C2H5=CH3+C3H5
+    643: _rxn_643_c2h3_c2h5_m_c4h8,   # ISP(486) C2H3+C2H5+M=C4H8+M
+    551: _rxn_551_ch3_c3h7_m_c4h10,   # ISP(244) CH3+C3H7+M=C4H10+M
 }
 
 
