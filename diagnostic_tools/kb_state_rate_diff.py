@@ -146,9 +146,21 @@ def compute_kt_rates_at_kb_state(
             titan_state, terms, pun_metadata=pun_meta
         )
         agg = np.zeros(titan_state.state.nlyr, dtype=np.float64)
-        for indexed in single_atm:
+        for indexed, term in zip(single_atm, terms):
             tend = kintera_rate_for_term(titan_state.state, indexed)
-            agg += tend[:, target_idx]
+            # KB's prod+loss output stores REACTION rate (not species
+            # tendency); kintera's `.linearize()` returns species tendency =
+            # net_stoichiometry × reaction_rate. Divide by |net_coef| (keeping
+            # tend's sign — KB stores loss as negative, production as positive
+            # in the same file, signed by whether the species appears as
+            # reactant or product).
+            net_coef = abs(
+                sum(1 for p in term.products if p == target_species)
+                - sum(1 for r in term.reactants if r == target_species)
+            )
+            if net_coef == 0:
+                continue
+            agg += tend[:, target_idx] / float(net_coef)
         matched_kt_rates[kb_rid] = agg
 
     return matched_kt_rates, kb_rates, rxn_dat, species
