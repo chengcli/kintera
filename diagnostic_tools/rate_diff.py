@@ -35,6 +35,23 @@ def parse_kb_prodloss(path: pathlib.Path) -> tuple[list[int], np.ndarray, np.nda
     """Parse a KB ``<species>_<prod|loss>.dat`` file.
 
     Returns ``(kb_reaction_ids, altitudes_km, rates[alt, rxn])``.
+
+    .. note::
+
+       KB Fortran has a known off-by-one bug in the loss-file write
+       (``kinetgen1X.F:10995`` ``write(89,...) srate(_, 1, 2, kk)`` where
+       the 3rd index should be 1). For NLONX=1, column-major layout
+       means ``srate(_, 1, 2, kk)`` reads memory at ``srate(_, 1, 1, kk+1)``
+       — the SRATE at the next altitude. Verified by dumping SRATE in
+       OUTPUT_IMP and matching row N file value to dumped value at alt
+       N+1. The prod file uses the correct ``srate(_, 1, 1, kk)``.
+
+       This parser detects the loss-file pathway by filename and SHIFTS
+       the rates DOWN by one row so ``rates[L]`` corresponds to the
+       altitude in column 0 of row L. Without this shift, the
+       KB-state-injected diagnostic systematically compares kt J at
+       altitude L against KB loss data from altitude L+1 — accounting
+       for ~half of the high-altitude J overshoot in earlier runs.
     """
     text = path.read_text().splitlines()
     ids_line = text[1].split()
@@ -52,6 +69,16 @@ def parse_kb_prodloss(path: pathlib.Path) -> tuple[list[int], np.ndarray, np.nda
     arr = np.array(rows, dtype=np.float64)
     altitudes_km = arr[:, 0]
     rates = arr[:, 1:]
+
+    if path.name.endswith("_loss.dat"):
+        # Compensate KB off-by-one: file row N's rates were intended for
+        # altitude N+1 (one row above). Shift rates DOWN by one so that
+        # rates[L] aligns with altitudes_km[L]. Row 0 has no source data
+        # (would require file row -1) and is set to zero.
+        shifted = np.zeros_like(rates)
+        shifted[1:] = rates[:-1]
+        rates = shifted
+
     return reaction_ids, altitudes_km, rates
 
 

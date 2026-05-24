@@ -89,29 +89,18 @@ def build_kinetics_base_titan_source_terms(
         120: (62, 1.0),
     }
     special_photo_multipliers = {
-        # Cheng Titan modification on rxn 10 (C2H2 -> C2H + H).
-        #
-        # KB Fortran has TWO doublings of zk(10):
+        # Cheng Titan modification: rxn 10 (C2H2 -> C2H + H) is doubled
+        # in TWO places in the Fortran:
         #   kinetgen2X.F:7089 (inside JPHOTO, after K loop): zk *= 2
         #   kinetgen1X.F:9217 (inside JALTA, also unconditional): zk *= 2
-        # Both run per JALT call. Instrumented dumps confirm zk(10) is
-        # 4x the catalog value at the END of JALTA (e.g. 1.12e-8 at
-        # L36 vs 2.81e-9 pre-doubling). RATES then multiplies by [C2H2]
-        # to get SRATE = 9.37e-3 at L36.
-        #
-        # However the actual KB prod+loss output file shows the loss
-        # at L36 as 5.66e-3, NOT 9.37e-3 — implying an effective ZK of
-        # 6.78e-9 (≈ 2.4x catalog), NOT 4x. The 0.6x gap between
-        # RATES-time SRATE and the prod+loss-file SRATE is unexplained;
-        # no other zk(10) or SRATE(10) modification was found between
-        # the two. The discrepancy is altitude-dependent (L6 file/RATES
-        # ratio = 1.87, L21 = 1.05, L36 = 0.60).
-        #
-        # Empirically: 2x multiplier gives matched_count tight 152, 4x
-        # gives 148 (high-altitude overshoot from rxn 10 destabilises
-        # downstream chemistry). Keep 2x until the KB prod+loss vs
-        # RATES discrepancy is understood.
-        10: 2.0,
+        # Net effect is a 4x multiplier on the catalog J value. Verified
+        # against KB instrumentation (commit hash includes a SRATE dump
+        # in OUTPUT_IMP): kt_J / kb_J = exactly 0.5 at the unattenuated
+        # altitudes L25-L35 with our previous 2x setting, confirming KB
+        # applies 4x. The 0.5 ratio was previously masked by a KB
+        # off-by-one bug in the loss-file write that we now compensate
+        # for in diagnostic_tools/rate_diff.py:parse_kb_prodloss.
+        10: 4.0,
     }
     titan_electron_impact_reaction_ids: set[int] = set()
     if special_path is not None:
