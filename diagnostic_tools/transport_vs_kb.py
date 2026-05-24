@@ -120,6 +120,141 @@ def main(top_n: int = 30) -> None:
     kintera_trans = transport.matvec(titan_state.concentration)
     kt_trans = kintera_trans[0].detach().cpu().numpy()  # (nlyr, nspecies)
 
+    # 2b. Prototype: Cheng Titan transport = eddy + molecular + gravity sep.
+    #
+    # KB's per-species effective diffusion coefficient (kinetgen2X.F:COEFF1):
+    #     D(i, k+1/2) = DIFF_i(k+1/2) + Kzz
+    # where DIFF_i = 7.3e16 × T_face^0.75 / n_face × sqrt((1+28/m_i)/(1+28/16))
+    # is the Cheng Titan molecular diffusion formula (m_i in amu).
+    #
+    # The KB flux at face k+1/2 has eddy (mixing-ratio) + molecular (concentration
+    # gradient + gravity-separation), combined into the form
+    #     F = -D × (∂_z c + c / H_i)
+    # with the effective scale height
+    #     H_i(k+1/2) = D × SCALE / (Kzz + DIFF_i × ZMM_i × FA)
+    # where SCALE = dz / log(n[k]/n[k+1]), ZMM_i = m_i / m_avg, and the
+    # thermal-diffusion factor FA = 1 + (1 - ZMM_i)(SCALE/ZMM_i)(2/(T[k]+T[k+1]))
+    # ((T[k+1]-T[k])/dz). With α=0 (no thermal diffusion) and roughly isothermal
+    # atmosphere, FA ≈ 1.
+    #
+    # Verification check: for pure-eddy (DIFF=0) and isothermal, the form
+    # reduces to ∂_z(K n_tot ∂_z(c/n_tot)) — the mixing-ratio eddy diffusion.
+    conc_np = titan_state.concentration[0].detach().cpu().numpy()  # (nlyr, nspecies)
+    dx1f = titan_state.state.dx1f.detach().cpu().numpy()           # (nlyr,)
+    kzz_np = titan_state.kzz[0].detach().cpu().numpy()             # (nlyr,)
+    diff_scale = species_diffusion_scale.detach().cpu().numpy()    # (nspecies,)
+    ntot = np.array(kb_atm.density)                                # (nlyr_kb,)
+    temp = np.array(kb_atm.temperature)
+    nlyr_kt = conc_np.shape[0]
+    if ntot.shape[0] < nlyr_kt:
+        pad = np.zeros(nlyr_kt - ntot.shape[0])
+        ntot = np.concatenate([ntot, pad])
+        temp = np.concatenate([temp, pad])
+    else:
+        ntot = ntot[:nlyr_kt]
+        temp = temp[:nlyr_kt]
+    last_real_lyr = int((titan_state.density[0] > 0).nonzero(as_tuple=True)[0][-1])
+
+    # Cell-center altitudes from KB
+    alt = np.array(kb_atm.altitude)
+    if alt.shape[0] < nlyr_kt:
+        alt = np.concatenate([alt, np.full(nlyr_kt - alt.shape[0], alt[-1])])
+    alt = alt[:nlyr_kt] * 1.0e5  # km -> cm
+
+    # Per-species molecular masses (amu)
+    from kintera.kinetics_base.titan.physics import _kinetics_base_species_mass_amu
+    pun_metadata_dict = kt.kinetics_base_species_metadata_from_pun(
+        str(TITAN / "kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.pun")
+    )
+    masses = np.array(
+        [_kinetics_base_species_mass_amu(s, pun_metadata_dict) for s in species]
+    )
+
+    # Average atmospheric mass at each cell center.
+    # Use mass-weighted avg of all gas species concentrations.
+    avg_mass = np.zeros(nlyr_kt)
+    for k in range(last_real_lyr + 1):
+        if ntot[k] <= 0:
+            continue
+        avg_mass[k] = np.sum(conc_np[k, :] * masses) / ntot[k]
+
+    # Face-quantities arrays: index k = face between cell k-1 and cell k.
+    # We'll fill face k+1 (between cells k and k+1) for k in 0..last_real_lyr-1.
+    nspc = conc_np.shape[1]
+    d_face = np.zeros((last_real_lyr + 1, nspc))   # D(i, k+1/2)
+    h_face = np.zeros((last_real_lyr + 1, nspc))   # H(i, k+1/2)
+    del_face = np.zeros(last_real_lyr + 1)         # dz of face
+    for k in range(last_real_lyr):
+        dz_face = alt[k + 1] - alt[k]
+        if dz_face <= 0:
+            continue
+        del_face[k] = dz_face
+        n_face = 0.5 * (ntot[k] + ntot[k + 1])
+        t_face = 0.5 * (temp[k] + temp[k + 1])
+        k_face = 0.5 * (kzz_np[k] + kzz_np[k + 1])
+        ratio = ntot[k] / ntot[k + 1] if ntot[k + 1] > 0 else 1.0
+        scale = dz_face / np.log(ratio) if ratio > 1.0 else dz_face
+        m_avg_face = 0.5 * (avg_mass[k] + avg_mass[k + 1])
+        if m_avg_face <= 0:
+            m_avg_face = 28.0
+        dT_dz = (temp[k + 1] - temp[k]) / dz_face
+        for s in range(nspc):
+            m_i = masses[s]
+            zmm = m_i / m_avg_face
+            diff = (7.3e16 * (t_face ** 0.75) / n_face
+                    * np.sqrt((1.0 + 28.0 / m_i) / (1.0 + 28.0 / 16.0)))
+            fa = 1.0 + (1.0 - zmm) * (scale / zmm) * (1.0 / t_face) * dT_dz
+            d_eff = diff + k_face * diff_scale[s]
+            denom = (k_face * diff_scale[s]) + diff * zmm * fa
+            if denom <= 0:
+                d_face[k, s] = 0.0
+                h_face[k, s] = scale
+                continue
+            d_face[k, s] = d_eff
+            h_face[k, s] = d_eff * scale / denom
+
+    # Scharfetter-Gummel exponential discretization with spherical r²
+    # geometry, mirroring kinetgen2X.F:COEFF1 lines 5165-5202.
+    # Tridiagonal at interior cell k (k = 1..last_real_lyr-1):
+    #   A[k] c[k-1] + B[k] c[k] + C[k] c[k+1] = -transport_div[k]
+    # so transport_div[k] = -(A c[k-1] + B c[k] + C c[k+1]).
+    PRAD = 2575e5  # Titan radius in cm (placeholder; refine if needed)
+    mr_trans = np.zeros_like(conc_np)
+    for k in range(1, last_real_lyr):
+        del_low = del_face[k - 1]
+        del_up = del_face[k]
+        if del_low <= 0 or del_up <= 0:
+            continue
+        smdel = (alt[k + 1] - alt[k - 1]) / 2.0
+        # Spherical-geometry factors at lower & upper faces relative to cell k.
+        face_low = PRAD + 0.5 * (alt[k - 1] + alt[k])
+        face_up = PRAD + 0.5 * (alt[k] + alt[k + 1])
+        center = PRAD + alt[k]
+        rq = (face_low / center) ** 2  # lower face
+        rp = (face_up / center) ** 2   # upper face
+        for s in range(nspc):
+            d_low = d_face[k - 1, s]
+            d_up = d_face[k, s]
+            if d_low <= 0 or d_up <= 0:
+                continue
+            ss_low = 0.5 * del_low / h_face[k - 1, s]
+            ss_up = 0.5 * del_up / h_face[k, s]
+            # Clamp SS to avoid overflow with exp; should be reasonable
+            ss_low = float(np.clip(ss_low, -50, 50))
+            ss_up = float(np.clip(ss_up, -50, 50))
+            d05p = np.exp(ss_low) / del_low
+            d05m = np.exp(-ss_low) / del_low
+            d15p = np.exp(ss_up) / del_up
+            d15m = np.exp(-ss_up) / del_up
+            qq = rq * d_low
+            pp = rp * d_up
+            A = -qq * d05m / smdel
+            B = (pp * d15m + qq * d05p) / smdel
+            C = -pp * d15p / smdel
+            mr_trans[k, s] = -(A * conc_np[k - 1, s]
+                               + B * conc_np[k, s]
+                               + C * conc_np[k + 1, s])
+
     # 3. Map KB species id -> kintera species index
     # The Cheng pun file orders species in the same way as kintera's species list.
     # KB uses internal numbering via the MAPPING ARRAY FOR SPECIES in fort.3.
@@ -150,11 +285,12 @@ def main(top_n: int = 30) -> None:
 
     print(f"Mapped {len(iv_to_name)} KB IV → name slots\n")
 
-    # 4. Build per-species comparison
+    # 4. Build per-species comparison (kintera concentration form vs KB)
     nlyr = kt_trans.shape[0]
     last_real = 39
     species_to_kt = {s: i for i, s in enumerate(species)}
     rows: list[tuple] = []
+    mr_rows: list[tuple] = []
     for iv, name in iv_to_name.items():
         if iv not in pstor:
             continue
@@ -164,16 +300,38 @@ def main(top_n: int = 30) -> None:
         chem_net_kb = pstor[iv][:nlyr] + dstor[iv][:nlyr]  # (PSTOR + DSTOR)
         trans_kb = -chem_net_kb
         trans_kt = kt_trans[:, sp_idx]
+        trans_mr = mr_trans[:, sp_idx]
         for L in range(1, last_real):
             tk = trans_kt[L]
             tb = trans_kb[L]
-            if abs(tk) < 1e-20 and abs(tb) < 1e-20:
+            tm = trans_mr[L]
+            if abs(tk) < 1e-20 and abs(tb) < 1e-20 and abs(tm) < 1e-20:
                 continue
             denom = max(abs(tk), abs(tb), 1e-30)
             rel = abs(tk - tb) / denom
             rows.append((rel, name, L, tk, tb, kb_atm.altitude[L]))
+            denom_mr = max(abs(tm), abs(tb), 1e-30)
+            rel_mr = abs(tm - tb) / denom_mr
+            mr_rows.append((rel_mr, name, L, tm, tb, kb_atm.altitude[L]))
 
     rows.sort(key=lambda r: -r[0])
+    mr_rows.sort(key=lambda r: -r[0])
+
+    # 4b. Mixing-ratio prototype summary
+    rel_mr_arr = np.array([r[0] for r in mr_rows])
+    print(f"\n=== Prototype: mixing-ratio diffusion form vs KB ===")
+    print(f"Total interior cells: {len(rel_mr_arr)}")
+    if len(rel_mr_arr) > 0:
+        print(f"  median rel diff: {np.median(rel_mr_arr):.3f}")
+        print(f"  90th pctile:     {np.percentile(rel_mr_arr, 90):.3f}")
+        print(f"  max rel diff:    {rel_mr_arr.max():.3f}")
+        print(f"  fraction with rel < 0.1:   {(rel_mr_arr < 0.1).mean():.3f}")
+        print(f"  fraction with rel < 0.01:  {(rel_mr_arr < 0.01).mean():.3f}")
+        print(f"\n  Top 10 worst (species, level) for MR prototype:")
+        for r, (rel, name, L, tm, tb, alt) in enumerate(mr_rows[:10]):
+            print(f"    {r+1:>3d} {name:>14s} L{L:<3d} alt={alt:>7.1f}"
+                  f"  mr={tm:>11.3e}  kb={tb:>11.3e}  rel={rel:>6.2f}")
+    print()
 
     # 5. Summary stats
     rel_arr = np.array([r[0] for r in rows])
