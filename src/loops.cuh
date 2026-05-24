@@ -2,6 +2,7 @@
 
 // torch
 #include <ATen/TensorIterator.h>
+#include <ATen/cuda/CUDAContext.h>
 #include <ATen/native/cuda/Loops.cuh>
 
 namespace kintera {
@@ -57,14 +58,10 @@ void gpu_mem_kernel(at::TensorIterator& iter, int work_size, const func_t& f) {
   auto stream = at::cuda::getCurrentCUDAStream();
   size_t shared = block.x * work_size;
 
-  // set attribute to allow max dynamic shared memory
-  int device;
-  cudaGetDevice(&device);
-  cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop, device);
-
   // query max allowed per-block shared memory
-  int max_dynamic_smem = prop.sharedMemPerBlockOptin;
+  // (ATen-cached; avoids a ~1ms cudaGetDeviceProperties driver call per launch)
+  auto* prop = at::cuda::getCurrentDeviceProperties();
+  int max_dynamic_smem = prop->sharedMemPerBlockOptin;
   //printf("max_dynamic_smem = %d\n", max_dynamic_smem);
 
   auto device_lambda = [=] __device__(int idx, char* smem) {
