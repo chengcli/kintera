@@ -89,9 +89,16 @@ def build_kinetics_base_titan_source_terms(
         120: (62, 1.0),
     }
     special_photo_multipliers = {
-        # Cheng Titan modification in UPDATE_CHEMB:
-        # C2H2 -> C2H + H is doubled relative to the catalog J value.
-        10: 2.0,
+        # Cheng Titan modification: rxn 10 (C2H2 -> C2H + H) is doubled
+        # in TWO places in the Fortran:
+        #   kinetgen2X.F:7089 (inside JPHOTO, after K loop): zk *= 2
+        #   kinetgen1X.F:9217 (inside UPDATE_CHEMB):          zk *= 2
+        # Net effect is a 4x multiplier on the catalog J value. Verified
+        # against KB instrumentation: sum sigma*ALTFLX in JPHOTO at L20
+        # gives 0.846e-9 pre-doubling, KB prod+loss/[C2H2] = 3.55e-9 = 4x.
+        # Both ZK *= 2 sites cite "Lavvas, 08" — they appear to be
+        # historical edits applied in succession.
+        10: 4.0,
     }
     titan_electron_impact_reaction_ids: set[int] = set()
     if special_path is not None:
