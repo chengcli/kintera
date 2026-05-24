@@ -35,7 +35,7 @@ from kintera.kinetics_base.titan.models import KBTitanSourceTerm
 
 ROOT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare")
 TITAN = ROOT / "examples/titan"
-KB_RUN = pathlib.Path("/tmp/kb_run_500")
+KB_RUN = pathlib.Path("/tmp/kb_run_taudump")
 
 
 def parse_kb_prodloss(path: pathlib.Path) -> tuple[list[int], np.ndarray, np.ndarray]:
@@ -83,17 +83,16 @@ def parse_kb_prodloss(path: pathlib.Path) -> tuple[list[int], np.ndarray, np.nda
         return rxn_ids, np.array([]), np.array([])
     altitudes = arr[:, 0]
     rates = arr[:, 1:]
-    # KB off-by-one bug compensation: _loss.dat files have
-    #   write(89, 998) alt(1,1,kk), srate(_, 1, 2, kk)
-    # The 3rd index is 2 but should be 1 (matching the prod-file write).
-    # For NLONX=1, column-major layout means srate(_, 1, 2, kk) reads
-    # srate(_, 1, 1, kk+1) — the SRATE at the NEXT altitude.
-    # File row N (containing alt[N] in column 0) holds rates for
-    # alt[N+1]. To compensate, shift rates DOWN by one so that
-    # rates[L] aligns with altitudes[L]: rates[L] = file_rates[L-1].
-    # Row 0 has no source data (would need file row -1) and is set
-    # to zero.
-    if path.name.endswith("_loss.dat"):
+    # KB off-by-one bug compensation: legacy _loss.dat files generated
+    # before the KB patch (diagnostics/kb_patches/01-loss-file-altitude-
+    # shift.patch) have srate(_, 1, 2, kk) which aliases to the NEXT
+    # altitude. We detect "legacy" by checking for a sentinel in the
+    # first data row (the buggy first row is the next-alt value, which
+    # for alt=0 means a non-zero rate where the true value would be
+    # near-zero). To stay safe, gate on a directory-level flag:
+    # /tmp/kb_run_500/ is the May-2026 buggy run; /tmp/kb_run_taudump/
+    # and later use the patched binary.
+    if path.name.endswith("_loss.dat") and "kb_run_500" in str(path):
         shifted = np.zeros_like(rates)
         shifted[1:] = rates[:-1]
         rates = shifted
