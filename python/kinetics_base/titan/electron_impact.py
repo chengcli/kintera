@@ -15,52 +15,20 @@ def _global_scale() -> float:
 def _kinetics_base_electron_impact_secondary_params(
     reactants: list[str], products: list[str]
 ) -> dict[str, float] | None:
-    """Return ``{"threshold_eV": float, "W_eV": float}`` for an electron-impact
-    reaction so that ``_photo_rate_profile`` can apply the secondary-electron
-    multiplier ``(1 + (E_γ - threshold)/W)`` per wavelength bin.
+    """Return per-wavelength secondary-electron parameters or None.
 
-    Returning ``None`` means "fall back to the hardcoded altitude scaffold."
-
-    Channel ionization thresholds are from NIST WebBook. W (mean energy per
-    ion-pair) defaults to ~36 eV for N2 and ~28 eV for CH4 (Cravens 2008,
-    Wedlund 2011); can be overridden via ``KINTERA_EI_W_N2`` and
-    ``KINTERA_EI_W_CH4`` env vars for sweeps.
+    Previously this returned ``{"threshold_eV", "W_eV"}`` for N2/CH4 EI
+    channels so the actinic-flux integrator multiplied σ × ALTFLX by
+    ``(1 + (E_γ - threshold)/W)`` per wavelength bin. With KB's
+    `_loss.dat` off-by-one fixed (kb_patches/01-loss-file-altitude-
+    shift.patch), the empirical W=60 tuning that gave 174 matched no
+    longer applies — that tuning was against altitude-shifted KB data.
+    KB's actual treatment is a constant per-channel multiplier (×4.15
+    for N2→N2+E, ×117 for N2→N+N+E, ×2.07/2.61 for the CH4 channels)
+    applied inside JPHOTO. We now match that by returning None here
+    (disabling per-wavelength secondary boost) and using KB's M as
+    the channel scale below.
     """
-    import os
-    if not reactants:
-        return None
-    # Defaults are W_N2 = W_CH4 = 60 eV, empirically chosen against the
-    # NT=100 full-grain KB Titan oracle (commit 4ad2f6d). With our limited
-    # cross-section data (6 wavelength bins in 120-220 Å), W must be larger
-    # than the textbook 36 / 28 eV (Cravens 2008) to avoid over-counting
-    # secondaries; a sweep over W ∈ {12, 36, 40, 50, 55, 60, 62, 65, 70, 80,
-    # 100, 150} showed W=60 lands in a high-match basin (174 species-level
-    # pairs vs 163 scaffold), with W=70 also in the same basin (172). W=62/65
-    # fall into a low basin (155-156) — cation cascade bistability.
-    if reactants == ["N2"] and products == ["N2+", "E"]:
-        try:
-            W = float(os.environ.get("KINTERA_EI_W_N2", "60.0"))
-        except (TypeError, ValueError):
-            W = 60.0
-        return {"threshold_eV": 15.58, "W_eV": W}
-    if reactants == ["N2"] and "N+" in products:
-        try:
-            W = float(os.environ.get("KINTERA_EI_W_N2", "60.0"))
-        except (TypeError, ValueError):
-            W = 60.0
-        return {"threshold_eV": 24.3, "W_eV": W}
-    if reactants == ["CH4"] and products == ["CH3+", "H", "E"]:
-        try:
-            W = float(os.environ.get("KINTERA_EI_W_CH4", "60.0"))
-        except (TypeError, ValueError):
-            W = 60.0
-        return {"threshold_eV": 14.3, "W_eV": W}
-    if reactants == ["CH4"] and products == ["CH2+", "H2", "E"]:
-        try:
-            W = float(os.environ.get("KINTERA_EI_W_CH4", "60.0"))
-        except (TypeError, ValueError):
-            W = 60.0
-        return {"threshold_eV": 15.1, "W_eV": W}
     return None
 
 
@@ -78,30 +46,33 @@ def _kinetics_base_electron_impact_scale(
     reactants: list[str], products: list[str]
 ) -> float:
     g = _global_scale()
-    # Defaults below are empirically tuned against the KB Titan oracle in
-    # full grain mode + electron-transport secondary-impact mode. The N2_N2P
-    # scale was originally 0.97 (catalog branching) but that produced a
-    # cation cascade explosion that broke neutral matching downstream. The
-    # NP scale was 2.5 — unphysical as a "branching ratio" since it's > 1 —
-    # also tuned down. Best match (174/531) is at N2_N2P=0.25, NP=0.5;
-    # see project-electron-transport memory.
+    # Hardcoded per-channel multipliers from KB's JPHOTO Cheng block
+    # (kinetgen2X.F:7085-7113). KB applies these constants AFTER the
+    # wavelength integration of σ × ALTFLX. Earlier empirical tuning
+    # (N2_N2P=0.25, N2_NP=0.5, CH4_CH3P=0.172, CH4_CH2P=0.217) was
+    # against the buggy altitude-shifted KB reference and combined with
+    # an unphysical per-wavelength (1 + n_sec) factor; both removed now
+    # that the KB off-by-one is patched (see project-kb-loss-off-by-one).
     if reactants == ["N2"] and products == ["N2+", "E"]:
-        return _channel_scale("KINTERA_EI_SCALE_N2_N2P", 0.25) * g
+        # KB ISP(539): zk *= 4.15
+        return _channel_scale("KINTERA_EI_SCALE_N2_N2P", 4.15) * g
     if reactants == ["N2"] and "N+" in products:
-        return _channel_scale("KINTERA_EI_SCALE_N2_NP", 0.5) * g
+        # KB ISP(540): zk *= 117 for N2 -> N+ + N + E
+        return _channel_scale("KINTERA_EI_SCALE_N2_NP", 117.0) * g
     if reactants == ["CH4"] and products == ["CH3+", "H", "E"]:
-        return _channel_scale("KINTERA_EI_SCALE_CH4_CH3P", 0.172) * g
+        # KB ISP(537): zk *= 2.07
+        return _channel_scale("KINTERA_EI_SCALE_CH4_CH3P", 2.07) * g
     if reactants == ["CH4"] and products == ["CH2+", "H2", "E"]:
-        return _channel_scale("KINTERA_EI_SCALE_CH4_CH2P", 0.217) * g
+        # KB ISP(538): zk *= 2.61
+        return _channel_scale("KINTERA_EI_SCALE_CH4_CH2P", 2.61) * g
+    # KB ISP(536) (CH4 -> CH4+ + E, ×3.05) maps to a reaction the pun
+    # file doesn't include, so we don't expose it.
     if reactants == ["CH4"] and products == ["CH3", "H+", "E"]:
         return _channel_scale("KINTERA_EI_SCALE_CH4_HP", 0.083) * g
     if "N+" in products:
         return _channel_scale("KINTERA_EI_SCALE_OTHER_NP", 0.0035) * g
     if not reactants:
         return _channel_scale("KINTERA_EI_SCALE_DEFAULT", 0.25) * g
-    # Temporary Cheng/Titan matching scaffold until the Fortran electron energy
-    # deposition profile is implemented.  N2 and CH4 ion channels have different
-    # effective source profiles in the current oracle output.
     if reactants[0] == "CH4":
         return (1.0 / 12.0) * g
     return _channel_scale("KINTERA_EI_SCALE_DEFAULT", 0.25) * g

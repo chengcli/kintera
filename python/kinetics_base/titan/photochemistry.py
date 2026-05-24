@@ -102,6 +102,8 @@ def _kinetics_base_photo_rates(
     radiation_active_nlyr: Any = None,
     kinetics_direct_radiation: bool = False,
     freeze_actinic_flux: bool = False,
+    nwave1: int | None = None,
+    nwave2: int | None = None,
 ) -> dict[str, dict[str, Any]]:
     if catalog_path is None or cross_dir is None or flux_path is None:
         return {}
@@ -114,6 +116,19 @@ def _kinetics_base_photo_rates(
         (wavelength, width, value * flux_scale)
         for wavelength, width, value in flux
     ]
+    # KB only loads wavelengths/fluxes from fort.20 rows NWAVE1..NWAVE2
+    # (kinetgen1X.F:2308-2334). Cross-section file bins outside that range
+    # are silently dropped from the σ × F integration. Zero out the flux
+    # for fort.20 bins < NWAVE1 (0-indexed: < nwave1 - 1) and > NWAVE2 so
+    # any per-wavelength sum that uses this flux array matches KB. See
+    # KB_POSSIBLE_ISSUES.md §2 in the Titan case folder.
+    if nwave1 is not None or nwave2 is not None:
+        lo = (nwave1 - 1) if nwave1 is not None else 0
+        hi = nwave2 if nwave2 is not None else len(flux)
+        flux = [
+            (w, width, value if (lo <= i < hi) else 0.0)
+            for i, (w, width, value) in enumerate(flux)
+        ]
     aerosol_extinction = _parse_kinetics_base_aerosol_extinction(
         aerosol_extinction_path, flux
     )

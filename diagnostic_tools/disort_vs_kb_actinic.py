@@ -137,7 +137,10 @@ def main(target_pun_id: int = 10) -> None:
 
     target_term: KBTitanSourceTerm | None = None
     for t in source_terms:
-        if t.reaction_id == target_pun_id and t.kind == "pun_photo_rate_reaction":
+        if t.reaction_id == target_pun_id and t.kind in (
+            "pun_photo_rate_reaction",
+            "pun_electron_impact_reaction",
+        ):
             target_term = t
             break
     if target_term is None:

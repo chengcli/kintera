@@ -134,11 +134,22 @@ def _parse_kinetics_base_run_radiation_inputs(
         nphots = int(photolysis[1])
         nphotr = int(photolysis[2])
         nphotd = int(photolysis[3])
+        nwave1 = int(photolysis[4])
+        nwave2 = int(photolysis[5])
         nzen = int(photolysis[7])
         ndisort = int(photolysis[12]) if len(photolysis) > 12 else 0
         values["aerosol_extinction_enabled"] = nphotd != 0
         values["aerosol_scattering_enabled"] = nzen != 0
         values["kinetics_direct_radiation"] = nzen == 0 and ndisort == 0
+        # KB loads wavelengths/fluxes only for fort.20 rows NWAVE1..NWAVE2
+        # (kinetgen1X.F:2308-2334). Cross-section file bins outside that
+        # range are silently dropped, so kintera must apply the same
+        # truncation to match KB's integration. See
+        # diagnostics/KINETICS-base-compare/examples/titan/KB_POSSIBLE_ISSUES.md
+        # §2 — this truncation is likely a deliberate (or inherited)
+        # decision in KB, but it strips EUV (<360 Å) absorption.
+        values["nwave1"] = nwave1
+        values["nwave2"] = nwave2
         active_photo_ids = _collect_numeric_block_after_label(
             lines, "IPHOTO", nphoto + nphots + nphotr + nphotd
         )

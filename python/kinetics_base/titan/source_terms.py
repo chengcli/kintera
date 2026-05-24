@@ -179,6 +179,8 @@ def build_kinetics_base_titan_source_terms(
         radiation_inputs.get("radiation_active_nlyr"),
         bool(radiation_inputs.get("kinetics_direct_radiation", False)),
         bool(radiation_inputs.get("freeze_actinic_flux", False)),
+        radiation_inputs.get("nwave1"),
+        radiation_inputs.get("nwave2"),
     )
     active_reaction_mapping: dict[int, int] | None = None
     if truncate_path is not None:
@@ -308,18 +310,20 @@ def build_kinetics_base_titan_source_terms(
                             reactants, products
                         )
                     )
-                    use_secondary = (
-                        secondary_params is not None
-                        and isinstance(electron_parameters.get("cross_section"), list)
+                    has_photo_data = (
+                        isinstance(electron_parameters.get("cross_section"), list)
                         and isinstance(electron_parameters.get("flux"), list)
                         and isinstance(electron_parameters.get("wavelengths"), list)
                     )
-                    if use_secondary:
-                        # Electron transport path: integrate σ(λ) × F_att(λ, z)
-                        # × (1 + (E_γ - threshold)/W) over wavelength via the
-                        # standard photo-rate pipeline. Fold the channel
-                        # branching ratio into σ so the integral produces a
-                        # channel-scaled rate.
+                    if has_photo_data:
+                        # KB-style path: integrate σ(λ) × F_att(λ, z) over
+                        # wavelength with column attenuation applied, then
+                        # multiply by the KB hardcoded channel scale (4.15,
+                        # 117, 2.07, 2.61 for the N2/CH4 EI channels —
+                        # see _kinetics_base_electron_impact_scale). If
+                        # secondary_params is set, additionally apply the
+                        # per-wavelength (1 + n_sec) factor; if None we
+                        # skip it (matches KB's JPHOTO bare integration).
                         electron_parameters["cross_section"] = [
                             float(value) * electron_scale
                             for value in electron_parameters["cross_section"]
@@ -328,9 +332,11 @@ def build_kinetics_base_titan_source_terms(
                             float(electron_parameters.get("rate", 0.0))
                             * electron_scale
                         )
-                        electron_parameters["secondary_impact"] = secondary_params
+                        if secondary_params is not None:
+                            electron_parameters["secondary_impact"] = secondary_params
                     else:
-                        # Legacy scaffold path: use hardcoded altitude profile.
+                        # No photo data (cross-section dict missing). Use
+                        # the hardcoded altitude profile scaffold.
                         electron_parameters["attenuation"] = "none"
                         electron_parameters["rate"] = (
                             float(electron_parameters.get("rate", 0.0))
