@@ -165,6 +165,100 @@ def plot_conc_profiles(kb_atm, species, panel_species):
     return fig_to_b64(fig)
 
 
+def load_kintera_trajectory(nt: int):
+    """Load a kintera trajectory dump. Returns (species_list, altitude_km, conc[nlyr, nspecies], total_time_s)."""
+    path = pathlib.Path(f"/tmp/kt_traj_{nt}.npz")
+    if not path.exists():
+        return None
+    d = np.load(path, allow_pickle=True)
+    return {
+        "species": [str(s) for s in d["species"]],
+        "altitude": np.array(d["altitude_km"]),
+        "concentration": np.array(d["concentration"]),
+        "total_time_s": float(d["total_simulated_time"]),
+        "ntime": int(d["ntime"]),
+    }
+
+
+def plot_kintera_vs_kb_profiles(kb_atm, panel_species, traj_dict, title):
+    """Plot kintera (from trajectory) vs KB (from fort.7) concentration profiles.
+
+    traj_dict: result of load_kintera_trajectory.
+    """
+    fig, axes = plt.subplots(2, 3, figsize=(13, 7.5), sharey=True)
+    kb_alts = np.array(kb_atm.altitude)[:40]
+    kt_alts = traj_dict["altitude"][:40]
+    kt_species = traj_dict["species"]
+    kt_conc = traj_dict["concentration"]
+    sp_to_idx = {s: i for i, s in enumerate(kt_species)}
+    for ax, sp in zip(axes.flat, panel_species):
+        if sp not in kb_atm.species_profiles:
+            ax.set_title(f"{sp} (missing)")
+            continue
+        kb_c = np.array(kb_atm.species_profiles[sp])[:40]
+        ax.plot(kb_c, kb_alts, "-", color="C3", lw=2.0, label="KB (fort.7)")
+        if sp in sp_to_idx:
+            kt_c = kt_conc[:40, sp_to_idx[sp]]
+            ax.plot(kt_c, kt_alts, "--", color="C0", lw=2.0, label="kintera")
+            # Compute ratio kt/kb at each altitude and report worst
+            with np.errstate(divide="ignore", invalid="ignore"):
+                ratio = np.where((kb_c > 0) & (kt_c > 0), kt_c / kb_c, np.nan)
+            valid = np.isfinite(ratio) & (ratio > 0)
+            if valid.any():
+                log_ratio = np.log10(ratio[valid])
+                worst_idx_in_valid = np.argmax(np.abs(log_ratio))
+                worst_alt = kb_alts[valid][worst_idx_in_valid]
+                worst_r = ratio[valid][worst_idx_in_valid]
+                ax.text(0.04, 0.04, f"max kt/kb = {worst_r:.2g}\n@ {worst_alt:.0f} km",
+                        transform=ax.transAxes, fontsize=8, va="bottom",
+                        bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="0.7", alpha=0.85))
+        ax.set_xscale("log")
+        if kb_c[kb_c > 0].size:
+            xmin = max(1e-12, kb_c[kb_c > 0].min() / 3)
+            ax.set_xlim(left=xmin)
+        ax.set_title(sp)
+        ax.set_xlabel("[X] (cm⁻³)")
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=8, loc="upper right")
+    axes[0, 0].set_ylabel("altitude (km)")
+    axes[1, 0].set_ylabel("altitude (km)")
+    fig.suptitle(title)
+    fig.tight_layout()
+    return fig_to_b64(fig)
+
+
+def species_match_count(kb_atm, traj_dict, *, log_tol=0.30, log_tol_loose=0.70):
+    """Count species whose kintera profile is within log_tol (tight) and
+    log_tol_loose (loose) of KB across the active layers (L0..L39)."""
+    kb_profiles = kb_atm.species_profiles
+    kt_species = traj_dict["species"]
+    kt_conc = traj_dict["concentration"]
+    sp_to_idx = {s: i for i, s in enumerate(kt_species)}
+    tight = 0
+    loose = 0
+    total = 0
+    per_species = []
+    for sp in kt_species:
+        if sp not in kb_profiles:
+            continue
+        kb_c = np.array(kb_profiles[sp])[:40]
+        kt_c = kt_conc[:40, sp_to_idx[sp]]
+        valid = (kb_c > 1e-25) & (kt_c > 1e-25)
+        if valid.sum() < 5:
+            continue
+        with np.errstate(divide="ignore", invalid="ignore"):
+            log_diff = np.log10(kt_c[valid] / kb_c[valid])
+        max_dev = float(np.max(np.abs(log_diff)))
+        total += 1
+        if max_dev <= log_tol:
+            tight += 1
+        if max_dev <= log_tol_loose:
+            loose += 1
+        per_species.append((max_dev, sp))
+    per_species.sort()
+    return {"tight": tight, "loose": loose, "total": total, "per_species": per_species}
+
+
 def plot_chem_net_vs_kb(kb_atm, species, kt_chem, pstor, dstor, iv_to_name, panel_species):
     """For each species, plot kintera chem net vs KB's PSTOR+DSTOR sum.
     Highlight where they agree (clean) and where KB reports unphysical values."""
@@ -303,6 +397,8 @@ def main() -> None:
     print("Building plots...")
     panel_majors = ["CH4", "H2", "HCN", "C2H2", "C2H6", "NH3"]
     panel_radicals_artifact = ["H", "C2H4", "C2H5", "C2H3", "CH3", "N(2D)"]
+    panel_more_neutrals = ["C2H4", "C4H2", "HC3N", "CH3CN", "C3H8", "CH3C2H"]
+    panel_ions = ["N2+", "CH4+", "C2H5+", "HCNH+", "NH4+", "E"]
 
     p_profiles_majors = plot_conc_profiles(kb_atm, species, panel_majors)
     p_profiles_radicals = plot_conc_profiles(kb_atm, species, panel_radicals_artifact)
@@ -311,6 +407,43 @@ def main() -> None:
     p_phantom_srate = plot_kb_phantom_srate(kb_srate, kb_atm)
     p_phantom_keff = plot_kb_phantom_keff(kb_srate, kb_atm, species)
     p_h_anomaly = plot_h_loss_anomaly(kb_atm, pstor, dstor, iv_to_name)
+
+    # Kintera trajectory comparison (kintera's own SS vs KB's converged SS)
+    kt_traj_main = load_kintera_trajectory(100)
+    kt_traj_500 = load_kintera_trajectory(500)
+    p_traj_majors = None
+    p_traj_neutrals = None
+    p_traj_radicals = None
+    p_traj_ions = None
+    p_traj_500 = None
+    match_stats = None
+    match_stats_500 = None
+    if kt_traj_main is not None:
+        years = kt_traj_main["total_time_s"] / 3.156e7
+        p_traj_majors = plot_kintera_vs_kb_profiles(
+            kb_atm, panel_majors, kt_traj_main,
+            f"kintera (NT={kt_traj_main['ntime']}, {years:.0f} yr integrated) vs KB — major species",
+        )
+        p_traj_neutrals = plot_kintera_vs_kb_profiles(
+            kb_atm, panel_more_neutrals, kt_traj_main,
+            f"kintera (NT={kt_traj_main['ntime']}, {years:.0f} yr) vs KB — secondary neutrals",
+        )
+        p_traj_radicals = plot_kintera_vs_kb_profiles(
+            kb_atm, panel_radicals_artifact, kt_traj_main,
+            f"kintera (NT={kt_traj_main['ntime']}, {years:.0f} yr) vs KB — radicals & H family",
+        )
+        p_traj_ions = plot_kintera_vs_kb_profiles(
+            kb_atm, panel_ions, kt_traj_main,
+            f"kintera (NT={kt_traj_main['ntime']}, {years:.0f} yr) vs KB — ions",
+        )
+        match_stats = species_match_count(kb_atm, kt_traj_main)
+    if kt_traj_500 is not None:
+        years_500 = kt_traj_500["total_time_s"] / 3.156e7
+        p_traj_500 = plot_kintera_vs_kb_profiles(
+            kb_atm, panel_majors, kt_traj_500,
+            f"kintera NT=500 ({years_500:.0f} yr, coupled solver) vs KB — major species",
+        )
+        match_stats_500 = species_match_count(kb_atm, kt_traj_500)
 
     # Compute key numbers for the report
     sp_idx = {s: i for i, s in enumerate(species)}
@@ -429,14 +562,46 @@ same KB-injected state is −15 cm⁻³ s⁻¹ at L18, implying a 40-day timesca
 <tr><td>Cheng 2013 override for rxn 302</td><td><code>_rxn_302_h_c2h4_m_c2h5</code></td><td>kinetgen1X.F:7287-7292</td><td class="verdict-good">identical formula</td></tr>
 </table>
 
-<h2>3. Concentration profiles (KB-converged → kintera mirror)</h2>
+<h2>3. Kintera vs KB — converged concentration profiles</h2>
 
-<p>kintera is run with <code>fort.7</code> concentrations injected into every layer, so the concentrations
-themselves match by construction. These plots establish the snapshot KB has converged to.</p>
+<p>This is the headline test: does kintera, when integrated forward from the same initial atmosphere
+as KB, reach a steady-state concentration profile that agrees with KB's converged fort.7? The plots
+below overlay kintera's NT=100 trajectory (red = KB fort.7 reference, dashed blue = kintera at the
+same integrated time) for six panels covering major neutrals, secondary neutrals, radicals + the
+H-family artifact cluster, and ions.</p>
+
+<p>Each panel reports <code>max kt/kb</code> across active layers — values close to 1 mean kintera
+matches; values far from 1 indicate divergence at the altitude shown.</p>
+
+<p><strong>Species-match counts at the integrated time</strong>:
+{f"<code>{match_stats['tight']} tight (≤2×) / {match_stats['loose']} loose (≤5×) / {match_stats['total']} total compared</code>" if match_stats else "(no NT=100 dump available)"}</p>
+
+<img alt="kintera vs KB majors" src="data:image/png;base64,{p_traj_majors}"/>
+<figcaption>Major species. CH4 mixing ratio increases with altitude (4×10⁻⁴ at surface to 0.38 at top);
+HCN/C2H2/C2H6 have characteristic stratosphere-peaked profiles. Look for where kintera (blue dashed)
+deviates from KB (red solid).</figcaption>
+
+<img alt="kintera vs KB secondary neutrals" src="data:image/png;base64,{p_traj_neutrals}"/>
+<figcaption>Secondary photochemistry products (C2H4, C4H2, HC3N, CH3CN, C3H8, CH3C2H).</figcaption>
+
+<img alt="kintera vs KB radicals" src="data:image/png;base64,{p_traj_radicals}"/>
+<figcaption>Radicals and the H family. The H-family artifact in KB's PSTOR/DSTOR dump is a reporting
+issue, not a state issue — KB's fort.7 concentrations for these species are still the converged
+values shown here.</figcaption>
+
+<img alt="kintera vs KB ions" src="data:image/png;base64,{p_traj_ions}"/>
+<figcaption>Ions and the electron concentration. Ion chemistry has the most known kintera-vs-KB
+disagreement (E + cation⁺ recombination rates 5-10× off at L39).</figcaption>
+
+{f'<img alt="kintera NT=500 majors" src="data:image/png;base64,{p_traj_500}"/><figcaption>NT=500 (coupled solver) for the same major species — sanity check that more integration steps do not change the picture.</figcaption>' if p_traj_500 else ''}
+
+<h2>3a. Underlying KB-converged profiles (kintera mirror via fort.7 injection)</h2>
+
+<p>For the chemistry-rate cross-checks in section 4, kintera is run with <code>fort.7</code>
+concentrations injected directly. These plots establish the snapshot KB has converged to.</p>
 
 <img alt="major species profiles" src="data:image/png;base64,{p_profiles_majors}"/>
-<figcaption>Major Titan species. CH4 mixing ratio increases with altitude (4×10⁻⁴ → 0.38 at top);
-HCN concentration peaks near 100 km then falls; C2H2/C2H6 standard photochemical profiles.</figcaption>
+<figcaption>Major Titan species at KB's converged fort.7 state.</figcaption>
 
 <img alt="radical / artifact species" src="data:image/png;base64,{p_profiles_radicals}"/>
 <figcaption>Radicals and the species in KB's artifact cluster (H, C2H4, C2H5).</figcaption>
