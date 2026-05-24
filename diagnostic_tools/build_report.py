@@ -165,9 +165,10 @@ def plot_conc_profiles(kb_atm, species, panel_species):
     return fig_to_b64(fig)
 
 
-def load_kintera_trajectory(nt: int):
-    """Load a kintera trajectory dump. Returns (species_list, altitude_km, conc[nlyr, nspecies], total_time_s)."""
-    path = pathlib.Path(f"/tmp/kt_traj_{nt}.npz")
+def load_kintera_trajectory(nt: int, *, variant: str = ""):
+    """Load a kintera trajectory dump. ``variant`` like ``"_neutral"`` selects
+    /tmp/kt_traj_{nt}_neutral.npz instead of the default /tmp/kt_traj_{nt}.npz."""
+    path = pathlib.Path(f"/tmp/kt_traj_{nt}{variant}.npz")
     if not path.exists():
         return None
     d = np.load(path, allow_pickle=True)
@@ -177,6 +178,7 @@ def load_kintera_trajectory(nt: int):
         "concentration": np.array(d["concentration"]),
         "total_time_s": float(d["total_simulated_time"]),
         "ntime": int(d["ntime"]),
+        "variant": variant,
     }
 
 
@@ -408,8 +410,16 @@ def main() -> None:
     p_phantom_keff = plot_kb_phantom_keff(kb_srate, kb_atm, species)
     p_h_anomaly = plot_h_loss_anomaly(kb_atm, pstor, dstor, iv_to_name)
 
-    # Kintera trajectory comparison (kintera's own SS vs KB's converged SS)
-    kt_traj_main = load_kintera_trajectory(100)
+    # Kintera trajectory comparison (kintera's own SS vs KB's converged SS).
+    # Prefer the neutrals-only run when available (charge balance off, no
+    # grain chemistry, no ions) — this is the cleanest comparison against
+    # KB for the neutral chemistry since it strips the cation-cascade
+    # contamination at low altitudes. Fall back to the older NT=100 dump
+    # only if the cleaner one hasn't been generated.
+    kt_traj_main = (
+        load_kintera_trajectory(100, variant="_neutral")
+        or load_kintera_trajectory(100)
+    )
     kt_traj_500 = load_kintera_trajectory(500)
     p_traj_majors = None
     p_traj_neutrals = None
@@ -420,22 +430,28 @@ def main() -> None:
     match_stats_500 = None
     if kt_traj_main is not None:
         years = kt_traj_main["total_time_s"] / 3.156e7
+        variant_tag = (
+            " (neutrals-only, charge balance off)"
+            if kt_traj_main.get("variant") == "_neutral"
+            else " (default no_grain mode — contains the cation cascade)"
+        )
         p_traj_majors = plot_kintera_vs_kb_profiles(
             kb_atm, panel_majors, kt_traj_main,
-            f"kintera (NT={kt_traj_main['ntime']}, {years:.0f} yr integrated) vs KB — major species",
+            f"kintera NT={kt_traj_main['ntime']}, {years:.0f} yr{variant_tag} vs KB — major species",
         )
         p_traj_neutrals = plot_kintera_vs_kb_profiles(
             kb_atm, panel_more_neutrals, kt_traj_main,
-            f"kintera (NT={kt_traj_main['ntime']}, {years:.0f} yr) vs KB — secondary neutrals",
+            f"kintera NT={kt_traj_main['ntime']}, {years:.0f} yr{variant_tag} vs KB — secondary neutrals",
         )
         p_traj_radicals = plot_kintera_vs_kb_profiles(
             kb_atm, panel_radicals_artifact, kt_traj_main,
-            f"kintera (NT={kt_traj_main['ntime']}, {years:.0f} yr) vs KB — radicals & H family",
+            f"kintera NT={kt_traj_main['ntime']}, {years:.0f} yr{variant_tag} vs KB — radicals & H family",
         )
-        p_traj_ions = plot_kintera_vs_kb_profiles(
-            kb_atm, panel_ions, kt_traj_main,
-            f"kintera (NT={kt_traj_main['ntime']}, {years:.0f} yr) vs KB — ions",
-        )
+        if kt_traj_main.get("variant") != "_neutral":
+            p_traj_ions = plot_kintera_vs_kb_profiles(
+                kb_atm, panel_ions, kt_traj_main,
+                f"kintera NT={kt_traj_main['ntime']}, {years:.0f} yr vs KB — ions",
+            )
         match_stats = species_match_count(kb_atm, kt_traj_main)
     if kt_traj_500 is not None:
         years_500 = kt_traj_500["total_time_s"] / 3.156e7

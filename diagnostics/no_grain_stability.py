@@ -91,6 +91,13 @@ def _is_grain_related(name):
     return name in {"SGA", "U"} or name.startswith("G")
 
 
+def _is_ion_related(name):
+    """Ion species: cations end in '+', anions end in '-' (except E which is electron)."""
+    if name == "E":
+        return True
+    return name.endswith("+") or (name.endswith("-") and name != "E")
+
+
 def main():
     print(f"[setup] loading Titan atmosphere from {ATMOSPHERE_PATH}")
     initial = kt.parse_kinetics_base_atmosphere(str(ATMOSPHERE_PATH))
@@ -125,6 +132,16 @@ def main():
             if not any(_is_grain_related(name) for name in term.reactants + term.products)
         ]
         print(f"[setup] no_grain mode: filtered to {len(source_terms)} non-grain terms")
+    elif network_mode == "neutrals_only":
+        # No grain + no ions. For isolating neutral-only chemistry against KB
+        # to see whether the underlying neutral network matches without the
+        # cation-cascade contamination at low altitudes.
+        source_terms = [
+            term for term in source_terms
+            if not any(_is_grain_related(name) or _is_ion_related(name)
+                       for name in term.reactants + term.products)
+        ]
+        print(f"[setup] neutrals_only mode: filtered to {len(source_terms)} neutral-only terms")
     elif network_mode == "full":
         print(f"[setup] full mode: all {len(source_terms)} terms (ion + grain)")
     else:
