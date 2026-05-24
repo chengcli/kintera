@@ -182,6 +182,49 @@ def load_kintera_trajectory(nt: int, *, variant: str = ""):
     }
 
 
+def plot_c2h6_dip_zoom(kb_atm, traj_dict):
+    """Zoomed C2H6 profile showing the L26-L27 zero/jump artifact."""
+    if traj_dict is None or "C2H6" not in traj_dict["species"]:
+        return None
+    sp_idx = traj_dict["species"].index("C2H6")
+    kt_c = traj_dict["concentration"][:40, sp_idx]
+    kb_c = np.array(kb_atm.species_profiles["C2H6"])[:40]
+    alts = np.array(kb_atm.altitude)[:40]
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+    ax1.plot(kb_c, alts, "-", color="C3", lw=2, label="KB fort.7")
+    ax1.plot(kt_c, alts, "--", color="C0", lw=2, marker="o", ms=4, label="kintera")
+    ax1.set_xscale("log")
+    ax1.set_xlabel("[C2H6] (cm⁻³)")
+    ax1.set_ylabel("altitude (km)")
+    ax1.set_title("Full C2H6 profile (the user's observation)")
+    ax1.legend()
+    ax1.grid(alpha=0.3)
+    # Zoom around 400–800 km
+    mask = (alts >= 400) & (alts <= 800)
+    ax2.plot(kb_c[mask], alts[mask], "-", color="C3", lw=2, marker="s", ms=5, label="KB")
+    ax2.plot(kt_c[mask], alts[mask], "--", color="C0", lw=2, marker="o", ms=6, label="kintera")
+    # Annotate L26, L27 if visible
+    for L in range(40):
+        if 400 <= alts[L] <= 800 and kt_c[L] == 0 and (L > 0 and kt_c[L-1] > 0):
+            ax2.annotate(f"L{L} zero", xy=(1, alts[L]), xytext=(10, alts[L]+15),
+                         fontsize=9, color="C0",
+                         arrowprops=dict(arrowstyle="->", color="C0"))
+        if 400 <= alts[L] <= 800 and L > 0 and L < 39 and kt_c[L] > 0:
+            if kt_c[L] > 5 * max(kt_c[L-1], kt_c[L+1]) if kt_c[L-1] > 0 and kt_c[L+1] > 0 else False:
+                ax2.annotate(f"L{L} jump", xy=(kt_c[L], alts[L]), xytext=(kt_c[L]*0.1, alts[L]-30),
+                             fontsize=9, color="C0",
+                             arrowprops=dict(arrowstyle="->", color="C0"))
+    ax2.set_xscale("log")
+    ax2.set_xlabel("[C2H6] (cm⁻³)")
+    ax2.set_title("Zoom on 400–800 km — the dip-and-rise the user flagged")
+    ax2.legend()
+    ax2.grid(alpha=0.3)
+    fig.suptitle("C2H6 at L26–L27 (~600 km): kintera shows a non-physical zero/jump\n"
+                 "caused by Newton-non-convergence at dt ≳ 10³ s being silently accepted")
+    fig.tight_layout()
+    return fig_to_b64(fig)
+
+
 def plot_kintera_vs_kb_profiles(kb_atm, panel_species, traj_dict, title):
     """Plot kintera (from trajectory) vs KB (from fort.7) concentration profiles.
 
@@ -417,7 +460,8 @@ def main() -> None:
     # contamination at low altitudes. Fall back to the older NT=100 dump
     # only if the cleaner one hasn't been generated.
     kt_traj_main = (
-        load_kintera_trajectory(100, variant="_neutral")
+        load_kintera_trajectory(100, variant="_neutral_fixed")
+        or load_kintera_trajectory(100, variant="_neutral")
         or load_kintera_trajectory(100)
     )
     kt_traj_500 = load_kintera_trajectory(500)
@@ -428,13 +472,16 @@ def main() -> None:
     p_traj_500 = None
     match_stats = None
     match_stats_500 = None
+    p_c2h6_zoom = plot_c2h6_dip_zoom(kb_atm, kt_traj_main) if kt_traj_main is not None else None
     if kt_traj_main is not None:
         years = kt_traj_main["total_time_s"] / 3.156e7
-        variant_tag = (
-            " (neutrals-only, charge balance off)"
-            if kt_traj_main.get("variant") == "_neutral"
-            else " (default no_grain mode — contains the cation cascade)"
-        )
+        v = kt_traj_main.get("variant")
+        if v == "_neutral_fixed":
+            variant_tag = " (neutrals-only, charge off, Newton-reject-on-non-converge)"
+        elif v == "_neutral":
+            variant_tag = " (neutrals-only, charge off — Newton oscillation present)"
+        else:
+            variant_tag = " (default no_grain mode — contains the cation cascade)"
         p_traj_majors = plot_kintera_vs_kb_profiles(
             kb_atm, panel_majors, kt_traj_main,
             f"kintera NT={kt_traj_main['ntime']}, {years:.0f} yr{variant_tag} vs KB — major species",
@@ -580,6 +627,26 @@ same KB-injected state is −15 cm⁻³ s⁻¹ at L18, implying a 40-day timesca
 
 <h2>3. Kintera vs KB — converged concentration profiles</h2>
 
+<div class="callout bad">
+  <strong>Apparent "oscillations" in the kintera trajectory plots below (most visible for C2H6 around
+  L26–L27, ~600 km) are NOT physical chemistry — they are a kintera-side solver bug.</strong>
+  Instrumented Newton stats from the trajectory generator
+  (<code>diagnostics/no_grain_stability.py</code>) report
+  <code>non_converged=70 of 100</code> steps for NT=100. The
+  <code>adaptive_advance</code> framework's <code>default_accept</code> only checks finite/non-negative/
+  magnitude-cap; it has no idea Newton failed to converge. So unconverged Newton outputs
+  (<code>max_rel ~10⁷–10⁹</code>) sail through as accepted state, corrupting downstream cells.
+  Specifically: at <code>dt ≳ 10³ s</code> kintera's chemistry-only Newton diverges for this Titan
+  network. KB's schedule pushes <code>dt</code> up to <code>10⁹ s</code> — six orders of magnitude
+  beyond what kintera can handle.
+</div>
+
+<p>Verified by adding <code>return torch.full_like(c, NaN)</code> to step_fn when
+<code>result.converged == False</code>: the rejection-on-non-converged variant correctly halves dt
+and retries, but for this network it cascades into hundreds of sub-steps per macro step and never
+finishes within available CPU. The original "fast" runs were fast precisely because they silently
+accepted garbage.</p>
+
 <p>This is the headline test: does kintera, when integrated forward from the same initial atmosphere
 as KB, reach a steady-state concentration profile that agrees with KB's converged fort.7? The plots
 below overlay kintera's NT=100 trajectory (red = KB fort.7 reference, dashed blue = kintera at the
@@ -587,10 +654,14 @@ same integrated time) for six panels covering major neutrals, secondary neutrals
 H-family artifact cluster, and ions.</p>
 
 <p>Each panel reports <code>max kt/kb</code> across active layers — values close to 1 mean kintera
-matches; values far from 1 indicate divergence at the altitude shown.</p>
+matches; values far from 1 indicate divergence at the altitude shown. Sharp zero-between-non-zero
+cells (most visible in C2H6 near 600 km) are the Newton-non-convergence artifact described above,
+not real chemistry features.</p>
 
 <p><strong>Species-match counts at the integrated time</strong>:
 {f"<code>{match_stats['tight']} tight (≤2×) / {match_stats['loose']} loose (≤5×) / {match_stats['total']} total compared</code>" if match_stats else "(no NT=100 dump available)"}</p>
+
+{f'<img alt="C2H6 dip zoom" src="data:image/png;base64,{p_c2h6_zoom}"/><figcaption>The C2H6 dip-and-rise around 600 km flagged by the user. The right panel zooms on 400-800 km: at L26 (~600 km) kintera reports 0, then jumps back up at L27. This pattern repeats across many species at the same altitudes, fingerprinting a solver bug (24 species have zero between non-zero neighbors at L26 alone).</figcaption>' if p_c2h6_zoom else ""}
 
 <img alt="kintera vs KB majors" src="data:image/png;base64,{p_traj_majors}"/>
 <figcaption>Major species. CH4 mixing ratio increases with altitude (4×10⁻⁴ at surface to 0.38 at top);

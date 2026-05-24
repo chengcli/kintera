@@ -385,6 +385,15 @@ def main():
                 f"sp={worst_neg_species}",
                 flush=True,
             )
+        # If the chemistry Newton didn't converge at this dt, return a NaN
+        # tensor so the adaptive_advance default_accept REJECTS the step and
+        # halves dt. Without this, unconverged Newton states (max_rel ~1e9)
+        # silently slide into the accepted concentration and corrupt the
+        # downstream profile — causing the spurious zero-between-non-zero
+        # cells the user noticed near 600 km. Controlled by env var so we
+        # can compare behavior. Default ON (=1).
+        if not result.converged and os.environ.get("KINTERA_REJECT_NON_CONV", "1") == "1":
+            return torch.full_like(result.concentration, float("nan"))
         return result.concentration
 
     if QSS_INIT_DT > 0:
