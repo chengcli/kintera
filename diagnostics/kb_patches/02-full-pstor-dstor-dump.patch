@@ -44,13 +44,13 @@ Finding from running this diagnostic (2026-05-24):
   in MEMORY.md under project_kintera_transport_form.md.
 
 ---
- src/KINETGENX/kinetgen1X.F | 19 +++++++++++++++++++
- 1 file changed, 19 insertions(+)
+ src/KINETGENX/kinetgen1X.F | 34 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
 
 diff --git a/src/KINETGENX/kinetgen1X.F b/src/KINETGENX/kinetgen1X.F
 --- a/src/KINETGENX/kinetgen1X.F
 +++ b/src/KINETGENX/kinetgen1X.F
-@@ -10996,6 +10996,25 @@
+@@ -10996,6 +10996,40 @@
               enddo
               close(89)
   8888     continue
@@ -73,6 +73,22 @@ diff --git a/src/KINETGENX/kinetgen1X.F b/src/KINETGENX/kinetgen1X.F
 +            ENDDO
 +          ENDDO
 +          CLOSE(94)
++
++! Full SRATE dump (sam 2026-05-24): per-reaction per-altitude rates.
++! Used to verify whether KB's prod+loss header "rxn 195" really uses
++! the formula we expect, or whether some other ZK slot is leaking in.
++          OPEN(95, FILE='prod+loss/_full_srate.dat',
++     >         STATUS='REPLACE')
++          WRITE(95,*) 'rxn  alt_idx  SRATE(cm^-3 s^-1)'
++          DO IX = 1,NREACT
++            DO K = 1,NALT
++              IF (SRATE(IX,1,1,K) .NE. 0.0) THEN
++                WRITE(95,'(I5,2X,I4,2X,1PE13.5)') IX, K,
++     >            SRATE(IX,1,1,K)
++              ENDIF
++            ENDDO
++          ENDDO
++          CLOSE(95)
 
            DO 2639 IX=1,NREACT
              DO 2637 IY=1,NVARY

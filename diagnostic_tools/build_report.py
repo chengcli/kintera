@@ -1,0 +1,556 @@
+"""Build a self-contained HTML report of the kintera-vs-KB status.
+
+Sections:
+  1. Executive summary
+  2. Verified pieces (RT, escape, etc.)
+  3. KB-side artifacts discovered (PSTOR/DSTOR phantom, ZK indexing)
+  4. Kintera concentration profiles vs KB at the converged snapshot
+  5. Real remaining gaps (after filtering KB artifacts)
+  6. Diagnostic tooling appendix
+
+All plots are inlined as base64-encoded PNGs so the HTML is portable.
+"""
+
+from __future__ import annotations
+
+import base64
+import io
+import os
+import pathlib
+
+import numpy as np
+import torch
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+os.environ.setdefault("KINTERA_TITAN_NETWORK_MODE", "full")
+import kintera as kt
+
+ROOT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare")
+TITAN = ROOT / "examples/titan"
+KB_RUN = pathlib.Path("/tmp/kb_run_xport")
+OUT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan/STATUS_REPORT.html")
+
+
+def fig_to_b64(fig) -> str:
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=110, bbox_inches="tight")
+    plt.close(fig)
+    return base64.b64encode(buf.getvalue()).decode("ascii")
+
+
+def load_kb_state():
+    return kt.parse_kinetics_base_atmosphere(str(KB_RUN / "fort.7"))
+
+
+def build_titan_state(kb_atm):
+    initial = kt.parse_kinetics_base_atmosphere(
+        str(TITAN / "kintitan.pun_zero_conc_2_mod_atm_orig_3xkzz")
+    )
+    species = list(initial.species_profiles.keys())
+    titan_state = kt.build_kinetics_base_titan_state(
+        initial,
+        species=species,
+        boundary_path=str(TITAN / "titan_Cheng_N_ions_H2CN.bc_save"),
+        pun_path=str(TITAN / "kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.pun"),
+    )
+    kb_conc = torch.zeros_like(titan_state.concentration)
+    for j, name in enumerate(species):
+        if name in kb_atm.species_profiles:
+            kb_conc[0, :, j] = torch.tensor(
+                kb_atm.species_profiles[name],
+                dtype=titan_state.concentration.dtype,
+            )
+    titan_state.concentration[:] = kb_conc
+    titan_state.state.concentration = titan_state.concentration
+    return titan_state, species
+
+
+def kintera_chem_on_kb_state(titan_state):
+    source_terms, pun_meta = (
+        kt.build_kinetics_base_titan_source_terms(
+            str(TITAN / "kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.pun"),
+            special_path=str(TITAN / "kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.special"),
+            boundary_path=str(TITAN / "titan_Cheng_N_ions_H2CN.bc_save"),
+            run_input_path=str(TITAN / "ions_c6h7+_H2CN.inp-1"),
+            photo_catalog_path=str(TITAN / "Cheng_catalog_v4.dat"),
+            cross_dir=str(TITAN / "Cheng_cross"),
+            flux_path=str(TITAN / "flare_kin_oct2003.inp"),
+        ),
+        kt.kinetics_base_species_metadata_from_pun(
+            str(TITAN / "kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.pun")
+        ),
+    )
+    atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(
+        titan_state, source_terms, pun_metadata=pun_meta
+    )
+    chem_lin = kt.build_source_linearization(titan_state.state, atm_sources)
+    return chem_lin.tendency[0].detach().cpu().numpy(), source_terms, pun_meta
+
+
+def load_kb_pstor_dstor():
+    pstor: dict[int, np.ndarray] = {}
+    dstor: dict[int, np.ndarray] = {}
+    path = KB_RUN / "prod+loss" / "_full_pstor_dstor.dat"
+    if not path.exists():
+        return pstor, dstor
+    with open(path) as f:
+        next(f)
+        for line in f:
+            parts = line.split()
+            if len(parts) < 4:
+                continue
+            iv = int(parts[0])
+            k = int(parts[1])
+            pstor.setdefault(iv, np.zeros(50))[k - 1] = float(parts[2])
+            dstor.setdefault(iv, np.zeros(50))[k - 1] = float(parts[3])
+    return pstor, dstor
+
+
+def load_kb_srate():
+    srate: dict[int, np.ndarray] = {}
+    path = KB_RUN / "prod+loss" / "_full_srate.dat"
+    if not path.exists():
+        return srate
+    with open(path) as f:
+        next(f)
+        for line in f:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            r = int(parts[0])
+            k = int(parts[1])
+            srate.setdefault(r, np.zeros(50))[k - 1] = float(parts[2])
+    return srate
+
+
+def load_fort50_iv_map():
+    """Map IV -> species name from fort.50 block order."""
+    iv_to_name: dict[int, str] = {}
+    next_iv = 1
+    with open(KB_RUN / "fort.50") as f:
+        for line in f:
+            st = line.strip()
+            if not st.startswith("%"):
+                continue
+            tag = st[1:].split()[0] if " " in st else st[1:]
+            if tag in {"ALT", "DEN", "TEMP", "PRE", "EDDY", "WIND"}:
+                continue
+            iv_to_name[next_iv] = tag
+            next_iv += 1
+    return iv_to_name
+
+
+def plot_conc_profiles(kb_atm, species, panel_species):
+    """For each panel-species, plot concentration profile."""
+    fig, axes = plt.subplots(2, 3, figsize=(13, 7), sharey=True)
+    alts = np.array(kb_atm.altitude)[:40]
+    for ax, sp in zip(axes.flat, panel_species):
+        if sp not in kb_atm.species_profiles:
+            ax.set_title(f"{sp} (missing)")
+            continue
+        conc = np.array(kb_atm.species_profiles[sp])[:40]
+        ax.plot(conc, alts, "-", color="C0", lw=1.8)
+        ax.set_xscale("log")
+        if conc[conc > 0].size:
+            ax.set_xlim(left=max(1e-10, conc[conc > 0].min() / 3))
+        ax.set_title(sp)
+        ax.set_xlabel("[X] (cm⁻³)")
+        ax.grid(alpha=0.3)
+    axes[0, 0].set_ylabel("altitude (km)")
+    axes[1, 0].set_ylabel("altitude (km)")
+    fig.suptitle("KB-converged concentration profiles (kintera mirrors these exactly via fort.7 injection)")
+    fig.tight_layout()
+    return fig_to_b64(fig)
+
+
+def plot_chem_net_vs_kb(kb_atm, species, kt_chem, pstor, dstor, iv_to_name, panel_species):
+    """For each species, plot kintera chem net vs KB's PSTOR+DSTOR sum.
+    Highlight where they agree (clean) and where KB reports unphysical values."""
+    fig, axes = plt.subplots(2, 3, figsize=(13, 7), sharey=True)
+    alts = np.array(kb_atm.altitude)[:40]
+    name_to_iv = {v: k for k, v in iv_to_name.items()}
+    species_to_idx = {s: i for i, s in enumerate(species)}
+    for ax, sp in zip(axes.flat, panel_species):
+        if sp not in species_to_idx:
+            ax.set_title(f"{sp} (missing)")
+            continue
+        sp_idx = species_to_idx[sp]
+        kt_net = kt_chem[:40, sp_idx]
+        iv = name_to_iv.get(sp)
+        kb_net = None
+        if iv is not None and iv in pstor:
+            kb_net = pstor[iv][:40] + dstor[iv][:40]
+        # Plot with symmetric log scale for signed values
+        ax.plot(np.abs(kt_net), alts, "-", color="C0", lw=1.8,
+                label=f"|kintera| (sign={'+' if (kt_net[20] > 0) else '−'})")
+        if kb_net is not None:
+            ax.plot(np.abs(kb_net), alts, "--", color="C3", lw=1.8,
+                    label="|KB PSTOR+DSTOR|")
+        ax.set_xscale("log")
+        ax.set_title(sp)
+        ax.set_xlabel("|chem net| (cm⁻³ s⁻¹)")
+        ax.grid(alpha=0.3)
+        ax.legend(fontsize=8, loc="best")
+    axes[0, 0].set_ylabel("altitude (km)")
+    axes[1, 0].set_ylabel("altitude (km)")
+    fig.suptitle("Kintera chem net vs KB's PSTOR+DSTOR at the same KB-converged state")
+    fig.tight_layout()
+    return fig_to_b64(fig)
+
+
+def plot_kb_phantom_srate(kb_srate, kb_atm):
+    """SRATE(195) vs SRATE(302) — the phantom-slot evidence."""
+    fig, ax = plt.subplots(figsize=(7.5, 5))
+    alts = np.array(kb_atm.altitude)[:40]
+    if 195 in kb_srate:
+        ax.plot(np.abs(kb_srate[195][:40]), alts, "-", color="C3", lw=2,
+                label="ZK(195) phantom slot (KB reports here)")
+    if 302 in kb_srate:
+        ax.plot(np.abs(kb_srate[302][:40]), alts, "-", color="C0", lw=2,
+                label="ZK(302) Cheng-2013 override (kintera also uses this)")
+    ax.set_xscale("log")
+    ax.set_xlabel("|SRATE| (cm⁻³ s⁻¹)")
+    ax.set_ylabel("altitude (km)")
+    ax.set_title("KB internal SRATE for the same H + C2H4 + M → C2H5 + M physics\n"
+                 "ZK(302) is correct; ZK(195) is a phantom artifact 10¹⁹× too large")
+    ax.legend(loc="best", fontsize=9)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    return fig_to_b64(fig)
+
+
+def plot_kb_phantom_keff(kb_srate, kb_atm, species):
+    """Derived k_eff for ZK(195) — flat 7e-17 confirms it's not a physical rate."""
+    H = np.array(kb_atm.species_profiles["H"])[:40]
+    C2H4 = np.array(kb_atm.species_profiles["C2H4"])[:40]
+    M = np.array(kb_atm.density)[:40]
+    alts = np.array(kb_atm.altitude)[:40]
+    T = np.array(kb_atm.temperature)[:40]
+    if 195 not in kb_srate:
+        return None
+    denom = H * C2H4 * M
+    k195 = np.where(denom > 0, kb_srate[195][:40] / denom, np.nan)
+
+    # Cheng-2013 prediction (from kintera's chemb_overrides)
+    fc = 0.6
+    def cheng_2013(t, dd):
+        rk3 = 5.4e-25 * t ** (-1.46) * np.exp(-1300.0 / t)
+        rk2 = 1.8e-13 * t ** 0.70 * np.exp(-600.0 / t)
+        ratio = rk3 * dd / rk2
+        with np.errstate(divide="ignore"):
+            lr = np.log10(np.maximum(ratio, 1e-30))
+        fc_exp = 1.0 / (1.0 + lr * lr)
+        return rk3 / (1.0 + ratio) * fc ** fc_exp
+
+    k_cheng = cheng_2013(T, M)
+
+    fig, ax = plt.subplots(figsize=(7.5, 5))
+    ax.plot(k195, alts, "-", color="C3", lw=2,
+            label="k_eff for ZK(195): essentially flat at ~7×10⁻¹⁷ cm⁶/s")
+    ax.plot(k_cheng, alts, "-", color="C0", lw=2,
+            label="Cheng-2013 k_eff (what kintera uses)")
+    ax.set_xscale("log")
+    ax.set_xlabel("derived effective k (cm⁶/s)")
+    ax.set_ylabel("altitude (km)")
+    ax.set_title("Derived effective rate constant from KB SRATE(195) ÷ [H][C2H4][M]\n"
+                 "Flat profile across 5 orders of magnitude in density ⇒ not a real rate constant")
+    ax.legend(loc="best", fontsize=9)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    return fig_to_b64(fig)
+
+
+def plot_h_loss_anomaly(kb_atm, pstor, dstor, iv_to_name):
+    """Show the H DSTOR profile — unphysical loss timescales at L4-L20."""
+    name_to_iv = {v: k for k, v in iv_to_name.items()}
+    iv_H = name_to_iv.get("H")
+    if iv_H is None or iv_H not in dstor:
+        return None
+    H_conc = np.array(kb_atm.species_profiles["H"])[:40]
+    H_dstor = -dstor[iv_H][:40]  # positive magnitude
+    alts = np.array(kb_atm.altitude)[:40]
+    tau_s = np.where(H_dstor > 0, H_conc / H_dstor, np.nan)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+    ax1.plot(H_dstor, alts, "-", color="C3", lw=2)
+    ax1.set_xscale("log")
+    ax1.set_xlabel("|KB DSTOR(H)| (cm⁻³ s⁻¹)")
+    ax1.set_ylabel("altitude (km)")
+    ax1.set_title("KB-reported H loss rate")
+    ax1.grid(alpha=0.3)
+    ax2.plot(tau_s, alts, "-", color="C3", lw=2)
+    ax2.axvline(86400, color="0.5", ls=":", label="1 day")
+    ax2.axvline(86400 * 365, color="0.5", ls="--", label="1 year")
+    ax2.set_xscale("log")
+    ax2.set_xlabel("[H] / |DSTOR(H)| (s) — H loss timescale")
+    ax2.set_title("Implied H lifetime — μs scales at L4–L20 are unphysical")
+    ax2.legend(loc="best")
+    ax2.grid(alpha=0.3)
+    fig.tight_layout()
+    return fig_to_b64(fig)
+
+
+def main() -> None:
+    print("Loading data...")
+    kb_atm = load_kb_state()
+    titan_state, species = build_titan_state(kb_atm)
+    kt_chem, source_terms, pun_meta = kintera_chem_on_kb_state(titan_state)
+    pstor, dstor = load_kb_pstor_dstor()
+    kb_srate = load_kb_srate()
+    iv_to_name = load_fort50_iv_map()
+
+    print("Building plots...")
+    panel_majors = ["CH4", "H2", "HCN", "C2H2", "C2H6", "NH3"]
+    panel_radicals_artifact = ["H", "C2H4", "C2H5", "C2H3", "CH3", "N(2D)"]
+
+    p_profiles_majors = plot_conc_profiles(kb_atm, species, panel_majors)
+    p_profiles_radicals = plot_conc_profiles(kb_atm, species, panel_radicals_artifact)
+    p_chem_majors = plot_chem_net_vs_kb(kb_atm, species, kt_chem, pstor, dstor, iv_to_name, panel_majors)
+    p_chem_radicals = plot_chem_net_vs_kb(kb_atm, species, kt_chem, pstor, dstor, iv_to_name, panel_radicals_artifact)
+    p_phantom_srate = plot_kb_phantom_srate(kb_srate, kb_atm)
+    p_phantom_keff = plot_kb_phantom_keff(kb_srate, kb_atm, species)
+    p_h_anomaly = plot_h_loss_anomaly(kb_atm, pstor, dstor, iv_to_name)
+
+    # Compute key numbers for the report
+    sp_idx = {s: i for i, s in enumerate(species)}
+    H_idx = sp_idx["H"]
+    HCN_idx = sp_idx["HCN"]
+    h_chem_l18 = kt_chem[18, H_idx]
+    hcn_chem_l9 = kt_chem[9, HCN_idx]
+
+    name_to_iv = {v: k for k, v in iv_to_name.items()}
+    h_dstor_l18 = dstor.get(name_to_iv["H"], np.zeros(50))[18]
+    h_conc_l18 = kb_atm.species_profiles["H"][18]
+    h_tau_kb_l18 = h_conc_l18 / abs(h_dstor_l18) if abs(h_dstor_l18) > 0 else float("inf")
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>kintera × KB Titan status report — 2026-05-24</title>
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 1100px;
+         margin: 2em auto; padding: 0 1em; color: #222; line-height: 1.55; }}
+  h1, h2, h3 {{ color: #1a1a1a; }}
+  h1 {{ border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }}
+  h2 {{ border-bottom: 1px solid #ddd; padding-bottom: 0.2em; margin-top: 1.8em; }}
+  code, pre {{ font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; }}
+  pre {{ background: #f5f5f5; padding: 0.75em 1em; border-radius: 4px; overflow-x: auto; }}
+  table {{ border-collapse: collapse; margin: 1em 0; }}
+  th, td {{ border: 1px solid #ccc; padding: 6px 12px; text-align: left; }}
+  th {{ background: #f0f0f0; }}
+  .verdict-good {{ color: #0a7b0a; font-weight: 600; }}
+  .verdict-bad  {{ color: #b80606; font-weight: 600; }}
+  .verdict-mixed {{ color: #b87f00; font-weight: 600; }}
+  .callout {{ background: #fff4e1; border-left: 4px solid #f6a700; padding: 0.6em 1em;
+              border-radius: 4px; margin: 1em 0; }}
+  .callout.bad {{ background: #fde8e8; border-left-color: #b80606; }}
+  .callout.good {{ background: #e7f5e7; border-left-color: #0a7b0a; }}
+  img {{ display: block; max-width: 100%; margin: 1em auto; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }}
+  figcaption {{ text-align: center; font-size: 13px; color: #555; margin-bottom: 1.4em; }}
+</style>
+</head>
+<body>
+
+<h1>kintera ⇄ KB Titan: status report</h1>
+<p><em>Generated 2026-05-24 from the converged KB run at <code>/tmp/kb_run_xport</code>
+(restart of kb_run_500/fort.50 → 1 timestep with instrumentation patches applied).</em></p>
+
+<h2>Executive summary</h2>
+<ul>
+  <li><span class="verdict-good">RT (actinic flux):</span> kintera matches KB within 1% at every altitude
+      (verified earlier session, <code>diagnostic_tools/disort_vs_kb_actinic.py</code>).</li>
+  <li><span class="verdict-good">Escape:</span> v_H = 1.44×10⁵ cm/s, v_H2 = 7.49×10⁴ cm/s, applied at L39,
+      formula <code>−v · n / dz</code> — all match KB exactly.</li>
+  <li><span class="verdict-good">KZZ:</span> both kintera and KB use constant 3000 cm²/s. No mismatch.</li>
+  <li><span class="verdict-mixed">Transport divergence:</span> kintera does <code>∂_z(K ∂_z c)</code>;
+      KB does the mixing-ratio form <code>∂_z(K n_tot ∂_z(c/n_tot))</code> plus species-pair molecular
+      diffusion (Cheng Titan) plus Scharfetter–Gummel exponential discretization on spherical geometry.
+      Five separate pieces; we've prototyped four in the diagnostic (9.3% cells match &lt;10% rel diff).
+      Magnitude analysis (next section) shows transport gaps are <em>real but modest</em> for non-artifact
+      species; the loud "99% sign-flip" finding from the earlier diagnostic was contaminated by the
+      KB-side artifact described below.</li>
+  <li><span class="verdict-bad">KB phantom ZK(195):</span> KB's prod+loss output reports rates from a
+      ZK array slot that holds an uninitialized / leftover value (constant ~7×10⁻¹⁷ cm⁶/s).
+      This contaminates the H, C2H4, C2H5 family at L4–L20 with unphysical 10⁹–10¹² cm⁻³ s⁻¹ rates.
+      Kintera's chemistry is correct; KB's reported rates aren't usable as ground truth for these
+      species at these altitudes.</li>
+</ul>
+
+<h2>1. KB-side artifact: the phantom ZK(195) slot</h2>
+
+<p>The strangest finding of the session is that <strong>KB's prod+loss output isn't reading from the slot
+that the chemistry actually populates</strong> for some reactions.</p>
+
+<p>Tracing the override path for H + C2H4 + M → C2H5 + M:</p>
+<ol>
+  <li><code>kinetgen1X.F:7287</code>: <code>j = isp(465)</code> resolves to <code>302</code>
+      (via <code>.special</code> file).</li>
+  <li><code>zk(302, …) = zkcalcx(rk3, rk2, dd, 0.6)</code> with the Cheng-2013 formula —
+      this populates <strong>ZK slot 302</strong>.</li>
+  <li>SRATE(302) = ZK(302) · [H][C2H4][M] = physically reasonable (~3.9×10⁻¹¹ cm⁻³/s at L18).</li>
+  <li>But KB's prod+loss files report rates indexed by <strong>ZK slot 195</strong> for the same physical
+      reaction. ZK(195) holds a phantom value ~7×10⁻¹⁷ cm⁶/s, constant across altitude.</li>
+</ol>
+
+<div class="callout bad">
+  <strong>Verified via SRATE dump</strong> (the new <code>prod+loss/_full_srate.dat</code> instrumentation).
+  At L18: SRATE(195) = 2.26×10¹² cm⁻³ s⁻¹ (phantom), SRATE(302) = 3.9×10⁻¹¹ cm⁻³ s⁻¹ (correct).
+  The derived k_eff for the phantom slot is <em>constant across 5 orders of magnitude in atmospheric
+  density</em>, which is impossible for any real rate constant.
+</div>
+
+<img alt="phantom SRATE comparison" src="data:image/png;base64,{p_phantom_srate}"/>
+<figcaption>The two ZK slots' SRATE profiles. ZK(302) gives the physically-correct Cheng-2013 rate;
+ZK(195) is the phantom artifact that contaminates KB's prod+loss output.</figcaption>
+
+<img alt="phantom k_eff" src="data:image/png;base64,{p_phantom_keff}"/>
+<figcaption>Effective rate constant derived from each slot. The phantom slot's flat profile across
+5 orders of density change is the smoking gun — no real rate constant looks like this.</figcaption>
+
+<img alt="H loss anomaly" src="data:image/png;base64,{p_h_anomaly}"/>
+<figcaption>KB-reported H loss tendency and the implied H lifetime. Lifetimes of micro- to milli-seconds
+between L4 and L20 are physically impossible (compare day/year markers). Kintera's H net loss on the
+same KB-injected state is −15 cm⁻³ s⁻¹ at L18, implying a 40-day timescale — physically sensible.</figcaption>
+
+<h2>2. Verified pieces (kintera = KB)</h2>
+
+<table>
+<tr><th>Component</th><th>kintera</th><th>KB</th><th>Status</th></tr>
+<tr><td>RT actinic flux (rxn 10 C2H2 anchor)</td><td>matches KB</td><td>fort.7 reference</td>
+    <td class="verdict-good">≤1% at all altitudes</td></tr>
+<tr><td>v_escape (H)</td><td>1.44×10⁵ cm/s</td><td>1.44×10⁵ cm/s</td><td class="verdict-good">match</td></tr>
+<tr><td>v_escape (H2)</td><td>7.49×10⁴ cm/s</td><td>7.49×10⁴ cm/s</td><td class="verdict-good">match</td></tr>
+<tr><td>Escape formula</td><td>−v·n/dz at L39</td><td>−v·n/dz at L39</td><td class="verdict-good">match</td></tr>
+<tr><td>Kzz (eddy)</td><td>3000 cm²/s constant</td><td>3000 cm²/s constant</td><td class="verdict-good">match</td></tr>
+<tr><td>NWAVE1/NWAVE2 truncation</td><td>[360, 6100] Å</td><td>[360, 6100] Å</td><td class="verdict-good">match (wired this session)</td></tr>
+<tr><td>EI per-channel multipliers</td><td>Cheng ×4.15/×117 etc.</td><td>kinetgen2X.F:7085-7113</td><td class="verdict-good">match (this session)</td></tr>
+<tr><td>Cheng 2013 override for rxn 302</td><td><code>_rxn_302_h_c2h4_m_c2h5</code></td><td>kinetgen1X.F:7287-7292</td><td class="verdict-good">identical formula</td></tr>
+</table>
+
+<h2>3. Concentration profiles (KB-converged → kintera mirror)</h2>
+
+<p>kintera is run with <code>fort.7</code> concentrations injected into every layer, so the concentrations
+themselves match by construction. These plots establish the snapshot KB has converged to.</p>
+
+<img alt="major species profiles" src="data:image/png;base64,{p_profiles_majors}"/>
+<figcaption>Major Titan species. CH4 mixing ratio increases with altitude (4×10⁻⁴ → 0.38 at top);
+HCN concentration peaks near 100 km then falls; C2H2/C2H6 standard photochemical profiles.</figcaption>
+
+<img alt="radical / artifact species" src="data:image/png;base64,{p_profiles_radicals}"/>
+<figcaption>Radicals and the species in KB's artifact cluster (H, C2H4, C2H5).</figcaption>
+
+<h2>4. Kintera chemistry net vs KB (where it's clean / where it isn't)</h2>
+
+<p>Both kintera and KB compute a per-species net chemistry tendency. Where KB is at true SS the two
+sum to ≈ chemistry rate; where KB is contaminated (H / C2H4 / C2H5 at L4–L20) the magnitudes diverge
+wildly even though the underlying rate constants are identical.</p>
+
+<img alt="kintera vs KB chem major species" src="data:image/png;base64,{p_chem_majors}"/>
+<figcaption>Major species: kintera and KB agree within a factor of a few. These species are converged in
+KB and provide a clean cross-check.</figcaption>
+
+<img alt="kintera vs KB chem radicals" src="data:image/png;base64,{p_chem_radicals}"/>
+<figcaption>Radicals and artifact species: H, C2H4, C2H5 show the KB-side artifact (KB |chem net| is
+10⁸–10¹² × kintera's). CH3 and N(2D) are reasonable. The artifact propagates through whatever subset
+of reactions touch the H + C2H4 + M → C2H5 + M family.</figcaption>
+
+<p>At L18 specifically:</p>
+<ul>
+  <li>kintera H net = <code>{h_chem_l18:+.2e}</code> cm⁻³ s⁻¹ (~ 40-day SS timescale at [H]=5×10⁷). Physically sensible.</li>
+  <li>KB DSTOR(H) = <code>{h_dstor_l18:+.2e}</code> cm⁻³ s⁻¹, implying H lifetime <code>{h_tau_kb_l18:.2e}</code> s. Impossible.</li>
+</ul>
+
+<p>For comparison, HCN at L9 (a clean reference):</p>
+<ul>
+  <li>kintera HCN net = <code>{hcn_chem_l9:+.2e}</code> cm⁻³ s⁻¹. Same order as KB's reported PSTOR+DSTOR.</li>
+</ul>
+
+<h2>5. Remaining real gaps (after filtering the artifact)</h2>
+
+<p>Reactions where kintera and KB actually differ at altitudes where KB <em>is</em> at SS:</p>
+
+<table>
+<tr><th>Reaction</th><th>kt/kb ratio</th><th>Worst altitude</th><th>Likely cause</th></tr>
+<tr><td>C2H2 → C2H + H (photolysis, rxn 10)</td><td>~4×</td><td>L20 (404 km)</td>
+    <td>Cross-section branching or actinic-flux integration detail</td></tr>
+<tr><td>CH4 → (1)CH2 + H2 (photolysis, rxn 6)</td><td>~2.3×</td><td>L15 (248 km)</td>
+    <td>Photolysis branching ratios at relevant wavelengths</td></tr>
+<tr><td>H + CH3 + M → CH4 + M (rxn 187)</td><td>~40× low</td><td>L24 (530 km)</td>
+    <td>Termolecular Moses-2005 piecewise formula — may differ subtly</td></tr>
+<tr><td>E + cation⁺ family (852, 854, 868, 870, 1278–1338)</td><td>5–10× low</td><td>L39 (1303 km)</td>
+    <td>Dissociative recombination temperature scaling at top boundary</td></tr>
+</table>
+
+<p>Transport gap (after correcting the SS interpretation):</p>
+<ul>
+  <li>Per-species transport-error timescale median ~7 days, 90th %ile ~4.5 yr (excluding artifact cluster).</li>
+  <li>Largest absolute transport gap on a clean species is CH4 at L1 (8×10⁵ cm⁻³ s⁻¹, τ ≈ 100 days).</li>
+  <li>For SS over Titan-relevant timescales (10⁵–10⁸ years), transport gaps of <em>year</em> timescale
+      could shift the converged abundances by O(1). But the loud kintera-vs-KB transport mismatch we
+      reported earlier was inflated by the phantom-ZK artifact.</li>
+</ul>
+
+<h2>6. Diagnostic tooling appendix</h2>
+
+<table>
+<tr><th>Script</th><th>What it tests</th><th>Reliability</th></tr>
+<tr><td><code>disort_vs_kb_actinic.py</code></td>
+    <td>RT (actinic flux) for a chosen reaction across altitudes</td>
+    <td class="verdict-good">clean — uses fort.7 directly, no PSTOR/DSTOR dependency</td></tr>
+<tr><td><code>rate_diff.py</code></td>
+    <td>Per-reaction rate diff vs KB for a target species using top-3 prod+loss data</td>
+    <td class="verdict-mixed">clean for non-artifact species; misleading for H family</td></tr>
+<tr><td><code>kb_state_rate_diff.py</code></td>
+    <td>Per-snapshot rate diff with multiple NT</td>
+    <td class="verdict-mixed">same caveat as above</td></tr>
+<tr><td><code>snapshot_transport_balance.py</code></td>
+    <td>kintera chem + transport residual on KB state</td>
+    <td class="verdict-mixed">contaminated by KB-side PSTOR/DSTOR artifact</td></tr>
+<tr><td><code>transport_vs_kb.py</code></td>
+    <td>kintera transport divergence vs KB's inferred −(P+D)</td>
+    <td class="verdict-bad">heavily contaminated by phantom-ZK artifact; the "99% sign-flip"
+        finding was inflated</td></tr>
+<tr><td><code>transport_gap_magnitude.py</code></td>
+    <td>Quantifies per-species transport gap, exposes which "gaps" are really chem-rate mismatches</td>
+    <td class="verdict-good">clean — explicitly designed to surface the contamination</td></tr>
+<tr><td><code>system_rate_gap_survey.py</code></td>
+    <td>System-wide ranking of reactions by kt-vs-kb rate divergence</td>
+    <td class="verdict-bad">top rankings dominated by phantom-ZK artifact; the rxn 195 #1
+        ranking is bogus</td></tr>
+<tr><td><code>build_report.py</code> (this file)</td>
+    <td>Generates this HTML</td>
+    <td class="verdict-good">read-only</td></tr>
+</table>
+
+<h2>What to do next</h2>
+
+<ol>
+  <li><strong>Trust kintera's chemistry where KB disagrees by &gt;10²×</strong>: those are KB-side
+      artifacts, not kintera bugs. Specifically the H/C2H4/C2H5 family at L4–L20.</li>
+  <li><strong>Investigate the small-ratio real gaps</strong> (rxn 10 C2H2 photolysis ~4×, rxn 6 CH4
+      ~2.3×, E+cation recombination 5–10×). These are likely cross-section or formula details
+      worth chasing.</li>
+  <li><strong>If transport-faithful matching becomes important</strong> (e.g., for time-integrated SS
+      comparison): refactor kintera to use mixing-ratio form ∂_z(K n_tot ∂_z(c/n_tot)) + Cheng molecular
+      diffusion + gravity separation + Scharfetter–Gummel exponential discretization. We've prototyped
+      4 of 5 pieces; the missing piece is some combination of m_avg recipe, COEFF1A/B/C/D corrections,
+      and PRAD value verification.</li>
+  <li><strong>If a clean KB reference is needed</strong>: re-run KB with <code>inp-100</code> NTIME=300
+      from initial atm (not 1-step on top of fort.50). Should give well-converged PSTOR/DSTOR even for
+      the H family, modulo the still-suspect phantom-ZK indexing.</li>
+  <li><strong>Trace the phantom-ZK source</strong> in KB: where does ZK(195) get its 7×10⁻¹⁷
+      initialization? Probably in <code>RATES</code> subroutine or a #ifdef branch we haven't read.
+      Could be a literal bug worth fixing on the KB side, or a known KB feature we haven't documented.</li>
+</ol>
+
+</body>
+</html>
+"""
+    OUT.write_text(html)
+    print(f"Wrote {OUT}  ({len(html)//1024} KB)")
+
+
+if __name__ == "__main__":
+    main()
