@@ -1,0 +1,58 @@
+From: kintera diagnostics
+Date: 2026-05-24
+Subject: Fix off-by-one altitude in prod+loss/<sp>_loss.dat writes
+
+KB writes per-altitude loss rates via OUTPUT_IMP, but uses an
+out-of-bounds longitude index that quietly aliases to the next
+altitude due to Fortran column-major layout. The prod-file write
+(line 10973) is correct; the loss-file write (line 10995) has the
+3rd index typo'd as 2 instead of 1.
+
+Effect:
+  srate dimensioned (NREACT, NLAT, NLONX, NALT). For Titan runs
+  NLAT=NLONX=1, so srate(_, 1, 2, kk) is out-of-bounds. In column-
+  major Fortran the same memory offset is srate(_, 1, 1, kk+1), so
+  each row in _loss.dat actually contains the SRATE for altitude
+  kk+1. The last row reads true out-of-bounds memory.
+
+Scope:
+  - Only affects prod+loss/*_loss.dat output files.
+  - Does NOT affect the KB simulation state, ZK, SRATE array,
+    Newton iterations, or the converged concentration profile.
+  - Anyone comparing against _loss.dat (e.g. our KB-state-injected
+    diagnostic in diagnostic_tools/) gets altitude-shifted data.
+
+How to apply (from the KB checkout root):
+  patch -p1 < diagnostics/kb_patches/01-loss-file-altitude-shift.patch
+
+How we worked around it without applying:
+  diagnostic_tools/rate_diff.py:parse_kb_prodloss and
+  diagnostic_tools/disort_vs_kb_actinic.py:parse_kb_prodloss
+  detect filenames ending in _loss.dat and shift rates DOWN by one
+  row so rates[L] aligns with altitudes[L]. Row 0 is set to zero
+  because the bugged file has no source data for the lowest level.
+
+---
+ src/KINETGENX/kinetgen1X.F | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/KINETGENX/kinetgen1X.F b/src/KINETGENX/kinetgen1X.F
+--- a/src/KINETGENX/kinetgen1X.F
++++ b/src/KINETGENX/kinetgen1X.F
+@@ -10990,8 +10990,14 @@
+              write(89,*) 'alt         reaction number'
+              write(89,999) (store_lnumber(jj),jj=1,ijk2-1)
+
+              do kk = 1,nalt
++C  BUGFIX 2026-05-24: 3rd index was 2 (out-of-bounds for NLONX=1);
++C  with column-major layout that quietly aliased to srate(_,1,1,kk+1),
++C  so every row in _loss.dat actually contained the next altitude's
++C  SRATE. The prod-file write above uses the correct (_,1,1,kk). All
++C  past _loss.dat files in this repo are altitude-shifted.
+                 write(89,998) alt(1,1,kk),
+-     *               (srate(store_lnumber(ii),1,2,kk),ii=1,ijk2-1)
++     *               (srate(store_lnumber(ii),1,1,kk),ii=1,ijk2-1)
++
+              enddo
+              close(89)
+  8888     continue
