@@ -1,7 +1,11 @@
 #pragma once
 
 // torch
+#include <ATen/TensorIterator.h>
 #include <torch/torch.h>
+
+// kintera
+#include "evolve_implicit_dispatch.hpp"
 
 namespace kintera {
 
@@ -19,15 +23,32 @@ namespace kintera {
 inline torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
                                      torch::Tensor jacobian, double dt) {
   auto nspecies = stoich.size(0);
-  auto eye = torch::eye(nspecies, rate.options());
-  auto SJ = stoich.matmul(jacobian);
-  auto SR = stoich.matmul(rate.unsqueeze(-1)).squeeze(-1);
-  auto A = eye / dt - SJ;
-  try {
-    return torch::linalg_solve(A, SR.unsqueeze(-1)).squeeze(-1);
-  } catch (const c10::Error&) {
-    return std::get<0>(torch::linalg_lstsq(A, SR.unsqueeze(-1))).squeeze(-1);
-  }
+
+  // Per-cell fused solve of  A * delta = SR  where  A = I/dt - S*J  and
+  // SR = S*rate. This replaces the batched stoich.matmul(jacobian) GEMM and
+  // the batched linalg_solve (getrf/getrs) with a single per-cell kernel,
+  // each cell building and solving its own tiny (nspecies x nspecies) system.
+  auto rate_c = rate.contiguous();
+  // jacobian: (..., nreaction, nspecies) -> (..., nreaction*nspecies)
+  auto jac2d = jacobian.contiguous().flatten(-2, -1);
+  auto stoich_c = stoich.contiguous();
+
+  auto out_sizes = rate_c.sizes().vec();
+  out_sizes.back() = nspecies;
+  auto delta = torch::empty(out_sizes, rate_c.options());
+
+  auto iter = at::TensorIteratorConfig()
+                  .resize_outputs(false)
+                  .check_all_same_dtype(false)
+                  .declare_static_shape(delta.sizes(),
+                                        /*squash_dims=*/{delta.dim() - 1})
+                  .add_output(delta)
+                  .add_input(rate_c)
+                  .add_input(jac2d)
+                  .build();
+
+  at::native::call_evolve_implicit(rate_c.device().type(), iter, stoich_c, dt);
+  return delta;
 }
 
 //! Two-stage Rosenbrock (Ros2) solver for stiff chemical kinetics.
