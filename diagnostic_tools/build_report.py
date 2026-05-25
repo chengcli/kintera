@@ -514,14 +514,17 @@ def main() -> None:
     # KB for the neutral chemistry since it strips the cation-cascade
     # contamination at low altitudes. Fall back to the older NT=100 dump
     # only if the cleaner one hasn't been generated.
-    # Prefer the BDF (stiff-solver) trajectory when available.
+    # Prefer the coupled-Newton trajectory when available, falling back
+    # to BDF chemistry-only.
     kt_traj_main = (
-        load_kintera_trajectory(44, variant="_bdf")
+        load_kintera_trajectory(44, variant="_coupled")
+        or load_kintera_trajectory(44, variant="_bdf")
         or load_kintera_trajectory(100, variant="_neutral_fixed")
         or load_kintera_trajectory(100, variant="_neutral")
         or load_kintera_trajectory(100)
     )
     kt_traj_newton = load_kintera_trajectory(100, variant="_neutral")
+    kt_traj_bdf = load_kintera_trajectory(44, variant="_bdf")
     kt_traj_500 = load_kintera_trajectory(500)
     p_traj_majors = None
     p_traj_neutrals = None
@@ -537,7 +540,9 @@ def main() -> None:
     if kt_traj_main is not None:
         years = kt_traj_main["total_time_s"] / 3.156e7
         v = kt_traj_main.get("variant")
-        if v == "_bdf":
+        if v == "_coupled":
+            variant_tag = " (neutrals-only, coupled transport+chem Newton, loose tol — recommended)"
+        elif v == "_bdf":
             variant_tag = " (neutrals-only, BDF stiff solver — oscillations ELIMINATED)"
         elif v == "_neutral_fixed":
             variant_tag = " (neutrals-only, charge off, Newton-reject-on-non-converge)"
