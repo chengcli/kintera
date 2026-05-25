@@ -164,4 +164,56 @@ DISPATCH_MACRO void matmul_ATA(T* ATA, const T* A, int n) {
     }
 }
 
+/*!
+ * \brief Solve A x = b for a dense system by Gaussian elimination with partial
+ *        pivoting. Mirrors the LU-with-pivoting path of cuBLAS getrf/getrs.
+ * \param[in,out] A[0..n*n-1] row-major n x n matrix, destroyed in place.
+ * \param[in,out] b[0..n-1]   right-hand side on input, solution on output.
+ * \param[in] n               system dimension.
+ * \return true on success, false if an exactly singular pivot was found (the
+ *         caller should fall back to a least-squares / pseudo-inverse solve).
+ */
+template <typename T>
+DISPATCH_MACRO bool dsolve_lu(T* A, T* b, int n) {
+  for (int k = 0; k < n; ++k) {
+    // partial pivot: largest |A[i][k]| for i >= k
+    int piv = k;
+    T maxv = fabs(A[k * n + k]);
+    for (int i = k + 1; i < n; ++i) {
+      T v = fabs(A[i * n + k]);
+      if (v > maxv) {
+        maxv = v;
+        piv = i;
+      }
+    }
+    if (maxv == 0.0) return false;  // exactly singular column
+
+    if (piv != k) {
+      for (int j = k; j < n; ++j) {
+        T t = A[k * n + j];
+        A[k * n + j] = A[piv * n + j];
+        A[piv * n + j] = t;
+      }
+      T tb = b[k];
+      b[k] = b[piv];
+      b[piv] = tb;
+    }
+
+    T akk = A[k * n + k];
+    for (int i = k + 1; i < n; ++i) {
+      T f = A[i * n + k] / akk;
+      for (int j = k + 1; j < n; ++j) A[i * n + j] -= f * A[k * n + j];
+      b[i] -= f * b[k];
+    }
+  }
+
+  // back substitution
+  for (int i = n - 1; i >= 0; --i) {
+    T s = b[i];
+    for (int j = i + 1; j < n; ++j) s -= A[i * n + j] * b[j];
+    b[i] = s / A[i * n + i];
+  }
+  return true;
+}
+
 }  // namespace kintera

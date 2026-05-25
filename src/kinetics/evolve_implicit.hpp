@@ -11,24 +11,20 @@ namespace kintera {
 //! matrix, J is the reaction-space Jacobian, and rate is the vector of
 //! reaction rates. Supports batched layers via leading dimensions.
 //!
+//! Defined out-of-line in evolve_implicit_dispatch.cpp (not inline): it calls a
+//! DECLARE_DISPATCH stub, whose DispatchStubImpl::get_call_ptr arity is gated
+//! by torch's AVX feature macros. Keeping the definition in the kintera library
+//! (built with those macros via Caffe2) ensures the get_call_ptr reference is
+//! never compiled into a downstream consumer (e.g. the pybind module) that was
+//! built without them.
+//!
 //! @param rate     reaction rates, shape (..., nreaction)
 //! @param stoich   stoichiometric matrix, shape (nspecies, nreaction)
 //! @param jacobian reaction-space Jacobian, shape (..., nreaction, nspecies)
 //! @param dt       time step
 //! @return         concentration change delta, shape (..., nspecies)
-inline torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
-                                     torch::Tensor jacobian, double dt) {
-  auto nspecies = stoich.size(0);
-  auto eye = torch::eye(nspecies, rate.options());
-  auto SJ = stoich.matmul(jacobian);
-  auto SR = stoich.matmul(rate.unsqueeze(-1)).squeeze(-1);
-  auto A = eye / dt - SJ;
-  try {
-    return torch::linalg_solve(A, SR.unsqueeze(-1)).squeeze(-1);
-  } catch (const c10::Error&) {
-    return std::get<0>(torch::linalg_lstsq(A, SR.unsqueeze(-1))).squeeze(-1);
-  }
-}
+torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
+                              torch::Tensor jacobian, double dt);
 
 //! Two-stage Rosenbrock (Ros2) solver for stiff chemical kinetics.
 //!
