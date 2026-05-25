@@ -1,11 +1,7 @@
 #pragma once
 
 // torch
-#include <ATen/TensorIterator.h>
 #include <torch/torch.h>
-
-// kintera
-#include "evolve_implicit_dispatch.hpp"
 
 namespace kintera {
 
@@ -15,41 +11,20 @@ namespace kintera {
 //! matrix, J is the reaction-space Jacobian, and rate is the vector of
 //! reaction rates. Supports batched layers via leading dimensions.
 //!
+//! Defined out-of-line in evolve_implicit_dispatch.cpp (not inline): it calls a
+//! DECLARE_DISPATCH stub, whose DispatchStubImpl::get_call_ptr arity is gated
+//! by torch's AVX feature macros. Keeping the definition in the kintera library
+//! (built with those macros via Caffe2) ensures the get_call_ptr reference is
+//! never compiled into a downstream consumer (e.g. the pybind module) that was
+//! built without them.
+//!
 //! @param rate     reaction rates, shape (..., nreaction)
 //! @param stoich   stoichiometric matrix, shape (nspecies, nreaction)
 //! @param jacobian reaction-space Jacobian, shape (..., nreaction, nspecies)
 //! @param dt       time step
 //! @return         concentration change delta, shape (..., nspecies)
-inline torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
-                                     torch::Tensor jacobian, double dt) {
-  auto nspecies = stoich.size(0);
-
-  // Per-cell fused solve of  A * delta = SR  where  A = I/dt - S*J  and
-  // SR = S*rate. This replaces the batched stoich.matmul(jacobian) GEMM and
-  // the batched linalg_solve (getrf/getrs) with a single per-cell kernel,
-  // each cell building and solving its own tiny (nspecies x nspecies) system.
-  auto rate_c = rate.contiguous();
-  // jacobian: (..., nreaction, nspecies) -> (..., nreaction*nspecies)
-  auto jac2d = jacobian.contiguous().flatten(-2, -1);
-  auto stoich_c = stoich.contiguous();
-
-  auto out_sizes = rate_c.sizes().vec();
-  out_sizes.back() = nspecies;
-  auto delta = torch::empty(out_sizes, rate_c.options());
-
-  auto iter = at::TensorIteratorConfig()
-                  .resize_outputs(false)
-                  .check_all_same_dtype(false)
-                  .declare_static_shape(delta.sizes(),
-                                        /*squash_dims=*/{delta.dim() - 1})
-                  .add_output(delta)
-                  .add_input(rate_c)
-                  .add_input(jac2d)
-                  .build();
-
-  at::native::call_evolve_implicit(rate_c.device().type(), iter, stoich_c, dt);
-  return delta;
-}
+torch::Tensor evolve_implicit(torch::Tensor rate, torch::Tensor stoich,
+                              torch::Tensor jacobian, double dt);
 
 //! Two-stage Rosenbrock (Ros2) solver for stiff chemical kinetics.
 //!
