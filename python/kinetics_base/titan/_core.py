@@ -34,6 +34,10 @@ from .source_integration import (
     apply_kinetics_base_titan_source_terms,
     kinetics_base_titan_source_tendencies,
 )
+from .transport_diffusion import (
+    kinetics_base_titan_cheng_diffusion,
+    kinetics_base_titan_species_masses,
+)
 
 __all__ = [
     "KBTitanFirstOrderAtm2DSource",
@@ -55,6 +59,8 @@ __all__ = [
     "kinetics_base_titan_source_tendencies",
     "kinetics_base_titan_boundary_pin_mask",
     "kinetics_base_titan_species_diffusion_scale",
+    "kinetics_base_titan_cheng_diffusion",
+    "kinetics_base_titan_species_masses",
     "kinetics_base_species_metadata_from_pun",
     "parse_kinetics_base_boundary",
     "parse_kinetics_base_special",

@@ -125,6 +125,11 @@ def build_kinetics_base_titan_state(
         temperature=torch.tensor(atmosphere.temperature).view(1, -1),
         pressure=torch.tensor(atmosphere.pressure).view(1, -1),
         concentration=concentration,
+        # Titan surface gravity (135 cm/s^2). AtmState2D defaults to
+        # Earth's 980 cm/s^2; setting Titan's value here is required for
+        # the binary-diffusion gravity-separation term to be physically
+        # correct (KB uses 135 via PZATM1 common block).
+        gravity=135.0,
     )
 
     return KBTitanState(

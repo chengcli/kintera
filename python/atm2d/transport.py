@@ -91,7 +91,22 @@ def build_binary_diffusion_matrix(
     if include_gravity:
         xmid, tmid, dwtm = _interface_thermo(state, molecular_weights)
         gravity_term = 0.5 * torch.einsum("czij,czj->czi", binary_4d, dwtm)
-        gravity_term = gravity_term * (state.gravity / (tmid * gas_constant))
+        # tmid is (ncol, nlyr-1); gravity_term is (ncol, nlyr-1, nspecies).
+        # Broadcast tmid over the species axis explicitly — pytorch's
+        # right-align rule would otherwise misalign (1, nlyr-1) against
+        # (1, nlyr-1, nspecies) along the wrong dim.
+        # Guard against zero/missing T at extended (above-atmosphere)
+        # slots: where tmid <= 0 we force gravity_term to zero rather
+        # than divide and produce NaN.
+        tmid_safe = torch.where(
+            tmid > 0, tmid, torch.ones_like(tmid)
+        ).unsqueeze(-1)
+        gravity_term = gravity_term * (state.gravity / (tmid_safe * gas_constant))
+        gravity_term = torch.where(
+            (tmid > 0).unsqueeze(-1).expand_as(gravity_term),
+            gravity_term,
+            torch.zeros_like(gravity_term),
+        )
 
     _assemble_vertical_matrix_diffusion(rows, cols, vals, state, binary_4d, gravity_term)
     matrix = _matrix_from_triplets(rows, cols, vals, state)
@@ -613,4 +628,9 @@ def _interface_thermo(
 
 
 def _mole_fraction(concentration: torch.Tensor) -> torch.Tensor:
-    return concentration / concentration.sum(dim=-1, keepdim=True).clamp_min(1.0e-300)
+    # clamp_min must stay above float32's smallest positive normal (~1.18e-38).
+    # The original 1e-300 underflows to 0 in float32, causing 0/0 NaNs at
+    # extended (above-atmosphere) altitude slots where the species sum is
+    # zero. 1e-30 is well above the float32 underflow but small enough to
+    # behave like "infinity in the denominator" → mole fraction = 0.
+    return concentration / concentration.sum(dim=-1, keepdim=True).clamp_min(1.0e-30)

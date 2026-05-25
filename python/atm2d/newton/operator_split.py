@@ -67,6 +67,8 @@ def operator_split_step(
     kzz: torch.Tensor,
     source_terms,
     species_diffusion_scale: torch.Tensor | None = None,
+    binary_diffusion: torch.Tensor | None = None,
+    molecular_weights: torch.Tensor | None = None,
     transport_system_postprocess: SystemPostprocessFn | None = None,
     transport_concentration_postprocess: ConcentrationPostprocessFn | None = None,
     chemistry_postprocess: ConcentrationPostprocessFn | None = None,
@@ -94,6 +96,8 @@ def operator_split_step(
         kzz,
         dt,
         species_diffusion_scale=species_diffusion_scale,
+        binary_diffusion=binary_diffusion,
+        molecular_weights=molecular_weights,
         source_terms=None,
     )
     if transport_system_postprocess is not None:

@@ -170,6 +170,32 @@ def main():
     if light_diffusion_scale != 1.0:
         print(f"[setup] light_diffusion_scale = {light_diffusion_scale}")
 
+    # Cheng Titan molecular diffusion + gravity separation.
+    # Off by default for backward compat; turn on with
+    # KINTERA_TITAN_MOLECULAR_DIFFUSION=1. When on, build the binary-
+    # diffusion tensor (diagonal, Cheng 2013 formula) and per-species
+    # molecular_weights once at setup; pass them through to the transport
+    # operator so build_transport_matrix activates the binary-diffusion
+    # branch (which also enables the gravity-separation term).
+    MOLECULAR_DIFFUSION = os.environ.get("KINTERA_TITAN_MOLECULAR_DIFFUSION", "0") == "1"
+    if MOLECULAR_DIFFUSION:
+        binary_diffusion = kt.kinetics_base_titan_cheng_diffusion(
+            titan_state.state,
+            kt.kinetics_base_titan_species_masses(titan_state.species, pun_metadata=pun_metadata),
+            density=titan_state.density,
+        )
+        molecular_weights = kt.kinetics_base_titan_species_masses(
+            titan_state.species, pun_metadata=pun_metadata
+        ).to(dtype=titan_state.state.dtype, device=titan_state.state.device)
+        print(
+            f"[setup] molecular diffusion: ON (Cheng Titan formula); "
+            f"max D = {binary_diffusion.max().item():.2e} cm^2/s"
+        )
+    else:
+        binary_diffusion = None
+        molecular_weights = None
+        print("[setup] molecular diffusion: OFF (set KINTERA_TITAN_MOLECULAR_DIFFUSION=1 to enable)")
+
     concentration = titan_state.concentration.clone()
     print(f"[setup] initial concentration shape: {tuple(concentration.shape)}")
     print(f"[setup] initial max value: {concentration.max().item():.3e}")
@@ -283,6 +309,8 @@ def main():
             kzz=titan_state.kzz,
             source_terms=atm_sources,
             species_diffusion_scale=species_diffusion_scale,
+            binary_diffusion=binary_diffusion,
+            molecular_weights=molecular_weights,
             system_postprocess=_apply_dirichlet,
             concentration_postprocess=_apply_pins,
             max_iterations=NEWTON_MAX_ITER,
@@ -348,6 +376,8 @@ def main():
             kzz=titan_state.kzz,
             source_terms=atm_sources,
             species_diffusion_scale=species_diffusion_scale,
+            binary_diffusion=binary_diffusion,
+            molecular_weights=molecular_weights,
             transport_system_postprocess=_apply_dirichlet,
             transport_concentration_postprocess=_apply_pins,
             chemistry_postprocess=_apply_pins,
