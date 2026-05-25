@@ -16,6 +16,7 @@ source-term list into :func:`atm2d.newton.chemistry_only.chemistry_only_newton_s
 
 from __future__ import annotations
 
+import os
 from typing import Callable, Optional
 
 import torch
@@ -25,7 +26,31 @@ from ..atm_state2d import AtmState2D
 from ..matrix import SparseSystemMatrix
 from ..solver import solve_sparse_system
 from .chemistry_only import chemistry_only_newton_step
+from .chemistry_only_bdf import chemistry_only_bdf_step
 from .result import NewtonResult
+
+
+def _select_chem_step():
+    """Choose chemistry solver implementation via KINTERA_CHEM_SOLVER env var.
+
+    - ``newton`` (default): the existing per-cell BE Newton iteration.
+    - ``bdf``: scipy.integrate.solve_ivp with BDF method (stiff).
+    - ``lsoda``: scipy LSODA with auto-switching Adams/BDF.
+    - ``radau``: scipy Radau (5th-order implicit Runge-Kutta).
+
+    The BDF variants integrate dc/dt = S(c) from 0 to dt with adaptive
+    internal substeps, avoiding the silent-non-convergence failure of
+    the single-step Newton at large macro dt.
+    """
+    mode = os.environ.get("KINTERA_CHEM_SOLVER", "newton").lower()
+    if mode == "newton":
+        return chemistry_only_newton_step, None
+    if mode in ("bdf", "lsoda", "radau"):
+        method = {"bdf": "BDF", "lsoda": "LSODA", "radau": "Radau"}[mode]
+        return chemistry_only_bdf_step, method
+    raise ValueError(
+        f"unknown KINTERA_CHEM_SOLVER={mode!r}; use 'newton', 'bdf', 'lsoda', or 'radau'"
+    )
 
 
 SystemPostprocessFn = Callable[
@@ -84,7 +109,10 @@ def operator_split_step(
     kwargs.setdefault("source_terms", source_terms)
     if chemistry_postprocess is not None:
         kwargs.setdefault("concentration_postprocess", chemistry_postprocess)
-    return chemistry_only_newton_step(state, dt, **kwargs)
+    chem_step, method = _select_chem_step()
+    if method is not None:
+        kwargs.setdefault("method", method)
+    return chem_step(state, dt, **kwargs)
 
 
 def operator_split_advance(
