@@ -50,7 +50,8 @@ size_t evolve_implicit_space(int nspecies, int nreaction) {
  *             (nspecies, nreaction). Shared (constant) across all cells.
  * \param[in]  nspecies, nreaction    system dimensions.
  * \param[in]  inv_dt                 1 / dt.
- * \param[in]  work                   per-thread scratch, >= evolve_implicit_space.
+ * \param[in]  work                   per-thread scratch, >=
+ * evolve_implicit_space.
  */
 template <typename T>
 DISPATCH_MACRO void evolve_implicit_cell(T* delta, const T* rate, const T* jac,
@@ -69,8 +70,7 @@ DISPATCH_MACRO void evolve_implicit_cell(T* delta, const T* rate, const T* jac,
 
   for (int i = 0; i < nspecies; ++i)
     for (int k = 0; k < nspecies; ++k)
-      A[i * nspecies + k] =
-          (i == k ? inv_dt : T(0)) - A[i * nspecies + k];
+      A[i * nspecies + k] = (i == k ? inv_dt : T(0)) - A[i * nspecies + k];
 
   // primary path: dense LU with partial pivoting on a destroyable copy
   for (int t = 0; t < nspecies * nspecies; ++t) Alu[t] = A[t];
