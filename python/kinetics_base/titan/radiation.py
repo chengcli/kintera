@@ -147,8 +147,15 @@ def _kinetics_base_pyharp_actinic_flux(
         )
         gathered = disort.gather_flx()
         average_intensity_levels = gathered[..., pydisort.kIUAVG]
+        # KB-2012's JPHOTO accumulates Σ(σ × downward_flux) where downward_flux
+        # = π × J̄ for the diffuse component (plus direct-beam projection). The
+        # Cheng_cross/ σ tables were tabulated against that convention, so to
+        # reproduce KB rates we use π × J̄ here, not the physics-standard
+        # actinic flux 4π × J̄. Direct comparison kintera vs KB per-reaction
+        # at fort.7 SS gave a constant 4.000× over-rate that this corrects.
+        # See project-moses00-kb-layer-offset memory for the trace.
         actinic_flux_levels = torch.flip(
-            (4.0 * torch.pi * average_intensity_levels).permute(1, 2, 0),
+            (torch.pi * average_intensity_levels).permute(1, 2, 0),
             dims=[1],
         )
         actinic_flux = actinic_flux + weight * actinic_flux_levels[:, 1:, :]
@@ -228,9 +235,16 @@ def _kinetics_base_direct_actinic_flux(
         arg = torch.clamp((cf - cof0) / (cf + math.log(2.0)), min=-1.0, max=1.0)
         attenuation = torch.exp(-cf) * torch.acos(arg) / math.pi
     actinic = torch.zeros((ncol, nlyr, nwave), dtype=dtype, device=device)
-    actinic[:, :active_nlyr, :] = top_flux.view(1, 1, nwave) * attenuation
+    # KB-2012's photolysis uses ALTFLX × FLUX directly. Empirically the result
+    # is 1/4 of what kintera's direct path produces with the same Cogley-Borucki
+    # attenuation. The DISORT path (after the 4π→π fix at line ~158) matches
+    # KB exactly, so the direct path needs the same 1/4 to match.
+    # The 4× factor is the convention difference between actinic flux (4π × J̄,
+    # photochemistry standard) and downward irradiance (π × F_down) that KB-2012
+    # implicitly assumes via its tabulated cross sections.
+    actinic[:, :active_nlyr, :] = 0.25 * top_flux.view(1, 1, nwave) * attenuation
     if active_nlyr < nlyr:
-        actinic[:, active_nlyr:, :] = top_flux.view(1, 1, nwave)
+        actinic[:, active_nlyr:, :] = 0.25 * top_flux.view(1, 1, nwave)
     return actinic
 
 def _kinetics_base_solar_mu0_weights(parameters: dict[str, Any]) -> list[tuple[float, float]]:

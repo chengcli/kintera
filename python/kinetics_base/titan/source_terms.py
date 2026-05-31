@@ -395,7 +395,7 @@ def build_kinetics_base_titan_source_terms(
                         active_opacity_species,
                     )
                     or _is_catalog_mapped_kinetics_base_photo_branch(
-                        reactants, photo_data
+                        reactants, photo_data, active_opacity_species
                     )
                 ):
                     source_terms.append(
@@ -562,13 +562,23 @@ def _cheng_titan_electron_impact_reaction_ids(
 def _is_catalog_mapped_kinetics_base_photo_branch(
     reactants: list[str],
     photo_data: dict[str, Any],
+    active_opacity_species: list[str] | None = None,
 ) -> bool:
     if len(reactants) != 1:
         return False
     parent = reactants[0]
     if parent in {"CH4", "N2"}:
         return False
-    return photo_data.get("source") == "catalog_flux"
+    if photo_data.get("source") != "catalog_flux":
+        return False
+    # When the kinetics.inp IPHOTO list is present (active_opacity_species not
+    # None), only allow catalog branches whose parent is in that list. The
+    # earlier behaviour activated every catalog branch which over-counted
+    # radical photolysis for IPHOTO-restricted cases (moses05.C2 toy network,
+    # any small-network user setup).
+    if active_opacity_species is not None and parent not in active_opacity_species:
+        return False
+    return True
 
 
 def _cheng_ch4_r6_rate_profile_multiplier() -> list[tuple[float, float]]:

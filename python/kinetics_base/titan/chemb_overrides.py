@@ -248,12 +248,22 @@ def _rxn_534_2ch3_m_c2h6(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
     return _troe_falloff(rk3, rk2, d, fc=0.6)
 
 
-def _rxn_540_ch3_c2h5_m_c3h8(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
-    """ISP(245) → rxn 540. CH3 + C2H5 + M → C3H8 + M (the formula in KB has
-    a 10× multiplier vs zkcalcx). kinetgen1X.F:7219-7225."""
+def _rxn_540_ch3_c3h5_m_c4h8(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
+    """ISP(245) → rxn 540. CH3 + C3H5 + M → C4H8 + M (the formula in KB has
+    a 10× multiplier vs zkcalcx). kinetgen1X.F:7219-7225.
+
+    NOTE 2026-05-30: the previous name/docstring labeled this as
+    CH3+C2H5+M=C3H8+M but the KB comment at line 7219 says C3H5/C4H8.
+    The formula matches the C3H5/C4H8 line. Fixed.
+    """
     rk3 = 3.7e-19 * torch.pow(t, -3.0) * torch.exp(-300.0 / t)
     rk2 = 9.5e-10 * torch.pow(t, -0.54) * torch.exp(117.0 / t)
     return 10.0 * _troe_falloff(rk3, rk2, d, fc=0.6)
+
+
+# Backwards-compat alias for the legacy mis-named symbol — keep until
+# we audit external references. Same callable.
+_rxn_540_ch3_c2h5_m_c3h8 = _rxn_540_ch3_c3h5_m_c4h8
 
 
 def _rxn_543_ch3_c3h3_m_c4h6a(t: torch.Tensor, d: torch.Tensor) -> torch.Tensor:
@@ -384,6 +394,67 @@ def titan_chemb_rate_constant(
     the catalog/`_pun_rate_constant`).
     """
     fn = _RXN_OVERRIDES.get(reaction_id)
+    if fn is None:
+        return None
+    return fn(temperature, density)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Signature-based dispatch (network-agnostic)
+#
+# The ID-based dict above uses the Cheng-network kintera reaction_ids. Other
+# simplified PUN networks (moses00, moses05.C2, ...) assign different integer
+# ids to the same chemistry — e.g. moses00 numbers CH3+CH3+M->C2H6+M as 157
+# rather than 534. The override formulas are network-agnostic (just need T,
+# density), so we additionally key them by canonical reactant/product
+# signature so the right override fires regardless of network id.
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _sig(reactants: list[str], products: list[str]) -> tuple:
+    return (tuple(sorted(reactants)), tuple(sorted(products)))
+
+
+_RXN_OVERRIDES_BY_SIG: dict[tuple, Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = {
+    _sig(["H", "H", "M"], ["H2", "M"]): _rxn_289_2h_m_h2,
+    _sig(["H", "CH3", "M"], ["CH4", "M"]): _rxn_294_h_ch3_m_ch4,
+    _sig(["H", "C2H2", "M"], ["C2H3", "M"]): _rxn_298_h_c2h2_m_c2h3,
+    _sig(["H", "C2H3"], ["C2H2", "H2"]): _rxn_299_h_c2h3_c2h2_h2,
+    _sig(["H", "C2H3", "M"], ["C2H4", "M"]): _rxn_300_h_c2h3_m_c2h4,
+    _sig(["H", "C2H4", "M"], ["C2H5", "M"]): _rxn_302_h_c2h4_m_c2h5,
+    _sig(["H", "C2H5", "M"], ["C2H6", "M"]): _rxn_305_h_c2h5_m_c2h6,
+    _sig(["H", "C3H2", "M"], ["C3H3", "M"]): _rxn_306_h_c3h2_m_c3h3,
+    _sig(["H", "C3H3", "M"], ["CH3C2H", "M"]): _rxn_308_h_c3h3_m_ch3c2h,
+    _sig(["H", "C3H3", "M"], ["CH2CCH2", "M"]): _rxn_309_h_c3h3_m_ch2cch2,
+    _sig(["CH", "CH4"], ["C2H4", "H"]): _rxn_451_ch_ch4_c2h4_h,
+    _sig(["CH3", "C2H3"], ["C3H5", "H"]): _rxn_537_ch3_c2h3_c3h5_h,
+    _sig(["CH3", "C2H3", "M"], ["C3H6", "M"]): _rxn_538_ch3_c2h3_m_c3h6,
+    _sig(["C2H3", "H2"], ["C2H4", "H"]): _rxn_633_c2h3_h2_c2h4_h,
+    _sig(["CH3", "CH3", "M"], ["C2H6", "M"]): _rxn_534_2ch3_m_c2h6,
+    _sig(["CH3", "C3H5", "M"], ["C4H8", "M"]): _rxn_540_ch3_c3h5_m_c4h8,
+    _sig(["CH3", "C3H3", "M"], ["1-C4H6", "M"]): _rxn_543_ch3_c3h3_m_c4h6a,
+    _sig(["CH3", "C3H3", "M"], ["1,2-C4H6", "M"]): _rxn_544_ch3_c3h3_m_c4h6b,
+    _sig(["C2H3", "C2H3"], ["C2H4", "C2H2"]): _rxn_637_2c2h3_c2h4_c2h2,
+    _sig(["C2H3", "C2H3", "M"], ["1,3-C4H6", "M"]): _rxn_638_2c2h3_m_c4h6c,
+    _sig(["C2H3", "C2H5"], ["CH3", "C3H5"]): _rxn_642_c2h3_c2h5_ch3_c3h5,
+    _sig(["C2H3", "C2H5", "M"], ["C4H8", "M"]): _rxn_643_c2h3_c2h5_m_c4h8,
+    _sig(["CH3", "C3H7", "M"], ["C4H10", "M"]): _rxn_551_ch3_c3h7_m_c4h10,
+}
+
+
+def has_titan_chemb_override_by_signature(
+    reactants: list[str], products: list[str]
+) -> bool:
+    return _sig(reactants, products) in _RXN_OVERRIDES_BY_SIG
+
+
+def titan_chemb_rate_constant_by_signature(
+    reactants: list[str],
+    products: list[str],
+    temperature: torch.Tensor,
+    density: torch.Tensor,
+) -> torch.Tensor | None:
+    fn = _RXN_OVERRIDES_BY_SIG.get(_sig(reactants, products))
     if fn is None:
         return None
     return fn(temperature, density)

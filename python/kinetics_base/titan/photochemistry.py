@@ -74,8 +74,14 @@ def _is_active_kinetics_base_photo_branch(
         return sorted_p == ["N", "N(2D)"] or sorted_p == ["N", "N"]
     if parent == "CH4" and sorted(products) == ["(3)CH2", "H", "H"]:
         return False
-    if not special_photo_parent_species or parent in special_photo_parent_species:
+    # Explicit allow via special path takes precedence
+    if special_photo_parent_species and parent in special_photo_parent_species:
         return True
+    # Fall back to active_opacity_species (the IPHOTO list from kinetics.inp).
+    # When no special path is provided, only parents listed in IPHOTO are
+    # photolyzed — empty special_photo_parent_species must NOT default to
+    # "allow all" because that activates radical photolysis (CH3 → ..., C2H3
+    # → ..., etc.) which the case's IPHOTO list intentionally omits.
     if active_opacity_species is None or parent not in active_opacity_species:
         return False
     return True

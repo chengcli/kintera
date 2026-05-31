@@ -417,10 +417,30 @@ def _build_titan_thermal_atm2d_source(
     # kb-fortran-map skill for the catalog of overrides).
     from .chemb_overrides import (
         has_titan_chemb_override,
+        has_titan_chemb_override_by_signature,
         titan_chemb_rate_constant,
+        titan_chemb_rate_constant_by_signature,
         titan_electron_temperature,
     )
-    override_id = term.reaction_id if has_titan_chemb_override(term.reaction_id) else None
+    # Allow disabling UPDATE_CHEMB overrides via env var for networks whose
+    # KB binary was compiled without __TITAN (moses00 paper-era binary
+    # falls in this category — uses pure .pun catalog rates). When set,
+    # kintera falls back to `_pun_rate_constant` for every reaction.
+    import os as _os
+    _chemb_disabled = bool(_os.environ.get("KINTERA_DISABLE_CHEMB_OVERRIDES", ""))
+    override_id = (
+        term.reaction_id
+        if (not _chemb_disabled) and has_titan_chemb_override(term.reaction_id)
+        else None
+    )
+    # Fall back to reactant/product signature lookup so the same override
+    # fires across different PUN networks (moses00 numbers reactions
+    # differently from Cheng; the chemistry is the same).
+    override_by_sig = (
+        (not _chemb_disabled)
+        and override_id is None
+        and has_titan_chemb_override_by_signature(term.reactants, term.products)
+    )
     # Electron-temperature recombination: KB applies T_e (Edberg 2009) instead
     # of gas T for reactions whose second reactant is E. kinetgen1X.F:6763-6781.
     use_telec = (
@@ -442,6 +462,13 @@ def _build_titan_thermal_atm2d_source(
             # density tensor needs same shape as T for broadcasting
             d = density.expand_as(T) if density.shape != T.shape else density
             k = titan_chemb_rate_constant(override_id, T, d)
+            if k is not None:
+                return k
+        if override_by_sig:
+            d = density.expand_as(T) if density.shape != T.shape else density
+            k = titan_chemb_rate_constant_by_signature(
+                term.reactants, term.products, T, d
+            )
             if k is not None:
                 return k
         return _pun_rate_constant(term.parameters, T, density)
