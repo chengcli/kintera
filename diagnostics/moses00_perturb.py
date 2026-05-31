@@ -152,15 +152,34 @@ def split_filtered(filtered, include_photo, include_boundary):
     return out
 
 
-def take_step(ts, atm_sources, dt, use_kzz):
+def _build_moldiff(ts):
+    """Cheng-2013 molecular diffusion + species masses for moses00."""
+    from kintera.kinetics_base.titan.transport_diffusion import (
+        kinetics_base_titan_cheng_diffusion,
+        kinetics_base_titan_species_masses,
+    )
+    masses = kinetics_base_titan_species_masses(list(ts.species))
+    D = kinetics_base_titan_cheng_diffusion(
+        ts.state, masses, density=ts.density,
+    )
+    return D, masses
+
+
+def take_step(ts, atm_sources, dt, use_kzz, *, with_moldiff=True):
     """Return c_after − c_before (Δc per layer per species), tensor shape (nlyr, nspecies)."""
     c0 = ts.state.concentration.clone()
     kzz = ts.kzz if use_kzz else torch.zeros_like(ts.kzz)
+    binary_diffusion = None
+    molecular_weights = None
+    if with_moldiff:
+        binary_diffusion, molecular_weights = _build_moldiff(ts)
     sys_mat, rhs = kt.build_implicit_step_system(
         ts.state, kzz, float(dt),
         density=ts.density,
         transport_form="mr_diffusion",
         source_terms=atm_sources,
+        binary_diffusion=binary_diffusion,
+        molecular_weights=molecular_weights,
     )
     sys_mat, rhs = kt.apply_kinetics_base_titan_dirichlet_rows(sys_mat, rhs, ts)
     c_after = kt.solve_sparse_system(sys_mat, rhs)

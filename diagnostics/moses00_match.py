@@ -213,6 +213,17 @@ def main() -> int:
     total_t = schedule.sum()
     print(f"[BE integration to SS]: NT={NT}, dt {DT_MIN:.0e}..{DT_MAX:.0e}, "
           f"total = {total_t:.2e} s ({total_t/86400/365.25:.2f} yr)")
+    # Molecular diffusion (Cheng-2013) for matching KB's transport of
+    # heavy species and gravitational separation of H2/CH4.
+    from kintera.kinetics_base.titan.transport_diffusion import (
+        kinetics_base_titan_cheng_diffusion,
+        kinetics_base_titan_species_masses,
+    )
+    moldiff_masses = kinetics_base_titan_species_masses(list(ts.species))
+    binary_diffusion = kinetics_base_titan_cheng_diffusion(
+        ts.state, moldiff_masses, density=ts.density,
+    )
+
     c_start = c.clone()
     c_current = c_start.clone()
     for step, dt in enumerate(schedule):
@@ -221,6 +232,8 @@ def main() -> int:
             ts.state, ts.kzz, float(dt),
             density=ts.density, transport_form="mr_diffusion",
             source_terms=atm_sources,
+            binary_diffusion=binary_diffusion,
+            molecular_weights=moldiff_masses,
         )
         sys_mat, rhs = _apply_dirichlet(sys_mat, rhs)
         c_current = kt.solve_sparse_system(sys_mat, rhs)
