@@ -149,7 +149,87 @@ def kinetics_base_titan_cheng_diffusion(
     return D
 
 
+def kinetics_base_titan_moses_diffusion(
+    state,
+    masses: torch.Tensor,
+    *,
+    temperature: torch.Tensor | None = None,
+    density: torch.Tensor | None = None,
+    a_dif_h2: float = 3.81e-5,
+    s_dif_h2: float = 1.74,
+) -> torch.Tensor:
+    """Moses-2005-era binary diffusion (KB without __TITAN compile flag).
+
+    Source: `kinetgen2X.F:5086-5087` (the `#else` branch when `__TITAN`
+    is undefined):
+
+        DIFF = ADIFH2 × T^(SDIFH2-1) × (7.3439e+21 / N) × sqrt(2.01594 / m_i)
+
+    moses00's `kinetics.inp` ships `ADIFH2 = 3.81e-5`, `SDIFH2 = 1.74`.
+
+    The 2.01594 reference is the H2 molecular mass — the formula gives
+    H2 diffusion = ADIFH2 × T^(s-1) × 7.34e+21/N as the baseline, and
+    scales other species by 1/sqrt(M_X/M_H2).
+
+    For comparison, the Cheng-2013 formula (used when __TITAN is set):
+
+        DIFF = 7.3e+16 × T^0.75 / N × sqrt((1 + 28/M) / (1 + 28/16))
+
+    differs by ~4× in prefactor and uses a different species-mass scaling.
+    For H2, Cheng gives factor 2.34 species-scaling, moses gives 1.0;
+    Cheng over-rates H2 gravitational separation by 2.34× vs moses.
+
+    Returns the diagonal binary-diffusion tensor shaped
+    `(ncol, nlyr, nspecies, nspecies)` for use with
+    `build_binary_diffusion_matrix`.
+    """
+    dtype = state.dtype
+    device = state.device
+    masses = masses.to(dtype=dtype, device=device)
+    nspecies = state.nspecies
+    if masses.shape != (nspecies,):
+        raise ValueError(
+            f"masses must have shape ({nspecies},), got {tuple(masses.shape)}"
+        )
+
+    T = temperature if temperature is not None else state.temperature
+    if density is None:
+        if hasattr(state, "density") and getattr(state, "density") is not None:
+            n_tot = state.density
+        else:
+            n_tot = state.concentration.sum(dim=-1)
+    else:
+        n_tot = density
+    n_tot = n_tot.to(dtype=dtype, device=device)
+    T = T.to(dtype=dtype, device=device)
+
+    masses_safe = torch.clamp(masses, min=1.0)
+    # Species factor: sqrt(M_H2 / M_X). For H2 (mass 2.016), factor = 1.
+    # Heavier species get smaller D.
+    species_factor = torch.sqrt(2.01594 / masses_safe)
+
+    valid = (n_tot > 0) & (T > 0)
+    n_safe = torch.where(valid, n_tot, torch.ones_like(n_tot))
+    T_safe = torch.where(valid, T, torch.ones_like(T))
+    cell_scalar = (
+        a_dif_h2
+        * torch.pow(T_safe, s_dif_h2 - 1.0)
+        * (7.3439e+21 / n_safe)
+    )
+    cell_scalar = torch.where(valid, cell_scalar, torch.zeros_like(cell_scalar))
+
+    diag = cell_scalar.unsqueeze(-1) * species_factor.view(1, 1, -1)
+    D = torch.zeros(
+        (state.ncol, state.nlyr, nspecies, nspecies),
+        dtype=dtype, device=device,
+    )
+    idx = torch.arange(nspecies, device=device)
+    D[..., idx, idx] = diag
+    return D
+
+
 __all__ = [
     "kinetics_base_titan_cheng_diffusion",
+    "kinetics_base_titan_moses_diffusion",
     "kinetics_base_titan_species_masses",
 ]

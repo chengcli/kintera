@@ -213,16 +213,40 @@ def main() -> int:
     total_t = schedule.sum()
     print(f"[BE integration to SS]: NT={NT}, dt {DT_MIN:.0e}..{DT_MAX:.0e}, "
           f"total = {total_t:.2e} s ({total_t/86400/365.25:.2f} yr)")
-    # Molecular diffusion (Cheng-2013) for matching KB's transport of
-    # heavy species and gravitational separation of H2/CH4.
+    # Molecular diffusion for matching KB's transport of heavy species
+    # and gravitational separation of H2/CH4. The moses00 paper binary
+    # ships an overlay `COEFF1.f90` that computes
+    #   DIFF = ADIFH2 * T^(SDIFH2-1) * (7.3439e+21/N) * sqrt(2.016/M)
+    # and then UNCONDITIONALLY overwrites DIFF with the Cheng-2013
+    # formula:
+    #   DIFF = 7.3e+16 * T^0.75 / N * sqrt((1+28/M)/(1+28/16))
+    # (see paper/moses00/COEFF1.f90:60-63 — no ifdef on the second
+    # assignment). So the right physical match is Cheng-2013, even
+    # though kinetics.inp ships ADIFH2/SDIFH2 inputs.
+    # The "moses" option is preserved for diagnostic comparison.
     from kintera.kinetics_base.titan.transport_diffusion import (
         kinetics_base_titan_cheng_diffusion,
+        kinetics_base_titan_moses_diffusion,
         kinetics_base_titan_species_masses,
     )
+    moldiff_kind = os.environ.get("KINTERA_TITAN_MOLDIFF", "cheng").lower()
     moldiff_masses = kinetics_base_titan_species_masses(list(ts.species))
-    binary_diffusion = kinetics_base_titan_cheng_diffusion(
-        ts.state, moldiff_masses, density=ts.density,
-    )
+    if moldiff_kind == "moses":
+        binary_diffusion = kinetics_base_titan_moses_diffusion(
+            ts.state, moldiff_masses, density=ts.density,
+        )
+        print(f"  moldiff: moses-2005 (ADIFH2=3.81e-5, SDIFH2=1.74)")
+    elif moldiff_kind == "cheng":
+        binary_diffusion = kinetics_base_titan_cheng_diffusion(
+            ts.state, moldiff_masses, density=ts.density,
+        )
+        print(f"  moldiff: Cheng-2013 (7.3e+16, T^0.75)")
+    elif moldiff_kind in ("off", "none", "0"):
+        binary_diffusion = None
+        moldiff_masses = None
+        print(f"  moldiff: OFF")
+    else:
+        raise ValueError(f"Unknown KINTERA_TITAN_MOLDIFF={moldiff_kind!r}")
 
     c_start = c.clone()
     c_current = c_start.clone()
