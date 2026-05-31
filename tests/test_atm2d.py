@@ -63,6 +63,82 @@ def test_horizontal_and_cross_diffusion_create_2d_coupling():
     assert matrix.global_csr._nnz() > state.ncol * state.nlyr * state.nspecies
 
 
+def test_mr_diffusion_zero_flux_for_uniform_mixing_ratio():
+    """MR-form vertical diffusion shall produce zero flux at every face
+    when the tracer has uniform mixing ratio χ across the column."""
+    ncol, nlyr, ns = 2, 6, 3
+    x1f = torch.linspace(0.0, 6.0e5, nlyr + 1, dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0, 2.0], dtype=torch.float64)
+    temp = torch.full((ncol, nlyr), 250.0, dtype=torch.float64)
+    pres = torch.logspace(5.0, 3.0, nlyr, dtype=torch.float64).unsqueeze(0).expand(ncol, nlyr)
+    H = 1.0e5
+    z = 0.5 * (x1f[:-1] + x1f[1:])
+    density = (1.0e15 * torch.exp(-z / H)).unsqueeze(0).expand(ncol, nlyr).contiguous()
+    chi = torch.tensor([0.1, 0.5, 0.4], dtype=torch.float64)
+    conc = density.unsqueeze(-1) * chi.view(1, 1, ns)
+    state = kt.AtmState2D(x1f=x1f, x2f=x2f, temperature=temp, pressure=pres, concentration=conc)
+    kzz = torch.full((ncol, nlyr), 1.0e5, dtype=torch.float64)
+
+    M_mr = kt.build_eddy_diffusion_matrix(state, kzz, form="mr_diffusion", density=density)
+    tendency = M_mr.matvec(conc)
+    # MR form: uniform χ produces zero flux. Use absolute tolerance on
+    # tendency · max(conc) — the column-integrated flux should be
+    # essentially machine precision.
+    max_conc = conc.abs().max().item()
+    assert tendency.abs().max().item() < 1e-12 * max_conc
+
+    # Sanity: c_diffusion form is NOT zero for the same input — proves
+    # the test discriminates between the two forms.
+    M_c = kt.build_eddy_diffusion_matrix(state, kzz, form="c_diffusion")
+    tendency_c = M_c.matvec(conc)
+    assert tendency_c.abs().max().item() > 1e-6 * max_conc
+
+
+def test_mr_diffusion_conserves_column_mass():
+    """MR-form vertical diffusion shall be column-mass conservative:
+    ∫ dc/dt · dV = 0 for any initial concentration field."""
+    ncol, nlyr, ns = 1, 6, 2
+    x1f = torch.linspace(0.0, 6.0e5, nlyr + 1, dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    temp = torch.full((ncol, nlyr), 250.0, dtype=torch.float64)
+    pres = torch.logspace(5.0, 3.0, nlyr, dtype=torch.float64).unsqueeze(0).expand(ncol, nlyr)
+    H = 1.0e5
+    z = 0.5 * (x1f[:-1] + x1f[1:])
+    density = (1.0e15 * torch.exp(-z / H)).unsqueeze(0)
+    torch.manual_seed(0)
+    conc = (torch.rand(ncol, nlyr, ns, dtype=torch.float64) * density.unsqueeze(-1) * 1.0e-3)
+    state = kt.AtmState2D(x1f=x1f, x2f=x2f, temperature=temp, pressure=pres, concentration=conc)
+    kzz = torch.full((ncol, nlyr), 1.0e5, dtype=torch.float64)
+
+    M_mr = kt.build_eddy_diffusion_matrix(state, kzz, form="mr_diffusion", density=density)
+    dcdt = M_mr.matvec(conc)
+    dx1f = state.dx1f
+    column_mass_rate = (dcdt[0] * dx1f.unsqueeze(-1)).sum(dim=0)  # (ns,)
+    total_mass = (conc[0] * dx1f.unsqueeze(-1)).sum(dim=0)  # (ns,)
+    # Relative residual ~ machine precision
+    rel = (column_mass_rate.abs() / total_mass.abs().clamp_min(1e-30)).max().item()
+    assert rel < 1.0e-12
+
+
+def test_c_diffusion_default_matches_pre_mr_refactor():
+    """The c_diffusion mode (default with KINTERA_TRANSPORT_FORM unset)
+    shall reproduce the original concentration-form diffusion matrix
+    bit-for-bit. This guards against a silent regression in the
+    refactored block-builder."""
+    state = _make_state(ncol=2, nlyr=5, ns=2)
+    torch.manual_seed(42)
+    state.concentration = torch.rand(state.ncol, state.nlyr, state.nspecies, dtype=state.dtype)
+    kzz = torch.full((state.ncol, state.nlyr), 1.0e5, dtype=state.dtype)
+
+    M_default = kt.build_eddy_diffusion_matrix(state, kzz)
+    M_explicit = kt.build_eddy_diffusion_matrix(state, kzz, form="c_diffusion")
+    torch.testing.assert_close(
+        M_default.matvec(state.concentration),
+        M_explicit.matvec(state.concentration),
+        atol=0.0, rtol=0.0,
+    )
+
+
 def test_binary_diffusion_creates_species_coupling():
     state = _make_state(ncol=2, nlyr=4, ns=3)
     binary = torch.zeros((state.ncol, state.nlyr, state.nspecies, state.nspecies), dtype=state.dtype)

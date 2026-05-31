@@ -191,26 +191,73 @@ def _kinetics_base_species_mass_amu(
     name: str,
     pun_metadata: dict[str, Any] | None,
 ) -> float:
+    # Prefer the name-based fallback table — it is authoritative for the
+    # KB Titan networks. The PUN's molecular_weight field is unreliable for
+    # moses00 (CH3 reads back as 3.0, C2H6 as 6.0 — H counts are dropped
+    # somewhere in the parser/composition pipeline). When the species is
+    # NOT in the fallback table, defer to the PUN metadata as a last
+    # resort.
+    name_mass = _fallback_species_mass_amu(name)
+    if name_mass > 0:
+        return name_mass
     metadata = None if pun_metadata is None else pun_metadata.get(name)
     if metadata is None:
-        return _fallback_species_mass_amu(name)
+        return 0.0
     if metadata.molecular_weight > 0:
         return float(metadata.molecular_weight)
-    # The Titan .pun stores zero molecular weights for many gas species; recover
-    # the mass from the parsed element ordering used by this network.
     element_masses = [1.0, 4.0, 12.0, 14.0, 14.0, 16.0, 32.0, 32.0]
     return float(
         sum(count * element_masses[i] for i, count in enumerate(metadata.composition))
     )
 
 def _fallback_species_mass_amu(name: str) -> float:
+    """Return the species mass in amu from its name.
+
+    Tries (1) a hardcoded table for common Titan-chemistry species, then
+    (2) a chemical-formula regex parser for names like ``C2H4`` or
+    ``CH3CN``. The parser strips leading positional prefixes (``1-``,
+    ``1,3-``) and parenthetical state labels (``(1)CH2``, ``(3)CH2``,
+    ``N(2D)``, ``O(1D)``) before matching ``[A-Z][a-z]?[0-9]*`` atom
+    tokens. Element masses use IUPAC values for H, He, C, N, O — the
+    set used by KB Titan networks.
+    """
     fallback = {
-        "H": 1.0,
-        "H2": 2.0,
-        "CH4": 16.0,
-        "C2H2": 26.0,
-        "C2H4": 28.0,
-        "C2H6": 30.0,
+        "H": 1.0, "H2": 2.0, "HE": 4.0,
+        "C": 12.0, "CH": 13.0, "(1)CH2": 14.0, "(3)CH2": 14.0,
+        "CH3": 15.0, "CH4": 16.0,
+        "C2": 24.0, "C2H": 25.0, "C2H2": 26.0, "C2H2*": 26.0, "C2H3": 27.0,
+        "C2H4": 28.0, "C2H5": 29.0, "C2H6": 30.0,
+        "C3": 36.0, "C3H": 37.0, "C3H2": 38.0, "C3H3": 39.0,
+        "CH3C2H": 40.0, "CH2CCH2": 40.0, "C3H5": 41.0, "C3H6": 42.0,
+        "C3H7": 43.0, "C3H8": 44.0,
+        "C4H": 49.0, "C4H2": 50.0, "C4H2*": 50.0, "C4H3": 51.0,
+        "C4H4": 52.0, "C4H5": 53.0,
+        "1-C4H6": 54.0, "1,2-C4H6": 54.0, "1,3-C4H6": 54.0,
+        "C4H8": 56.0, "C4H9": 57.0, "C4H10": 58.0,
+        "C6H": 73.0, "C6H2": 74.0, "C6H3": 75.0, "C6H6": 78.0,
+        "C8H2": 98.0, "C8H3": 99.0,
+        "N": 14.0, "N(2D)": 14.0, "NH": 15.0,
+        "HCN": 27.0, "CHCN": 39.0, "CH3CN": 41.0, "HC3N": 51.0,
+        "C3N": 50.0, "C2N2": 52.0, "C4N2": 76.0, "CN": 26.0,
+        "O": 16.0, "O(1D)": 16.0, "O2": 32.0, "OH": 17.0,
+        "H2O": 18.0, "CO": 28.0, "CO2": 44.0,
+        "HCO": 29.0, "H2CO": 30.0, "CH2OH": 31.0, "CH3O": 31.0, "CH3OH": 32.0,
+        "HCCO": 41.0, "H2CCO": 42.0, "CH3CO": 43.0, "CH3CHO": 44.0,
+        "C2H4OH": 45.0,
+        "M": 28.0, "JDUST": 0.0, "PROD": 0.0, "U": 0.0, "V": 0.0,
+        "H2OCON": 18.0, "C4H2CON": 50.0, "C4H10CON": 58.0,
     }
-    return fallback.get(name, 0.0)
+    if name in fallback:
+        return fallback[name]
+    # Last-resort chemical-formula parser.
+    import re
+    element_amu = {"H": 1.0, "He": 4.0, "C": 12.0, "N": 14.0, "O": 16.0, "S": 32.0}
+    stripped = re.sub(r"\([^)]*\)", "", name)
+    stripped = re.sub(r"^\d+[,\d]*-", "", stripped)
+    stripped = stripped.rstrip("*")
+    total = 0.0
+    for sym, count in re.findall(r"([A-Z][a-z]?)(\d*)", stripped):
+        if sym in element_amu:
+            total += element_amu[sym] * (int(count) if count else 1)
+    return total
 

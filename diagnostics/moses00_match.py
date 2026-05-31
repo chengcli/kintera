@@ -230,7 +230,8 @@ def main() -> int:
         kinetics_base_titan_species_masses,
     )
     moldiff_kind = os.environ.get("KINTERA_TITAN_MOLDIFF", "cheng").lower()
-    moldiff_masses = kinetics_base_titan_species_masses(list(ts.species))
+    pun_meta = {sp.name: sp for sp in pun.species}
+    moldiff_masses = kinetics_base_titan_species_masses(list(ts.species), pun_meta)
     if moldiff_kind == "moses":
         binary_diffusion = kinetics_base_titan_moses_diffusion(
             ts.state, moldiff_masses, density=ts.density,
@@ -248,13 +249,20 @@ def main() -> int:
     else:
         raise ValueError(f"Unknown KINTERA_TITAN_MOLDIFF={moldiff_kind!r}")
 
+    # Transport form selection. mr_diffusion (default) = centered FV + gravity.
+    # mr_exp = KB upwinded exponential differencing (kinetgen2X.F:5177-5200).
+    transport_form_env = os.environ.get("KINTERA_TITAN_TRANSPORT", "mr_diffusion").lower()
+    if transport_form_env not in ("mr_diffusion", "mr_exp"):
+        raise ValueError(f"Unknown KINTERA_TITAN_TRANSPORT={transport_form_env!r}")
+    print(f"  transport_form: {transport_form_env}")
+
     c_start = c.clone()
     c_current = c_start.clone()
     for step, dt in enumerate(schedule):
         ts.state.concentration = c_current
         sys_mat, rhs = kt.build_implicit_step_system(
             ts.state, ts.kzz, float(dt),
-            density=ts.density, transport_form="mr_diffusion",
+            density=ts.density, transport_form=transport_form_env,
             source_terms=atm_sources,
             binary_diffusion=binary_diffusion,
             molecular_weights=moldiff_masses,
@@ -266,6 +274,9 @@ def main() -> int:
         if (step + 1) % 10 == 0 or step == NT - 1:
             ts.state.concentration = c_current
             tend_cur = kt.build_source_linearization(ts.state, atm_sources).tendency
+            # Diagnostic tendency uses mr_diffusion (centered + gravity) for
+            # consistent comparison; the exp scheme tendency is harder to
+            # decompose into "transport" vs "chemistry" parts.
             tr_cur = kt.build_eddy_diffusion_matrix(
                 ts.state, ts.kzz, form="mr_diffusion", density=ts.density,
             ).matvec(c_current)

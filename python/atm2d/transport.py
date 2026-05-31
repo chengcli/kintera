@@ -1,11 +1,63 @@
 from __future__ import annotations
 
+import os
 import torch
 
 from .matrix import SparseSystemMatrix, add_sparse_system_matrices, flatten_state_index
 from .atm_state2d import AtmState2D, SpeciesBoundaryCondition, SpeciesBoundaryConditions2D
 
 GAS_CONSTANT_CGS = 8.31446261815324e7
+
+# Transport form selection. ``c_diffusion`` discretises ∂_z(K · ∂_z c)
+# (the original kintera form). ``mr_diffusion`` discretises
+# ∂_z(K · n_tot · ∂_z(c / n_tot)) (the KB form). The env-var default
+# stays ``c_diffusion`` until the MR-form is validated on the Titan
+# regression set; flipping the default is a follow-up change.
+_TRANSPORT_FORMS = ("c_diffusion", "mr_diffusion", "mr_exp")
+
+
+def _resolve_transport_form(form: str | None) -> str:
+    """Resolve the transport form via explicit kwarg → env var → default."""
+    if form is None:
+        form = os.environ.get("KINTERA_TRANSPORT_FORM", "c_diffusion")
+    if form not in _TRANSPORT_FORMS:
+        raise ValueError(
+            f"unknown transport form {form!r}; expected one of {_TRANSPORT_FORMS}"
+        )
+    return form
+
+
+def _face_density_z(
+    density: torch.Tensor | None,
+    state: AtmState2D,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return ``(n_face, n_center)`` for the vertical FV faces.
+
+    ``n_face`` has shape ``(ncol, nlyr-1)`` and is the arithmetic mean of
+    the cell-centered density at adjacent layers.
+
+    ``n_center`` has shape ``(ncol, nlyr)`` and is the cell-centered
+    density (broadcast/expanded from ``density`` to match the shape
+    expected by per-column scalings).
+
+    Cells with zero density (the grid's "extended" above-atmosphere
+    slots) propagate as ``n_face = 0`` on any face that touches them;
+    callers must guard the divide ``n_face / n_center`` with the
+    matching mask before using the result.
+    """
+    if density is None:
+        raise ValueError(
+            "density tensor is required for mr_diffusion transport form"
+        )
+    d = density
+    if d.dim() == 1:
+        d = d.view(1, -1)
+    if d.shape != (state.ncol, state.nlyr):
+        raise ValueError(
+            f"density must have shape ({state.ncol}, {state.nlyr}), got {tuple(d.shape)}"
+        )
+    n_face = 0.5 * (d[:, :-1] + d[:, 1:])
+    return n_face, d
 
 
 def build_eddy_diffusion_matrix(
@@ -17,6 +69,8 @@ def build_eddy_diffusion_matrix(
     kyz: torch.Tensor | None = None,
     species_diffusion_scale: torch.Tensor | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
+    density: torch.Tensor | None = None,
+    form: str | None = None,
 ) -> SparseSystemMatrix:
     """Assemble the turbulent diffusion operator on the 2D species state.
 
@@ -38,10 +92,12 @@ def build_eddy_diffusion_matrix(
     rows: list[torch.Tensor] = []
     cols: list[torch.Tensor] = []
     vals: list[torch.Tensor] = []
+    resolved_form = _resolve_transport_form(form)
     species_scale = _species_diffusion_scale(species_diffusion_scale, state)
     kzz_x1f = _center_to_x1_faces_scalar(kzz, state)
     _assemble_vertical_scalar_diffusion(
-        rows, cols, vals, state, kzz_x1f[:, 1:-1], species_scale
+        rows, cols, vals, state, kzz_x1f[:, 1:-1], species_scale,
+        form=resolved_form, density=density,
     )
     if kyy is not None:
         kyy_x2f = _center_to_x2_faces_scalar(kyy, state)
@@ -70,6 +126,8 @@ def build_binary_diffusion_matrix(
     gas_constant: float = GAS_CONSTANT_CGS,
     species_diffusion_scale: torch.Tensor | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
+    density: torch.Tensor | None = None,
+    form: str | None = None,
 ) -> SparseSystemMatrix:
     """Assemble the vertical multicomponent binary-diffusion operator.
 
@@ -108,7 +166,11 @@ def build_binary_diffusion_matrix(
             torch.zeros_like(gravity_term),
         )
 
-    _assemble_vertical_matrix_diffusion(rows, cols, vals, state, binary_4d, gravity_term)
+    resolved_form = _resolve_transport_form(form)
+    _assemble_vertical_matrix_diffusion(
+        rows, cols, vals, state, binary_4d, gravity_term,
+        form=resolved_form, density=density,
+    )
     matrix = _matrix_from_triplets(rows, cols, vals, state)
     return _apply_boundary_conditions(state, matrix, boundary_conditions)
 
@@ -126,6 +188,8 @@ def build_transport_matrix(
     gas_constant: float = GAS_CONSTANT_CGS,
     species_diffusion_scale: torch.Tensor | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
+    density: torch.Tensor | None = None,
+    form: str | None = None,
 ) -> SparseSystemMatrix:
     """Assemble the full transport operator from eddy and binary diffusion.
 
@@ -134,6 +198,27 @@ def build_transport_matrix(
     operator, then applies any species boundary conditions to the resulting
     sparse matrix.
     """
+    resolved_form = _resolve_transport_form(form)
+    if resolved_form == "mr_exp":
+        if binary_diffusion is None or molecular_weights is None:
+            raise ValueError(
+                "mr_exp form requires both binary_diffusion and molecular_weights"
+            )
+        transport = build_kb_exponential_vertical_matrix(
+            state,
+            kzz,
+            binary_diffusion,
+            molecular_weights,
+            kyy=kyy,
+            kzy=kzy,
+            kyz=kyz,
+            gas_constant=gas_constant,
+            species_diffusion_scale=species_diffusion_scale,
+            boundary_conditions=None,
+            density=density,
+        )
+        return _apply_boundary_conditions(state, transport, boundary_conditions)
+
     matrices = [
         build_eddy_diffusion_matrix(
             state,
@@ -143,6 +228,8 @@ def build_transport_matrix(
             kyz=kyz,
             species_diffusion_scale=species_diffusion_scale,
             boundary_conditions=None,
+            density=density,
+            form=resolved_form,
         )
     ]
     if binary_diffusion is not None:
@@ -156,10 +243,55 @@ def build_transport_matrix(
                 include_gravity=include_gravity,
                 gas_constant=gas_constant,
                 boundary_conditions=None,
+                density=density,
+                form=resolved_form,
             )
         )
     transport = add_sparse_system_matrices(*matrices)
     return _apply_boundary_conditions(state, transport, boundary_conditions)
+
+
+def build_kb_exponential_vertical_matrix(
+    state: AtmState2D,
+    kzz: torch.Tensor,
+    binary_diffusion: torch.Tensor,
+    molecular_weights: torch.Tensor,
+    *,
+    kyy: torch.Tensor | None = None,
+    kzy: torch.Tensor | None = None,
+    kyz: torch.Tensor | None = None,
+    gas_constant: float = GAS_CONSTANT_CGS,
+    species_diffusion_scale: torch.Tensor | None = None,
+    boundary_conditions: SpeciesBoundaryConditions2D | None = None,
+    density: torch.Tensor | None = None,
+) -> SparseSystemMatrix:
+    """KB upwinded exponential differencing for combined eddy + molecular
+    vertical transport. See ``_assemble_vertical_kb_exponential``.
+
+    Horizontal eddy + cross-diffusion remain centered (delegated to
+    ``build_eddy_diffusion_matrix`` with ``c_diffusion`` form).
+    """
+    rows: list[torch.Tensor] = []
+    cols: list[torch.Tensor] = []
+    vals: list[torch.Tensor] = []
+    species_scale = _species_diffusion_scale(species_diffusion_scale, state)
+    kzz_x1f = _center_to_x1_faces_scalar(kzz, state)
+    _assemble_vertical_kb_exponential(
+        rows, cols, vals, state, kzz_x1f[:, 1:-1],
+        binary_diffusion, molecular_weights,
+        gas_constant=gas_constant, species_scale=species_scale,
+    )
+    matrix = _matrix_from_triplets(rows, cols, vals, state)
+    matrix = _apply_boundary_conditions(state, matrix, None)
+    if any(t is not None for t in (kyy, kzy, kyz)):
+        horizontal = build_eddy_diffusion_matrix(
+            state, kzz,
+            kyy=kyy, kzy=kzy, kyz=kyz,
+            species_diffusion_scale=species_diffusion_scale,
+            boundary_conditions=None, density=density, form="c_diffusion",
+        )
+        matrix = add_sparse_system_matrices(matrix, horizontal)
+    return _apply_boundary_conditions(state, matrix, boundary_conditions)
 
 
 def _assemble_vertical_scalar_diffusion(
@@ -169,12 +301,41 @@ def _assemble_vertical_scalar_diffusion(
     state: AtmState2D,
     kzz: torch.Tensor,
     species_scale: torch.Tensor,
+    *,
+    form: str = "c_diffusion",
+    density: torch.Tensor | None = None,
 ) -> None:
     diffusion_block = torch.diag(species_scale)
+    if form == "c_diffusion":
+        for icol in range(state.ncol):
+            for ilev in range(state.nlyr - 1):
+                block = kzz[icol, ilev] * diffusion_block
+                _add_two_cell_block(rows, cols, vals, state, icol, ilev, icol, ilev + 1, block, axis="z")
+        return
+
+    # mr_diffusion: per-face flux ∝ K · n_face · (c_R/n_R - c_L/n_L)
+    # The block scaling for the left column is K · n_face/n_L, for the
+    # right column is K · n_face/n_R. Zero-density cells produce zero
+    # flux on any touching face (skip the face entirely).
+    n_face, n_center = _face_density_z(density, state)
     for icol in range(state.ncol):
         for ilev in range(state.nlyr - 1):
-            block = kzz[icol, ilev] * diffusion_block
-            _add_two_cell_block(rows, cols, vals, state, icol, ilev, icol, ilev + 1, block, axis="z")
+            nf = n_face[icol, ilev]
+            nL = n_center[icol, ilev]
+            nR = n_center[icol, ilev + 1]
+            if not (nf > 0 and nL > 0 and nR > 0):
+                continue
+            base = kzz[icol, ilev] * diffusion_block
+            left_block = (nf / nL) * base
+            right_block = (nf / nR) * base
+            _add_two_cell_block(
+                rows, cols, vals, state,
+                icol, ilev, icol, ilev + 1,
+                base,  # ignored when left/right_col_block supplied
+                axis="z",
+                left_col_block=left_block,
+                right_col_block=right_block,
+            )
 
 
 def _assemble_horizontal_scalar_diffusion(
@@ -199,11 +360,37 @@ def _assemble_vertical_matrix_diffusion(
     state: AtmState2D,
     binary_diffusion: torch.Tensor,
     gravity_term: torch.Tensor | None,
+    *,
+    form: str = "c_diffusion",
+    density: torch.Tensor | None = None,
 ) -> None:
+    if form == "mr_diffusion":
+        n_face, n_center = _face_density_z(density, state)
+    else:
+        n_face = None
+        n_center = None
     for icol in range(state.ncol):
         for ilev in range(state.nlyr - 1):
             block = binary_diffusion[icol, ilev]
-            _add_two_cell_block(rows, cols, vals, state, icol, ilev, icol, ilev + 1, block, axis="z")
+            if form == "mr_diffusion":
+                assert n_face is not None and n_center is not None
+                nf = n_face[icol, ilev]
+                nL = n_center[icol, ilev]
+                nR = n_center[icol, ilev + 1]
+                if not (nf > 0 and nL > 0 and nR > 0):
+                    continue
+                left_block = (nf / nL) * block
+                right_block = (nf / nR) * block
+                _add_two_cell_block(
+                    rows, cols, vals, state,
+                    icol, ilev, icol, ilev + 1,
+                    block,
+                    axis="z",
+                    left_col_block=left_block,
+                    right_col_block=right_block,
+                )
+            else:
+                _add_two_cell_block(rows, cols, vals, state, icol, ilev, icol, ilev + 1, block, axis="z")
             if gravity_term is not None:
                 gravity_diag = torch.diag(gravity_term[icol, ilev])
                 _add_block(
@@ -228,6 +415,114 @@ def _assemble_vertical_matrix_diffusion(
                     ilev + 1,
                     gravity_diag / state.dx1f[ilev + 1],
                 )
+
+
+def _assemble_vertical_kb_exponential(
+    rows: list[torch.Tensor],
+    cols: list[torch.Tensor],
+    vals: list[torch.Tensor],
+    state: AtmState2D,
+    kzz_face: torch.Tensor,
+    binary_diffusion: torch.Tensor,
+    molecular_weights: torch.Tensor,
+    *,
+    gas_constant: float,
+    species_scale: torch.Tensor,
+) -> None:
+    """KB upwinded exponential differencing for vertical transport.
+
+    Combines eddy + molecular diffusion at each face and applies the
+    Patankar / Allen-Cheng exponential scheme:
+
+        SS_i = dz_face / (2 H_eff_i)
+        J_face_i = D_total_i / dz_face * (c_L * exp(-SS_i) - c_{L+1} * exp(+SS_i))
+
+    where ``H_eff_i = SCALE * D_total_i / (D_eddy + D_mol_i * ZMM_i)`` is
+    KB's effective scale height combining atmospheric scale, molecular
+    species scale, and eddy mixing — when eddy >> molecular, H_eff →
+    SCALE (no gravitational separation); when molecular >> eddy,
+    H_eff → SCALE * m_atm/m_i (pure species scale height). This is the
+    formula from `kinetgen2X.F:5110` (with FA=DIFFACT=1).
+
+    In the centered limit (SS → 0) this reduces to the standard
+    centered-difference scheme + gravitational separation. At KB's
+    grid spacing where dz_face / H_eff ~ 0.5-1 at L60+, the exp form
+    pulls heavy species down (and light species up) faster than the
+    centered scheme.
+
+    Reference: Patankar (1980) §5.5. KB COEFF1 + matrix assembly at
+    kinetgen2X.F:5161-5300.
+    """
+    dtype = state.dtype
+    device = state.device
+    masses = molecular_weights.to(dtype=dtype, device=device)
+    if masses.shape != (state.nspecies,):
+        raise ValueError("molecular_weights must have shape (nspecies,)")
+    scale = species_scale.to(dtype=dtype, device=device)
+    if scale.shape != (state.nspecies,):
+        raise ValueError("species_scale must have shape (nspecies,)")
+
+    # Centered density + temperature; needed for scale-height calc.
+    if not hasattr(state, "temperature"):
+        raise ValueError("state.temperature is required for mr_exp form")
+    T = state.temperature.to(dtype=dtype, device=device)
+    g = float(state.gravity)
+    R = float(gas_constant)
+    x = _mole_fraction(state.concentration)
+
+    binary_diag = torch.diagonal(binary_diffusion, dim1=-2, dim2=-1)  # (ncol, nlyr, nspecies)
+    SS_CLAMP = 50.0
+
+    for icol in range(state.ncol):
+        for ilev in range(state.nlyr - 1):
+            T_face = 0.5 * (T[icol, ilev] + T[icol, ilev + 1])
+            if not (T_face > 0):
+                continue
+            x_face = 0.5 * (x[icol, ilev] + x[icol, ilev + 1])
+            m_atm = float((x_face * masses).sum())
+            if not (m_atm > 0):
+                continue
+            d_mol_face = 0.5 * (binary_diag[icol, ilev] + binary_diag[icol, ilev + 1])
+            d_eddy_face = float(kzz_face[icol, ilev])
+            d_total = d_eddy_face + d_mol_face
+            zmm = masses / m_atm
+            # H_eff = SCALE * D_total / (D_eddy + D_mol * ZMM)
+            denom = d_eddy_face + d_mol_face * zmm
+            scale_atm = R * float(T_face) / (m_atm * g)  # cm
+            safe_denom = torch.where(denom > 0, denom, torch.ones_like(denom))
+            h_eff = torch.where(
+                denom > 0,
+                scale_atm * d_total / safe_denom,
+                torch.full_like(denom, float("inf")),
+            )
+            dz_face = float(state.dx1v[ilev])  # cell-center to cell-center distance
+            SS = dz_face / (2.0 * h_eff)
+            SS = torch.clamp(SS, min=-SS_CLAMP, max=SS_CLAMP)
+            exp_plus = torch.exp(SS)
+            exp_minus = torch.exp(-SS)
+
+            # Species-diagonal flux operator. Total flux contribution at face:
+            #   J_face_i = (d_total_i / dz_face) * (c_L_i * exp(-SS_i) - c_R_i * exp(+SS_i))
+            # Divergence: dc_L/dt -= J_face / dx_L (loss from L);
+            #             dc_R/dt += J_face / dx_R (gain to R via -d J_R-dir = +J_face).
+            # So matrix coefficient on c_L in eq for c_L is -D × exp(-SS) / (dx_L × dz_face);
+            # on c_R in eq for c_L is +D × exp(+SS) / (dx_L × dz_face);
+            # on c_L in eq for c_R is +D × exp(-SS) / (dx_R × dz_face);
+            # on c_R in eq for c_R is -D × exp(+SS) / (dx_R × dz_face).
+            dx_L = float(state.dx1f[ilev])
+            dx_R = float(state.dx1f[ilev + 1])
+            coeff_L = d_total / (dx_L * dz_face)
+            coeff_R = d_total / (dx_R * dz_face)
+            # Apply per-species scale (species_diffusion_scale).
+            ss_scale = scale
+            block_LL = torch.diag(-coeff_L * exp_minus * ss_scale)
+            block_LR = torch.diag(+coeff_L * exp_plus * ss_scale)
+            block_RL = torch.diag(+coeff_R * exp_minus * ss_scale)
+            block_RR = torch.diag(-coeff_R * exp_plus * ss_scale)
+            _add_block(rows, cols, vals, state, icol, ilev,     icol, ilev,     block_LL)
+            _add_block(rows, cols, vals, state, icol, ilev,     icol, ilev + 1, block_LR)
+            _add_block(rows, cols, vals, state, icol, ilev + 1, icol, ilev,     block_RL)
+            _add_block(rows, cols, vals, state, icol, ilev + 1, icol, ilev + 1, block_RR)
 
 
 def _assemble_cross_diffusion(
@@ -268,7 +563,27 @@ def _add_two_cell_block(
     block: torch.Tensor,
     *,
     axis: str,
+    left_col_block: torch.Tensor | None = None,
+    right_col_block: torch.Tensor | None = None,
 ) -> None:
+    """Assemble the four matrix entries for one finite-volume face.
+
+    Standard usage (concentration-form diffusion) passes a single
+    ``block`` tensor — it is used for both the left-column and
+    right-column contributions, producing the symmetric Laplacian
+
+        M[L,L] -= block / (Δz_L · Δv_face)
+        M[L,R] += block / (Δz_L · Δv_face)
+        M[R,L] += block / (Δz_R · Δv_face)
+        M[R,R] -= block / (Δz_R · Δv_face)
+
+    For mixing-ratio-form diffusion the LEFT-COLUMN entries (``M[*,L]``)
+    need a different scaling from the RIGHT-COLUMN entries (``M[*,R]``)
+    because the flux operates on ``c / n_tot`` and the per-column
+    factors ``n_face / n_L`` and ``n_face / n_R`` are different. To
+    enable that, callers can pass ``left_col_block`` and
+    ``right_col_block`` instead of (or in addition to) ``block``.
+    """
     if axis == "z":
         left_scale = 1.0 / (state.dx1f[left_lyr] * state.dx1v[left_lyr])
         right_scale = 1.0 / (state.dx1f[right_lyr] * state.dx1v[left_lyr])
@@ -278,10 +593,15 @@ def _add_two_cell_block(
     else:
         raise ValueError("axis must be 'y' or 'z'")
 
-    _add_block(rows, cols, vals, state, left_col, left_lyr, left_col, left_lyr, -left_scale * block)
-    _add_block(rows, cols, vals, state, left_col, left_lyr, right_col, right_lyr, left_scale * block)
-    _add_block(rows, cols, vals, state, right_col, right_lyr, left_col, left_lyr, right_scale * block)
-    _add_block(rows, cols, vals, state, right_col, right_lyr, right_col, right_lyr, -right_scale * block)
+    if left_col_block is None:
+        left_col_block = block
+    if right_col_block is None:
+        right_col_block = block
+
+    _add_block(rows, cols, vals, state, left_col, left_lyr, left_col, left_lyr, -left_scale * left_col_block)
+    _add_block(rows, cols, vals, state, left_col, left_lyr, right_col, right_lyr, left_scale * right_col_block)
+    _add_block(rows, cols, vals, state, right_col, right_lyr, left_col, left_lyr, right_scale * left_col_block)
+    _add_block(rows, cols, vals, state, right_col, right_lyr, right_col, right_lyr, -right_scale * right_col_block)
 
 
 def _add_scaled_flux_pair(
