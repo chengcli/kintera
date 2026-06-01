@@ -329,28 +329,46 @@ def _assemble_vertical_matrix_diffusion(
             else:
                 _add_two_cell_block(rows, cols, vals, state, icol, ilev, icol, ilev + 1, block, axis="z")
             if gravity_term is not None:
+                # Centered FV for the gravitational-separation flux in
+                # mr_diffusion form. The mol_grad term already includes the
+                # bath density-gradient correction, so the gravity term
+                # adds only the species-specific contribution
+                #     J_grav = -K * c * (1/H_i - 1/H_atm)
+                #            = -K * c * g * (m_i - m_atm)/(RT)
+                # At the face between cells L and L+1, centered FV writes
+                #     J_face = -gravity_term * (c[L] + c[L+1])
+                # where ``gravity_term = 0.5 * K * (m_i - m_atm) * g/(RT)``
+                # (the 0.5 is folded in by build_binary_diffusion_matrix).
+                # Divergence -∂J/∂z then gives the four matrix entries
+                # below. For HEAVY species (gravity_term > 0) the diagonal
+                # at row L is +gravity_term/dx[L], so c[L] (lower cell)
+                # grows — heavy species sink into L. For LIGHT species
+                # (gravity_term < 0) the signs flip and c[L] drains
+                # upward. The previous 2-entry assembly used the opposite
+                # sign convention (effectively heavy rising, light sinking)
+                # and is not equivalent to either an upwind or a centered
+                # scheme; it accidentally gave reasonable L60 ratios but
+                # diverged sharply at L70+.
                 gravity_diag = torch.diag(gravity_term[icol, ilev])
                 _add_block(
-                    rows,
-                    cols,
-                    vals,
-                    state,
-                    icol,
-                    ilev,
-                    icol,
-                    ilev + 1,
-                    -gravity_diag / state.dx1f[ilev],
+                    rows, cols, vals, state,
+                    icol, ilev, icol, ilev,
+                    gravity_diag / state.dx1f[ilev],
                 )
                 _add_block(
-                    rows,
-                    cols,
-                    vals,
-                    state,
-                    icol,
-                    ilev + 1,
-                    icol,
-                    ilev + 1,
-                    gravity_diag / state.dx1f[ilev + 1],
+                    rows, cols, vals, state,
+                    icol, ilev, icol, ilev + 1,
+                    gravity_diag / state.dx1f[ilev],
+                )
+                _add_block(
+                    rows, cols, vals, state,
+                    icol, ilev + 1, icol, ilev,
+                    -gravity_diag / state.dx1f[ilev + 1],
+                )
+                _add_block(
+                    rows, cols, vals, state,
+                    icol, ilev + 1, icol, ilev + 1,
+                    -gravity_diag / state.dx1f[ilev + 1],
                 )
 
 
