@@ -142,22 +142,26 @@ def main() -> int:
 
     raw_atm = kt.parse_kinetics_base_atmosphere(str(ATM_PATH))
     missing = [s for s in species if s not in raw_atm.species_profiles]
-    if missing:
-        zero_profile = [0.0] * len(raw_atm.altitude)
-        # JDUST = density would give τ ≈ 2800 (kills photolysis); zero it.
-        density_like = ("N2", "M")
-        class _AtmShim:
-            altitude = list(raw_atm.altitude)
-            density = list(raw_atm.density)
-            temperature = list(raw_atm.temperature)
-            pressure = list(raw_atm.pressure)
-            eddy_diffusion = list(raw_atm.eddy_diffusion)
-            species_profiles = dict(raw_atm.species_profiles)
-            for s in missing:
-                species_profiles[s] = list(raw_atm.density) if s in density_like else zero_profile
-        atm = _AtmShim()
-    else:
-        atm = raw_atm
+    zero_profile = [0.0] * len(raw_atm.altitude)
+    density_like = ("N2", "M")
+    # JDUST: moses00 atm ships nonzero JDUST that with kintera's σ=1e-8 cm²
+    # would give column τ~2800 at L60, killing photolysis entirely. moses00
+    # has no aerosol chemistry — force JDUST=0 in the shim so the diagnostic
+    # sees the same photolysis rates as the SS run.
+    force_zero = ("JDUST",)
+    class _AtmShim:
+        altitude = list(raw_atm.altitude)
+        density = list(raw_atm.density)
+        temperature = list(raw_atm.temperature)
+        pressure = list(raw_atm.pressure)
+        eddy_diffusion = list(raw_atm.eddy_diffusion)
+        species_profiles = dict(raw_atm.species_profiles)
+        for s in missing:
+            species_profiles[s] = list(raw_atm.density) if s in density_like else list(zero_profile)
+        for s in force_zero:
+            if s in species_profiles:
+                species_profiles[s] = list(zero_profile)
+    atm = _AtmShim()
     ts = kt.build_kinetics_base_titan_state(
         atm, species=species, fixed_species=fixed,
         boundary_path=str(BC_PATH), pun_path=str(PUN_PATH),
