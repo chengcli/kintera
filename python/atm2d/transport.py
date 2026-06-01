@@ -13,7 +13,7 @@ GAS_CONSTANT_CGS = 8.31446261815324e7
 # ∂_z(K · n_tot · ∂_z(c / n_tot)) (the KB form). The env-var default
 # stays ``c_diffusion`` until the MR-form is validated on the Titan
 # regression set; flipping the default is a follow-up change.
-_TRANSPORT_FORMS = ("c_diffusion", "mr_diffusion")
+_TRANSPORT_FORMS = ("c_diffusion", "mr_diffusion", "mr_exp", "mr_hybrid")
 
 
 def _resolve_transport_form(form: str | None) -> str:
@@ -199,6 +199,21 @@ def build_transport_matrix(
     sparse matrix.
     """
     resolved_form = _resolve_transport_form(form)
+    if resolved_form in ("mr_exp", "mr_hybrid"):
+        if binary_diffusion is None or molecular_weights is None:
+            raise ValueError(
+                f"{resolved_form} form requires both binary_diffusion and molecular_weights"
+            )
+        transport = build_kb_exponential_vertical_matrix(
+            state, kzz, binary_diffusion, molecular_weights,
+            kyy=kyy, kzy=kzy, kyz=kyz,
+            gas_constant=gas_constant,
+            species_diffusion_scale=species_diffusion_scale,
+            boundary_conditions=None, density=density,
+            hybrid=(resolved_form == "mr_hybrid"),
+        )
+        return _apply_boundary_conditions(state, transport, boundary_conditions)
+
     matrices = [
         build_eddy_diffusion_matrix(
             state,
@@ -229,6 +244,209 @@ def build_transport_matrix(
         )
     transport = add_sparse_system_matrices(*matrices)
     return _apply_boundary_conditions(state, transport, boundary_conditions)
+
+
+def build_kb_exponential_vertical_matrix(
+    state: AtmState2D,
+    kzz: torch.Tensor,
+    binary_diffusion: torch.Tensor,
+    molecular_weights: torch.Tensor,
+    *,
+    kyy: torch.Tensor | None = None,
+    kzy: torch.Tensor | None = None,
+    kyz: torch.Tensor | None = None,
+    gas_constant: float = GAS_CONSTANT_CGS,
+    species_diffusion_scale: torch.Tensor | None = None,
+    boundary_conditions: SpeciesBoundaryConditions2D | None = None,
+    density: torch.Tensor | None = None,
+    hybrid: bool = False,
+) -> SparseSystemMatrix:
+    """KB upwinded exponential differencing for combined eddy + molecular
+    vertical transport.
+
+    When ``hybrid=True``, species with ``m_i >= m_atm`` (heavy) fall back
+    to the centered mr-form diffusion + centered gravity assembly while
+    only light species use the exp factors. This avoids the pure-mol
+    equilibrium drainage that collapses heavy species at L80+ in pure
+    mr_exp.
+    """
+    rows: list[torch.Tensor] = []
+    cols: list[torch.Tensor] = []
+    vals: list[torch.Tensor] = []
+    species_scale = _species_diffusion_scale(species_diffusion_scale, state)
+    kzz_x1f = _center_to_x1_faces_scalar(kzz, state)
+    _assemble_vertical_kb_exponential(
+        rows, cols, vals, state, kzz_x1f[:, 1:-1],
+        binary_diffusion, molecular_weights,
+        gas_constant=gas_constant, species_scale=species_scale,
+        hybrid=hybrid, density=density,
+    )
+    matrix = _matrix_from_triplets(rows, cols, vals, state)
+    matrix = _apply_boundary_conditions(state, matrix, None)
+    if any(t is not None for t in (kyy, kzy, kyz)):
+        horizontal = build_eddy_diffusion_matrix(
+            state, kzz,
+            kyy=kyy, kzy=kzy, kyz=kyz,
+            species_diffusion_scale=species_diffusion_scale,
+            boundary_conditions=None, density=density, form="c_diffusion",
+        )
+        matrix = add_sparse_system_matrices(matrix, horizontal)
+    return _apply_boundary_conditions(state, matrix, boundary_conditions)
+
+
+def _assemble_vertical_kb_exponential(
+    rows: list[torch.Tensor],
+    cols: list[torch.Tensor],
+    vals: list[torch.Tensor],
+    state: AtmState2D,
+    kzz_face: torch.Tensor,
+    binary_diffusion: torch.Tensor,
+    molecular_weights: torch.Tensor,
+    *,
+    gas_constant: float,
+    species_scale: torch.Tensor,
+    hybrid: bool = False,
+    density: torch.Tensor | None = None,
+) -> None:
+    """KB upwinded exponential differencing for combined eddy + molecular
+    vertical transport.
+
+    Reference: kinetgen2X.F:5083-5300 (Cheng molecular diffusion +
+    Patankar-style exp scheme on combined D = eddy + molecular).
+    For each face between cells L and L+1:
+
+        SS = dz_face / (2 * H_eff)
+        H_eff = SCALE * D_total / (D_eddy + D_mol * ZMM)
+        J_face = D_total/dz * (c_L * exp(-SS) - c_{L+1} * exp(+SS))
+
+    where ZMM = m_i / m_atm and SCALE = R T / (m_atm g) is the
+    atmospheric scale height at the face.
+
+    In the centered (small-SS) limit this reduces to centered
+    diffusion + gravitational separation. At KB's grid spacing where
+    dz/H_eff ~ 0.5-1 the exp form pulls heavy species down and light
+    species up much more accurately than the centered scheme.
+    """
+    dtype = state.dtype
+    device = state.device
+    masses = molecular_weights.to(dtype=dtype, device=device)
+    if masses.shape != (state.nspecies,):
+        raise ValueError("molecular_weights must have shape (nspecies,)")
+    scale = species_scale.to(dtype=dtype, device=device)
+    if scale.shape != (state.nspecies,):
+        raise ValueError("species_scale must have shape (nspecies,)")
+
+    T = state.temperature.to(dtype=dtype, device=device)
+    g = float(state.gravity)
+    R = float(gas_constant)
+    x = _mole_fraction(state.concentration)
+
+    binary_diag = torch.diagonal(binary_diffusion, dim1=-2, dim2=-1)
+    SS_CLAMP = 50.0
+
+    if hybrid:
+        if density is not None:
+            n_tot = density.to(dtype=dtype, device=device)
+        else:
+            n_tot = state.concentration.sum(dim=-1).to(dtype=dtype, device=device)
+    else:
+        n_tot = torch.zeros((state.ncol, state.nlyr), dtype=dtype, device=device)
+
+    for icol in range(state.ncol):
+        for ilev in range(state.nlyr - 1):
+            T_face = 0.5 * (T[icol, ilev] + T[icol, ilev + 1])
+            if not (T_face > 0):
+                continue
+            x_face = 0.5 * (x[icol, ilev] + x[icol, ilev + 1])
+            m_atm = float((x_face * masses).sum())
+            if not (m_atm > 0):
+                continue
+            d_mol_face = 0.5 * (binary_diag[icol, ilev] + binary_diag[icol, ilev + 1])
+            d_eddy_face = float(kzz_face[icol, ilev])
+            d_total = d_eddy_face + d_mol_face
+            zmm = masses / m_atm
+            denom = d_eddy_face + d_mol_face * zmm
+            scale_atm = R * float(T_face) / (m_atm * g)
+            safe_denom = torch.where(denom > 0, denom, torch.ones_like(denom))
+            h_eff = torch.where(
+                denom > 0,
+                scale_atm * d_total / safe_denom,
+                torch.full_like(denom, float("inf")),
+            )
+            dz_face = float(state.dx1v[ilev])
+            SS = dz_face / (2.0 * h_eff)
+            SS = torch.clamp(SS, min=-SS_CLAMP, max=SS_CLAMP)
+            exp_plus = torch.exp(SS)
+            exp_minus = torch.exp(-SS)
+
+            dx_L = float(state.dx1f[ilev])
+            dx_R = float(state.dx1f[ilev + 1])
+            coeff_L = d_total / (dx_L * dz_face)
+            coeff_R = d_total / (dx_R * dz_face)
+            ss_scale = scale
+
+            # Exp-scheme coefficients (per species)
+            exp_LL = -coeff_L * exp_minus
+            exp_LR = +coeff_L * exp_plus
+            exp_RL = +coeff_R * exp_minus
+            exp_RR = -coeff_R * exp_plus
+
+            if hybrid:
+                # Centered mr-form diffusion + centered gravity for heavy
+                # species (m_i >= m_atm). Eddy + mol use n_face/n_L and
+                # n_face/n_R scaling (mr-form Laplacian); gravity uses
+                # gravity_term = 0.5 * D_mol * (m_i - m_atm) * g/(RT).
+                nL = float(n_tot[icol, ilev])
+                nR = float(n_tot[icol, ilev + 1])
+                nf = 0.5 * (nL + nR)
+                if not (nL > 0 and nR > 0 and nf > 0):
+                    cen_LL = exp_LL.clone()
+                    cen_LR = exp_LR.clone()
+                    cen_RL = exp_RL.clone()
+                    cen_RR = exp_RR.clone()
+                else:
+                    # mr-form Laplacian on combined eddy + mol diffusion.
+                    cen_LL_diff = -(nf / nL) * d_total / (dx_L * dz_face)
+                    cen_LR_diff = +(nf / nR) * d_total / (dx_L * dz_face)
+                    cen_RL_diff = +(nf / nL) * d_total / (dx_R * dz_face)
+                    cen_RR_diff = -(nf / nR) * d_total / (dx_R * dz_face)
+                    # Centered gravity contribution (4-entry, only from D_mol).
+                    grav = 0.5 * d_mol_face * (masses - m_atm) * (g / (float(T_face) * R))
+                    cen_LL = cen_LL_diff + grav / dx_L
+                    cen_LR = cen_LR_diff + grav / dx_L
+                    cen_RL = cen_RL_diff - grav / dx_R
+                    cen_RR = cen_RR_diff - grav / dx_R
+
+                # Use exp scheme only for very-light species (m_i <= 0.6 * m_atm,
+                # i.e. ZMM < 0.6). For Titan (m_atm ~ 28), this captures
+                # H, H2, He, C, CH, CH2 variants, CH3, CH4, N, N(2D), NH, O —
+                # species whose exp equilibrium is far from H_atm-scale and
+                # whose KB profile is dominated by chemistry / top-injection
+                # rather than gravitational settling. Species with ZMM >= 0.6
+                # (HCN, CN, C2H2, all heavier hydrocarbons) get the centered
+                # mr-form scheme + linear gravity — KB's profile for these
+                # is much shallower than the pure mol-diff equilibrium that
+                # exp would converge to.
+                light = masses < (0.6 * m_atm)
+                heavy = ~light
+                diag_LL = torch.where(heavy, cen_LL, exp_LL) * ss_scale
+                diag_LR = torch.where(heavy, cen_LR, exp_LR) * ss_scale
+                diag_RL = torch.where(heavy, cen_RL, exp_RL) * ss_scale
+                diag_RR = torch.where(heavy, cen_RR, exp_RR) * ss_scale
+            else:
+                diag_LL = exp_LL * ss_scale
+                diag_LR = exp_LR * ss_scale
+                diag_RL = exp_RL * ss_scale
+                diag_RR = exp_RR * ss_scale
+
+            block_LL = torch.diag(diag_LL)
+            block_LR = torch.diag(diag_LR)
+            block_RL = torch.diag(diag_RL)
+            block_RR = torch.diag(diag_RR)
+            _add_block(rows, cols, vals, state, icol, ilev,     icol, ilev,     block_LL)
+            _add_block(rows, cols, vals, state, icol, ilev,     icol, ilev + 1, block_LR)
+            _add_block(rows, cols, vals, state, icol, ilev + 1, icol, ilev,     block_RL)
+            _add_block(rows, cols, vals, state, icol, ilev + 1, icol, ilev + 1, block_RR)
 
 
 def _assemble_vertical_scalar_diffusion(
