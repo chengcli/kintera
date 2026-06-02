@@ -1,3 +1,6 @@
+// C/C++
+#include <algorithm>
+
 // yaml
 #include <yaml-cpp/yaml.h>
 
@@ -92,12 +95,84 @@ ArrheniusImpl::ArrheniusImpl(ArrheniusOptions const& options_)
 }
 
 void ArrheniusImpl::reset() {
+  // legacy single-range buffers (kept for reporting / introspection)
   A = register_buffer("A", torch::tensor(options->A(), torch::kFloat64));
   b = register_buffer("b", torch::tensor(options->b(), torch::kFloat64));
   Ea_R =
       register_buffer("Ea_R", torch::tensor(options->Ea_R(), torch::kFloat64));
   E4_R =
       register_buffer("E4_R", torch::tensor(options->E4_R(), torch::kFloat64));
+
+  // Sentinels bounding the first/last range. Physical temperatures are
+  // positive and well below 1e30 K, so range 0 always covers low T and the
+  // top range always covers high T.
+  constexpr double T_LO_SENTINEL = 0.0;
+  constexpr double T_HI_SENTINEL = 1.0e30;
+
+  const bool multi = !options->A_ranges().empty();
+  const int nreaction =
+      multi ? (int)options->A_ranges().size() : (int)options->A().size();
+
+  // Maximum number of temperature ranges across all reactions (>= 1).
+  nrange = 1;
+  if (multi) {
+    for (auto const& a : options->A_ranges()) {
+      nrange = std::max<int>(nrange, (int)a.size());
+    }
+  }
+
+  // Padded (nreaction, nrange) parameter tables. Padded slots get A = 0 and a
+  // never-matching [T_HI, T_HI) window so they contribute nothing.
+  std::vector<double> a_flat(nreaction * nrange, 0.0);
+  std::vector<double> b_flat(nreaction * nrange, 0.0);
+  std::vector<double> e_flat(nreaction * nrange, 0.0);
+  std::vector<double> tlo_flat(nreaction * nrange, T_HI_SENTINEL);
+  std::vector<double> thi_flat(nreaction * nrange, T_HI_SENTINEL);
+
+  for (int i = 0; i < nreaction; ++i) {
+    if (multi) {
+      auto const& av = options->A_ranges()[i];
+      auto const& bv = options->b_ranges()[i];
+      auto const& ev = options->Ea_R_ranges()[i];
+      auto const& tv = options->T_ranges()[i];
+      const int ni = (int)av.size();
+      TORCH_CHECK(ni >= 1, "Arrhenius reaction ", i, " has no temperature range");
+      TORCH_CHECK((int)bv.size() == ni && (int)ev.size() == ni,
+                  "Arrhenius multi-range A/b/Ea_R length mismatch at reaction ",
+                  i);
+      TORCH_CHECK(
+          (int)tv.size() == ni,
+          "Arrhenius T_ranges must give one upper bound per range at reaction ",
+          i);
+      double prev = T_LO_SENTINEL;
+      for (int r = 0; r < ni; ++r) {
+        a_flat[i * nrange + r] = av[r];
+        b_flat[i * nrange + r] = bv[r];
+        e_flat[i * nrange + r] = ev[r];
+        tlo_flat[i * nrange + r] = prev;
+        thi_flat[i * nrange + r] = (r == ni - 1) ? T_HI_SENTINEL : tv[r];
+        prev = tv[r];
+      }
+    } else {
+      a_flat[i * nrange] = options->A()[i];
+      b_flat[i * nrange] = options->b()[i];
+      e_flat[i * nrange] = options->Ea_R()[i];
+      tlo_flat[i * nrange] = T_LO_SENTINEL;
+      thi_flat[i * nrange] = T_HI_SENTINEL;
+    }
+  }
+
+  auto opt = torch::TensorOptions().dtype(torch::kFloat64);
+  Amr = register_buffer(
+      "Amr", torch::tensor(a_flat, opt).view({nreaction, nrange}));
+  bmr = register_buffer(
+      "bmr", torch::tensor(b_flat, opt).view({nreaction, nrange}));
+  Ea_Rmr = register_buffer(
+      "Ea_Rmr", torch::tensor(e_flat, opt).view({nreaction, nrange}));
+  Tlo = register_buffer(
+      "Tlo", torch::tensor(tlo_flat, opt).view({nreaction, nrange}));
+  Thi = register_buffer(
+      "Thi", torch::tensor(thi_flat, opt).view({nreaction, nrange}));
 }
 
 void ArrheniusImpl::pretty_print(std::ostream& os) const {
@@ -113,9 +188,25 @@ void ArrheniusImpl::pretty_print(std::ostream& os) const {
 torch::Tensor ArrheniusImpl::forward(
     torch::Tensor T, torch::Tensor P, torch::Tensor C,
     std::map<std::string, torch::Tensor> const& other) {
-  // expand T if not yet
+  // expand T to be broadcastable against the reaction dim if not yet
   auto temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
-  return A * (temp / options->Tref()).pow(b) * torch::exp(-Ea_R / temp);
+
+  // add a trailing range dim: (..., 1, 1) or (..., nreaction, 1) so it
+  // broadcasts against the (nreaction, nrange) parameter tables.
+  auto tempr = temp.unsqueeze(-1);
+
+  // candidate rate per (reaction, range): (..., nreaction, nrange)
+  auto rate_rr =
+      Amr * (tempr / options->Tref()).pow(bmr) * torch::exp(-Ea_Rmr / tempr);
+
+  // single-range fast path: bit-identical to the legacy single-range result
+  if (nrange == 1) {
+    return rate_rr.squeeze(-1);
+  }
+
+  // select the range whose [Tlo, Thi) window contains the local temperature
+  auto mask = (tempr >= Tlo).logical_and(tempr < Thi).to(rate_rr.dtype());
+  return (rate_rr * mask).sum(-1);
 }
 
 }  // namespace kintera

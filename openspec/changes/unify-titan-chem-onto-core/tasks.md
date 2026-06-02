@@ -13,9 +13,9 @@ recipe ratios (CH3 L40 ≈ 0.64, C6H6 L40 ≈ 1.80, C3H3 L40 ≈ 0.69).
 ## 1. Core: multi-range Arrhenius
 
 - [x] 1.1 Determine scope — RESOLVED: COMPILED C++ change. Arrhenius is `src/kinetics/rate_constant.{hpp,cpp}` (`ArrheniusOptionsImpl` A/b/Ea_R single-range lists + `Arrhenius::forward(T,other)`); needs per-range params + T-range selection, pybind in `python/csrc/pykinetics.cpp`, and a CMake rebuild (build/ is configured; torch cpp_extension).
-- [ ] 1.2 Add multi-range (A,B,C per temperature range) support to the core Arrhenius option + model
-- [ ] 1.3 Unit-test single-range parity (identical to current single-range result)
-- [ ] 1.4 Unit-test KB ZK1 (B>0) / ZK2 (B<0) parity across ranges to 1e-3 relative
+- [x] 1.2 Add multi-range (A,B,C per temperature range) support to the core Arrhenius option + model
+- [x] 1.3 Unit-test single-range parity (identical to current single-range result)
+- [x] 1.4 Unit-test KB ZK1 (B>0) / ZK2 (B<0) parity across ranges to 1e-3 relative
 
 ## 2. KB → KineticsOptions translator (thermal)
 

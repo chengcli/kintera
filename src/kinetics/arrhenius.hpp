@@ -46,6 +46,12 @@ struct ArrheniusOptionsImpl {
        << "* b = " << fmt::format("{}", b()) << "\n"
        << "* Ea_R = " << fmt::format("{}", Ea_R()) << " K\n"
        << "* E4_R = " << fmt::format("{}", E4_R()) << "\n";
+    if (!A_ranges().empty()) {
+      os << "* A_ranges = " << fmt::format("{}", A_ranges()) << "\n"
+         << "* b_ranges = " << fmt::format("{}", b_ranges()) << "\n"
+         << "* Ea_R_ranges = " << fmt::format("{}", Ea_R_ranges()) << "\n"
+         << "* T_ranges = " << fmt::format("{}", T_ranges()) << "\n";
+    }
   }
 
   // reference temperature
@@ -69,6 +75,33 @@ struct ArrheniusOptionsImpl {
 
   //! Additional 4th parameter in the rate expression
   ADD_ARG(std::vector<double>, E4_R) = {};
+
+  //! Multi-range parameters, indexed [reaction][range].
+  /*!
+   * When `A_ranges` is non-empty it takes precedence over the single-range
+   * (`A`, `b`, `Ea_R`) lists and defines the reaction count. Each reaction
+   * carries one or more temperature ranges, each with its own (A, b, Ea_R)
+   * triple. This represents KINETICS-base (KB) AK/AK2/AK3 constants. The rate
+   * within a range is the usual `A * (T / Tref)^b * exp(-Ea_R / T)`; KB's
+   * ZK1 (B>0) and ZK2 (B<0) forms are the same expression with the sign of
+   * `b` carried through, so both map onto this option directly.
+   */
+  ADD_ARG(std::vector<std::vector<double>>, A_ranges) = {};
+
+  //! Per-range temperature exponent, indexed [reaction][range].
+  ADD_ARG(std::vector<std::vector<double>>, b_ranges) = {};
+
+  //! Per-range activation energy [K], indexed [reaction][range].
+  ADD_ARG(std::vector<std::vector<double>>, Ea_R_ranges) = {};
+
+  //! Per-range upper temperature bound [K], indexed [reaction][range].
+  /*!
+   * One entry per range, ascending. Range `r` is active for
+   * `[T_ranges[r-1], T_ranges[r])`; the first range extends down to 0 K and
+   * the last range extends up to +inf (its stated bound is ignored), so the
+   * ranges always cover all temperatures with no gaps.
+   */
+  ADD_ARG(std::vector<std::vector<double>>, T_ranges) = {};
 };
 using ArrheniusOptions = std::shared_ptr<ArrheniusOptionsImpl>;
 
@@ -88,6 +121,24 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
 
   //! additional 4th parameter in the rate expression, shape (nreaction,)
   torch::Tensor E4_R;
+
+  //! per-range pre-exponential factor, shape (nreaction, nrange)
+  torch::Tensor Amr;
+
+  //! per-range temperature exponent, shape (nreaction, nrange)
+  torch::Tensor bmr;
+
+  //! per-range activation energy [K], shape (nreaction, nrange)
+  torch::Tensor Ea_Rmr;
+
+  //! per-range lower temperature bound [K], shape (nreaction, nrange)
+  torch::Tensor Tlo;
+
+  //! per-range upper temperature bound [K], shape (nreaction, nrange)
+  torch::Tensor Thi;
+
+  //! number of temperature ranges (>= 1)
+  int nrange = 1;
 
   //! options with which this `ArrheniusImpl` was constructed
   ArrheniusOptions options;
