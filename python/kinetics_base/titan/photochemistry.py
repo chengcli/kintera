@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -77,11 +78,14 @@ def _is_active_kinetics_base_photo_branch(
     # Explicit allow via special path takes precedence
     if special_photo_parent_species and parent in special_photo_parent_species:
         return True
+    # KB-2012 moses00 binary photolyzes any species whose cross-section
+    # file exists, regardless of the IPHOTO opacity list (verified via
+    # IPRNTD=11111 verbose log: ZK(3) CH3→CH+H2 has non-zero rate at L40
+    # even though CH3 is NOT in moses00 IPHOTO). The IPHOTO list controls
+    # only actinic-flux attenuation. Set this env var to match that.
+    if os.environ.get("KINTERA_TITAN_PHOTO_ALLOW_RADICALS"):
+        return True
     # Fall back to active_opacity_species (the IPHOTO list from kinetics.inp).
-    # When no special path is provided, only parents listed in IPHOTO are
-    # photolyzed — empty special_photo_parent_species must NOT default to
-    # "allow all" because that activates radical photolysis (CH3 → ..., C2H3
-    # → ..., etc.) which the case's IPHOTO list intentionally omits.
     if active_opacity_species is None or parent not in active_opacity_species:
         return False
     return True
@@ -148,6 +152,17 @@ def _kinetics_base_photo_rates(
     rates: dict[str, dict[str, Any]] = {}
     cross_root = Path(cross_dir)
     catalog = _parse_kinetics_base_catalog(catalog_path)
+    # The Cheng catalog includes a short-wavelength (X-ray/EUV) radical+ion
+    # cross-section block whose filenames carry the "_XSCN_" tag (the neutral
+    # C3-radical channels c-C3H/l-C3H/c-C3H2/l-C3H2/t-C3H2 -> C3+H, C3+H2,
+    # C3H+H, plus a few ion channels). KB-2012 moses00 does NOT load this block
+    # (its ZK rates for these reactions are exactly 0 at all altitudes). With
+    # KINTERA_TITAN_PHOTO_ALLOW_RADICALS the c-/l- strip would otherwise map
+    # these onto PUN reactions and over-produce C3/C3H by 20-900x at L60-L80.
+    # Exclude them by default to match KB; set KINTERA_TITAN_PHOTO_INCLUDE_XSCN
+    # to re-enable (e.g. for ion runs that genuinely use the X-ray channels).
+    if not os.environ.get("KINTERA_TITAN_PHOTO_INCLUDE_XSCN"):
+        catalog = [(eq, fn) for eq, fn in catalog if "_XSCN_" not in fn]
     cross_cache = {
         filename: _parse_kinetics_base_cross_section_on_flux(cross_root / filename, flux)
         for _, filename in catalog

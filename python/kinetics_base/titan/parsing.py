@@ -611,6 +611,13 @@ def _normalize_kinetics_base_photo_species(name: str) -> str:
         normalized = "N" + normalized[2:]
     if normalized.startswith("a"):
         normalized = normalized[1:]
+    # Cheng catalog distinguishes cyclic (c-) and linear (l-) C3H2 / C3H3
+    # isomers, but PUN uses one unified name. Drop the prefix so both
+    # catalog channels map to the same PUN reaction key. This recovers
+    # rxn 24 (C3H3→C3H2+H), rxn 27 (CH3C2H→C3H2+H2), rxn 30
+    # (CH2CCH2→C3H2+H2), and similar.
+    if len(normalized) > 2 and normalized[0] in ("c", "l") and normalized[1] == "-":
+        normalized = normalized[2:]
     return normalized
 
 def _kinetics_base_reaction_key(reactants: list[str], products: list[str]) -> str:

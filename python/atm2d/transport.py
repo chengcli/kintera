@@ -411,6 +411,10 @@ def _assemble_vertical_kb_exponential(
                     cen_RL_diff = +(nf / nL) * d_total / (dx_R * dz_face)
                     cen_RR_diff = -(nf / nR) * d_total / (dx_R * dz_face)
                     # Centered gravity contribution (4-entry, only from D_mol).
+                    # MR-form gravitational separation uses the buoyancy-reduced
+                    # mass (m_i - m_atm); equivalent to the number-density form's
+                    # own scale height H_i = RT/(m_i g). See
+                    # project_moses00_moldiff_drain_confirmed.
                     grav = 0.5 * d_mol_face * (masses - m_atm) * (g / (float(T_face) * R))
                     cen_LL = cen_LL_diff + grav / dx_L
                     cen_LR = cen_LR_diff + grav / dx_L
