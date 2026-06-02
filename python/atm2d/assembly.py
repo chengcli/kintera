@@ -23,6 +23,8 @@ def build_implicit_operator(
     binary_diffusion: torch.Tensor | None = None,
     molecular_weights: torch.Tensor | None = None,
     species_diffusion_scale: torch.Tensor | None = None,
+    density: torch.Tensor | None = None,
+    transport_form: str | None = None,
     kinetics=None,
     photo_chem=None,
     actinic_flux: torch.Tensor | None = None,
@@ -49,6 +51,8 @@ def build_implicit_operator(
         binary_diffusion=binary_diffusion,
         molecular_weights=molecular_weights,
         species_diffusion_scale=species_diffusion_scale,
+        density=density,
+        form=transport_form,
         boundary_conditions=None,
     )
 
@@ -103,6 +107,8 @@ def build_implicit_step_system(
     binary_diffusion: torch.Tensor | None = None,
     molecular_weights: torch.Tensor | None = None,
     species_diffusion_scale: torch.Tensor | None = None,
+    density: torch.Tensor | None = None,
+    transport_form: str | None = None,
     source_terms: list[LocalSourceTerm] | None = None,
     c0: torch.Tensor | None = None,
     charge_balance_indices: "tuple[list[int], int] | None" = None,
@@ -137,6 +143,8 @@ def build_implicit_step_system(
         binary_diffusion=binary_diffusion,
         molecular_weights=molecular_weights,
         species_diffusion_scale=species_diffusion_scale,
+        density=density,
+        transport_form=transport_form,
         source_terms=source_terms,
         charge_balance_indices=charge_balance_indices,
     )
