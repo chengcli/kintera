@@ -5,10 +5,10 @@ recipe ratios (CH3 L40 ≈ 0.64, C6H6 L40 ≈ 1.80, C3H3 L40 ≈ 0.69).
 
 ## 0. Lock the baseline
 
-- [ ] 0.1 Remove the `KINTERA_GRAV_MASS` diagnostic probe from `python/atm2d/transport.py`
-- [ ] 0.2 Commit the validated photo fix (parsing.py c-/l- strip + photochemistry.py ALLOW_RADICALS + XSCN exclusion) on a refactor branch
-- [ ] 0.3 Tag the commit `refactor-base`
-- [ ] 0.4 Capture the current moses00 SS ratios + a per-reaction rate-match snapshot as the regression fixture
+- [x] 0.1 Remove the `KINTERA_GRAV_MASS` diagnostic probe from `python/atm2d/transport.py`
+- [x] 0.2 Commit the validated photo fix (parsing.py c-/l- strip + photochemistry.py ALLOW_RADICALS + XSCN exclusion) on a refactor branch
+- [x] 0.3 Tag the commit `refactor-base`
+- [x] 0.4 Capture the current moses00 SS ratios + a per-reaction rate-match snapshot as the regression fixture
 
 ## 1. Core: multi-range Arrhenius
 
