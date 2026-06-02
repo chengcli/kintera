@@ -255,6 +255,39 @@ altitudes**. This is the cleanest possible model-level verification.
 - **Skipping bisection**: every time you've tried to skip the protocol
   and guess the bug source, the guess was wrong. Bisect.
 
+## Fast first pass: single-sided physics isolation (no KB run)
+
+Before the full both-sides A–D subtraction (which needs KB re-runs), run the
+**kintera-only isolation harness** `diagnostics/perturbation_isolate.py`. It
+injects KB's SS (fort.50) and decomposes kintera's tendency per species/layer
+into components that can be toggled WITHOUT touching KB:
+
+```bash
+python3.10 diagnostics/perturbation_isolate.py HC3N C6H6 C4H2
+# columns: c | chem_full chem_thermal chem_photo | trans_full trans_eddy trans_mol | NET net/c
+```
+
+- **chem-only** (transport off) = `build_source_linearization` over filtered
+  source terms; **transport-only** (chem off) = `build_transport_matrix(...).matvec(c)`;
+  eddy vs molecular split = mr_hybrid full minus mr_diffusion (eddy-only).
+- **actinic flux = 0**: rebuild source terms WITHOUT the photo reactions
+  (`kind != "pun_photo_rate_reaction"`) → `chem_thermal`; `chem_photo =
+  chem_full − chem_thermal`. Isolates photochemistry from thermal chemistry
+  **with no KB run** — decisive for "is the chem gap photo or thermal?".
+
+**Why FIRST:** at KB's SS, KB net = 0, so kintera's NET is the pipeline
+disagreement. The split says which process owns it; chem_photo says whether the
+chem piece is photo. Only escalate to the both-sides A–D protocol (or a KB
+prod+loss re-run for chem_KB) if this can't localise it.
+
+**Worked result (moses00 L60+ heavy-species collapse, 2026-06-02):** at L70–L80
+chem_full is tiny, chem_photo is a negligible fraction of it, and trans_mol
+(molecular diffusion) is 5–15× larger and negative → the collapse is molecular-
+diffusion transport, NOT photochemistry. The actinic-flux=0 split also closed a
+real hole: completeness + per-rxn-k match does NOT prove chem_kt = chem_KB
+(kintera computes photo rates independently), but photo being negligible at
+altitude means it can't be the gap. See [[project_moses00_moldiff_drain_confirmed]].
+
 ## Output
 
 After completing the protocol on a discrepancy, write a one-paragraph

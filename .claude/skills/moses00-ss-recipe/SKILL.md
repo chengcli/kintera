@@ -7,22 +7,30 @@ description: Recipe for reproducing the moses00 stable steady-state (SS) compari
 
 ## What this gets you
 
-A stable kintera SS for moses00 vs KB fort.50 at L40-L80 with these
-reference ratios (verified at tag `moses00-ss-repro`):
+A stable kintera SS for moses00 vs KB fort.50 at L40-L80. **New baseline as of
+2026-06-02** — the validated photo fix (ALLOW_RADICALS + c-/l- strip + XSCN
+exclusion) is now part of the standard run. Reference ratios (kt/KB):
 
 | species | L40 | L60 | L70 | L80 |
 |---|---|---|---|---|
-| CH3 | 0.56 | 0.58 | 0.84 | 0.31 |
-| C2H2 | 0.95 | 0.24 | 0.18 | 0.18 |
-| C2H6 | 0.96 | 0.60 | 0.65 | 0.53 |
-| HCN | 0.99 | 1.33 | 1.29 | 1.26 |
-| HC3N | 1.33 | 0.28 | 0.10 | 0.02 |
-| C6H6 | 4.3 | 0.00 | 0.00 | 0.00 |
+| CH3 | 0.64 | 0.61 | 0.87 | 0.31 |
+| C2H2 | 0.96 | 0.27 | 0.21 | 0.21 |
+| C2H6 | 0.97 | 0.64 | 0.70 | 0.58 |
+| HCN | 0.99 | 1.35 | 1.32 | 1.29 |
+| HC3N | 1.15 | 0.27 | 0.10 | 0.02 |
+| C6H6 | 1.80 | 0.00 | 0.00 | 0.00 |
+| C3H3 | 0.69 | 0.05 | 0.01 | 0.00 |
 
-C6H6 collapse at L60+ is the known photo loader bug (see
-[[project_moses00_photo_loader_bug]]). All other species within
-factor 2 of KB. C2H2/C4H2/HC3N over-drain at L60+ is the documented
-"transport drift" residual (see [[project_moses00_validation_milestone]]).
+The photo fix lifted C3H3 (L40 0.00→0.69) and C6H6 (L40 4.33→1.80) without
+destabilizing the bulk; C3/C3H trace overshoot is gone via the XSCN exclusion.
+**Remaining gap = L60+ collapse of C6H6/C4H2/HC3N/C3H3** (→0 at L70-L80) — this
+is the documented transport drift, NOT photochemistry (see
+[[project_moses00_L60_transport]], [[project_moses00_photo_fix_validated]]). The
+canonical SS dump is `/tmp/kt_moses00_ss_baseline.npz` (the pre-photo-fix state
+is archived as `/tmp/kt_moses00_ss_prephoto.npz`).
+
+Old pre-photo-fix reference (for context, tag `moses00-ss-repro`): CH3 L40 0.56,
+C6H6 L40 4.3, C3H3 L40 0.00.
 
 ## Quick run
 
@@ -35,8 +43,12 @@ KINTERA_TITAN_NETWORK_MODE=full \
 KINTERA_TITAN_NTIME=60 \
 KINTERA_TITAN_MAX_DT=1.0e+7 \
 KINTERA_TITAN_TRANSPORT=mr_hybrid \
+KINTERA_TITAN_PHOTO_ALLOW_RADICALS=1 \
 python3.10 -u diagnostics/moses00_match.py 2>&1 | tee /tmp/moses00_ss.log
 ```
+
+(XSCN radical-block exclusion is on by default; `KINTERA_TITAN_PHOTO_INCLUDE_XSCN`
+would re-enable it. The photo fix lives in `parsing.py` + `photochemistry.py`.)
 
 The script saves the SS to `/tmp/kt_moses00_ss.npz`. Total runtime
 ~3 min on the dev box.
@@ -51,12 +63,13 @@ The script saves the SS to `/tmp/kt_moses00_ss.npz`. Total runtime
 | `KINTERA_TITAN_MAX_DT` | `1.0e+7` | dt_max=1e+7 sec ≈ 0.3 yr. Combined with NT=60, total simulated time = 0.98 yr. Sweet spot between partial relaxation and BE blow-up |
 | `KINTERA_TITAN_TRANSPORT` | `mr_hybrid` | `mr_hybrid` = light species (H, H2) use exponential differencing for gravitational separation, heavy species use centered FV. This is what KB-2012's COEFF1.f90 effectively does. `mr_diffusion` gives slightly worse L60+ match, `mr_exp` blows up |
 | `KINTERA_TITAN_MOLDIFF` | default = `cheng` | Cheng-2013 molecular diffusion formula. KB-2012 binary unconditionally overwrites the ADIFH2/SDIFH2 path with Cheng in COEFF1.f90:60-63. See [[project_moses00_moldiff]] |
+| `KINTERA_TITAN_PHOTO_ALLOW_RADICALS` | `1` (now recommended) | The real photo loader bug fix (kintera misses ~60 photo channels KB activates via `Cheng_cross/CROSS_*.DAT`). **Validated stable & beneficial 2026-06-02** with the c-/l- isomer-strip in `parsing.py` and the XSCN exclusion (below) staged: NT=60 run does NOT blow up (C2H6 max identical to baseline 7.52e13). A/B: C3H3 L40 0.00→0.69, C6H6 L40 4.33→1.80, small gains in CH3/C2H2/C2H6/C4H2/CH3C2H, no regressions. The earlier "blows up to 1e10" warning predates the c-/l- strip (ALLOW_RADICALS alone, isomer channels mis-routed, was the unstable case). See [[project_moses00_photo_fix_validated]], [[project_moses00_photo_450x_artifact]] |
+| `KINTERA_TITAN_PHOTO_INCLUDE_XSCN` | leave UNSET | `_kinetics_base_photo_rates` now drops the short-λ/X-ray `_XSCN_` radical cross-file block by default (KB-2012 moses00 doesn't load it; its ZK rates are exactly 0). Leaving this unset is correct. Setting it re-enables the block, which under ALLOW_RADICALS over-produces C3/C3H by 20-900× at L60-L80 (PUN rxn 23 C3H2→C3+H2). Only needed for ion runs that genuinely use the X-ray channels |
 
 ## What NOT to set
 
 | env var | why not |
 |---|---|
-| `KINTERA_TITAN_PHOTO_ALLOW_RADICALS=1` | This is the real photo loader bug fix (kintera misses 60 photo channels that KB activates via `Cheng_cross/CROSS_*.DAT`). But enabling it on top of this baseline destabilizes the SS — L80+ over-production blows up to 1e+10 for C2H6 in NT=60 runs. The fix needs accompanying transport rework that has not been done yet. See [[project_moses00_photo_loader_bug]] |
 | `KINTERA_TITAN_NTIME>60` with default `MAX_DT=1e+7` | Adds more late steps at the same dt_max, can drift slightly but mostly redundant. NT=100 with same MAX_DT still works |
 | `KINTERA_TITAN_MAX_DT>1e+7` at any NT | Triggers blow-up at L80+ for C2H6, C4H2, HC3N. The BE solver does not handle moses00's stiffness at large dt without line search or coupled Newton with strong damping (KB-mimic mode tested, oscillates and diverges) |
 | `KINTERA_TITAN_KB_MIMIC=1` | Attempted algebraic SS via 1-step large-dt implicit. Median residual plateaus at 1e-6, max never drops below 1e+6, output values non-physical (C2N2 L20 ratio 3586, NH 1e+11). The implementation has no line search — Newton iterates diverge for stiff systems |
