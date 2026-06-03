@@ -53,34 +53,22 @@ class CoreChemistrySource:
         self.sp_idx = {n: i for i, n in enumerate(self.species)}
         self.nsp = len(self.species)
 
-        # --- thermal: core Kinetics options + rate-constant modules ---
+        # --- thermal: full core Kinetics (mass action + Jacobian in core) ---
+        import kintera as _kt
+        net = _kt.parse_kinetics_base_pun(pun_path)
+        core_species = [s.name for s in sorted(net.species, key=lambda s: s.id)]
         self.options = kt.KineticsOptions.from_kinetics_base_pun(pun_path)
-        self.arrhenius = kt.Arrhenius(self.options.arrhenius())
-        self.kbfalloff = kt.KBFalloff(self.options.kb_falloff())
+        self.kin = kt.Kinetics(self.options)
         reactions = self.options.reactions()  # arrhenius(...) then kb_falloff(...)
         self.nrxn = len(reactions)
         self.chemb = build_chemb_override_layer(reactions)
 
-        # reactant/net stoichiometry in ts.species order (skip species not tracked)
-        react = torch.zeros((self.nsp, self.nrxn), dtype=torch.float64)
-        net = torch.zeros((self.nsp, self.nrxn), dtype=torch.float64)
-        self._thermal_ok = torch.ones(self.nrxn, dtype=torch.bool)
-        for j, r in enumerate(reactions):
-            for name, c in r.reactants().items():
-                i = self.sp_idx.get(name)
-                if i is None:
-                    self._thermal_ok[j] = False
-                    continue
-                react[i, j] += c
-                net[i, j] -= c
-            for name, c in r.products().items():
-                i = self.sp_idx.get(name)
-                if i is None:
-                    self._thermal_ok[j] = False
-                    continue
-                net[i, j] += c
-        self.react_st = react
-        self.net_st = net
+        # permutation ts.species <-> core (.pun id-sorted) species order
+        core_idx = {n: i for i, n in enumerate(core_species)}
+        self._nsp_core = len(core_species)
+        self._ts_to_core = [core_idx[n] for n in self.species]
+        # core stoichiometry (nsp_core, nrxn); irreversible => nrxn columns
+        self._stoich = self.kin.stoich
 
         # --- photolysis: active single-reactant photo terms ---
         self.photo_terms = [
@@ -144,32 +132,35 @@ class CoreChemistrySource:
         jacobian = torch.zeros((state.ncol, state.nlyr, self.nsp, self.nsp),
                                dtype=conc.dtype, device=conc.device)
 
-        # ---- thermal (frozen-k mass action) ----
-        k = torch.cat([
-            self.arrhenius.forward(T, P, conc, {}),
-            self.kbfalloff.forward(T, P, conc, {"number_density": density}),
-        ], dim=-1)
-        k = self.chemb.apply(k, T, density)
-        k = k * self._thermal_ok.to(k.dtype)  # drop reactions touching untracked species
+        # ---- thermal: mass action + Jacobian assembled by core Kinetics ----
+        # permute concentration into core (.pun id-sorted) species order
+        conc_core = torch.zeros(
+            (state.ncol, state.nlyr, self._nsp_core), dtype=conc.dtype, device=conc.device
+        )
+        conc_core[..., self._ts_to_core] = conc
 
-        csafe = conc.clamp_min(1e-300)
-        logc = torch.log(csafe)
-        # clamped mass-action product (uses csafe for any zero reactant)
-        prod_clamped = torch.exp(torch.einsum("ij,blj->bli", self.react_st.T, logc))
-        # genuine product: zero if any reactant is exactly zero
-        has_zero = torch.einsum("ij,blj->bli", self.react_st.T, (conc <= 0).double()) > 0
-        rate_f = k * torch.where(has_zero, torch.zeros_like(prod_clamped), prod_clamped)
-        tendency = tendency + torch.einsum("ij,blj->bli", self.net_st, rate_f)
-        # Jacobian: d(rate_f_j)/dC_m = react_st[m,j] * k_j * prod_excl(m) where the
-        # m-exponent is reduced by one. Using the clamped product (NOT the
-        # zero-masked rate) with 1/csafe makes this correct even when C_m = 0 and
-        # react_st[m,j] = 1 (the csafe `tiny` cancels), matching the hand-rolled
-        # baseline's exponent-reduction convention.
-        rate_clamped = k * prod_clamped
-        inv_csafe = 1.0 / csafe
-        drate_dc = (torch.einsum("blj,mj->blmj", rate_clamped, self.react_st)
-                    * inv_csafe.unsqueeze(-1))
-        jacobian = jacobian + torch.einsum("sj,blmj->blsm", self.net_st, drate_dc)
+        # external rate-constant override: KB UPDATE_CHEMB on the matched columns,
+        # NaN elsewhere (core leaves those reactions' computed k untouched).
+        kf_override = torch.full(
+            (state.ncol, state.nlyr, self.nrxn), float("nan"),
+            dtype=conc.dtype, device=conc.device,
+        )
+        if len(self.chemb):
+            ov = self.chemb.override_rate_constants(T, density)  # (ncol, nlyr, n_override)
+            for i, col in enumerate(self.chemb.columns):
+                kf_override[..., col] = ov[..., i]
+
+        extra = {"number_density": density, "kf_override": kf_override}
+        rate, rc_ddC, rc_ddT = self.kin.forward(T, P, conc_core, extra)
+        cvol = torch.ones_like(T)
+        jac_rxn = self.kin.jacobian(T, conc_core, cvol, rate, rc_ddC, rc_ddT)
+        stoich = self._stoich.to(dtype=rate.dtype, device=rate.device)
+        # tendency_core[s] = Σ_r stoich[s,r] * rate_f[r];  jac_core[s,n] = Σ_r stoich[s,r] * jac_rxn[r,n]
+        tend_core = torch.einsum("sr,clr->cls", stoich, rate)
+        jac_core = torch.einsum("sr,clrn->clsn", stoich, jac_rxn)
+        # permute core -> ts.species order
+        tendency = tendency + tend_core[..., self._ts_to_core]
+        jacobian = jacobian + jac_core[..., self._ts_to_core, :][..., self._ts_to_core]
 
         # ---- photolysis (first order in parent) ----
         if self._photo is not None:

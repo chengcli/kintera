@@ -375,6 +375,24 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     first += _nreactions[i];
   }
 
+  // Optional external rate-constant override for selected reactions. A tensor
+  // `extra["kf_override"]` of shape (..., nreaction_orig) whose FINITE entries
+  // replace the computed rate constant (use NaN where no override applies).
+  // The overridden reactions' rate-constant derivative rc_ddC is zeroed: the
+  // supplied value is treated as constant in concentration, so the mass-action
+  // and Jacobian are still assembled by the core engine while a caller injects
+  // bespoke rates (e.g. KB UPDATE_CHEMB). Forward-only (irreversible) use.
+  {
+    auto it = extra.find("kf_override");
+    if (it != extra.end() && it->second.numel() > 0) {
+      auto ovr = it->second.to(result.dtype());
+      auto ovr_mask = torch::isfinite(ovr);
+      result = torch::where(ovr_mask, ovr, result);
+      rc_ddC = torch::where(ovr_mask.unsqueeze(-2), torch::zeros_like(rc_ddC),
+                            rc_ddC);
+    }
+  }
+
   last_kf_ = result.detach().clone();
 
   // Tiny floor just above IEEE 754 min-normal so that pow() and the
