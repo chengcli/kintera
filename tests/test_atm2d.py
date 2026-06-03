@@ -121,22 +121,45 @@ def test_mr_diffusion_conserves_column_mass():
 
 
 def test_c_diffusion_default_matches_pre_mr_refactor():
-    """The c_diffusion mode (default with KINTERA_TRANSPORT_FORM unset)
+    """With no density supplied, the default transport form is c_diffusion and
     shall reproduce the original concentration-form diffusion matrix
-    bit-for-bit. This guards against a silent regression in the
-    refactored block-builder."""
+    bit-for-bit. This guards against a silent regression in the refactored
+    block-builder."""
     state = _make_state(ncol=2, nlyr=5, ns=2)
     torch.manual_seed(42)
     state.concentration = torch.rand(state.ncol, state.nlyr, state.nspecies, dtype=state.dtype)
     kzz = torch.full((state.ncol, state.nlyr), 1.0e5, dtype=state.dtype)
 
-    M_default = kt.build_eddy_diffusion_matrix(state, kzz)
+    M_default = kt.build_eddy_diffusion_matrix(state, kzz)  # no density -> c_diffusion
     M_explicit = kt.build_eddy_diffusion_matrix(state, kzz, form="c_diffusion")
     torch.testing.assert_close(
         M_default.matvec(state.concentration),
         M_explicit.matvec(state.concentration),
         atol=0.0, rtol=0.0,
     )
+
+
+def test_default_transport_form_is_mr_when_density_supplied(monkeypatch):
+    """The core transport default flips to mr_diffusion when a density field is
+    supplied (the correct variable-density discretization). c_diffusion stays
+    explicitly selectable; the env var still overrides."""
+    monkeypatch.delenv("KINTERA_TRANSPORT_FORM", raising=False)
+    state = _make_state(ncol=2, nlyr=5, ns=2)
+    torch.manual_seed(7)
+    state.concentration = torch.rand(state.ncol, state.nlyr, state.nspecies, dtype=state.dtype)
+    kzz = torch.full((state.ncol, state.nlyr), 1.0e5, dtype=state.dtype)
+    density = torch.linspace(1.0e15, 1.0e13, state.nlyr, dtype=state.dtype).unsqueeze(0).expand(
+        state.ncol, state.nlyr
+    ).contiguous()
+
+    M_default = kt.build_eddy_diffusion_matrix(state, kzz, density=density)
+    M_mr = kt.build_eddy_diffusion_matrix(state, kzz, density=density, form="mr_diffusion")
+    M_c = kt.build_eddy_diffusion_matrix(state, kzz, density=density, form="c_diffusion")
+    out_default = M_default.matvec(state.concentration)
+    # default (with density) == mr_diffusion ...
+    torch.testing.assert_close(out_default, M_mr.matvec(state.concentration), atol=0.0, rtol=0.0)
+    # ... and differs from c_diffusion (proves the flip is real)
+    assert (out_default - M_c.matvec(state.concentration)).abs().max().item() > 0.0
 
 
 def test_binary_diffusion_creates_species_coupling():

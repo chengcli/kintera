@@ -48,8 +48,8 @@ when an ion network (e.g. Cheng_ions) is validated.
 
 - [x] 5.1 Replace `build_source_linearization` ... with core `Kinetics`+`Photolysis` (EI/ion deferred) — **`CoreChemistrySource` LocalSourceTerm** (`core_source.py`) is a validated drop-in: `build_implicit_step_system(source_terms=[CoreChemistrySource]+boundary)` reproduces the hand-rolled step. tendency + Jacobian match to machine precision.
 - [x] 5.2 Validate net dC/dt + a 1-step solve against the baseline — **VALIDATED**: net dC/dt (max rel 2.2e-9, median 1.6e-15), analytic Jacobian (100% within 1e-6 for nonzero-conc species), and 1-step BE solve (median machine precision, 99.5–99.9% within 1e-6; residual only on ~1 cm⁻³ trace H2 at the bottom boundary). `diagnostics/stage5_core_{thermal,photo,full,step}_check.py`.
-- [ ] 5.3 Validate the mr-form default flip on the non-Titan regression set (earth/jupiter YAML, `tests/test_atm2d.py`)
-- [ ] 5.4 Flip core transport default `c_diffusion` → `mr_diffusion`; keep `c_diffusion` selectable
+- [x] 5.3 Validate the mr-form default flip on the non-Titan regression set — `tests/test_atm2d.py` (19 non-CUDA tests) + kinetics_base transport tests pass; no existing non-Titan caller passes `density` without an explicit `form`, so none silently changes. Added `test_default_transport_form_is_mr_when_density_supplied`.
+- [x] 5.4 Flip core transport default `c_diffusion` → `mr_diffusion`; keep `c_diffusion` selectable — `_resolve_transport_form` now defaults to `mr_diffusion` when a `density` field is supplied (mr is undefined without one, so density-less callers stay `c_diffusion`); `form=`/`KINTERA_TRANSPORT_FORM` still select either.
 - [x] 5.5 GATE: moses00 SS ratios reproduced through the unified pipeline — **PASSED** (`diagnostics/stage5_core_ss_check.py`): full BE integration to SS with `CoreChemistrySource` vs the hand-rolled baseline reproduces the SS to median 5.1e-13 (99.84% within 1e-3); every core/KB ratio == base/KB ratio to 3 decimals, for both default and ALLOW_RADICALS photo settings. The unified pipeline is a faithful drop-in through steady state.
 
 ## 6. Config consolidation + delete dead path

@@ -10,16 +10,34 @@ GAS_CONSTANT_CGS = 8.31446261815324e7
 
 # Transport form selection. ``c_diffusion`` discretises ∂_z(K · ∂_z c)
 # (the original kintera form). ``mr_diffusion`` discretises
-# ∂_z(K · n_tot · ∂_z(c / n_tot)) (the KB form). The env-var default
-# stays ``c_diffusion`` until the MR-form is validated on the Titan
-# regression set; flipping the default is a follow-up change.
+# ∂_z(K · n_tot · ∂_z(c / n_tot)) (the KB form, the correct variable-density
+# discretization). The default is now ``mr_diffusion`` whenever a density field
+# is supplied (it is undefined without one, so density-less callers default to
+# ``c_diffusion``); either form stays explicitly selectable via the ``form``
+# kwarg or ``KINTERA_TRANSPORT_FORM``.
 _TRANSPORT_FORMS = ("c_diffusion", "mr_diffusion", "mr_exp", "mr_hybrid")
 
 
-def _resolve_transport_form(form: str | None) -> str:
-    """Resolve the transport form via explicit kwarg → env var → default."""
+def _resolve_transport_form(
+    form: str | None, density: torch.Tensor | None = None
+) -> str:
+    """Resolve the transport form via explicit kwarg → env var → default.
+
+    The default is the mixing-ratio form (`mr_diffusion`) — the correct
+    variable-density discretization (and what the KINETICS-base/Titan case
+    uses) — whenever a `density` field is available. When no density is
+    provided (mr is undefined without it) the default falls back to the
+    concentration form (`c_diffusion`). Either form remains explicitly
+    selectable via the `form` kwarg or `KINTERA_TRANSPORT_FORM`.
+    """
     if form is None:
-        form = os.environ.get("KINTERA_TRANSPORT_FORM", "c_diffusion")
+        env = os.environ.get("KINTERA_TRANSPORT_FORM")
+        if env is not None:
+            form = env
+        elif density is not None:
+            form = "mr_diffusion"
+        else:
+            form = "c_diffusion"
     if form not in _TRANSPORT_FORMS:
         raise ValueError(
             f"unknown transport form {form!r}; expected one of {_TRANSPORT_FORMS}"
@@ -92,7 +110,7 @@ def build_eddy_diffusion_matrix(
     rows: list[torch.Tensor] = []
     cols: list[torch.Tensor] = []
     vals: list[torch.Tensor] = []
-    resolved_form = _resolve_transport_form(form)
+    resolved_form = _resolve_transport_form(form, density)
     species_scale = _species_diffusion_scale(species_diffusion_scale, state)
     kzz_x1f = _center_to_x1_faces_scalar(kzz, state)
     _assemble_vertical_scalar_diffusion(
@@ -166,7 +184,7 @@ def build_binary_diffusion_matrix(
             torch.zeros_like(gravity_term),
         )
 
-    resolved_form = _resolve_transport_form(form)
+    resolved_form = _resolve_transport_form(form, density)
     _assemble_vertical_matrix_diffusion(
         rows, cols, vals, state, binary_4d, gravity_term,
         form=resolved_form, density=density,
@@ -198,7 +216,7 @@ def build_transport_matrix(
     operator, then applies any species boundary conditions to the resulting
     sparse matrix.
     """
-    resolved_form = _resolve_transport_form(form)
+    resolved_form = _resolve_transport_form(form, density)
     if resolved_form in ("mr_exp", "mr_hybrid"):
         if binary_diffusion is None or molecular_weights is None:
             raise ValueError(
