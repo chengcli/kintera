@@ -5,18 +5,22 @@ per-reaction Titan source terms: it evaluates the full thermal + photolysis
 chemistry through the compiled core `kintera` engine and returns the cell-local
 tendency and Jacobian on the atm2d grid.
 
-- Thermal: rate constants from core `Arrhenius` + `KBFalloff` (the moses00 `.pun`
-  network via `KineticsOptions.from_kinetics_base_pun`), with KB `UPDATE_CHEMB`
-  overrides applied by :class:`ChembOverrideLayer`. Mass action is assembled with
-  the rate constant treated as frozen in concentration (matching the validated
-  hand-rolled baseline, which evaluates `k(T, density)` with density frozen).
-- Photolysis: J(z) = Σ_λ σ_r(λ) F_att(z,λ) via core `Photolysis` (unit
-  quadrature weights → the KB per-bin sum), fed the Titan attenuated actinic
-  flux, with the baseline's per-term min-altitude / profile-multiplier /
-  suppress-reactant-loss handling.
+- Thermal: mass action + Jacobian assembled by core `Kinetics.forward`/`jacobian`
+  (the moses00 `.pun` network via `KineticsOptions.from_kinetics_base_pun`,
+  Arrhenius + `KBFalloff`). KB `UPDATE_CHEMB` overrides are injected as external
+  rate constants via `extra["kf_override"]` (the core then does their mass
+  action / Jacobian too). KBFalloff stays frozen-in-C because `number_density`
+  is supplied via `extra`, matching the hand-rolled baseline.
+- Photolysis: J·parent source + Jacobian assembled by core `PhotoChem.forward`/
+  `jacobian` (its `Photolysis` does the per-bin Σσ·F with the Titan attenuated
+  actinic flux). The only Titan-side residue is the per-reaction multiplier /
+  min-altitude correction applied to the photo rate.
 
-Validated to reproduce the hand-rolled net dC/dt to machine precision (see
-`diagnostics/stage5_core_full_check.py`).
+So the entire chemistry tendency + Jacobian is assembled by the core engine;
+Titan supplies only the chemb-override VALUES, the photo multiplier, the
+attenuated flux, and the species permutation. Validated to reproduce the
+hand-rolled net dC/dt + Jacobian to machine precision
+(`diagnostics/stage5_core_*.py`).
 """
 from __future__ import annotations
 
@@ -31,7 +35,6 @@ from ..titan.models import KBTitanState
 from .core_chemb import build_chemb_override_layer
 from .radiation import _kinetics_base_pyharp_actinic_flux
 from .source_integration import (
-    _photo_rate_profile,
     _rate_profile_multiplier_on_state_grid,
 )
 
@@ -83,9 +86,12 @@ class CoreChemistrySource:
             and isinstance(t.parameters.get("flux"), list)
             and t.parameters["wavelengths"]
         ]
-        self._photo = self._build_photo_module()
+        self._photochem = self._build_photochem()
 
-    def _build_photo_module(self):
+    def _build_photochem(self):
+        """Build a core PhotoChem over the active photo reactions (J·parent +
+        Jacobian done by core); Titan per-reaction multipliers are applied as a
+        thin correction in `linearize`."""
         if not self.photo_terms:
             return None
         wl = self.photo_terms[0].parameters["wavelengths"]
@@ -96,6 +102,11 @@ class CoreChemistrySource:
             sig = t.parameters["cross_section"]
             if len(sig) != nwave:
                 continue
+            if bool(t.parameters.get("suppress_reactant_loss", False)):
+                # PhotoChem assembles a fixed net stoich (parent consumed); the
+                # suppress-loss variant can't be expressed here. moses00 has none.
+                raise NotImplementedError(
+                    "suppress_reactant_loss photo term unsupported via core PhotoChem")
             reactions.append(kt.Reaction(f"{t.reactants[0]} => " + " + ".join(t.products)))
             diss: dict[str, float] = {}
             for p in t.products:
@@ -106,15 +117,18 @@ class CoreChemistrySource:
                 xs += [sig[w], sig[w]]
             nslabs.append(1)
             self._photo_meta.append(t)
-        opt = kt.PhotolysisOptions()
-        opt.reactions(reactions)
-        opt.wavelength(list(wl))
-        opt.cross_section(xs)
-        opt.cross_section_nslabs(nslabs)
-        opt.branches(branches)
-        opt.branch_names(names)
-        opt.quadrature_weights([1.0] * nwave)
-        return kt.Photolysis(opt)
+        popt = kt.PhotolysisOptions()
+        popt.reactions(reactions)
+        popt.wavelength(list(wl))
+        popt.cross_section(xs)
+        popt.cross_section_nslabs(nslabs)
+        popt.branches(branches)
+        popt.branch_names(names)
+        popt.quadrature_weights([1.0] * nwave)  # KB per-bin Σσ·F
+        pco = kt.PhotoChemOptions()
+        pco.photolysis(popt)
+        pco.vapor_ids(list(range(self._nsp_core)))  # species() -> core .pun order
+        return kt.PhotoChem(pco)
 
     def _state(self, state):
         return KBTitanState(
@@ -122,6 +136,20 @@ class CoreChemistrySource:
             varying_species=self.titan_state.varying_species,
             conversion=self.titan_state.conversion, concentration=self.titan_state.concentration,
             density=self.titan_state.density, kzz=self.titan_state.kzz, state=state)
+
+    def _photo_multiplier(self, state, tstate, ncol, nlyr, dtype, device):
+        """Per-reaction (ncol,nlyr,nphoto) Titan multiplier × min-altitude mask."""
+        nphoto = len(self._photo_meta)
+        mult = torch.ones((ncol, nlyr, nphoto), dtype=dtype, device=device)
+        alt_km = state.x1v.to(dtype=dtype, device=device).view(1, -1) / 1.0e5
+        for c, t in enumerate(self._photo_meta):
+            ma = t.parameters.get("min_altitude_km")
+            if ma is not None:
+                mult[..., c] = mult[..., c] * (alt_km >= float(ma))
+            m = _rate_profile_multiplier_on_state_grid(t, tstate, dtype, device)
+            if m is not None:
+                mult[..., c] = mult[..., c] * m
+        return mult
 
     def linearize(self, state) -> "LocalSourceLinearization":
         conc = state.concentration
@@ -162,37 +190,27 @@ class CoreChemistrySource:
         tendency = tendency + tend_core[..., self._ts_to_core]
         jacobian = jacobian + jac_core[..., self._ts_to_core, :][..., self._ts_to_core]
 
-        # ---- photolysis (first order in parent) ----
-        if self._photo is not None:
-            sp_idx = self.sp_idx
+        # ---- photolysis: J·parent source + Jacobian assembled by core PhotoChem ----
+        if self._photochem is not None:
             tstate = self._state(state)
             flux0 = torch.tensor(self._photo_meta[0].parameters["flux"], dtype=conc.dtype)
             nwave = len(self._photo_meta[0].parameters["wavelengths"])
+            # attenuated actinic flux (shared opacity); Titan supplies it
             Fatt = _kinetics_base_pyharp_actinic_flux(
-                self._photo_meta[0], tstate, conc, sp_idx, flux0, nwave, conc.dtype, conc.device)
+                self._photo_meta[0], tstate, conc, self.sp_idx, flux0, nwave,
+                conc.dtype, conc.device)
             if Fatt is not None:
-                self._photo.update_xs_diss_stacked(T)
-                J = self._photo.forward(T, Fatt.movedim(-1, 0))  # (ncol, nlyr, nphoto)
-                alt_km = state.x1v.to(dtype=conc.dtype, device=conc.device).view(1, -1) / 1.0e5
-                for c, t in enumerate(self._photo_meta):
-                    Jr = J[..., c]
-                    ma = t.parameters.get("min_altitude_km")
-                    if ma is not None:
-                        Jr = Jr * (alt_km >= float(ma))
-                    mult = _rate_profile_multiplier_on_state_grid(t, tstate, conc.dtype, conc.device)
-                    if mult is not None:
-                        Jr = Jr * mult
-                    reactant = sp_idx[t.reactants[0]]
-                    parent = torch.clamp(conc[:, :, reactant], min=0.0)
-                    rate = Jr * parent
-                    if not bool(t.parameters.get("suppress_reactant_loss", False)):
-                        tendency[:, :, reactant] = tendency[:, :, reactant] - rate
-                        jacobian[:, :, reactant, reactant] = jacobian[:, :, reactant, reactant] - Jr
-                    pc: dict[int, int] = {}
-                    for p in t.products:
-                        pc[sp_idx[p]] = pc.get(sp_idx[p], 0) + 1
-                    for prod_i, coeff in pc.items():
-                        tendency[:, :, prod_i] = tendency[:, :, prod_i] + coeff * rate
-                        jacobian[:, :, prod_i, reactant] = jacobian[:, :, prod_i, reactant] + coeff * Jr
+                self._photochem.module("photolysis").update_xs_diss_stacked(T)
+                # core PhotoChem: rate_r = J_r · [parent_r]
+                prate = self._photochem.forward(T, conc_core, Fatt.movedim(-1, 0))
+                # thin Titan correction: per-reaction multiplier / min-altitude
+                prate = prate * self._photo_multiplier(
+                    state, tstate, state.ncol, state.nlyr, conc.dtype, conc.device)
+                pjac = self._photochem.jacobian(conc_core, prate)
+                pstoich = self._photochem.stoich.to(dtype=prate.dtype, device=prate.device)
+                tend_p = torch.einsum("sr,clr->cls", pstoich, prate)
+                jac_p = torch.einsum("sr,clrn->clsn", pstoich, pjac)
+                tendency = tendency + tend_p[..., self._ts_to_core]
+                jacobian = jacobian + jac_p[..., self._ts_to_core, :][..., self._ts_to_core]
 
         return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
