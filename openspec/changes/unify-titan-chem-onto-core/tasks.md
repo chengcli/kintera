@@ -33,19 +33,24 @@ recipe ratios (CH3 L40 ≈ 0.64, C6H6 L40 ≈ 1.80, C3H3 L40 ≈ 0.69).
 - [x] 3.3 Wire Titan's attenuated actinic-flux field into `Photolysis.forward(actinic_flux)` — forward accepts the per-bin actinic flux; new core binned-sum mode (`quadrature_weights`) reproduces the validated `Σσ·F` (Cheng grid is too coarse for trapezoid; default trapezoid retained for earth/jupiter).
 - [x] 3.4 GATE: photo rates match the prior titan photo path to 1e-3 relative — achieved to ≤6.9e-16 (machine precision) across 400 reactions.
 
-## 4. Thin Titan EI + ion gap-layer
+## 4. Thin Titan EI + ion gap-layer — DEFERRED (no-op for moses00)
 
-- [ ] 4.1 Implement electron-impact source terms as a Titan layer added on top of core tendency/Jacobian
-- [ ] 4.2 Keep `ion_chemistry.py` classifiers + `fold_charge_balance_into_jacobian` as the Titan ion layer on core output
-- [ ] 4.3 Verify neutral-only networks make the ion layer a no-op (identical to core output)
+The validated moses00 network is neutral (no electron-impact, no ions), so the
+EI/ion layer is a no-op and is deferred. The EI/ion code (`electron_impact.py`,
+`ion_chemistry.py`) remains a Titan-side layer to be wired on top of core output
+when an ion network (e.g. Cheng_ions) is validated.
+
+- [~] 4.1 Implement electron-impact source terms as a Titan layer added on top of core tendency/Jacobian — DEFERRED (moses00 has no EI reactions)
+- [~] 4.2 Keep `ion_chemistry.py` classifiers + `fold_charge_balance_into_jacobian` as the Titan ion layer on core output — DEFERRED (moses00 neutral)
+- [~] 4.3 Verify neutral-only networks make the ion layer a no-op (identical to core output) — trivially holds for the neutral moses00 network (no ion layer applied; core output is final)
 
 ## 5. Wire into atm2d implicit step + transport default
 
-- [ ] 5.1 Replace `build_source_linearization` in `build_implicit_step_system` with core `Kinetics` + `Photolysis` + Titan EI/ion layer
-- [ ] 5.2 Validate net dC/dt + a 1-step solve against the baseline before removing the old path
+- [x] 5.1 Replace `build_source_linearization` ... with core `Kinetics`+`Photolysis` (EI/ion deferred) — **`CoreChemistrySource` LocalSourceTerm** (`core_source.py`) is a validated drop-in: `build_implicit_step_system(source_terms=[CoreChemistrySource]+boundary)` reproduces the hand-rolled step. tendency + Jacobian match to machine precision.
+- [x] 5.2 Validate net dC/dt + a 1-step solve against the baseline — **VALIDATED**: net dC/dt (max rel 2.2e-9, median 1.6e-15), analytic Jacobian (100% within 1e-6 for nonzero-conc species), and 1-step BE solve (median machine precision, 99.5–99.9% within 1e-6; residual only on ~1 cm⁻³ trace H2 at the bottom boundary). `diagnostics/stage5_core_{thermal,photo,full,step}_check.py`.
 - [ ] 5.3 Validate the mr-form default flip on the non-Titan regression set (earth/jupiter YAML, `tests/test_atm2d.py`)
 - [ ] 5.4 Flip core transport default `c_diffusion` → `mr_diffusion`; keep `c_diffusion` selectable
-- [ ] 5.5 GATE: moses00 SS ratios reproduced through the unified pipeline
+- [x] 5.5 GATE: moses00 SS ratios reproduced through the unified pipeline — **PASSED** (`diagnostics/stage5_core_ss_check.py`): full BE integration to SS with `CoreChemistrySource` vs the hand-rolled baseline reproduces the SS to median 5.1e-13 (99.84% within 1e-3); every core/KB ratio == base/KB ratio to 3 decimals, for both default and ALLOW_RADICALS photo settings. The unified pipeline is a faithful drop-in through steady state.
 
 ## 6. Config consolidation + delete dead path
 
