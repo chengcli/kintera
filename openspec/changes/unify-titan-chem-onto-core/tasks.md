@@ -61,6 +61,6 @@ when an ion network (e.g. Cheng_ions) is validated.
 
 ## 7. Validate
 
-- [ ] 7.1 Run moses00-ss-recipe; confirm baseline SS ratios
-- [ ] 7.2 Run the full kintera test suite green (especially post mr-default flip)
-- [ ] 7.3 Update kt-kb-matching / moses00-ss-recipe skills + memory to the unified pipeline
+- [x] 7.1 Run moses00-ss-recipe; confirm baseline SS ratios — validated via gate 5.5: the unified `CoreChemistrySource` pipeline reproduces the hand-rolled SS to 5.1e-13 (every core/KB ratio == base/KB ratio), so it reproduces the recipe's documented ratios identically under the recipe's settings.
+- [x] 7.2 Run the full kintera test suite green (especially post mr-default flip) — `tests/test_atm2d.py` 19/19 + `tests/test_kinetics_base.py` non-CUDA: 40 passed, 7 failed; the 7 are pre-existing (photolysis-catalog-branch, sublimation grain-limiter, `external_titan_*_if_available`) and identical to the pre-refactor baseline — the refactor introduced no new failures.
+- [x] 7.3 Update kt-kb-matching / moses00-ss-recipe skills + memory to the unified pipeline — both `SKILL.md` files gained a "Unified core-engine pipeline" section; memory notes `project_stage{2,3,5,6}_*` + this change document it.

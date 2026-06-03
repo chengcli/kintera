@@ -300,3 +300,30 @@ summary covering:
 
 Save the summary to a project memory entry if the finding is reusable;
 otherwise keep it in the conversation.
+
+## Unified core-engine pipeline (2026-06-03)
+
+The `unify-titan-chem-onto-core` refactor routes kintera's Titan chemistry
+through the compiled core `kintera.Kinetics`/`Photolysis` engine via
+`CoreChemistrySource` (`kinetics_base/titan/core_source.py`) — a `LocalSourceTerm`
+that is a validated drop-in for the hand-rolled per-reaction source terms (it
+reproduces the hand-rolled tendency/Jacobian/SS to machine precision; see
+[[project_stage5_atm2d_wiring]]).
+
+Implications for the bisection protocol:
+- **Chemistry layer**: rates now come from core `Arrhenius` + `KBFalloff`
+  (`from_kinetics_base_pun`) + `ChembOverrideLayer` + core `Photolysis`. When a
+  per-reaction rate gap appears, compare the core module output against the
+  validated `_pun_rate_constant` / `_photo_rate_profile` with the harnesses
+  `diagnostics/stage5_core_{thermal,photo,full,step}_check.py` (these compare
+  core-vs-hand-rolled at fort.50 to machine precision — a regression there means
+  the translator/options changed).
+- **Transport layer**: the core default is now `mr_diffusion` when a density
+  field is supplied (`atm2d/config.py`); `c_diffusion` stays selectable via
+  `form=`/`KINTERA_TRANSPORT_FORM` (now mirrored by `CoreConfig`).
+- **Config**: `KINTERA_*` switches are mirrored by `CoreConfig`/`TitanConfig`
+  ([[project_stage6_config]]); `get_*_config()` reads env fresh so existing
+  env-var bisection still works.
+
+The hand-rolled rate path is retained as the reference (Stage 6.4 deletion
+deferred), so both paths remain comparable during bisection.

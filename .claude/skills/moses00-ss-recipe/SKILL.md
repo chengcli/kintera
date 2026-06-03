@@ -107,3 +107,36 @@ The remaining gaps at this baseline are documented:
 When working a new gap, **don't change the baseline knobs above**. Iterate
 on the chemistry or transport code, re-run with the same env vars, and
 compare to the table to see if the gap closes without introducing new ones.
+
+## Unified core-engine pipeline (2026-06-03)
+
+As of the `unify-titan-chem-onto-core` refactor, kintera's Titan chemistry can
+be evaluated **through the compiled core `kintera.Kinetics`/`Photolysis`
+engine** instead of the hand-rolled Python rate path. The drop-in is
+`CoreChemistrySource` (`kinetics_base/titan/core_source.py`), a `LocalSourceTerm`:
+
+```python
+from kintera.kinetics_base.titan.core_source import CoreChemistrySource
+core_chem = CoreChemistrySource(ts, pun_path, filtered_source_terms)
+# moses00 has only chemistry + boundary terms (no condensation):
+sources = [core_chem] + build_kinetics_base_titan_atm2d_source_terms(ts, boundary_terms)
+sys, rhs = kt.build_implicit_step_system(ts.state, ts.kzz, dt, density=ts.density,
+                                         transport_form="mr_diffusion", source_terms=sources, ...)
+```
+
+It builds `KineticsOptions.from_kinetics_base_pun(pun)` (291 plain Arrhenius +
+50 `KBFalloff`), applies `ChembOverrideLayer` (21 UPDATE_CHEMB overrides), and a
+core `Photolysis` over the active photo terms (unit `quadrature_weights` → the KB
+per-bin `Σσ·F`). **Validated to reproduce the hand-rolled baseline to machine
+precision** at every level: per-reaction rate ≤6.9e-16, net dC/dt 1.6e-15,
+Jacobian 1e-6, 1-step BE solve, and full SS 5.1e-13 — so switching to the core
+engine changes the moses00 SS by nothing. Harnesses: `diagnostics/stage5_core_*.py`.
+
+Config: the `KINTERA_*` env vars are now mirrored by `CoreConfig`
+(`atm2d/config.py`: transport_form, chem_solver) and `TitanConfig`
+(`kinetics_base/titan/config.py`: photo_allow_radicals, photo_include_xscn,
+disable_chemb_overrides, ei scales). `get_*_config()` still reads env fresh, so
+the env-var recipe above is unchanged; `set_*_config(cfg)` installs an explicit
+object. Transport default is now `mr_diffusion` when a density field is supplied.
+See [[project_stage5_atm2d_wiring]], [[project_stage6_config]],
+[[project_kintera_core_unification_refactor]].
