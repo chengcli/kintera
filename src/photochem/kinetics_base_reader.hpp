@@ -203,6 +203,30 @@ KineticsOptions kinetics_options_from_kinetics_base(
     std::string const& master_input_path,
     std::string const& photo_catalog_path = "",
     std::string const& cross_dir = "", bool verbose = false);
+
+//! Translate a KINETICS-base `.pun` network into core `KineticsOptions`.
+/*!
+ * Builds the thermal (non-photolysis) reactions of a `.pun` network for
+ * evaluation through the core `Kinetics` engine, reproducing the validated
+ * Titan rate semantics (`kinetics_base/titan/physics.py::_pun_rate_constant`):
+ *
+ * - CGS-native: rate constants stay in `molecule,cm,s`; the pre-exponential
+ *   `A` is taken raw (no unit conversion), so concentrations stay in
+ *   molecule cm^-3 and tendencies in molecule cm^-3 s^-1.
+ * - Reactions are built **irreversible** (`=>`) so the core SI thermodynamic
+ *   reverse / Kc path is skipped (KB `.pun` gives explicit forward rates only).
+ * - Plain thermal reactions (`block.D <= 0`): single-range Arrhenius with
+ *   `Tref=1` (moses00 `Tmin=1`), `b=block.b`, `Ea_R=-block.C`.
+ * - Falloff reactions (`block.D > 0`): the KB falloff form (see KBFalloff).
+ * - Zero-A reactions (`block.A == 0`): skipped (photolysis / special handled
+ *   by the Stage-3 photolysis path and the Stage-4 EI/ion layer).
+ *
+ * Populates the global species table from the `.pun` species (names +
+ * molecular weights; placeholder thermo, unused since reactions are
+ * irreversible).
+ */
+KineticsOptions kinetics_options_from_kinetics_base_pun(
+    std::string const& pun_path, bool verbose = false);
 PhotoChemOptions photochem_options_from_kinetics_base(
     std::string const& master_input_path,
     std::string const& photo_catalog_path = "",

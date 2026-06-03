@@ -210,6 +210,20 @@ void KineticsImpl::reset() {
     }
   }
 
+  // register KB Falloff rates
+  if (options->kb_falloff() && options->kb_falloff()->reactions().size() > 0) {
+    rc_evaluator.push_back(
+        torch::nn::AnyModule(KBFalloff(options->kb_falloff())));
+    register_module("kb_falloff", rc_evaluator.back().ptr());
+    _nreactions.push_back(options->kb_falloff()->reactions().size());
+
+    if (options->verbose()) {
+      std::cout << "[Kinetics] registered "
+                << options->kb_falloff()->reactions().size()
+                << " KB Falloff reactions" << std::endl;
+    }
+  }
+
   // --- Build reverse reaction metadata ---
   int nrxn = n_reactions_orig_;
 

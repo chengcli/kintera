@@ -13,6 +13,7 @@
 #include "arrhenius.hpp"
 #include "coagulation.hpp"
 #include "evaporation.hpp"
+#include "kb_falloff.hpp"
 #include "lindemann_falloff.hpp"
 #include "sri_falloff.hpp"
 #include "three_body.hpp"
@@ -33,6 +34,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     op->lindemann_falloff() = LindemannFalloffOptionsImpl::create();
     op->troe_falloff() = TroeFalloffOptionsImpl::create();
     op->sri_falloff() = SRIFalloffOptionsImpl::create();
+    op->kb_falloff() = KBFalloffOptionsImpl::create();
     return op;
   }
 
@@ -75,6 +77,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(LindemannFalloffOptions, lindemann_falloff);
   ADD_ARG(TroeFalloffOptions, troe_falloff);
   ADD_ARG(SRIFalloffOptions, sri_falloff);
+  ADD_ARG(KBFalloffOptions, kb_falloff);
   ADD_ARG(bool, evolve_temperature) = false;
   ADD_ARG(bool, verbose) = false;
   ADD_ARG(bool, offset_zero) = false;

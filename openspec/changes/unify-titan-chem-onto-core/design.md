@@ -58,6 +58,39 @@ core concern, out of scope for behavior here but the settling code lands in core
   (network_mode, photo policy, chemb-overrides, EI scales); a thin env→config loader
   preserves diagnostic entry points.
 
+## moses00 rate-form findings (Stage 2.1/2.2 scoping)
+
+Measured against the actual moses00 `.pun` (521 reactions, 87 species) and the
+validated Python evaluator `kinetics_base/titan/physics.py::_pun_rate_constant`:
+
+- **Single-range, not multi-range.** Every moses00 reaction has exactly one
+  `rate_block`, and `Tmin=1` for all of them, so the validated path uses only
+  `rate_blocks[0]` with `t0 = Tmin = 1`. The Stage-1 multi-range Arrhenius is
+  correct and general but is *not exercised* by moses00; moses00 maps onto the
+  single-range Arrhenius fast path (bit-exact).
+- **Plain thermal (291 reactions):** `k = A·T^b·exp(C/T)` (t0=1, T-clip is a
+  no-op for atmospheric T). Maps to core Arrhenius with `Tref=1`, `b=b`,
+  `Ea_R=-C`, **A taken raw (CGS-native, no unit conversion)**, built as an
+  **irreversible** reaction so the core SI Kc reverse path is skipped. This is
+  the chosen CGS-native+irreversible strategy and reproduces `_pun_rate_constant`
+  exactly.
+- **Falloff (50 reactions, block `D>0`):** KB form
+  `ratio = k_low·n/k_high`, `k = (k_low/(1+ratio))·0.6^(1/(1+log10(ratio)^2))`
+  with `k_low=A·T^b·exp(C/T)`, `k_high=D·T^E·exp(F/T)`, `n`=total number
+  density, `fc=0.6` hardcoded. This is **not** core `LindemannFalloff`
+  (`k0·M_eff/(1+Pr)`) — it differs by a factor of `n` (KB's is an effective
+  *bimolecular* rate constant) and by the `fc=0.6` Troe broadening. Requires a
+  faithful KB-falloff rate model.
+- **Zero-A (180 reactions):** `block.A==0` — photolysis / special placeholders;
+  handled in Stage 3 (photolysis) and Stage 4 (EI/ion), not as thermal Arrhenius.
+
+Decision: the general translation (`.pun` → core `Reaction` + single-range
+Arrhenius, CGS-native, irreversible) lands in C++ alongside the existing
+`kinetics_options_from_kinetics_base` (which reads the *master* format; the
+moses00 path reads the `.pun` `KBPunNetwork`). The KB falloff form is general
+(one `fc=0.6` form across all 50) so it also belongs in core; ion/EI/CHEMB
+specifics stay outside per the unification mandate.
+
 ## Risks / Trade-offs
 
 - [Translated rates drift from KB] → per-reaction rate-match harness (reuse existing
@@ -89,9 +122,34 @@ the last green stage. The Python rate path stays available until Stage 6.
 
 ## Open Questions
 
-- Does core `Kinetics.forward` consume the 2-D atm state `(ncol,nlyr,nsp)` directly,
-  or need reshaping? (Verify in Stage 2 with a shape probe before wiring.)
-- Are KB rate units (cm³-based) vs core (`mol/m³`) reconciled by a single scaling, or
-  per-reaction? (Resolve in Stage 2 against the rate-match harness.)
-- Multi-range Arrhenius: is the core change Python-only or does it touch the compiled
-  extension? (Determines Stage 1 build effort.)
+- ~~Does core `Kinetics.forward` consume the 2-D atm state `(ncol,nlyr,nsp)` directly,
+  or need reshaping?~~ **RESOLVED (Stage 2.1 probe):** consumes it directly, no
+  reshaping. `forward(temp(ncol,nlyr), pres(ncol,nlyr), conc(ncol,nlyr,nsp))` returns
+  `rate (ncol,nlyr,nrxn_aug)`, `rc_ddC (ncol,nlyr,nsp,nrxn_aug)`, `rc_ddT` optional
+  (None unless `evolve_temperature`). This matches `AtmState2D` shapes exactly
+  (`atm_state2d.py`: temp/pres `(ncol,nlyr)`, conc `(ncol,nlyr,nsp)`; Titan ncol=1).
+  Verified empirically against `KineticsOptions.from_kinetics_base(test_master.inp)`:
+  rate `(1,5,24)`, rc_ddC `(1,5,10,24)`. The atm2d step's `build_source_linearization`
+  returns species tendency `(ncol,nlyr,nsp)` + Jacobian `(ncol,nlyr,nsp,nsp)`; the core
+  outputs are per-reaction, so Stage 5 contracts them with the stoichiometry matrix
+  (`species_rate` + `jacobian`) to get the species-space tendency/Jacobian.
+- ~~Are KB rate units (cm³-based) vs core (`mol/m³`) reconciled by a single scaling, or
+  per-reaction?~~ **RESOLVED (Stage 2.1 probe):** per-reaction — the conversion factor
+  depends on the reaction order (sum of reactant stoichiometric coefficients), via
+  `UnitSystem::convert_from(A, "molecule^(1-Σν) * cm^(-3(1-Σν)) * s^-1")`. This is
+  already implemented in `kinetics_options_from_kinetics_base` (master format) and is
+  the model for the `.pun` translator. The Titan atm2d state is CGS throughout
+  (conc in molecule cm⁻³, k in cm³ⁿ⁻¹/(molecule·s), tendency molecule cm⁻³ s⁻¹).
+  **Two consistent strategies** for the translator: (A) SI — convert A per-reaction and
+  feed conc as mol/m³ (`n_cgs · 1e6 / N_A`); (B) CGS-native — put raw KB A straight into
+  the Arrhenius `A_ranges`, keep conc in cm⁻³, and build **irreversible** reactions
+  (`=>`) so the core's SI thermodynamic reverse/Kc path is skipped. Strategy (B) matches
+  KB's forward-only `.pun` rates with no unit conversion, so the per-reaction k and net
+  dC/dt match the hand-rolled path exactly — preferred for the rate-match gate (2.6).
+  NOTE: the existing `from_kinetics_base` reads the *master* format (single-range
+  `KBReaction`); the moses00 network is a `.pun` (`KBPunReaction.rate_blocks` carry
+  per-range A/b/C + Tmin/Tmax — the multi-range data Stage 1 added support for), so the
+  Stage 2 translator operates on `KBPunReaction`, not the master path.
+- ~~Multi-range Arrhenius: is the core change Python-only or does it touch the compiled
+  extension?~~ **RESOLVED (Stage 1.1):** compiled C++ change (`arrhenius.{hpp,cpp}` +
+  pybind in `pykinetics.cpp` + rebuild). Done in Stage 1.

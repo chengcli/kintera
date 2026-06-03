@@ -19,12 +19,12 @@ recipe ratios (CH3 L40 ≈ 0.64, C6H6 L40 ≈ 1.80, C3H3 L40 ≈ 0.69).
 
 ## 2. KB → KineticsOptions translator (thermal)
 
-- [ ] 2.1 Probe `Kinetics.forward` input shapes/units against the 2-D atm state (resolve design open questions on shape + cm³ vs mol/m³)
-- [ ] 2.2 Translate `KBPunReaction` → core `Reaction` (reactants/products/stoichiometry) for the moses00 network
-- [ ] 2.3 Assign rate models: multi-range Arrhenius, ThreeBody, Troe/Lindemann falloff
-- [ ] 2.4 Bake `UPDATE_CHEMB` overrides into translated parameters (record provenance)
-- [ ] 2.5 Build `KineticsOptions` and evaluate via core `Kinetics.forward`/`jacobian`
-- [ ] 2.6 GATE: per-reaction rate match KB 1.000 at fort.50 (vs the Stage 0 snapshot)
+- [x] 2.1 Probe `Kinetics.forward` input shapes/units against the 2-D atm state (resolve design open questions on shape + cm³ vs mol/m³)
+- [x] 2.2 Translate `KBPunReaction` → core `Reaction` (reactants/products/stoichiometry) for the moses00 network
+- [x] 2.3 Assign rate models: single-range Arrhenius (moses00 has no multi-range) + KB falloff (new `kb_falloff` core model). ThreeBody not used by moses00 (M-dependence folded into the falloff form).
+- [x] 2.4 UPDATE_CHEMB overrides: kept as a Titan special layer (`core_chemb.py::ChembOverrideLayer`, matched by reaction signature) applied on top of core forward — the formulas are bespoke (piecewise/variable-Fc/`rk2-zk·d`), not core parameters, per the general→C++ / special→outside split. 21 moses00 reactions matched; reproduces the validated chemb callable exactly (rel 0.0); provenance recorded per column.
+- [x] 2.5 Build `KineticsOptions` and evaluate via core `Kinetics.forward`/`jacobian`
+- [ ] 2.6 GATE: per-reaction rate match KB 1.000 at fort.50 (vs the Stage 0 snapshot) — thermal (341 rxns) bit-exact (1e-14); photolysis pending Stage 3
 
 ## 3. Photolysis onto core Photolysis
 

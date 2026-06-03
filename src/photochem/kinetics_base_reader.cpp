@@ -1256,6 +1256,153 @@ KineticsOptions kinetics_options_from_kinetics_base(
   return kinet;
 }
 
+static void init_species_from_kinetics_base_pun(KBPunNetwork const& net) {
+  species_names.clear();
+  species_weights.clear();
+  species_cref_R.clear();
+  species_uref_R.clear();
+  species_sref_R.clear();
+  species_nasa9_low.clear();
+  species_nasa9_high.clear();
+  species_nasa9_Tmid.clear();
+
+  // Register species in ascending .pun id order so reaction ids map cleanly.
+  std::vector<KBPunSpecies const*> ordered;
+  ordered.reserve(net.species.size());
+  for (auto const& sp : net.species) ordered.push_back(&sp);
+  std::sort(ordered.begin(), ordered.end(),
+            [](KBPunSpecies const* a, KBPunSpecies const* b) {
+              return a->id < b->id;
+            });
+
+  for (auto const* sp : ordered) {
+    species_names.push_back(sp->name);
+    species_weights.push_back(sp->molecular_weight);
+    // Placeholder thermo: reactions are built irreversible, so NASA-9 / Kc is
+    // never evaluated. cref_R = 5/2 (ideal monatomic) is a harmless default.
+    species_cref_R.push_back(2.5);
+    species_uref_R.push_back(0.0);
+    species_sref_R.push_back(0.0);
+    species_nasa9_low.push_back({});
+    species_nasa9_high.push_back({});
+    species_nasa9_Tmid.push_back(1000.0);
+  }
+
+  species_initialized = true;
+}
+
+KineticsOptions kinetics_options_from_kinetics_base_pun(
+    std::string const& pun_path, bool verbose) {
+  auto net = parse_kinetics_base_pun(pun_path);
+  init_species_from_kinetics_base_pun(net);
+
+  std::map<int, std::string> name_by_id;
+  for (auto const& sp : net.species) name_by_id[sp.id] = sp.name;
+
+  auto kinet = KineticsOptionsImpl::create();
+  kinet->verbose(verbose);
+  // moses00 .pun reactions use t0 = Tmin = 1 K, i.e. k = A * T^b * exp(C/T).
+  kinet->Tref(1.0);
+
+  auto arrh = ArrheniusOptionsImpl::create();
+  arrh->Tref(1.0);
+  // CGS-native: A is stored raw in molecule,cm,s (no unit conversion), so the
+  // core forward yields rate constants in CGS and concentrations stay cm^-3.
+  arrh->units("molecule,cm,s");
+
+  auto kbf = KBFalloffOptionsImpl::create();
+  kbf->Tref(1.0);
+  kbf->fc(0.6);  // KB hardcodes the Troe broadening factor
+
+  auto names_from_ids = [&](std::vector<int> const& ids) {
+    std::vector<std::string> names;
+    names.reserve(ids.size());
+    for (int id : ids) {
+      auto it = name_by_id.find(id);
+      if (it != name_by_id.end()) names.push_back(it->second);
+    }
+    return names;
+  };
+
+  int n_plain = 0, n_falloff = 0, n_zeroA = 0, n_skipped = 0;
+
+  for (auto const& rxn : net.reactions) {
+    if (rxn.rate_blocks.empty()) {
+      ++n_skipped;
+      continue;
+    }
+    auto const& blk = rxn.rate_blocks[0];
+
+    if (blk.A == 0.0) {
+      // photolysis / special placeholder — handled by Stage 3/4, not here.
+      ++n_zeroA;
+      continue;
+    }
+
+    auto reactants = names_from_ids(rxn.reactant_ids);
+    auto products = names_from_ids(rxn.product_ids);
+    if (reactants.empty() || products.empty()) {
+      ++n_skipped;
+      continue;
+    }
+
+    std::string eq = format_equation(reactants, products, /*reversible=*/false);
+
+    if (blk.D > 0.0) {
+      // KB falloff form (effective bimolecular rate with fc=0.6 broadening).
+      kbf->reactions().push_back(Reaction(eq));
+      kbf->k0_A().push_back(blk.A);      // k_low = A*T^b*exp(C/T)
+      kbf->k0_b().push_back(blk.b);
+      kbf->k0_Ea_R().push_back(-blk.C);
+      kbf->kinf_A().push_back(blk.D);    // k_high = D*T^E*exp(F/T)
+      kbf->kinf_b().push_back(blk.E);
+      kbf->kinf_Ea_R().push_back(-blk.F);
+      ++n_falloff;
+      continue;
+    }
+
+    // Plain thermal reaction, built irreversible.
+    arrh->reactions().push_back(Reaction(eq));
+    arrh->A().push_back(blk.A);      // raw CGS pre-exponential
+    arrh->b().push_back(blk.b);      // temperature exponent (t0 = 1)
+    arrh->Ea_R().push_back(-blk.C);  // exp(C/T) == exp(-Ea_R/T)  => Ea_R = -C
+    arrh->E4_R().push_back(0.0);
+    ++n_plain;
+  }
+
+  kinet->arrhenius() = arrh;
+  kinet->kb_falloff() = kbf;
+  kinet->three_body() = ThreeBodyOptionsImpl::create();
+  kinet->lindemann_falloff() = LindemannFalloffOptionsImpl::create();
+  kinet->troe_falloff() = TroeFalloffOptionsImpl::create();
+  kinet->sri_falloff() = SRIFalloffOptionsImpl::create();
+  kinet->coagulation() = CoagulationOptionsImpl::create();
+  kinet->evaporation() = EvaporationOptionsImpl::create();
+
+  // Register every .pun species as a vapor so total density is well defined.
+  for (int id = 0; id < (int)species_names.size(); ++id) {
+    kinet->vapor_ids().push_back(id);
+  }
+  std::sort(kinet->vapor_ids().begin(), kinet->vapor_ids().end());
+  for (auto const& id : kinet->vapor_ids()) {
+    kinet->cref_R().push_back(species_cref_R[id]);
+    kinet->uref_R().push_back(species_uref_R[id]);
+    kinet->sref_R().push_back(species_sref_R[id]);
+    kinet->nasa9_low().push_back(species_nasa9_low[id]);
+    kinet->nasa9_high().push_back(species_nasa9_high[id]);
+    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+  }
+
+  if (verbose) {
+    std::cout << "[kinetics_options_from_kinetics_base_pun] " << n_plain
+              << " plain Arrhenius, " << n_falloff << " KB falloff, " << n_zeroA
+              << " zero-A (photolysis/special), " << n_skipped << " skipped"
+              << std::endl;
+  }
+
+  return kinet;
+}
+
 PhotoChemOptions photochem_options_from_kinetics_base(
     std::string const& master_input_path, std::string const& photo_catalog_path,
     std::string const& cross_dir, bool verbose) {

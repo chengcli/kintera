@@ -195,7 +195,8 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
       arrhenius()->reactions().size() + coagulation()->reactions().size() +
       evaporation()->reactions().size() + three_body()->reactions().size() +
       lindemann_falloff()->reactions().size() +
-      troe_falloff()->reactions().size() + sri_falloff()->reactions().size());
+      troe_falloff()->reactions().size() + sri_falloff()->reactions().size() +
+      (kb_falloff() ? kb_falloff()->reactions().size() : 0));
 
   for (const auto& reaction : arrhenius()->reactions()) {
     reactions.push_back(reaction);
@@ -223,6 +224,12 @@ std::vector<Reaction> KineticsOptionsImpl::reactions() const {
 
   for (const auto& reaction : sri_falloff()->reactions()) {
     reactions.push_back(reaction);
+  }
+
+  if (kb_falloff()) {
+    for (const auto& reaction : kb_falloff()->reactions()) {
+      reactions.push_back(reaction);
+    }
   }
 
   return reactions;
