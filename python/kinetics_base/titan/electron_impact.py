@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import os
-
 
 def _global_scale() -> float:
-    # KINTERA_EI_SCALE multiplies every electron-impact branching ratio so we
-    # can sweep total ionization without re-editing the per-channel tables.
-    try:
-        return float(os.environ.get("KINTERA_EI_SCALE", "1.0"))
-    except (TypeError, ValueError):
-        return 1.0
+    # ei_scale multiplies every electron-impact branching ratio so we can sweep
+    # total ionization without re-editing the per-channel tables.
+    from .config import get_titan_config
+    return get_titan_config().ei_scale
 
 
 def _kinetics_base_electron_impact_secondary_params(
@@ -36,10 +32,8 @@ def _is_kinetics_base_electron_impact_reaction(products: list[str]) -> bool:
     return "E" in products or any(product.endswith("+") for product in products)
 
 def _channel_scale(env_name: str, default: float) -> float:
-    try:
-        return float(os.environ.get(env_name, str(default)))
-    except (TypeError, ValueError):
-        return default
+    from .config import get_titan_config
+    return get_titan_config().ei_channel(env_name)
 
 
 def _kinetics_base_electron_impact_scale(

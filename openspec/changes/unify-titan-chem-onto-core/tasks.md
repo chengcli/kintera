@@ -54,10 +54,10 @@ when an ion network (e.g. Cheng_ions) is validated.
 
 ## 6. Config consolidation + delete dead path
 
-- [ ] 6.1 Introduce `CoreConfig` (transport form, chem solver) and `TitanConfig` (network mode, photo policy, chemb overrides, EI scales)
-- [ ] 6.2 Replace `KINTERA_*` reads in the library with config fields
-- [ ] 6.3 Add a thin env→config loader so diagnostics keep working
-- [ ] 6.4 Delete the hand-rolled rate path (`atm2d_sources.linearize`, titan `build_source_linearization` rate evaluation) and any now-dead imports
+- [x] 6.1 Introduce `CoreConfig` (transport form, chem solver — `atm2d/config.py`) and `TitanConfig` (photo policy, chemb overrides, EI scales — `kinetics_base/titan/config.py`)
+- [x] 6.2 Replace `KINTERA_*` reads in the library with config fields — transport form (`transport.py`), chem solver (`newton/operator_split.py`), photo policy (`photochemistry.py`, `core_photo.py`), chemb disable (`atm2d_sources.py`), EI scales (`electron_impact.py`) all route through `get_core_config()`/`get_titan_config()`
+- [x] 6.3 Add a thin env→config loader so diagnostics keep working — `CoreConfig.from_env()`/`TitanConfig.from_env()` + `get_*_config()` read fresh from env by default (preserving env-at-call-time behaviour); `set_*_config()` installs an explicit object
+- [ ] 6.4 Delete the hand-rolled rate path (`atm2d_sources.linearize`, titan `build_source_linearization` rate evaluation) and any now-dead imports — DEFERRED (keep the validated reference until `CoreChemistrySource` is the wired production path)
 
 ## 7. Validate
 

@@ -6,6 +6,8 @@ from typing import Any
 
 import torch
 
+from .config import get_titan_config
+
 from .parsing import (
     _align_kinetics_base_flux_cross_section,
     _integrate_kinetics_base_photo_rate,
@@ -83,7 +85,7 @@ def _is_active_kinetics_base_photo_branch(
     # IPRNTD=11111 verbose log: ZK(3) CH3→CH+H2 has non-zero rate at L40
     # even though CH3 is NOT in moses00 IPHOTO). The IPHOTO list controls
     # only actinic-flux attenuation. Set this env var to match that.
-    if os.environ.get("KINTERA_TITAN_PHOTO_ALLOW_RADICALS"):
+    if get_titan_config().photo_allow_radicals:
         return True
     # Fall back to active_opacity_species (the IPHOTO list from kinetics.inp).
     if active_opacity_species is None or parent not in active_opacity_species:
@@ -161,7 +163,7 @@ def _kinetics_base_photo_rates(
     # these onto PUN reactions and over-produce C3/C3H by 20-900x at L60-L80.
     # Exclude them by default to match KB; set KINTERA_TITAN_PHOTO_INCLUDE_XSCN
     # to re-enable (e.g. for ion runs that genuinely use the X-ray channels).
-    if not os.environ.get("KINTERA_TITAN_PHOTO_INCLUDE_XSCN"):
+    if not get_titan_config().photo_include_xscn:
         catalog = [(eq, fn) for eq, fn in catalog if "_XSCN_" not in fn]
     cross_cache = {
         filename: _parse_kinetics_base_cross_section_on_flux(cross_root / filename, flux)

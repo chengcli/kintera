@@ -426,8 +426,8 @@ def _build_titan_thermal_atm2d_source(
     # KB binary was compiled without __TITAN (moses00 paper-era binary
     # falls in this category — uses pure .pun catalog rates). When set,
     # kintera falls back to `_pun_rate_constant` for every reaction.
-    import os as _os
-    _chemb_disabled = bool(_os.environ.get("KINTERA_DISABLE_CHEMB_OVERRIDES", ""))
+    from .config import get_titan_config
+    _chemb_disabled = get_titan_config().disable_chemb_overrides
     override_id = (
         term.reaction_id
         if (not _chemb_disabled) and has_titan_chemb_override(term.reaction_id)

@@ -91,7 +91,8 @@ def build_titan_photolysis_options(
 
     catalog = _parse_kinetics_base_catalog(str(catalog_path))
     if include_xscn is None:
-        include_xscn = bool(os.environ.get("KINTERA_TITAN_PHOTO_INCLUDE_XSCN"))
+        from .config import get_titan_config
+        include_xscn = get_titan_config().photo_include_xscn
     if not include_xscn:
         catalog = [(eq, fn) for eq, fn in catalog if "_XSCN_" not in fn]
 

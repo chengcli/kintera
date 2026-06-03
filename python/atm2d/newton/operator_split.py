@@ -16,7 +16,6 @@ source-term list into :func:`atm2d.newton.chemistry_only.chemistry_only_newton_s
 
 from __future__ import annotations
 
-import os
 from typing import Callable, Optional
 
 import torch
@@ -42,7 +41,8 @@ def _select_chem_step():
     internal substeps, avoiding the silent-non-convergence failure of
     the single-step Newton at large macro dt.
     """
-    mode = os.environ.get("KINTERA_CHEM_SOLVER", "newton").lower()
+    from ..config import get_core_config
+    mode = get_core_config().chem_solver
     if mode == "newton":
         return chemistry_only_newton_step, None
     if mode in ("bdf", "lsoda", "radau"):

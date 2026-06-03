@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import torch
 
 from .matrix import SparseSystemMatrix, add_sparse_system_matrices, flatten_state_index
@@ -31,7 +30,8 @@ def _resolve_transport_form(
     selectable via the `form` kwarg or `KINTERA_TRANSPORT_FORM`.
     """
     if form is None:
-        env = os.environ.get("KINTERA_TRANSPORT_FORM")
+        from .config import get_core_config
+        env = get_core_config().transport_form
         if env is not None:
             form = env
         elif density is not None:
