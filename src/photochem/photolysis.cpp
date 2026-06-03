@@ -160,6 +160,20 @@ void PhotolysisImpl::reset() {
 
   wavelength = register_buffer(
       "wavelength", torch::tensor(options->wavelength(), torch::kFloat64));
+
+  // optional per-wavelength quadrature weights (weighted-sum integration)
+  quad_weights = torch::Tensor();
+  if (!options->quadrature_weights().empty()) {
+    TORCH_CHECK(
+        options->quadrature_weights().size() == options->wavelength().size(),
+        "photolysis quadrature_weights size (",
+        options->quadrature_weights().size(),
+        ") must match the wavelength grid size (",
+        options->wavelength().size(), ")");
+    quad_weights = register_buffer(
+        "quad_weights",
+        torch::tensor(options->quadrature_weights(), torch::kFloat64));
+  }
   auto global_temps = options->temperature();
   if (global_temps.empty()) {
     global_temps = {0.0, 1000.0};
@@ -360,7 +374,15 @@ torch::Tensor PhotolysisImpl::forward(torch::Tensor T,
   auto actinic_flux_batch_last =
       actinic_flux.dim() == 1 ? actinic_flux : actinic_flux.movedim(0, -1);
   auto integrand = xs_diss_stacked * actinic_flux_batch_last.unsqueeze(-1);
-  auto rates = torch::trapezoid(integrand, wave, -2);
+
+  torch::Tensor rates;
+  if (quad_weights.defined() && quad_weights.numel() > 0) {
+    // weighted-sum integration: J = sum_i w_i * sigma_i * F_i over wavelength
+    rates = (integrand * quad_weights.view({-1, 1})).sum(-2);
+  } else {
+    // default trapezoidal integration over wavelength
+    rates = torch::trapezoid(integrand, wave, -2);
+  }
   return rates.view(out_shape);
 }
 

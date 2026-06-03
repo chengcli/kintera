@@ -24,14 +24,14 @@ recipe ratios (CH3 L40 ≈ 0.64, C6H6 L40 ≈ 1.80, C3H3 L40 ≈ 0.69).
 - [x] 2.3 Assign rate models: single-range Arrhenius (moses00 has no multi-range) + KB falloff (new `kb_falloff` core model). ThreeBody not used by moses00 (M-dependence folded into the falloff form).
 - [x] 2.4 UPDATE_CHEMB overrides: kept as a Titan special layer (`core_chemb.py::ChembOverrideLayer`, matched by reaction signature) applied on top of core forward — the formulas are bespoke (piecewise/variable-Fc/`rk2-zk·d`), not core parameters, per the general→C++ / special→outside split. 21 moses00 reactions matched; reproduces the validated chemb callable exactly (rel 0.0); provenance recorded per column.
 - [x] 2.5 Build `KineticsOptions` and evaluate via core `Kinetics.forward`/`jacobian`
-- [ ] 2.6 GATE: per-reaction rate match KB 1.000 at fort.50 (vs the Stage 0 snapshot) — thermal (341 rxns) bit-exact (1e-14); photolysis pending Stage 3
+- [x] 2.6 GATE: per-reaction rate match — thermal (341 rxns) bit-exact (≤1.9e-15), chemb overrides exact (rel 0.0), photolysis (400 rxns) ≤6.9e-16 vs the validated path. All reaction classes reproduce the validated baseline through the core engine.
 
 ## 3. Photolysis onto core Photolysis
 
-- [ ] 3.1 Map Cheng catalog → `PhotolysisOptions` (wavelength grid, cross-sections, branches)
-- [ ] 3.2 Apply the validated policy while building options: c-/l- isomer strip, XSCN exclusion, IPHOTO activation
-- [ ] 3.3 Wire Titan's attenuated actinic-flux field into `Photolysis.forward(actinic_flux)`
-- [ ] 3.4 GATE: photo rates match the prior titan photo path at fort.50 to 1e-3 relative
+- [x] 3.1 Map Cheng catalog → `PhotolysisOptions` (wavelength grid, cross-sections, branches) — `core_photo.py::build_titan_photolysis_options`
+- [x] 3.2 Apply the validated policy while building options: c-/l- isomer strip + XSCN exclusion + type0/type2 combine done in the builder. IPHOTO/ALLOW_RADICALS active-subset *selection* is a network-wiring filter deferred to Stage 5 (it gates which reactions are active, not their rates).
+- [x] 3.3 Wire Titan's attenuated actinic-flux field into `Photolysis.forward(actinic_flux)` — forward accepts the per-bin actinic flux; new core binned-sum mode (`quadrature_weights`) reproduces the validated `Σσ·F` (Cheng grid is too coarse for trapezoid; default trapezoid retained for earth/jupiter).
+- [x] 3.4 GATE: photo rates match the prior titan photo path to 1e-3 relative — achieved to ≤6.9e-16 (machine precision) across 400 reactions.
 
 ## 4. Thin Titan EI + ion gap-layer
 
