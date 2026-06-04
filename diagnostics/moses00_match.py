@@ -188,8 +188,15 @@ def main() -> int:
     ts.concentration = ts.state.concentration
 
     print("[atm2d] building atm2d source terms")
-    atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(ts, filtered)
-    print(f"  atm2d sources: {len(atm_sources)}")
+    # Production default: chemistry through the core engine (CoreChemistrySource).
+    # Set KINTERA_TITAN_HANDROLLED_CHEM=1 to fall back to the hand-rolled path.
+    if os.environ.get("KINTERA_TITAN_HANDROLLED_CHEM"):
+        atm_sources = kt.build_kinetics_base_titan_atm2d_source_terms(ts, filtered)
+        print(f"  atm2d sources (hand-rolled chemistry): {len(atm_sources)}")
+    else:
+        atm_sources = kt.build_kinetics_base_titan_core_source_terms(
+            ts, str(PUN_PATH), filtered)
+        print(f"  atm2d sources (core-engine chemistry): {len(atm_sources)}")
 
     # Frozen tendency check
     print()

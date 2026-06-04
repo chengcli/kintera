@@ -30,6 +30,10 @@ from .atm2d_sources import (
     KBTitanFirstOrderAtm2DSource,
     build_kinetics_base_titan_atm2d_source_terms,
 )
+from .core_source import (
+    CoreChemistrySource,
+    build_kinetics_base_titan_core_source_terms,
+)
 from .source_integration import (
     apply_kinetics_base_titan_source_terms,
     kinetics_base_titan_source_tendencies,
@@ -52,6 +56,8 @@ __all__ = [
     "apply_kinetics_base_titan_boundary_pins",
     "altitude_faces_from_kinetics_base_centers_km",
     "build_kinetics_base_titan_atm2d_source_terms",
+    "build_kinetics_base_titan_core_source_terms",
+    "CoreChemistrySource",
     "build_kinetics_base_titan_source_terms",
     "build_kinetics_base_titan_state",
     "kinetics_base_concentration_from_profile",

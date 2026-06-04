@@ -214,3 +214,28 @@ class CoreChemistrySource:
                 jacobian = jacobian + jac_p[..., self._ts_to_core, :][..., self._ts_to_core]
 
         return LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+
+def build_kinetics_base_titan_core_source_terms(
+    titan_state,
+    pun_path: str,
+    source_terms: list[Any],
+    *,
+    pun_metadata: dict | None = None,
+) -> list[Any]:
+    """Production atm2d source-term list with chemistry through the core engine.
+
+    Returns ``[CoreChemistrySource] + <non-chemistry terms>``: the thermal +
+    photolysis chemistry is evaluated by :class:`CoreChemistrySource` (core
+    `Kinetics`/`PhotoChem`), while boundary conditions, condensation/sublimation,
+    and the deferred electron-impact / ion terms keep their hand-rolled atm2d
+    adapters (built by `build_kinetics_base_titan_atm2d_source_terms`). For the
+    neutral moses00 network this is ``[CoreChemistrySource] + boundary``.
+    """
+    from .atm2d_sources import build_kinetics_base_titan_atm2d_source_terms
+
+    chem_kinds = {"pun_thermal_reaction", "pun_photo_rate_reaction"}
+    non_chem = [t for t in source_terms if t.kind not in chem_kinds]
+    core_chem = CoreChemistrySource(titan_state, pun_path, source_terms)
+    return [core_chem] + build_kinetics_base_titan_atm2d_source_terms(
+        titan_state, non_chem, pun_metadata=pun_metadata)
