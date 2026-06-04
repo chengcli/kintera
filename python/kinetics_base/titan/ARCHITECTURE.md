@@ -154,10 +154,16 @@ The refactor changes the moses00 steady state by **nothing**.
 - **Electron-impact + ion charge-balance layer** (`electron_impact.py`,
   `ion_chemistry.py`) — for ion networks (e.g. Cheng_ions); a no-op for the
   neutral moses00.
-- **Production wiring** — `CoreChemistrySource` is validated as a drop-in but is
-  not yet the default chemistry source inside the driver; the **hand-rolled rate
-  path is retained as the reference** until that wiring lands (then it can be
-  removed behind the green gate — OpenSpec task 6.4).
+- **Deleting the hand-rolled rate path (task 6.4)** — production is now wired
+  (`build_kinetics_base_titan_core_source_terms` is the default chemistry source
+  in `moses00_match.py`), but the hand-rolled rate code **cannot yet be deleted**
+  because it is *shared with the deferred EI/ion layer*:
+  `KBTitanFirstOrderAtm2DSource` serves photo **and** electron-impact,
+  `_build_titan_thermal_atm2d_source` serves thermal **and**
+  ion-mass-action / dissociative-recombination, and `_pun_rate_constant` serves
+  both (the validation harnesses also depend on it). It can be removed only once
+  EI/ion are moved to core as well. It is retained as the EI/ion + validation
+  reference. (`KINTERA_TITAN_HANDROLLED_CHEM=1` selects the old path.)
 
 See `openspec/changes/unify-titan-chem-onto-core/` for the full design,
 capability specs, and staged task list.
