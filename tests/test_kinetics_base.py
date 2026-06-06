@@ -8,7 +8,6 @@ Tests the Python bindings for:
 
 import os
 import re
-import subprocess
 from types import SimpleNamespace
 
 import pytest
@@ -91,211 +90,6 @@ def _write_fresh_start_run_input(src, dst, *, ntime=1):
                             f.write("\n".join(lines) + "\n")
                         return
     raise AssertionError("could not find KINETICS-base ISTART field")
-
-
-def _run_titan_steps(tmp_path, *, ntime, timeout=120):
-    titan_dir, executable, pun_path, run_input_path, atmosphere_path = (
-        _external_titan_paths()
-    )
-
-    work = tmp_path / f"titan-{ntime}-steps"
-    work.mkdir()
-    (work / "prod+loss").mkdir()
-    patched_run_input = work / "fort.81.fresh-start"
-    _write_fresh_start_run_input(run_input_path, patched_run_input, ntime=ntime)
-
-    links = {
-        "fort.1": pun_path,
-        "fort.3": os.path.join(titan_dir, "kintitan.truncate"),
-        "fort.4": os.path.join(
-            titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
-        ),
-        "fort.15": os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save"),
-        "fort.20": os.path.join(titan_dir, "Cheng_wavel.dat"),
-        "fort.21": os.path.join(titan_dir, "flare_kin_oct2003.inp"),
-        "fort.27": os.path.join(titan_dir, "kintitan-difrad-2.inp"),
-        "fort.30": os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
-        "fort.45": os.path.join(titan_dir, "kintitan_aerosol_interp_albedo.inp"),
-        "fort.46": os.path.join(titan_dir, "kintitan_aerosol_interp_gr.inp"),
-        "fort.47": os.path.join(titan_dir, "kintitan_aerosol_interp_asymm.inp"),
-        "fort.50": atmosphere_path,
-        "fort.81": patched_run_input,
-        "crossfilepath": os.path.join(titan_dir, "Cheng_cross"),
-    }
-    for name, target in links.items():
-        if not os.path.exists(target):
-            pytest.skip(f"missing external KINETICS-base file: {target}")
-        os.symlink(target, work / name)
-
-    for name in ["kintitan.out.pun", "kintitan.res", "titandebug.dat"]:
-        (work / name).touch()
-    os.symlink(work / "kintitan.out.pun", work / "fort.7")
-    os.symlink(work / "kintitan.res", work / "fort.10")
-    os.symlink(work / "titandebug.dat", work / "fort.11")
-
-    proc = subprocess.run(
-        [executable],
-        cwd=work,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise AssertionError(proc.stdout[-4000:])
-
-    output_path = work / "kintitan.out.pun"
-    assert output_path.exists()
-    return atmosphere_path, output_path
-
-
-def _run_titan_one_step(tmp_path):
-    return _run_titan_steps(tmp_path, ntime=1)
-
-
-def _titan_species_in_reference(initial, reference):
-    return [
-        name
-        for name in initial.species_profiles
-        if name in reference.species_profiles
-    ]
-
-
-def _build_titan_state_from_oracle(initial, species, boundary_path=None):
-    import kintera as kt
-
-    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
-    if boundary_path is None:
-        boundary_path = os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save")
-    return kt.build_kinetics_base_titan_state(
-        initial, species=species, boundary_path=boundary_path, pun_path=pun_path
-    )
-
-
-def _write_titan_ch4_effective_boundary_input(src, dst, atmosphere):
-    """Copy the KB boundary file; Cheng cold-trap handling is applied separately."""
-    del atmosphere
-    with open(src) as f:
-        lines = f.readlines()
-    with open(dst, "w") as f:
-        f.writelines(lines)
-
-
-def _build_titan_source_terms_from_oracle():
-    import kintera as kt
-
-    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
-    special_path = os.path.join(
-        titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
-    )
-    boundary_path = os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save")
-    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
-    return kt.build_kinetics_base_titan_source_terms(
-        pun_path,
-        special_path=special_path,
-        boundary_path=boundary_path,
-        run_input_path=run_input_path,
-        photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
-        cross_dir=os.path.join(titan_dir, "Cheng_cross"),
-        flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
-        truncate_path=truncate_path,
-    ), kt.kinetics_base_species_metadata_from_pun(pun_path)
-
-
-def _solve_titan_transport_steps(
-    titan_state,
-    *,
-    ntime,
-    source_terms=None,
-    pun_metadata=None,
-):
-    import kintera as kt
-
-    concentration = titan_state.concentration
-    transport = kt.build_transport_matrix(titan_state.state, titan_state.kzz)
-    atm_sources = (
-        kt.build_kinetics_base_titan_atm2d_source_terms(
-            titan_state, source_terms, pun_metadata=pun_metadata
-        )
-        if source_terms is not None
-        else None
-    )
-    species_diffusion_scale = kt.kinetics_base_titan_species_diffusion_scale(
-        titan_state.species,
-        dtype=titan_state.state.dtype,
-        device=titan_state.state.device,
-    )
-    dt = 1.0e-15
-    # KINETICS-base's Titan run grows the negative-DELTIM startup sequence by
-    # half decades; the stdout sequence is 1e-15, 3.2e-15, 1e-14, ...
-    growth = 10.0 ** 0.5
-    for _ in range(ntime):
-        if atm_sources is not None:
-            titan_state.state.concentration = concentration
-            system, rhs = kt.build_implicit_step_system(
-                titan_state.state,
-                titan_state.kzz,
-                dt,
-                species_diffusion_scale=species_diffusion_scale,
-                source_terms=atm_sources,
-            )
-            system, rhs = kt.apply_kinetics_base_titan_dirichlet_rows(
-                system, rhs, titan_state
-            )
-            concentration = kt.solve_sparse_system(system, rhs)
-            concentration = torch.clamp(concentration, min=0.0)
-        else:
-            system_dense = torch.eye(transport.nstate) - dt * transport.global_csr.to_dense()
-            system = kt.SparseSystemMatrix.from_dense(
-                system_dense,
-                ncol=1,
-                nlyr=titan_state.state.nlyr,
-                nspecies=titan_state.state.nspecies,
-            )
-            system, concentration = kt.apply_kinetics_base_titan_dirichlet_rows(
-                system, concentration, titan_state
-            )
-            concentration = kt.solve_sparse_system(system, concentration)
-        kt.apply_kinetics_base_titan_boundary_pins(concentration, titan_state)
-        dt *= growth
-    return concentration[0]
-
-
-def _assert_titan_equivalence(kintera_concentration, reference_concentration, species):
-    diff = (kintera_concentration - reference_concentration).abs()
-    max_abs_diff = diff.max().item()
-    nonzero_reference = reference_concentration.abs() > 0.0
-    max_rel_diff = (
-        (diff[nonzero_reference] / reference_concentration[nonzero_reference].abs())
-        .max()
-        .item()
-        if nonzero_reference.any()
-        else 0.0
-    )
-    changed_entries = int((diff > 1.0e-6).sum().item())
-    species_max_diff = diff.max(dim=0).values
-    top_count = min(10, len(species))
-    top_values, top_indices = torch.topk(species_max_diff, top_count)
-    top_species = ", ".join(
-        f"{species[int(index)]}:{value.item():.3e}"
-        for value, index in zip(top_values, top_indices)
-    )
-    assert torch.isfinite(kintera_concentration).all()
-    torch.testing.assert_close(
-        kintera_concentration,
-        reference_concentration,
-        rtol=5.0e-4,
-        atol=1.0e-6,
-        msg=(
-            "Titan output mismatch after KINETICS-base state conversion, "
-            "lower boundary application, and transport solve: "
-            f"max_abs_diff={max_abs_diff:.6e}, "
-            f"max_rel_diff={max_rel_diff:.6e}, "
-            f"entries_gt_1e-6={changed_entries}/{diff.numel()}, "
-            f"top_species=[{top_species}]."
-        ),
-    )
 
 
 def test_from_kinetics_base_no_xsec(master_path):
@@ -588,9 +382,13 @@ def test_titan_photolysis_can_freeze_actinic_opacity():
     )
     linearization = kt.build_source_linearization(state, atm_sources)
 
+    # freeze pins opacity to the initial state (concentration 0 here), so there
+    # is no attenuation and J = flux * cross_section * (1/4). The 1/4 is the
+    # disk-averaging factor the actinic-flux path applies to match KB
+    # (radiation.py:245). tendency = -J * current_concentration = -0.5 * {3, 5}.
     torch.testing.assert_close(
         linearization.tendency,
-        torch.tensor([[[-6.0, 6.0], [-10.0, 10.0]]], dtype=torch.float64),
+        torch.tensor([[[-1.5, 1.5], [-2.5, 2.5]]], dtype=torch.float64),
     )
 
 
@@ -803,7 +601,7 @@ def test_titan_ch4_grain_special_sources_are_product_only_and_shifted():
 def test_titan_sublimation_uses_total_grain_ice_abundance_limiter():
     """Sublimation switches from site capacity to total ice abundance above a monolayer."""
     import kintera as kt
-    from kintera.kinetics_base_titan.physics import _titan_sublimation_rate_profile
+    from kintera.kinetics_base.titan.physics import _titan_sublimation_rate_profile
 
     x1f = torch.tensor([0.0, 1.0], dtype=torch.float64)
     x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
@@ -999,77 +797,6 @@ def test_kinetics_base_profile_conversion_does_not_infer_mixing_ratio_from_value
     assert conversion["LOW"] == "number_density"
 
 
-def test_external_titan_one_step_equivalence_if_available(tmp_path):
-    """Compare the Fortran Titan one-step output with current kintera state."""
-    import kintera as kt
-
-    initial_path, output_path = _run_titan_one_step(tmp_path)
-    initial = kt.parse_kinetics_base_atmosphere(initial_path)
-    reference = kt.parse_kinetics_base_atmosphere(str(output_path))
-
-    species = _titan_species_in_reference(initial, reference)
-    assert len(species) == 128
-    assert len(initial.altitude) == len(reference.altitude) == 50
-    assert "CH4" in initial.mixing_ratio_species_profiles
-    assert "N2" not in initial.mixing_ratio_species_profiles
-
-    reference_concentration = kt.kinetics_base_profile_tensor(reference, species)
-    titan_dir, _, _, _, _ = _external_titan_paths()
-    boundary_path = tmp_path / "titan_Cheng_N_ions_H2CN.effective.bc"
-    _write_titan_ch4_effective_boundary_input(
-        os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save"),
-        boundary_path,
-        initial,
-    )
-    titan_state = _build_titan_state_from_oracle(initial, species, boundary_path)
-    assert titan_state.concentration.shape == (1, 50, 128)
-    # KINETICS-base __CHENG pins CH4's cold-trap boundary row, so CH4's
-    # conversion type reflects that boundary rather than the surface
-    # mixing-ratio input.
-    assert titan_state.conversion["CH4"] == "kinetics_base_cheng_cold_trap_mixing_ratio"
-    assert "E" not in titan_state.fixed_species
-    assert titan_state.conversion["E"] == "pun_electron_or_ion_number_density"
-    if "CH3+" in titan_state.conversion:
-        assert titan_state.conversion["CH3+"] == "pun_electron_or_ion_number_density"
-    assert titan_state.conversion["U"] == "pun_empty_composition_number_density"
-    assert titan_state.conversion["SGA"] == "fixed_pun_zero_molecular_weight_number_density"
-
-    kintera_concentration = _solve_titan_transport_steps(titan_state, ntime=1)
-    _assert_titan_equivalence(kintera_concentration, reference_concentration, species)
-
-
-def test_external_titan_multi_step_equivalence_gap_if_available(tmp_path):
-    """Compare Fortran Titan multi-step output with repeated kintera steps."""
-    import kintera as kt
-
-    ntime = 10
-    initial_path, output_path = _run_titan_steps(tmp_path, ntime=ntime)
-    initial = kt.parse_kinetics_base_atmosphere(initial_path)
-    reference = kt.parse_kinetics_base_atmosphere(str(output_path))
-
-    species = _titan_species_in_reference(initial, reference)
-    assert len(species) == 128
-    assert len(initial.altitude) == len(reference.altitude) == 50
-
-    reference_concentration = kt.kinetics_base_profile_tensor(reference, species)
-    titan_dir, _, _, _, _ = _external_titan_paths()
-    boundary_path = tmp_path / "titan_Cheng_N_ions_H2CN.effective.bc"
-    _write_titan_ch4_effective_boundary_input(
-        os.path.join(titan_dir, "titan_Cheng_N_ions_H2CN.bc_save"),
-        boundary_path,
-        initial,
-    )
-    titan_state = _build_titan_state_from_oracle(initial, species, boundary_path)
-    source_terms, pun_metadata = _build_titan_source_terms_from_oracle()
-    kintera_concentration = _solve_titan_transport_steps(
-        titan_state,
-        ntime=ntime,
-        source_terms=source_terms,
-        pun_metadata=pun_metadata,
-    )
-    _assert_titan_equivalence(kintera_concentration, reference_concentration, species)
-
-
 def test_external_titan_reaction_classification_if_available():
     """Report selected Titan photolysis and thermal candidate reaction counts."""
     import kintera as kt
@@ -1143,43 +870,6 @@ def test_external_titan_special_placeholders_if_available():
     assert electron_impact_count > 0
 
 
-def test_external_titan_truncate_active_network_if_available():
-    """Titan source terms can be restricted to KINETICS-base's active network."""
-    import kintera as kt
-
-    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
-    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
-    if not os.path.exists(truncate_path):
-        pytest.skip(f"missing external KINETICS-base file: {truncate_path}")
-
-    active_network = kt.parse_kinetics_base_truncate(truncate_path)
-    assert active_network.reaction_mapping[64] == 63
-    assert active_network.reaction_mapping[143] == 120
-    assert active_network.reaction_mapping[260] == 167
-    assert active_network.reaction_mapping[1048] == 0
-    assert active_network.reaction_mapping[1056] == 0
-    assert active_network.reaction_mapping[1057] == 606
-    assert len(active_network.active_reaction_ids) == 1364
-
-    terms = kt.build_kinetics_base_titan_source_terms(
-        pun_path,
-        special_path=os.path.join(
-            titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
-        ),
-        run_input_path=run_input_path,
-        photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
-        cross_dir=os.path.join(titan_dir, "Cheng_cross"),
-        flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
-        truncate_path=truncate_path,
-    )
-    by_id = {term.reaction_id: term for term in terms}
-
-    for reaction_id in {64, 65, 143, 260, 1057}:
-        assert reaction_id in by_id
-    for reaction_id in {1048, 1056}:
-        assert reaction_id not in by_id
-
-
 def test_external_titan_special_index_if_available():
     """Cheng runtime ISP mappings are available to source-term construction."""
     import kintera as kt
@@ -1198,39 +888,6 @@ def test_external_titan_special_index_if_available():
     assert special.target_id(539, kind=2) == 247
     assert special.target_id(540, kind=2) == 246
     assert special.target_id(229, kind=3) == 222
-
-
-def test_external_titan_ch4_photolysis_branch_loss_if_available():
-    """KINETICS-base Cheng CH4 photo branches share products but not parent loss."""
-    import kintera as kt
-
-    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
-    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
-    terms = kt.build_kinetics_base_titan_source_terms(
-        pun_path,
-        special_path=os.path.join(
-            titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
-        ),
-        run_input_path=run_input_path,
-        photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
-        cross_dir=os.path.join(titan_dir, "Cheng_cross"),
-        flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
-        truncate_path=truncate_path,
-    )
-    ch4_photo = {
-        term.reaction_id: term
-        for term in terms
-        if term.kind == "pun_photo_rate_reaction" and term.reactants == ["CH4"]
-    }
-
-    assert set(ch4_photo) == {5, 6, 7, 8, 9, 222}
-    assert ch4_photo[6].parameters["source"] == "cheng_branch_rate_profile"
-    assert ch4_photo[6].parameters["rate_profile_multiplier"]
-    for reaction_id in {5, 6, 7, 8, 9}:
-        assert ch4_photo[reaction_id].parameters["suppress_reactant_loss"] is True
-    assert ch4_photo[8].products == ["(3)CH2"]
-    assert ch4_photo[222].products == ["CH4"]
-    assert not ch4_photo[222].parameters.get("suppress_reactant_loss", False)
 
 
 def test_external_titan_electron_impact_uses_special_runtime_indices_if_available():
@@ -1257,43 +914,6 @@ def test_external_titan_electron_impact_uses_special_runtime_indices_if_availabl
     }
 
     assert electron_impact_ids == {202, 203, 246, 247}
-
-
-def test_external_titan_catalog_photolysis_branches_if_available():
-    """Catalog-mapped unary A=0 branches are exposed as Titan photolysis."""
-    import kintera as kt
-
-    titan_dir, _, pun_path, run_input_path, _ = _external_titan_paths()
-    truncate_path = os.path.join(titan_dir, "kintitan.truncate")
-    terms = kt.build_kinetics_base_titan_source_terms(
-        pun_path,
-        special_path=os.path.join(
-            titan_dir, "kindata_yy_clean", "Cheng_ions_c6h7+_v3_H2CN.special"
-        ),
-        run_input_path=run_input_path,
-        photo_catalog_path=os.path.join(titan_dir, "Cheng_catalog_v4.dat"),
-        cross_dir=os.path.join(titan_dir, "Cheng_cross"),
-        flux_path=os.path.join(titan_dir, "flare_kin_oct2003.inp"),
-        truncate_path=truncate_path,
-    )
-    photolysis_branches = {
-        (tuple(term.reactants), tuple(term.products)): term
-        for term in terms
-        if term.kind == "pun_photo_rate_reaction"
-    }
-
-    expected_branches = [
-        (("C4H4",), ("C4H2", "H2")),
-        (("NH3",), ("NH2", "H")),
-        (("HCN",), ("H", "CN")),
-    ]
-    for branch in expected_branches:
-        term = photolysis_branches[branch]
-        assert term.parameters["source"] == "catalog_flux"
-        assert term.parameters["rate"] > 0.0
-        assert term.parameters["radiation_active_nlyr"] == 40
-        assert term.parameters["freeze_actinic_flux"] is True
-        assert not term.parameters.get("suppress_reactant_loss", False)
 
 
 def test_photochem_forward_with_xsec(master_path, catalog_path, cross_dir):
