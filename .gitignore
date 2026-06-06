@@ -42,8 +42,11 @@ diagnostics/**/titandebug.dat
 
 # outputs
 *.png
-!dashboard/figs/*.png
 examples/*.pdf
+
+# dashboard artifacts (generated)
+*.html
+dashboard/make_*.py
 
 # vulcan test temp
 tests/vulcan/cho/_*.py
