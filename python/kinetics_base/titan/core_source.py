@@ -32,7 +32,8 @@ import torch
 import kintera as kt
 
 from ..titan.models import KBTitanState
-from .core_chemb import build_chemb_override_layer
+from .config import get_titan_config
+from .core_chemb import ChembOverrideLayer, build_chemb_override_layer
 from .radiation import _kinetics_base_pyharp_actinic_flux
 from .source_integration import (
     _rate_profile_multiplier_on_state_grid,
@@ -64,7 +65,16 @@ class CoreChemistrySource:
         self.kin = kt.Kinetics(self.options)
         reactions = self.options.reactions()  # arrhenius(...) then kb_falloff(...)
         self.nrxn = len(reactions)
-        self.chemb = build_chemb_override_layer(reactions)
+        # KB UPDATE_CHEMB overrides only fire when KB was compiled with __TITAN.
+        # moses00's KB-2012 binary was not, so the pinned run sets
+        # KINTERA_DISABLE_CHEMB_OVERRIDES=1 to suppress them; honor that here
+        # exactly as the hand-rolled path does (atm2d_sources.py). Without this
+        # the core path applies overrides that shift ~21 rate constants by up to
+        # ~1e6x, diverging from KB and the validated baseline.
+        if get_titan_config().disable_chemb_overrides:
+            self.chemb = ChembOverrideLayer([], [], [])
+        else:
+            self.chemb = build_chemb_override_layer(reactions)
 
         # permutation ts.species <-> core (.pun id-sorted) species order
         core_idx = {n: i for i, n in enumerate(core_species)}
