@@ -7,7 +7,7 @@ directly.
 """
 from __future__ import annotations
 import sys, re
-sys.path.insert(0, '/home/sam2/dev/kintera/diagnostics')
+sys.path.insert(0, '/home/sam2/dev/kintera/tests/kinetics_base/diagnostics')
 import numpy as np
 from pathlib import Path
 
@@ -100,7 +100,7 @@ print(f"  sample: H_L20={kb_mr.get('H',[0])[20]:.3e}, CH3_L20={kb_mr.get('CH3',[
 # KB MR table row N (1-indexed) → kintera 0-indexed L(N+8). Re-align the array.
 import kintera as kt
 atm = kt.parse_kinetics_base_atmosphere(
-    "/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan_moses00/atm/atm.titan.moses00.kt.inp"
+    "/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan_moses00/atm/atm.titan.moses00.kt.inp"
 )
 density = np.array(atm.density)
 kb_conc: dict[str, np.ndarray] = {}
@@ -119,7 +119,7 @@ for sp in ["H", "H2", "CH4", "CH3", "C2H2", "C2H4", "C2H6", "M"]:
 
 # Now load moses00 PUN to know reactant indices per reaction
 pun = kt.parse_kinetics_base_pun(
-    "/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan_moses00/kindata/kindata.titan.moses00.pun"
+    "/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan_moses00/kindata/kindata.titan.moses00.pun"
 )
 sp_by_id = {s.id: s.name for s in pun.species}
 
@@ -173,7 +173,7 @@ altitudes = kt_data["altitudes"]
 
 # Better: load the kintera per-reaction prod-per-cm3-s from comparison, divide by fort.7 conc.
 ref_atm = kt.parse_kinetics_base_atmosphere(
-    "/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan_moses00/case/fort.7.kt"
+    "/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan_moses00/case/fort.7.kt"
 )
 fort7_density = np.array(ref_atm.density)
 fort7_conc: dict[str, np.ndarray] = {}

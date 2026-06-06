@@ -3,9 +3,9 @@ at KB fort.7 SS state. Use to spot unphysically high rates (no aerosol
 attenuation → low-altitude UV penetration too strong)."""
 from __future__ import annotations
 import sys
-sys.path.insert(0, '/home/sam2/dev/kintera/diagnostics')
+sys.path.insert(0, '/home/sam2/dev/kintera/tests/kinetics_base/diagnostics')
 # Reuse setup code from moses00_perturb.py
-exec(open('/home/sam2/dev/kintera/diagnostics/moses00_perturb.py').read().split('def main()')[0])
+exec(open('/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/moses00_perturb.py').read().split('def main()')[0])
 
 import torch
 from kintera.kinetics_base.titan.source_integration import _photo_rate_profile

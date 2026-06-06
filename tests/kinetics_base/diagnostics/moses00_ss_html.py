@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 import kintera as kt
 
 EX_DIR = Path(
-    "/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan_moses00"
+    "/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan_moses00"
 )
 KB_SS_PATH = EX_DIR / "case" / "fort.7.kt"
 KT_SS_PATH = Path("/tmp/kt_moses00_ss.npz")

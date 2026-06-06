@@ -12,8 +12,8 @@ For kintera's mr_diffusion form, flux at face L+0.5 should be:
 We compare per face to find where kintera diverges from KB."""
 from __future__ import annotations
 import sys, re
-sys.path.insert(0, '/home/sam2/dev/kintera/diagnostics')
-exec(open('/home/sam2/dev/kintera/diagnostics/moses00_perturb.py').read().split('def main()')[0])
+sys.path.insert(0, '/home/sam2/dev/kintera/tests/kinetics_base/diagnostics')
+exec(open('/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/moses00_perturb.py').read().split('def main()')[0])
 
 import os
 os.environ.setdefault('KINTERA_DISABLE_CHEMB_OVERRIDES', '1')

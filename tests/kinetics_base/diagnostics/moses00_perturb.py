@@ -31,7 +31,7 @@ import kintera as kt
 torch.set_default_dtype(torch.float64)
 
 EX_DIR = Path(
-    "/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan_moses00"
+    "/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan_moses00"
 )
 PUN_PATH = EX_DIR / "kindata" / "kindata.titan.moses00.pun"
 ATM_PATH = EX_DIR / "atm" / "atm.titan.moses00.kt.inp"
@@ -39,7 +39,7 @@ BC_PATH = EX_DIR / "boundary" / "boundary.moses00.inp"
 RUN_INPUT = EX_DIR / "case" / "kinetics.inp"
 REF_PATH = EX_DIR / "case" / "fort.7.kt"
 CHENG_DIR = Path(
-    "/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan"
+    "/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan"
 )
 
 FLOATING_IDS = [1] + list(range(3, 46)) + list(range(68, 84))

@@ -10,8 +10,8 @@ solar zenith angle.
 """
 from __future__ import annotations
 import sys, math
-sys.path.insert(0, '/home/sam2/dev/kintera/diagnostics')
-exec(open('/home/sam2/dev/kintera/diagnostics/moses00_perturb.py').read().split('def main()')[0])
+sys.path.insert(0, '/home/sam2/dev/kintera/tests/kinetics_base/diagnostics')
+exec(open('/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/moses00_perturb.py').read().split('def main()')[0])
 
 import torch
 import numpy as np

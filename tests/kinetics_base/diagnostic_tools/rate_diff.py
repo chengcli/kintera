@@ -164,7 +164,7 @@ def signature(species_list: Iterable[str]) -> tuple[str, ...]:
 
 
 def build_titan_state(species_override: list[str] | None = None):
-    ROOT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare")
+    ROOT = pathlib.Path("/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare")
     TITAN = ROOT / "examples/titan"
     initial = kt.parse_kinetics_base_atmosphere(
         str(TITAN / "kintitan.pun_zero_conc_2_mod_atm_orig_3xkzz")

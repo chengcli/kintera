@@ -33,7 +33,7 @@ from kintera.kinetics_base.titan.radiation import (
 from kintera.kinetics_base.titan.models import KBTitanSourceTerm
 
 
-ROOT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare")
+ROOT = pathlib.Path("/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare")
 TITAN = ROOT / "examples/titan"
 KB_RUN = pathlib.Path("/tmp/kb_run_500")
 

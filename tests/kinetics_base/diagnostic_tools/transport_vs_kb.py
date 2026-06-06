@@ -25,7 +25,7 @@ import kintera as kt
 
 os.environ.setdefault("KINTERA_TITAN_NETWORK_MODE", "full")
 
-ROOT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare")
+ROOT = pathlib.Path("/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare")
 TITAN = ROOT / "examples/titan"
 KB_RUN = pathlib.Path("/tmp/kb_run_xport")
 

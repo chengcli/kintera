@@ -39,6 +39,15 @@ diagnostics/**/prod+loss/
 diagnostics/**/kintitan.out.pun
 diagnostics/**/kintitan.res
 diagnostics/**/titandebug.dat
+# diagnostic run-dirs relocated under the KB-titan test case
+tests/kinetics_base/diagnostics/KINETICS-base-compare/
+tests/kinetics_base/diagnostics/kinetics_base_oracle_runs/
+tests/kinetics_base/diagnostics/kinetics_base_titan_budget_trace/
+tests/kinetics_base/**/titan-*-steps/
+tests/kinetics_base/**/prod+loss/
+tests/kinetics_base/**/kintitan.out.pun
+tests/kinetics_base/**/kintitan.res
+tests/kinetics_base/**/titandebug.dat
 
 # outputs
 *.png

@@ -47,7 +47,7 @@ from diagnostic_tools.rate_diff import (
 )
 
 
-ROOT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare")
+ROOT = pathlib.Path("/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare")
 TITAN = ROOT / "examples/titan"
 
 

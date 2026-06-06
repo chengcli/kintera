@@ -27,10 +27,10 @@ import matplotlib.pyplot as plt
 os.environ.setdefault("KINTERA_TITAN_NETWORK_MODE", "full")
 import kintera as kt
 
-ROOT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare")
+ROOT = pathlib.Path("/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare")
 TITAN = ROOT / "examples/titan"
 KB_RUN = pathlib.Path("/tmp/kb_run_xport")
-OUT = pathlib.Path("/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan/STATUS_REPORT.html")
+OUT = pathlib.Path("/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan/STATUS_REPORT.html")
 
 
 def fig_to_b64(fig) -> str:

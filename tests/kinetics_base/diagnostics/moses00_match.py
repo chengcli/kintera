@@ -29,7 +29,7 @@ import kintera as kt
 torch.set_default_dtype(torch.float64)
 
 EX_DIR = Path(
-    "/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan_moses00"
+    "/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan_moses00"
 )
 PUN_PATH = EX_DIR / "kindata" / "kindata.titan.moses00.pun"
 ATM_PATH = EX_DIR / "atm" / "atm.titan.moses00.kt.inp"
@@ -40,7 +40,7 @@ REF_PATH = EX_DIR / "case" / "fort.7.kt"  # KB converged SS (fort.50 was a per-s
 # Cheng provides photolysis cross-sections + catalog; moses00 paper uses
 # its own flux2atmos.inp (Ly-α differs from Cheng's flare flux).
 CHENG_DIR = Path(
-    "/home/sam2/dev/kintera/diagnostics/KINETICS-base-compare/examples/titan"
+    "/home/sam2/dev/kintera/tests/kinetics_base/diagnostics/KINETICS-base-compare/examples/titan"
 )
 PHOTO_CATALOG = CHENG_DIR / "Cheng_catalog_v4.dat"
 CROSS_DIR = CHENG_DIR / "Cheng_cross"
