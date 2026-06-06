@@ -1,3 +1,4 @@
+import functools
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,30 @@ from kintera.atm2d import radiation as atm2d_radiation
 
 
 torch.set_default_dtype(torch.float64)
+
+
+@functools.lru_cache(maxsize=1)
+def _cuda_sparse_solver_available() -> bool:
+    """True only if kintera was built with the CUDA cuSolver sparse binding.
+
+    ``torch.cuda.is_available()`` is necessary but not sufficient: a CPU-only
+    kintera build lacks the native ``cuda_csr_solve_cusolver`` symbol and raises
+    at call time. Probe a 1x1 GPU solve so these tests skip (not fail) on such
+    builds.
+    """
+    if not torch.cuda.is_available():
+        return False
+    try:
+        dense = torch.eye(1, dtype=torch.float64, device="cuda")
+        matrix = kt.SparseSystemMatrix.from_dense(dense, ncol=1, nlyr=1, nspecies=1)
+        kt.solve_sparse_system(
+            matrix, torch.ones((1, 1, 1), dtype=torch.float64, device="cuda")
+        )
+    except Exception:
+        return False
+    return True
+
+
 TEST_DIR = Path(__file__).resolve().parent
 CHAPMAN_CYCLE_YAML = TEST_DIR / "chapman_cycle.yaml"
 
@@ -356,7 +381,10 @@ def test_steady_2d_diffusion_four_side_dirichlet_matches_linear_solution():
     torch.testing.assert_close(solution[:, :, 0], analytic, atol=2.5e-3, rtol=2.5e-3)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    not _cuda_sparse_solver_available(),
+    reason="kintera built without CUDA sparse-solver support",
+)
 def test_cuda_cusolver_binding_matches_dense_solution():
     dense = torch.tensor(
         [
@@ -381,7 +409,10 @@ def test_cuda_cusolver_binding_matches_dense_solution():
     torch.testing.assert_close(sol, ref, atol=1.0e-12, rtol=1.0e-12)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    not _cuda_sparse_solver_available(),
+    reason="kintera built without CUDA sparse-solver support",
+)
 def test_cuda_steady_1d_advection_diffusion_dirichlet_matches_analytic_solution():
     ncol, nlyr, ns = 1, 161, 1
     x = torch.linspace(0.0, 1.0, nlyr, dtype=torch.float64, device="cuda")
@@ -687,7 +718,10 @@ def test_total_cross_section_uses_absorption_branch_only():
     assert torch.max(torch.abs(sigma[..., absorber_idx] - wrong_summed)).item() > 0.0
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    not _cuda_sparse_solver_available(),
+    reason="kintera built without CUDA sparse-solver support",
+)
 def test_cuda_sparse_solver_matches_cpu():
     ncol, nlyr, ns = 2, 3, 2
     nstate = ncol * nlyr * ns
@@ -706,7 +740,10 @@ def test_cuda_sparse_solver_matches_cpu():
     torch.testing.assert_close(cpu_sol, gpu_sol, atol=1e-12, rtol=1e-12)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    not _cuda_sparse_solver_available(),
+    reason="kintera built without CUDA sparse-solver support",
+)
 def test_cuda_sparse_solver_reuses_cached_int32_csr_indices():
     dense = torch.tensor(
         [
