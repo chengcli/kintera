@@ -47,7 +47,17 @@ Homepage = "https://github.com/chengcli/kintera"
 Documentation = "https://kintera.readthedocs.io"
 
 [tool.setuptools]
-packages = ["kintera", "kintera.api", "kintera.atm2d", "kintera.kinetics_base_titan"]
+packages = [
+  "kintera",
+  "kintera.api",
+  "kintera.atm2d",
+  "kintera.atm2d.conservation",
+  "kintera.atm2d.newton",
+  "kintera.atm2d.sources",
+  "kintera.kinetics_base",
+  "kintera.kinetics_base.titan",
+  "kintera.kinetics_base_titan",
+]
 include-package-data = false
 
 [tool.setuptools.package-data]
