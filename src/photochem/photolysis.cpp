@@ -168,8 +168,8 @@ void PhotolysisImpl::reset() {
         options->quadrature_weights().size() == options->wavelength().size(),
         "photolysis quadrature_weights size (",
         options->quadrature_weights().size(),
-        ") must match the wavelength grid size (",
-        options->wavelength().size(), ")");
+        ") must match the wavelength grid size (", options->wavelength().size(),
+        ")");
     quad_weights = register_buffer(
         "quad_weights",
         torch::tensor(options->quadrature_weights(), torch::kFloat64));

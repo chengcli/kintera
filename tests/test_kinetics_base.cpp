@@ -411,8 +411,9 @@ TEST(KineticsBaseParser, MatchKineticsBaseTitanFirstStepIfAvailable) {
   symlink_or_fail(titan_dir / "kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.pun",
                   workdir / "fort.1");
   symlink_or_fail(titan_dir / "kintitan.truncate", workdir / "fort.3");
-  symlink_or_fail(titan_dir / "kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.special",
-                  workdir / "fort.4");
+  symlink_or_fail(
+      titan_dir / "kindata_yy_clean/Cheng_ions_c6h7+_v3_H2CN.special",
+      workdir / "fort.4");
   symlink_or_fail(titan_dir / "titan_Cheng_N_ions_H2CN.bc_save",
                   workdir / "fort.15");
   symlink_or_fail(titan_dir / "Cheng_wavel.dat", workdir / "fort.20");
@@ -447,14 +448,14 @@ TEST(KineticsBaseParser, MatchKineticsBaseTitanFirstStepIfAvailable) {
 
   ASSERT_TRUE(fs::exists(stdout_path));
   auto output = read_text_file(stdout_path);
-  EXPECT_EQ(status, 0) << "KINETICS-base execution failed; see "
-                       << stdout_path;
+  EXPECT_EQ(status, 0) << "KINETICS-base execution failed; see " << stdout_path;
   EXPECT_NE(output.find("CONCENTRATIONS OF   8 SPECIES ARE HELD CONSTANT"),
             std::string::npos);
   EXPECT_NE(output.find("CONCENTRATIONS OF 120 SPECIES TO BE CALCULATED WITH "
                         "VERTICAL TRANSPORT"),
             std::string::npos);
-  EXPECT_NE(output.find("JDUST       N2          E           PROD"), std::string::npos);
+  EXPECT_NE(output.find("JDUST       N2          E           PROD"),
+            std::string::npos);
   EXPECT_NE(output.find("GROUP  1 : H           H2          C           CH"),
             std::string::npos);
   EXPECT_NE(output.find("GROUP  2 : CH4"), std::string::npos);

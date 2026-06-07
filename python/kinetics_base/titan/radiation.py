@@ -332,4 +332,3 @@ def _aerosol_property_on_state_grid(
                 source_values[upper] - source_values[lower]
             )
     return output
-

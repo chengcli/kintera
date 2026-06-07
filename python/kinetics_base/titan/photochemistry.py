@@ -248,4 +248,3 @@ def _kinetics_base_photo_rates(
                 "freeze_actinic_flux": freeze_actinic_flux,
             }
     return rates
-

@@ -248,7 +248,8 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, k0_Ea_R)
       .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, kinf_A)
       .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, kinf_b)
-      .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, kinf_Ea_R);
+      .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl,
+                  kinf_Ea_R);
 
   ADD_KINTERA_MODULE(KBFalloff, KBFalloffOptions,
                      &kintera::KBFalloffImpl::forward, py::arg("temp"),

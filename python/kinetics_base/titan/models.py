@@ -83,4 +83,3 @@ class KBTitanBoundaryEntry:
     upper_kind: int
     upper_value: float
     species: str
-

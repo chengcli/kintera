@@ -389,10 +389,9 @@ static bool parse_pun_reaction_header(std::string const& line,
 
   std::regex sci_re(R"([-+]?\d+\.?\d*[eE][-+]?\d+)");
   auto rate_match = std::sregex_iterator(line.begin(), line.end(), sci_re);
-  size_t participant_end =
-      rate_match == std::sregex_iterator()
-          ? line.size()
-          : static_cast<size_t>(rate_match->position());
+  size_t participant_end = rate_match == std::sregex_iterator()
+                               ? line.size()
+                               : static_cast<size_t>(rate_match->position());
   auto participant_text = line.substr(0, participant_end);
   std::regex participant_re(R"(\(\s*(\d*)\s*\)\s*(\d+)\s*([+=]?))");
   bool on_products = false;
@@ -444,16 +443,16 @@ static bool parse_pun_reaction_header(std::string const& line,
     auto eq_pos = participant_text.find('=');
     if (eq_pos == std::string::npos) return true;
     auto expand_ids = [](std::string const& side) {
-    std::vector<int> ids;
-    std::regex participant_re(R"(\(\s*(\d*)\s*\)\s*(\d+))");
-    for (std::sregex_iterator it(side.begin(), side.end(), participant_re);
-         it != std::sregex_iterator(); ++it) {
-      int coeff = (*it)[1].str().empty() ? 1 : std::stoi((*it)[1].str());
-      int species_id = std::stoi((*it)[2].str());
-      if (species_id == 0) continue;
-      for (int i = 0; i < coeff; ++i) ids.push_back(species_id);
-    }
-    return ids;
+      std::vector<int> ids;
+      std::regex participant_re(R"(\(\s*(\d*)\s*\)\s*(\d+))");
+      for (std::sregex_iterator it(side.begin(), side.end(), participant_re);
+           it != std::sregex_iterator(); ++it) {
+        int coeff = (*it)[1].str().empty() ? 1 : std::stoi((*it)[1].str());
+        int species_id = std::stoi((*it)[2].str());
+        if (species_id == 0) continue;
+        for (int i = 0; i < coeff; ++i) ids.push_back(species_id);
+      }
+      return ids;
     };
     reaction.reactant_ids = expand_ids(participant_text.substr(0, eq_pos));
     reaction.product_ids = expand_ids(participant_text.substr(eq_pos + 1));
@@ -489,14 +488,12 @@ KBPunNetwork parse_kinetics_base_pun(std::string const& filepath) {
   std::string line;
   while (std::getline(ifs, line)) lines.push_back(line);
 
-  TORCH_CHECK(lines.size() >= 3, "Invalid KINETICS-base .pun file: ",
-              filepath);
+  TORCH_CHECK(lines.size() >= 3, "Invalid KINETICS-base .pun file: ", filepath);
 
   {
     std::istringstream header_iss(lines[1]);
     header_iss >> network.header.natom >> network.header.nmol >>
-        network.header.nreact >> network.header.npart >>
-        network.header.version;
+        network.header.nreact >> network.header.npart >> network.header.version;
   }
 
   TORCH_CHECK(network.header.natom > 0 && network.header.nmol > 0 &&
@@ -517,8 +514,7 @@ KBPunNetwork parse_kinetics_base_pun(std::string const& filepath) {
   }
 
   TORCH_CHECK((int)network.elements.size() == network.header.natom,
-              "Could not parse all KINETICS-base .pun elements in: ",
-              filepath);
+              "Could not parse all KINETICS-base .pun elements in: ", filepath);
 
   for (; line_idx < (int)lines.size() &&
          (int)network.species.size() < network.header.nmol;
@@ -530,8 +526,7 @@ KBPunNetwork parse_kinetics_base_pun(std::string const& filepath) {
   }
 
   TORCH_CHECK((int)network.species.size() == network.header.nmol,
-              "Could not parse all KINETICS-base .pun species in: ",
-              filepath);
+              "Could not parse all KINETICS-base .pun species in: ", filepath);
 
   for (; line_idx < (int)lines.size() &&
          (int)network.reactions.size() < network.header.nreact;
@@ -542,9 +537,9 @@ KBPunNetwork parse_kinetics_base_pun(std::string const& filepath) {
     }
   }
 
-  TORCH_CHECK((int)network.reactions.size() == network.header.nreact,
-              "Could not parse all KINETICS-base .pun reactions in: ",
-              filepath);
+  TORCH_CHECK(
+      (int)network.reactions.size() == network.header.nreact,
+      "Could not parse all KINETICS-base .pun reactions in: ", filepath);
 
   return network;
 }
@@ -568,12 +563,11 @@ KBRunSelection parse_kinetics_base_run_input(std::string const& filepath) {
       selection.nfix = values[0];
       selection.nvarys = values[1];
       selection.nvaryf = values[2];
-    } else if (label.find("NPHOTO NPHOTS NPHOTR NPHOTD") !=
-               std::string::npos) {
+    } else if (label.find("NPHOTO NPHOTS NPHOTR NPHOTD") != std::string::npos) {
       auto values = extract_ints(lines[i + 1]);
-      TORCH_CHECK(values.size() >= 4,
-                  "Could not parse NPHOTO/NPHOTS/NPHOTR/NPHOTD from: ",
-                  filepath);
+      TORCH_CHECK(
+          values.size() >= 4,
+          "Could not parse NPHOTO/NPHOTS/NPHOTR/NPHOTD from: ", filepath);
       selection.nphoto = values[0];
       selection.nphots = values[1];
       selection.nphotr = values[2];
@@ -591,15 +585,14 @@ KBRunSelection parse_kinetics_base_run_input(std::string const& filepath) {
           values.begin() + selection.nfix + selection.nvarys);
       selection.varying_fast_species_ids.assign(
           values.begin() + selection.nfix + selection.nvarys, values.end());
-    } else if (label.find("IPHOTO,IPHOTS,IPHOTR,IPHOTD") !=
-               std::string::npos) {
-      int total =
-          selection.nphoto + selection.nphots + selection.nphotr +
-          selection.nphotd;
-      selection.photolysis_reaction_ids = collect_int_block(lines, i + 1, total);
-      TORCH_CHECK((int)selection.photolysis_reaction_ids.size() == total,
-                  "Could not parse all selected photolysis ids from: ",
-                  filepath);
+    } else if (label.find("IPHOTO,IPHOTS,IPHOTR,IPHOTD") != std::string::npos) {
+      int total = selection.nphoto + selection.nphots + selection.nphotr +
+                  selection.nphotd;
+      selection.photolysis_reaction_ids =
+          collect_int_block(lines, i + 1, total);
+      TORCH_CHECK(
+          (int)selection.photolysis_reaction_ids.size() == total,
+          "Could not parse all selected photolysis ids from: ", filepath);
     }
   }
 
@@ -614,8 +607,8 @@ KBAtmosphereProfile parse_kinetics_base_atmosphere(
   KBAtmosphereProfile profile;
 
   std::ifstream ifs(filepath);
-  TORCH_CHECK(ifs.good(), "Cannot open KINETICS-base atmosphere file: ",
-              filepath);
+  TORCH_CHECK(ifs.good(),
+              "Cannot open KINETICS-base atmosphere file: ", filepath);
 
   std::string current_section;
   std::map<std::string, std::vector<double>> sections;
@@ -651,8 +644,9 @@ KBAtmosphereProfile parse_kinetics_base_atmosphere(
 
   auto take_required = [&](std::string const& name) {
     auto it = sections.find(name);
-    TORCH_CHECK(it != sections.end(), "Missing KINETICS-base atmosphere section %",
-                name, " in: ", filepath);
+    TORCH_CHECK(it != sections.end(),
+                "Missing KINETICS-base atmosphere section %", name,
+                " in: ", filepath);
     auto values = std::move(it->second);
     sections.erase(it);
     return values;
@@ -660,8 +654,8 @@ KBAtmosphereProfile parse_kinetics_base_atmosphere(
 
   profile.altitude = take_required("ALT");
   auto nlevel = profile.altitude.size();
-  TORCH_CHECK(nlevel > 0, "Empty KINETICS-base atmosphere profile in: ",
-              filepath);
+  TORCH_CHECK(nlevel > 0,
+              "Empty KINETICS-base atmosphere profile in: ", filepath);
 
   auto take_center_values = [&](std::string const& name) {
     auto values = take_required(name);
@@ -908,9 +902,10 @@ KBCrossSectionFile parse_kinetics_base_cross_section(
   return result;
 }
 
-KBTitanNetwork parse_kinetics_base_titan(
-    std::string const& pun_path, std::string const& run_input_path,
-    std::string const& photo_catalog_path, std::string const& cross_dir) {
+KBTitanNetwork parse_kinetics_base_titan(std::string const& pun_path,
+                                         std::string const& run_input_path,
+                                         std::string const& photo_catalog_path,
+                                         std::string const& cross_dir) {
   KBTitanNetwork network;
   network.pun = parse_kinetics_base_pun(pun_path);
   network.selection = parse_kinetics_base_run_input(run_input_path);
@@ -1012,7 +1007,8 @@ KBTitanReactionReport classify_kinetics_base_titan_reactions(
       report.missing_rate_blocks++;
     }
 
-    auto reactants = species_names_from_ids(reaction.reactant_ids, species_by_id);
+    auto reactants =
+        species_names_from_ids(reaction.reactant_ids, species_by_id);
     auto products = species_names_from_ids(reaction.product_ids, species_by_id);
     int reactant_charge = total_charge(reactants);
     int product_charge = total_charge(products);
@@ -1351,10 +1347,10 @@ KineticsOptions kinetics_options_from_kinetics_base_pun(
     if (blk.D > 0.0) {
       // KB falloff form (effective bimolecular rate with fc=0.6 broadening).
       kbf->reactions().push_back(Reaction(eq));
-      kbf->k0_A().push_back(blk.A);      // k_low = A*T^b*exp(C/T)
+      kbf->k0_A().push_back(blk.A);  // k_low = A*T^b*exp(C/T)
       kbf->k0_b().push_back(blk.b);
       kbf->k0_Ea_R().push_back(-blk.C);
-      kbf->kinf_A().push_back(blk.D);    // k_high = D*T^E*exp(F/T)
+      kbf->kinf_A().push_back(blk.D);  // k_high = D*T^E*exp(F/T)
       kbf->kinf_b().push_back(blk.E);
       kbf->kinf_Ea_R().push_back(-blk.F);
       ++n_falloff;

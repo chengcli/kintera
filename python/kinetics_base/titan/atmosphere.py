@@ -428,6 +428,3 @@ def _has_kinetics_base_electron_composition(metadata: Any) -> bool:
 
 def _is_kinetics_base_charged_species_name(name: str) -> bool:
     return name == "E" or name.endswith("+") or name.endswith("-")
-
-
-

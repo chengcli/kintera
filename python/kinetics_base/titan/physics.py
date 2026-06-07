@@ -260,4 +260,3 @@ def _fallback_species_mass_amu(name: str) -> float:
         if sym in element_amu:
             total += element_amu[sym] * (int(count) if count else 1)
     return total
-

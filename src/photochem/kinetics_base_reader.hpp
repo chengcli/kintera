@@ -178,8 +178,7 @@ KBPunNetwork parse_kinetics_base_pun(std::string const& filepath);
 
 KBRunSelection parse_kinetics_base_run_input(std::string const& filepath);
 
-KBAtmosphereProfile parse_kinetics_base_atmosphere(
-    std::string const& filepath);
+KBAtmosphereProfile parse_kinetics_base_atmosphere(std::string const& filepath);
 
 std::vector<std::pair<std::string, std::string>> parse_kinetics_base_catalog(
     std::string const& filepath);
@@ -187,9 +186,10 @@ std::vector<std::pair<std::string, std::string>> parse_kinetics_base_catalog(
 KBCrossSectionFile parse_kinetics_base_cross_section(
     std::string const& filepath);
 
-KBTitanNetwork parse_kinetics_base_titan(
-    std::string const& pun_path, std::string const& run_input_path,
-    std::string const& photo_catalog_path, std::string const& cross_dir);
+KBTitanNetwork parse_kinetics_base_titan(std::string const& pun_path,
+                                         std::string const& run_input_path,
+                                         std::string const& photo_catalog_path,
+                                         std::string const& cross_dir);
 
 KBTitanReactionReport classify_kinetics_base_titan_reactions(
     KBTitanNetwork const& titan);

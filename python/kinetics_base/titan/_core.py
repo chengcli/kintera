@@ -73,4 +73,3 @@ __all__ = [
     "parse_kinetics_base_special_index",
     "parse_kinetics_base_truncate",
 ]
-

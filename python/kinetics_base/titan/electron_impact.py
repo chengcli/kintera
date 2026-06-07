@@ -225,4 +225,3 @@ def _kinetics_base_electron_impact_profile(
             (1303.0, 6.7851),
         ]
     return None
-

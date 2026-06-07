@@ -694,4 +694,3 @@ def _apply_boundary_source(
         concentration[:, -1, j] = torch.clamp(
             concentration[:, -1, j] - dt * flux / dz[-1], min=0.0
         )
-

@@ -784,4 +784,3 @@ def _apply_lower_mixing_ratio_boundaries(
         # the bc_save velocity values (e.g. 1.44e5 cm/s for H, 7.49e4 for H2)
         # — we now let it run and stop pinning. See _apply_cheng_cold_trap_boundaries
         # for the analogous CH4 cold-trap fix.
-

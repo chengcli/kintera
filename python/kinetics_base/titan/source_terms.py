@@ -631,4 +631,3 @@ def _cheng_ch4_r6_rate_profile_multiplier() -> list[tuple[float, float]]:
         (1228.2, 0.732571),
         (1304.0, 0.732571),
     ]
-

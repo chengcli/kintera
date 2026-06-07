@@ -74,8 +74,7 @@ PYBIND11_MODULE(kintera, m) {
       .def_readwrite("header", &kintera::KBAtmosphereProfile::header)
       .def_readwrite("altitude", &kintera::KBAtmosphereProfile::altitude)
       .def_readwrite("density", &kintera::KBAtmosphereProfile::density)
-      .def_readwrite("temperature",
-                     &kintera::KBAtmosphereProfile::temperature)
+      .def_readwrite("temperature", &kintera::KBAtmosphereProfile::temperature)
       .def_readwrite("pressure", &kintera::KBAtmosphereProfile::pressure)
       .def_readwrite("eddy_diffusion",
                      &kintera::KBAtmosphereProfile::eddy_diffusion)
@@ -97,13 +96,11 @@ PYBIND11_MODULE(kintera, m) {
       .def_readwrite("npart", &kintera::KBPunHeader::npart)
       .def_readwrite("version", &kintera::KBPunHeader::version);
 
-  auto pyKBPunSpecies =
-      py::class_<kintera::KBPunSpecies>(m, "KBPunSpecies");
+  auto pyKBPunSpecies = py::class_<kintera::KBPunSpecies>(m, "KBPunSpecies");
   pyKBPunSpecies.def(py::init<>())
       .def_readwrite("id", &kintera::KBPunSpecies::id)
       .def_readwrite("name", &kintera::KBPunSpecies::name)
-      .def_readwrite("first_reaction",
-                     &kintera::KBPunSpecies::first_reaction)
+      .def_readwrite("first_reaction", &kintera::KBPunSpecies::first_reaction)
       .def_readwrite("n_reactions", &kintera::KBPunSpecies::n_reactions)
       .def_readwrite("molecular_weight",
                      &kintera::KBPunSpecies::molecular_weight)
@@ -131,8 +128,7 @@ PYBIND11_MODULE(kintera, m) {
       .def_readwrite("Tin", &kintera::KBPunRateBlock::Tin)
       .def_readwrite("Tout", &kintera::KBPunRateBlock::Tout);
 
-  auto pyKBPunReaction =
-      py::class_<kintera::KBPunReaction>(m, "KBPunReaction");
+  auto pyKBPunReaction = py::class_<kintera::KBPunReaction>(m, "KBPunReaction");
   pyKBPunReaction.def(py::init<>())
       .def_readwrite("id", &kintera::KBPunReaction::id)
       .def_readwrite("n_reactants", &kintera::KBPunReaction::n_reactants)
@@ -143,8 +139,7 @@ PYBIND11_MODULE(kintera, m) {
       .def_readwrite("product_ids", &kintera::KBPunReaction::product_ids)
       .def_readwrite("raw_line", &kintera::KBPunReaction::raw_line);
 
-  auto pyKBPunNetwork =
-      py::class_<kintera::KBPunNetwork>(m, "KBPunNetwork");
+  auto pyKBPunNetwork = py::class_<kintera::KBPunNetwork>(m, "KBPunNetwork");
   pyKBPunNetwork.def(py::init<>())
       .def_readwrite("header", &kintera::KBPunNetwork::header)
       .def_readwrite("elements", &kintera::KBPunNetwork::elements)
@@ -162,8 +157,9 @@ PYBIND11_MODULE(kintera, m) {
       .def_readwrite(
           "selected_photolysis_reactions",
           &kintera::KBTitanReactionReport::selected_photolysis_reactions)
-      .def_readwrite("thermal_candidate_reactions",
-                     &kintera::KBTitanReactionReport::thermal_candidate_reactions)
+      .def_readwrite(
+          "thermal_candidate_reactions",
+          &kintera::KBTitanReactionReport::thermal_candidate_reactions)
       .def_readwrite("missing_rate_blocks",
                      &kintera::KBTitanReactionReport::missing_rate_blocks)
       .def_readwrite("charged_species_count",
@@ -181,10 +177,12 @@ PYBIND11_MODULE(kintera, m) {
       .def_readwrite(
           "selected_electron_impact_reactions",
           &kintera::KBTitanReactionReport::selected_electron_impact_reactions)
-      .def_readwrite("electron_reactant_reactions",
-                     &kintera::KBTitanReactionReport::electron_reactant_reactions)
-      .def_readwrite("electron_product_reactions",
-                     &kintera::KBTitanReactionReport::electron_product_reactions)
+      .def_readwrite(
+          "electron_reactant_reactions",
+          &kintera::KBTitanReactionReport::electron_reactant_reactions)
+      .def_readwrite(
+          "electron_product_reactions",
+          &kintera::KBTitanReactionReport::electron_product_reactions)
       .def_readwrite("cation_reactant_reactions",
                      &kintera::KBTitanReactionReport::cation_reactant_reactions)
       .def_readwrite("cation_product_reactions",

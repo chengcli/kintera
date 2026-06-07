@@ -136,7 +136,8 @@ void ArrheniusImpl::reset() {
       auto const& ev = options->Ea_R_ranges()[i];
       auto const& tv = options->T_ranges()[i];
       const int ni = (int)av.size();
-      TORCH_CHECK(ni >= 1, "Arrhenius reaction ", i, " has no temperature range");
+      TORCH_CHECK(ni >= 1, "Arrhenius reaction ", i,
+                  " has no temperature range");
       TORCH_CHECK((int)bv.size() == ni && (int)ev.size() == ni,
                   "Arrhenius multi-range A/b/Ea_R length mismatch at reaction ",
                   i);
@@ -163,16 +164,16 @@ void ArrheniusImpl::reset() {
   }
 
   auto opt = torch::TensorOptions().dtype(torch::kFloat64);
-  Amr = register_buffer(
-      "Amr", torch::tensor(a_flat, opt).view({nreaction, nrange}));
-  bmr = register_buffer(
-      "bmr", torch::tensor(b_flat, opt).view({nreaction, nrange}));
+  Amr = register_buffer("Amr",
+                        torch::tensor(a_flat, opt).view({nreaction, nrange}));
+  bmr = register_buffer("bmr",
+                        torch::tensor(b_flat, opt).view({nreaction, nrange}));
   Ea_Rmr = register_buffer(
       "Ea_Rmr", torch::tensor(e_flat, opt).view({nreaction, nrange}));
-  Tlo = register_buffer(
-      "Tlo", torch::tensor(tlo_flat, opt).view({nreaction, nrange}));
-  Thi = register_buffer(
-      "Thi", torch::tensor(thi_flat, opt).view({nreaction, nrange}));
+  Tlo = register_buffer("Tlo",
+                        torch::tensor(tlo_flat, opt).view({nreaction, nrange}));
+  Thi = register_buffer("Thi",
+                        torch::tensor(thi_flat, opt).view({nreaction, nrange}));
 }
 
 void ArrheniusImpl::pretty_print(std::ostream& os) const {

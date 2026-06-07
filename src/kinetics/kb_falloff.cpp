@@ -38,10 +38,10 @@ void KBFalloffImpl::reset() {
   int nreaction = options->reactions().size();
   if (nreaction == 0) return;
 
-  k0_A = register_buffer("k0_A",
-                         torch::tensor(options->k0_A(), torch::kFloat64));
-  k0_b = register_buffer("k0_b",
-                         torch::tensor(options->k0_b(), torch::kFloat64));
+  k0_A =
+      register_buffer("k0_A", torch::tensor(options->k0_A(), torch::kFloat64));
+  k0_b =
+      register_buffer("k0_b", torch::tensor(options->k0_b(), torch::kFloat64));
   k0_Ea_R = register_buffer("k0_Ea_R",
                             torch::tensor(options->k0_Ea_R(), torch::kFloat64));
   kinf_A = register_buffer("kinf_A",
@@ -58,8 +58,8 @@ void KBFalloffImpl::pretty_print(std::ostream& os) const {
     os << "(" << i + 1 << ") " << options->reactions()[i].equation()
        << std::endl;
     os << "    k_low:  A = " << options->k0_A()[i]
-       << ", b = " << options->k0_b()[i]
-       << ", Ea_R = " << options->k0_Ea_R()[i] << " K" << std::endl;
+       << ", b = " << options->k0_b()[i] << ", Ea_R = " << options->k0_Ea_R()[i]
+       << " K" << std::endl;
     os << "    k_high: A = " << options->kinf_A()[i]
        << ", b = " << options->kinf_b()[i]
        << ", Ea_R = " << options->kinf_Ea_R()[i] << " K" << std::endl;
@@ -67,8 +67,8 @@ void KBFalloffImpl::pretty_print(std::ostream& os) const {
 }
 
 torch::Tensor KBFalloffImpl::compute_arrhenius(torch::Tensor T, torch::Tensor A,
-                                              torch::Tensor b,
-                                              torch::Tensor Ea_R) const {
+                                               torch::Tensor b,
+                                               torch::Tensor Ea_R) const {
   auto Tref = options->Tref();
   return A * (T / Tref).pow(b) * torch::exp(-Ea_R / T);
 }
