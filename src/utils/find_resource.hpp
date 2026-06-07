@@ -37,6 +37,15 @@ char* serialize_search_paths(std::vector<std::string> const& dirs);
  */
 std::vector<std::string> deserialize_search_paths(char const* p);
 
+//! Return the default resource directories searched by kintera.
+std::vector<std::string> default_resource_directories();
+
+//! Return the current normalized resource directories searched by kintera.
+std::vector<std::string> current_resource_directories();
+
+//! Describe the current resource directories for diagnostics.
+std::string describe_resource_directories();
+
 //! Set the default directories for input files.
 /*!
  * \ingroup resource

@@ -64,8 +64,8 @@ struct TroeFalloffOptionsImpl {
   ADD_ARG(std::vector<double>, troe_A) = {};
   ADD_ARG(std::vector<double>, troe_T3) = {};
   ADD_ARG(std::vector<double>, troe_T1) = {};
-  ADD_ARG(std::vector<double>, troe_T2) = {
-  };  // 0.0 for 3-param, non-zero for 4-param
+  // 0.0 for 3-param, non-zero for 4-param
+  ADD_ARG(std::vector<double>, troe_T2) = {};
 
   // Per-reaction third-body efficiencies
   ADD_ARG(std::vector<Composition>, efficiencies) = {};

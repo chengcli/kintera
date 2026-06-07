@@ -64,10 +64,10 @@ struct SRIFalloffOptionsImpl {
   ADD_ARG(std::vector<double>, sri_A) = {};
   ADD_ARG(std::vector<double>, sri_B) = {};
   ADD_ARG(std::vector<double>, sri_C) = {};
-  ADD_ARG(std::vector<double>, sri_D) = {
-  };  // 1.0 for 3-param, variable for 5-param
-  ADD_ARG(std::vector<double>, sri_E) = {
-  };  // 0.0 for 3-param, variable for 5-param
+  // 1.0 for 3-param, variable for 5-param
+  ADD_ARG(std::vector<double>, sri_D) = {};
+  // 0.0 for 3-param, variable for 5-param
+  ADD_ARG(std::vector<double>, sri_E) = {};
 
   // Per-reaction third-body efficiencies
   ADD_ARG(std::vector<Composition>, efficiencies) = {};

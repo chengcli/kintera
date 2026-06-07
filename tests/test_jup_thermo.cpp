@@ -167,11 +167,11 @@ TEST_F(TestThermodynamics, thermodynamics) {
   for (auto& v : entropy) v *= Constants::Rgas;
 
   for (int i = 0; i < Thermodynamics::Size; ++i) {
-    std::cout << "cv[" << i << "] = " << cv[i] << ", "
-              << "cp[" << i << "] = " << cp[i] << ", "
-              << "enthalpy[" << i << "] = " << enthalpy[i] << ", "
-              << "entropy[" << i << "] = " << entropy[i] << ", "
-              << "intEng[" << i << "] = " << intEng[i] << std::endl;
+    std::cout << "cv[" << i << "] = " << cv[i] << ", " << "cp[" << i
+              << "] = " << cp[i] << ", " << "enthalpy[" << i
+              << "] = " << enthalpy[i] << ", " << "entropy[" << i
+              << "] = " << entropy[i] << ", " << "intEng[" << i
+              << "] = " << intEng[i] << std::endl;
   }
 }
 

@@ -1,11 +1,52 @@
 #pragma once
 
+#include <algorithm>
+#include <memory>
+#include <mutex>
+#include <vector>
+
 // torch
 #include <ATen/TensorIterator.h>
+#include <ATen/cuda/CUDAContext.h>
 #include <ATen/native/cuda/Loops.cuh>
+#include <c10/cuda/CUDAException.h>
 
 namespace kintera {
 namespace native {
+
+inline size_t get_max_dynamic_shared_memory(int device) {
+  static std::mutex mutex;
+  static std::vector<size_t> max_dynamic_smem_by_device;
+
+  std::lock_guard<std::mutex> guard(mutex);
+  if (device >= static_cast<int>(max_dynamic_smem_by_device.size())) {
+    max_dynamic_smem_by_device.resize(device + 1, 0);
+  }
+
+  auto& cached = max_dynamic_smem_by_device[device];
+  if (cached != 0) {
+    return cached;
+  }
+
+  // Query max allowed per-block shared memory once per device.  Some runtimes
+  // report sharedMemPerBlockOptin as 1 even when opt-in dynamic shared memory
+  // is available, so prefer the CUDA device attribute and never let a bad
+  // opt-in value reduce the ordinary per-block limit.
+  auto* prop = at::cuda::getDeviceProperties(device);
+  cached = prop->sharedMemPerBlock;
+
+  int attr_optin_smem = 0;
+  cudaError_t attr_err = cudaDeviceGetAttribute(
+      &attr_optin_smem, cudaDevAttrMaxSharedMemoryPerBlockOptin, device);
+  if (attr_err == cudaSuccess) {
+    cached = std::max(cached, static_cast<size_t>(attr_optin_smem));
+  } else {
+    C10_CUDA_CLEAR_ERROR();
+    cached = std::max(cached, static_cast<size_t>(prop->sharedMemPerBlockOptin));
+  }
+
+  return cached;
+}
 
 template <typename func_t>
 __global__ void element_kernel(int64_t numel, func_t f) {
@@ -57,15 +98,11 @@ void gpu_mem_kernel(at::TensorIterator& iter, int work_size, const func_t& f) {
   auto stream = at::cuda::getCurrentCUDAStream();
   size_t shared = block.x * work_size;
 
-  // set attribute to allow max dynamic shared memory
-  int device;
-  cudaGetDevice(&device);
-  cudaDeviceProp prop;
-  cudaGetDeviceProperties(&prop, device);
-
-  // query max allowed per-block shared memory
-  int max_dynamic_smem = prop.sharedMemPerBlockOptin;
-  //printf("max_dynamic_smem = %d\n", max_dynamic_smem);
+  int device = -1;
+  C10_CUDA_CHECK(cudaGetDevice(&device));
+  auto* prop = at::cuda::getDeviceProperties(device);
+  size_t max_dynamic_smem = get_max_dynamic_shared_memory(device);
+  //printf("max_dynamic_smem = %zu\n", max_dynamic_smem);
 
   auto device_lambda = [=] __device__(int idx, char* smem) {
       auto offsets = offset_calc.get(idx);
@@ -75,15 +112,34 @@ void gpu_mem_kernel(at::TensorIterator& iter, int work_size, const func_t& f) {
 
   // request the full size
   auto kernelPtr = element_kernel<decltype(device_lambda)>;
-  cudaFuncSetAttribute(
-      kernelPtr,
-      cudaFuncAttributeMaxDynamicSharedMemorySize,
-      max_dynamic_smem);
-
   if (shared > (size_t)max_dynamic_smem) {
     TORCH_CHECK(false, "Requested shared memory (", shared,
                 " bytes) exceeds device maximum (",
                 max_dynamic_smem, " bytes).");
+  }
+  if (shared > prop->sharedMemPerBlock) {
+    static std::mutex attr_mutex;
+    static std::vector<std::unique_ptr<std::once_flag>> attr_once_by_device;
+
+    std::once_flag* attr_once = nullptr;
+    {
+      std::lock_guard<std::mutex> guard(attr_mutex);
+      if (device >= static_cast<int>(attr_once_by_device.size())) {
+        attr_once_by_device.resize(device + 1);
+      }
+      auto& flag = attr_once_by_device[device];
+      if (!flag) {
+        flag = std::make_unique<std::once_flag>();
+      }
+      attr_once = flag.get();
+    }
+
+    std::call_once(*attr_once, [=] {
+      C10_CUDA_CHECK(cudaFuncSetAttribute(
+          kernelPtr,
+          cudaFuncAttributeMaxDynamicSharedMemorySize,
+          static_cast<int>(max_dynamic_smem)));
+    });
   }
 
   /*std::cout << "block = " << block.x

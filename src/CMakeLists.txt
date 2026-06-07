@@ -69,6 +69,7 @@ if (CUDAToolkit_FOUND)
     utils/*.cu
     thermo/*.cu
     math/*.cu
+    kinetics/*.cu
     )
 
   add_library(${namel}_cuda_${buildl}
