@@ -64,15 +64,20 @@ void LogSVPFunc::apply_inline(torch::Tensor& out, torch::Tensor const& temp,
       double T3 = p[0], P3 = p[1], betal = p[2], gammal = p[3], betas = p[4],
              gammas = p[5];
       auto liquid = t > T3;  // matches 'T > tr' in the named func-table forms
+      // Mirror logsvp_ideal(T/T3, beta, gamma) + log(P3) in the exact same
+      // floating-point operation order as the named forms (e.g. h2o_ideal), so
+      // a parametrized curve is bit-for-bit identical to its hardcoded twin.
+      auto tn = t / T3;
       if (!deriv) {
-        auto logt = torch::log(t / T3);
-        auto vl = (1.0 - T3 / t) * betal - gammal * logt + std::log(P3);
-        auto vs = (1.0 - T3 / t) * betas - gammas * logt + std::log(P3);
+        auto logtn = torch::log(tn);
+        auto vl = (1.0 - 1.0 / tn) * betal - gammal * logtn + std::log(P3);
+        auto vs = (1.0 - 1.0 / tn) * betas - gammas * logtn + std::log(P3);
         val = torch::where(liquid, vl, vs);
       } else {
-        auto t2 = t * t;
-        auto dl = betal * T3 / t2 - gammal / t;
-        auto ds = betas * T3 / t2 - gammas / t;
+        // logsvp_ideal_ddT(tn, beta, gamma) / T3 = (beta/tn^2 - gamma/tn) / T3
+        auto tn2 = tn * tn;
+        auto dl = (betal / tn2 - gammal / tn) / T3;
+        auto ds = (betas / tn2 - gammas / tn) / T3;
         val = torch::where(liquid, dl, ds);
       }
     } else {  // kind == 2, 'antoine': {A, B, C}
