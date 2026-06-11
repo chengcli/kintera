@@ -201,13 +201,19 @@ def build_npz(path: Path, branches, custom, pun):
         sum(ATOMIC[el] * n for el, n in COMPOSITION[s].items())
         for s in STORAGE_SPECIES])
 
-    # moses05 atmosphere (91 levels) for initial conditions
+    # moses05 atmosphere (91 levels) for initial conditions. Most species
+    # profiles are mixing ratios, but some (H, H2 in this file) are stored as
+    # number densities [cm^-3] -- detect by magnitude and normalize.
     atm = kt.parse_kinetics_base_atmosphere(str(EX / "atm/atm.titan.moses05.kt.inp"))
+    dens_prof = np.asarray(atm.density, dtype=np.float64)
     prof_names, prof_vmr = [], []
     for s in C2_SPECIES:
         if s in atm.species_profiles:
+            prof = np.asarray(atm.species_profiles[s], dtype=np.float64)
+            if prof.max() > 1.0:                      # density-like row
+                prof = prof / np.maximum(dens_prof, 1.0)
             prof_names.append(sanitize(s))
-            prof_vmr.append(np.asarray(atm.species_profiles[s], dtype=np.float64))
+            prof_vmr.append(prof)
 
     cz = [dict(id=r["id"],
                reactants="|".join(sanitize(x) for x in r["reactants"] if x != "M"),

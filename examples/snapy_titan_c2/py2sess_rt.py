@@ -136,24 +136,19 @@ class TitanC2Radiation:
         day = mu0 >= self.mu_min
         if not day.any():
             return out
-        day_idx = day.nonzero(as_tuple=True)[0]
-        mu_day = mu0[day_idx]
-        # group day columns into SZA bins; one batched call per bin
-        sza_deg = torch.rad2deg(torch.acos(mu_day.clamp(-1.0, 1.0)))
-        bins = torch.round(sza_deg / self.sza_bin_deg).to(torch.int64)
-        for b in bins.unique():
-            sel = day_idx[bins == b]
-            sza_c = float(b) * self.sza_bin_deg
-            mu_c = float(np.cos(np.radians(sza_c)))
-            if mu_c < self.mu_min:
-                continue
-            t = tau[sel].movedim(-1, 1).reshape(-1, self.nlyr)   # (nsel*nw, nlyr)
-            ssa = torch.full_like(t, 1e-9)
-            res = self._ess.forward_flux(
-                tau=t, ssa=ssa, g=torch.zeros_like(t), z=self._z,
-                angles=np.array([sza_c, 0.0, 0.0]), fbeam=1.0, albedo=0.0)
-            fd = res.flux_down                                   # (nsel*nw, nlyr+1)
-            fact_lvl = fd / mu_c                                  # beam intensity
-            fact = 0.5 * (fact_lvl[:, :-1] + fact_lvl[:, 1:])     # layer centers
-            out[sel] = fact.reshape(len(sel), self.nwave, self.nlyr).movedim(1, -1)
+        sel = day.nonzero(as_tuple=True)[0]
+        # Pure-absorption geometry folding: the slant attenuation
+        # exp(-tau/mu0) equals the vertical attenuation of tau/mu0, so all
+        # day columns collapse into ONE batched overhead call (SZA=0, mu0=1)
+        # with per-column scaled tau. Exact for ssa->0 (no binning error) and
+        # avoids a per-SZA-bin kernel-launch loop, which dominated GPU time.
+        tau_s = tau[sel] / mu0[sel].view(-1, 1, 1)
+        t = tau_s.movedim(-1, 1).reshape(-1, self.nlyr)      # (nsel*nw, nlyr)
+        ssa = torch.full_like(t, 1e-9)
+        res = self._ess.forward_flux(
+            tau=t, ssa=ssa, g=torch.zeros_like(t), z=self._z,
+            angles=np.array([0.0, 0.0, 0.0]), fbeam=1.0, albedo=0.0)
+        fd = res.flux_down                                   # (nsel*nw, nlyr+1)
+        fact = 0.5 * (fd[:, :-1] + fd[:, 1:])                # layer centers
+        out[sel] = fact.reshape(len(sel), self.nwave, self.nlyr).movedim(1, -1)
         return out * (self.toa_flux * self.toa_transmission).view(1, 1, -1)
