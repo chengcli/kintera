@@ -5,6 +5,7 @@
 #include <kintera/utils/serialize.hpp>
 
 #include "eval_uhs.hpp"
+#include "log_svp.hpp"
 #include "thermo.hpp"
 #include "thermo_dispatch.hpp"
 #include "thermo_formatter.hpp"
@@ -284,12 +285,14 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .build();
 
   // call the equilibrium solver
+  auto svp_spec =
+      LogSVPFunc::make_svp_spec(options->nucleation(), conc.device());
   at::native::call_equilibrate_uv(
       conc.device().type(), iter, options->vapor_ids().size(), stoich,
       u0 / inv_mu,   // J/kg -> J/mol
       cv0 / inv_mu,  // J/(kg K) -> J/(mol K)
-      options->nucleation()->logsvp(), options->intEng_R_extra(),
-      options->ftol(), options->max_iter());
+      svp_spec.first, svp_spec.second, options->nucleation()->logsvp(),
+      options->intEng_R_extra(), options->ftol(), options->max_iter());
 
   ivol = conc / inv_mu;
   yfrac.copy_(compute("V->Y", {ivol}));

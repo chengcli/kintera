@@ -18,11 +18,18 @@ extern std::vector<std::string> func2_names;
 
 void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                               at::Tensor const& stoich,
+                              at::Tensor const& svp_kind,
+                              at::Tensor const& svp_params,
                               std::vector<std::string> const &logsvp_func,
                               double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  auto f1 = get_device_func1(logsvp_func, func1_names);
+  // Inline-parametrized columns are evaluated analytically in the kernel; swap
+  // a valid sentinel name for the func-table lookup of the named columns.
+  auto svp_names = logsvp_func;
+  for (auto& s : svp_names)
+    if (s == "ideal" || s == "antoine") s = "h2o_ideal";
+  auto f1 = get_device_func1(svp_names, func1_names);
   auto logsvp_ptrs = f1.data().get();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cuda", [&] {
@@ -30,6 +37,8 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
     int nreaction = at::native::ensure_nonempty_size(stoich, 1);
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
+    auto svp_kind_ptr = svp_kind.data_ptr<int>();
+    auto svp_params_ptr = svp_params.data_ptr<double>();
 
     int mem_size = equilibrate_tp_space<scalar_t>(nspecies, nreaction);
     //std::cout << "mem size (bytes) = " << mem_size << std::endl;
@@ -48,6 +57,7 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
         equilibrate_tp(gain, diag, xfrac, *temp, *pres,
                        stoich_ptr, nspecies,
                        nreaction, ngas, logsvp_ptrs,
+                       svp_kind_ptr, svp_params_ptr,
                        logsvp_eps, &max_iter_i, reaction_set,
                        nactive, work);
       });
@@ -58,17 +68,24 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
                              at::Tensor const& stoich,
                              at::Tensor const& intEng_offset,
                              at::Tensor const& cv_const,
+                             at::Tensor const& svp_kind,
+                             at::Tensor const& svp_params,
                              std::vector<std::string> const &logsvp_func,
                              std::vector<std::string> const &intEng_extra_func,
                              double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
   /////  (1) Get svp functions   /////
-  auto f1a = get_device_func1(logsvp_func, func1_names);
+  // Inline-parametrized columns are evaluated analytically in the kernel; swap
+  // a valid sentinel name for the func-table lookup of the named columns.
+  auto svp_names = logsvp_func;
+  for (auto& s : svp_names)
+    if (s == "ideal" || s == "antoine") s = "h2o_ideal";
+  auto f1a = get_device_func1(svp_names, func1_names);
   auto logsvp_ptrs = f1a.data().get();
 
   // transform the name of logsvp_func by appending "_ddT"
-  auto logsvp_ddT_func = logsvp_func;
+  auto logsvp_ddT_func = svp_names;
   for (auto &name : logsvp_ddT_func) name += "_ddT";
 
   auto f1b = get_device_func1(logsvp_ddT_func, func1_names);
@@ -94,6 +111,8 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
     auto intEng_offset_ptr = intEng_offset.data_ptr<scalar_t>();
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
+    auto svp_kind_ptr = svp_kind.data_ptr<int>();
+    auto svp_params_ptr = svp_params.data_ptr<double>();
 
     int mem_size = equilibrate_uv_space<scalar_t>(nspecies, nreaction);
     //std::cout << "mem size (bytes) = " << mem_size << std::endl;
@@ -113,6 +132,7 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
                        stoich_ptr, nspecies, nreaction, ngas,
                        intEng_offset_ptr, cv_const_ptr,
                        logsvp_ptrs, logsvp_ddT_ptrs,
+                       svp_kind_ptr, svp_params_ptr,
                        intEng_extra_ptrs, intEng_extra_ddT_ptrs,
                        logsvp_eps, &max_iter_i, reaction_set,
                        nactive, work);

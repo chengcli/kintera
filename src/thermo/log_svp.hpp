@@ -88,6 +88,15 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
       torch::autograd::AutogradContext* ctx,
       std::vector<torch::Tensor> grad_outputs);
 
+ public:
+  //! \brief Build inline-SVP spec tensors {kind, params} for the equilibrate
+  //! kernels from a nucleation option set, on the given device.
+  //!
+  //! kind   is int32   [nreaction]   (0 named, 1 'ideal', 2 'antoine');
+  //! params is float64 [nreaction, KSVP_NPARAM] (zero-padded; named ⇒ zeros).
+  static std::pair<torch::Tensor, torch::Tensor> make_svp_spec(
+      NucleationOptions const& op, torch::Device device);
+
  private:
   //! Overwrite the inline-parametrized columns of \p out (and its temperature
   //! derivative when \p deriv is true) with the analytic 'ideal'/'antoine' form

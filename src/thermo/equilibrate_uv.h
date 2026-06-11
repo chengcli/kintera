@@ -15,6 +15,8 @@
 
 #include <kintera/utils/user_funcs.hpp>
 
+#include "svp_eval.h"
+
 namespace kintera {
 
 /*!
@@ -59,6 +61,7 @@ DISPATCH_MACRO int equilibrate_uv(
     T* gain, T* diag, T* temp, T* conc, T h0, T const* stoich, int nspecies,
     int nreaction, int ngas, T const* intEng_offset, T const* cv_const,
     user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
+    int const* svp_kind, double const* svp_params,
     user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
     float logsvp_eps, int* max_iter, int* reaction_set, int* nactive,
     char* work = nullptr) {
@@ -162,9 +165,12 @@ DISPATCH_MACRO int equilibrate_uv(
         if (stoich[i * nreaction + j] < 0) {  // reactant
           stoich_sum += (-stoich[i * nreaction + j]);
         }
-      logsvp[j] =
-          logsvp_func[j](*temp) - stoich_sum * log(constants::Rgas * (*temp));
-      logsvp_ddT[j] = logsvp_func_ddT[j](*temp) - stoich_sum / (*temp);
+      double const* p = svp_params + j * KSVP_NPARAM;
+      logsvp[j] = eval_logsvp(svp_kind[j], p, logsvp_func[j], *temp) -
+                  stoich_sum * log(constants::Rgas * (*temp));
+      logsvp_ddT[j] = eval_logsvp_ddT(svp_kind[j], p, logsvp_func_ddT[j],
+                                      *temp) -
+                      stoich_sum / (*temp);
     }
 
     // calculate heat capacity

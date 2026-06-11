@@ -5,6 +5,7 @@
 #include <kintera/utils/serialize.hpp>
 
 #include "eval_uhs.hpp"
+#include "log_svp.hpp"
 #include "thermo.hpp"
 #include "thermo_dispatch.hpp"
 #include "thermo_formatter.hpp"
@@ -236,9 +237,12 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .build();
 
   // call the equilibrium solver
+  auto svp_spec =
+      LogSVPFunc::make_svp_spec(options->nucleation(), xfrac.device());
   at::native::call_equilibrate_tp(
       xfrac.device().type(), iter, options->vapor_ids().size(), stoich,
-      options->nucleation()->logsvp(), options->ftol(), options->max_iter());
+      svp_spec.first, svp_spec.second, options->nucleation()->logsvp(),
+      options->ftol(), options->max_iter());
 
   vec[xfrac.dim() - 1] = reactions.size();
   vec.push_back(reactions.size());

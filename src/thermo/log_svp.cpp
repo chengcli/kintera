@@ -5,8 +5,38 @@
 #include <kintera/utils/utils_dispatch.hpp>
 
 #include "log_svp.hpp"
+#include "svp_eval.h"
 
 namespace kintera {
+
+std::pair<torch::Tensor, torch::Tensor> LogSVPFunc::make_svp_spec(
+    NucleationOptions const& op, torch::Device device) {
+  auto const& names = op->logsvp();
+  auto const& params = op->svp_params();
+  int n = static_cast<int>(names.size());
+
+  std::vector<int> kind(n, 0);
+  std::vector<double> flat(static_cast<size_t>(n) * KSVP_NPARAM, 0.0);
+  for (int j = 0; j < n; ++j) {
+    if (names[j] == "ideal") {
+      kind[j] = 1;
+    } else if (names[j] == "antoine") {
+      kind[j] = 2;
+    }
+    if (j < static_cast<int>(params.size())) {
+      auto const& pj = params[j];
+      int m = std::min(static_cast<int>(pj.size()), KSVP_NPARAM);
+      for (int k = 0; k < m; ++k)
+        flat[static_cast<size_t>(j) * KSVP_NPARAM + k] = pj[k];
+    }
+  }
+
+  auto kind_t = torch::tensor(kind, torch::dtype(torch::kInt32)).to(device);
+  auto par_t = torch::tensor(flat, torch::dtype(torch::kFloat64))
+                   .to(device)
+                   .view({n, KSVP_NPARAM});
+  return {kind_t, par_t};
+}
 
 std::vector<std::string> LogSVPFunc::_logsvp = {};
 std::vector<std::string> LogSVPFunc::_logsvp_ddT = {};

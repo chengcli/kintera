@@ -24,11 +24,19 @@ extern std::vector<std::string> func2_names;
 
 void call_equilibrate_tp_cpu(at::TensorIterator& iter, int ngas,
                              at::Tensor const& stoich,
+                             at::Tensor const& svp_kind,
+                             at::Tensor const& svp_params,
                              std::vector<std::string> const& logsvp_func,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
 
-  auto f1 = get_host_func(logsvp_func, func1_names, func1_table_cpu);
+  // Inline-parametrized columns ('ideal'/'antoine') are evaluated analytically
+  // inside the kernel; swap a valid sentinel name so the func-table lookup of
+  // the remaining named columns does not fail.
+  auto svp_names = logsvp_func;
+  for (auto& s : svp_names)
+    if (s == "ideal" || s == "antoine") s = "h2o_ideal";
+  auto f1 = get_host_func(svp_names, func1_names, func1_table_cpu);
   auto logsvp_ptrs = f1.data();
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cpu", [&] {
@@ -36,6 +44,8 @@ void call_equilibrate_tp_cpu(at::TensorIterator& iter, int ngas,
     int nreaction = at::native::ensure_nonempty_size(stoich, 1);
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
+    auto svp_kind_ptr = svp_kind.data_ptr<int>();
+    auto svp_params_ptr = svp_params.data_ptr<double>();
 
     iter.for_each(
         [&](char** data, const int64_t* strides, int64_t n) {
@@ -50,8 +60,9 @@ void call_equilibrate_tp_cpu(at::TensorIterator& iter, int ngas,
             auto nactive = reinterpret_cast<int*>(data[6] + i * strides[6]);
             int max_iter_i = max_iter;
             equilibrate_tp(gain, diag, xfrac, *temp, *pres, stoich_ptr,
-                           nspecies, nreaction, ngas, logsvp_ptrs, logsvp_eps,
-                           &max_iter_i, reaction_set, nactive);
+                           nspecies, nreaction, ngas, logsvp_ptrs, svp_kind_ptr,
+                           svp_params_ptr, logsvp_eps, &max_iter_i,
+                           reaction_set, nactive);
           }
         },
         grain_size);
@@ -62,17 +73,24 @@ void call_equilibrate_uv_cpu(at::TensorIterator& iter, int ngas,
                              at::Tensor const& stoich,
                              at::Tensor const& intEng_offset,
                              at::Tensor const& cv_const,
+                             at::Tensor const& svp_kind,
+                             at::Tensor const& svp_params,
                              std::vector<std::string> const& logsvp_func,
                              std::vector<std::string> const& intEng_extra_func,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
 
   /////  (1) Get svp functions   /////
-  auto f1a = get_host_func(logsvp_func, func1_names, func1_table_cpu);
+  // Inline-parametrized columns are evaluated analytically in the kernel; swap
+  // a valid sentinel name for the func-table lookup of the named columns.
+  auto svp_names = logsvp_func;
+  for (auto& s : svp_names)
+    if (s == "ideal" || s == "antoine") s = "h2o_ideal";
+  auto f1a = get_host_func(svp_names, func1_names, func1_table_cpu);
   auto logsvp_ptrs = f1a.data();
 
   // transform the name of logsvp_func by appending "_ddT"
-  auto logsvp_ddT_func = logsvp_func;
+  auto logsvp_ddT_func = svp_names;
   for (auto& name : logsvp_ddT_func) name += "_ddT";
 
   auto f1b = get_host_func(logsvp_ddT_func, func1_names, func1_table_cpu);
@@ -100,6 +118,8 @@ void call_equilibrate_uv_cpu(at::TensorIterator& iter, int ngas,
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
     auto intEng_offset_ptr = intEng_offset.data_ptr<scalar_t>();
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
+    auto svp_kind_ptr = svp_kind.data_ptr<int>();
+    auto svp_params_ptr = svp_params.data_ptr<double>();
 
     iter.for_each(
         [&](char** data, const int64_t* strides, int64_t n) {
@@ -117,8 +137,9 @@ void call_equilibrate_uv_cpu(at::TensorIterator& iter, int ngas,
             equilibrate_uv(gain, diag, temp, conc, *intEng, stoich_ptr,
                            nspecies, nreaction, ngas, intEng_offset_ptr,
                            cv_const_ptr, logsvp_ptrs, logsvp_ddT_ptrs,
-                           intEng_extra_ptrs, intEng_extra_ddT_ptrs, logsvp_eps,
-                           &max_iter_i, reaction_set, nactive);
+                           svp_kind_ptr, svp_params_ptr, intEng_extra_ptrs,
+                           intEng_extra_ddT_ptrs, logsvp_eps, &max_iter_i,
+                           reaction_set, nactive);
           }
         },
         grain_size);

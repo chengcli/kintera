@@ -15,6 +15,8 @@
 
 #include <kintera/utils/user_funcs.hpp>
 
+#include "svp_eval.h"
+
 namespace kintera {
 
 /*!
@@ -46,6 +48,7 @@ template <typename T>
 DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
                                   T const* stoich, int nspecies, int nreaction,
                                   int ngas, user_func1 const* logsvp_func,
+                                  int const* svp_kind, double const* svp_params,
                                   float logsvp_eps, int* max_iter,
                                   int* reaction_set, int* nactive,
                                   char* work = nullptr) {
@@ -140,7 +143,9 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
       if (stoich[i * nreaction + j] < 0) {  // reactant
         stoich_sum[j] += (-stoich[i * nreaction + j]);
       }
-    logsvp[j] = logsvp_func[j](temp) - stoich_sum[j] * log(pres);
+    logsvp[j] = eval_logsvp(svp_kind[j], svp_params + j * KSVP_NPARAM,
+                            logsvp_func[j], temp) -
+                stoich_sum[j] * log(pres);
   }
 
   int iter = 0;
