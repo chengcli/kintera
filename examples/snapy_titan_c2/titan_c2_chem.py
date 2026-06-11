@@ -159,13 +159,18 @@ def evolve_implicit_torch(rate: torch.Tensor, stoich: torch.Tensor,
     sj = torch.einsum("sr,...rn->...sn", stoich, jac)          # S J
     eye = torch.eye(nsp, dtype=rate.dtype, device=rate.device)
     A = eye / dt - sj
-    x = torch.linalg.solve(A, b.unsqueeze(-1)).squeeze(-1)
-    # Tikhonov fallback for (rare) nearly-singular stiff cells, where the
-    # backward-Euler matrix is degenerate at large dt and LU yields inf/nan.
+    # Stiff cells can make A exactly singular at large dt (an algebraic
+    # photochemical balance): CUDA linalg.solve RAISES on those, CPU may
+    # return inf/nan. Handle both with a tiny Tikhonov regularization.
+    try:
+        x = torch.linalg.solve(A, b.unsqueeze(-1)).squeeze(-1)
+    except RuntimeError:                                       # _LinAlgError
+        lam = 1e-10 * A.abs().amax(dim=(-2, -1), keepdim=True).clamp_min(1e-300)
+        x = torch.linalg.solve(A + lam * eye, b.unsqueeze(-1)).squeeze(-1)
     bad = ~torch.isfinite(x).all(dim=-1)
     if bad.any():
         Ab = A[bad]
-        lam = 1e-12 * Ab.abs().amax(dim=(-2, -1), keepdim=True).clamp_min(1e-300)
+        lam = 1e-10 * Ab.abs().amax(dim=(-2, -1), keepdim=True).clamp_min(1e-300)
         x[bad] = torch.linalg.solve(Ab + lam * eye,
                                     b[bad].unsqueeze(-1)).squeeze(-1)
     return x
