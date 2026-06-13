@@ -1,3 +1,4 @@
+import functools
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,30 @@ from kintera.atm2d import radiation as atm2d_radiation
 
 
 torch.set_default_dtype(torch.float64)
+
+
+@functools.lru_cache(maxsize=1)
+def _cuda_sparse_solver_available() -> bool:
+    """True only if kintera was built with the CUDA cuSolver sparse binding.
+
+    ``torch.cuda.is_available()`` is necessary but not sufficient: a CPU-only
+    kintera build lacks the native ``cuda_csr_solve_cusolver`` symbol and raises
+    at call time. Probe a 1x1 GPU solve so these tests skip (not fail) on such
+    builds.
+    """
+    if not torch.cuda.is_available():
+        return False
+    try:
+        dense = torch.eye(1, dtype=torch.float64, device="cuda")
+        matrix = kt.SparseSystemMatrix.from_dense(dense, ncol=1, nlyr=1, nspecies=1)
+        kt.solve_sparse_system(
+            matrix, torch.ones((1, 1, 1), dtype=torch.float64, device="cuda")
+        )
+    except Exception:
+        return False
+    return True
+
+
 TEST_DIR = Path(__file__).resolve().parent
 CHAPMAN_CYCLE_YAML = TEST_DIR / "chapman_cycle.yaml"
 
@@ -61,6 +86,105 @@ def test_horizontal_and_cross_diffusion_create_2d_coupling():
 
     assert torch.count_nonzero(tendency[:, :, 0]).item() > 0
     assert matrix.global_csr._nnz() > state.ncol * state.nlyr * state.nspecies
+
+
+def test_mr_diffusion_zero_flux_for_uniform_mixing_ratio():
+    """MR-form vertical diffusion shall produce zero flux at every face
+    when the tracer has uniform mixing ratio χ across the column."""
+    ncol, nlyr, ns = 2, 6, 3
+    x1f = torch.linspace(0.0, 6.0e5, nlyr + 1, dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0, 2.0], dtype=torch.float64)
+    temp = torch.full((ncol, nlyr), 250.0, dtype=torch.float64)
+    pres = torch.logspace(5.0, 3.0, nlyr, dtype=torch.float64).unsqueeze(0).expand(ncol, nlyr)
+    H = 1.0e5
+    z = 0.5 * (x1f[:-1] + x1f[1:])
+    density = (1.0e15 * torch.exp(-z / H)).unsqueeze(0).expand(ncol, nlyr).contiguous()
+    chi = torch.tensor([0.1, 0.5, 0.4], dtype=torch.float64)
+    conc = density.unsqueeze(-1) * chi.view(1, 1, ns)
+    state = kt.AtmState2D(x1f=x1f, x2f=x2f, temperature=temp, pressure=pres, concentration=conc)
+    kzz = torch.full((ncol, nlyr), 1.0e5, dtype=torch.float64)
+
+    M_mr = kt.build_eddy_diffusion_matrix(state, kzz, form="mr_diffusion", density=density)
+    tendency = M_mr.matvec(conc)
+    # MR form: uniform χ produces zero flux. Use absolute tolerance on
+    # tendency · max(conc) — the column-integrated flux should be
+    # essentially machine precision.
+    max_conc = conc.abs().max().item()
+    assert tendency.abs().max().item() < 1e-12 * max_conc
+
+    # Sanity: c_diffusion form is NOT zero for the same input — proves
+    # the test discriminates between the two forms.
+    M_c = kt.build_eddy_diffusion_matrix(state, kzz, form="c_diffusion")
+    tendency_c = M_c.matvec(conc)
+    assert tendency_c.abs().max().item() > 1e-6 * max_conc
+
+
+def test_mr_diffusion_conserves_column_mass():
+    """MR-form vertical diffusion shall be column-mass conservative:
+    ∫ dc/dt · dV = 0 for any initial concentration field."""
+    ncol, nlyr, ns = 1, 6, 2
+    x1f = torch.linspace(0.0, 6.0e5, nlyr + 1, dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    temp = torch.full((ncol, nlyr), 250.0, dtype=torch.float64)
+    pres = torch.logspace(5.0, 3.0, nlyr, dtype=torch.float64).unsqueeze(0).expand(ncol, nlyr)
+    H = 1.0e5
+    z = 0.5 * (x1f[:-1] + x1f[1:])
+    density = (1.0e15 * torch.exp(-z / H)).unsqueeze(0)
+    torch.manual_seed(0)
+    conc = (torch.rand(ncol, nlyr, ns, dtype=torch.float64) * density.unsqueeze(-1) * 1.0e-3)
+    state = kt.AtmState2D(x1f=x1f, x2f=x2f, temperature=temp, pressure=pres, concentration=conc)
+    kzz = torch.full((ncol, nlyr), 1.0e5, dtype=torch.float64)
+
+    M_mr = kt.build_eddy_diffusion_matrix(state, kzz, form="mr_diffusion", density=density)
+    dcdt = M_mr.matvec(conc)
+    dx1f = state.dx1f
+    column_mass_rate = (dcdt[0] * dx1f.unsqueeze(-1)).sum(dim=0)  # (ns,)
+    total_mass = (conc[0] * dx1f.unsqueeze(-1)).sum(dim=0)  # (ns,)
+    # Relative residual ~ machine precision
+    rel = (column_mass_rate.abs() / total_mass.abs().clamp_min(1e-30)).max().item()
+    assert rel < 1.0e-12
+
+
+def test_c_diffusion_default_matches_pre_mr_refactor():
+    """With no density supplied, the default transport form is c_diffusion and
+    shall reproduce the original concentration-form diffusion matrix
+    bit-for-bit. This guards against a silent regression in the refactored
+    block-builder."""
+    state = _make_state(ncol=2, nlyr=5, ns=2)
+    torch.manual_seed(42)
+    state.concentration = torch.rand(state.ncol, state.nlyr, state.nspecies, dtype=state.dtype)
+    kzz = torch.full((state.ncol, state.nlyr), 1.0e5, dtype=state.dtype)
+
+    M_default = kt.build_eddy_diffusion_matrix(state, kzz)  # no density -> c_diffusion
+    M_explicit = kt.build_eddy_diffusion_matrix(state, kzz, form="c_diffusion")
+    torch.testing.assert_close(
+        M_default.matvec(state.concentration),
+        M_explicit.matvec(state.concentration),
+        atol=0.0, rtol=0.0,
+    )
+
+
+def test_default_transport_form_is_mr_when_density_supplied(monkeypatch):
+    """The core transport default flips to mr_diffusion when a density field is
+    supplied (the correct variable-density discretization). c_diffusion stays
+    explicitly selectable; the env var still overrides."""
+    monkeypatch.delenv("KINTERA_TRANSPORT_FORM", raising=False)
+    state = _make_state(ncol=2, nlyr=5, ns=2)
+    torch.manual_seed(7)
+    state.concentration = torch.rand(state.ncol, state.nlyr, state.nspecies, dtype=state.dtype)
+    kzz = torch.full((state.ncol, state.nlyr), 1.0e5, dtype=state.dtype)
+    density = torch.linspace(1.0e15, 1.0e13, state.nlyr, dtype=state.dtype).unsqueeze(0).expand(
+        state.ncol, state.nlyr
+    ).contiguous()
+
+    M_default = kt.build_eddy_diffusion_matrix(state, kzz, density=density)
+    M_mr = kt.build_eddy_diffusion_matrix(state, kzz, density=density, form="mr_diffusion")
+    M_c = kt.build_eddy_diffusion_matrix(state, kzz, density=density, form="c_diffusion")
+    out_default = M_default.matvec(state.concentration)
+    # default (with density) == mr_diffusion ...
+    torch.testing.assert_close(out_default, M_mr.matvec(state.concentration), atol=0.0, rtol=0.0)
+    # ... and differs from c_diffusion (proves the flip is real)
+    assert (out_default - M_c.matvec(state.concentration)).abs().max().item() > 0.0
 
 
 def test_binary_diffusion_creates_species_coupling():
@@ -257,7 +381,10 @@ def test_steady_2d_diffusion_four_side_dirichlet_matches_linear_solution():
     torch.testing.assert_close(solution[:, :, 0], analytic, atol=2.5e-3, rtol=2.5e-3)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    not _cuda_sparse_solver_available(),
+    reason="kintera built without CUDA sparse-solver support",
+)
 def test_cuda_cusolver_binding_matches_dense_solution():
     dense = torch.tensor(
         [
@@ -282,7 +409,10 @@ def test_cuda_cusolver_binding_matches_dense_solution():
     torch.testing.assert_close(sol, ref, atol=1.0e-12, rtol=1.0e-12)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    not _cuda_sparse_solver_available(),
+    reason="kintera built without CUDA sparse-solver support",
+)
 def test_cuda_steady_1d_advection_diffusion_dirichlet_matches_analytic_solution():
     ncol, nlyr, ns = 1, 161, 1
     x = torch.linspace(0.0, 1.0, nlyr, dtype=torch.float64, device="cuda")
@@ -466,6 +596,111 @@ def test_implicit_operator_adds_chemistry_and_photochemistry():
     assert not torch.allclose(implicit_dense, transport_dense)
 
 
+def test_implicit_operator_adds_local_source_terms():
+    state = _make_state(ncol=1, nlyr=3, ns=2)
+    kzz = torch.zeros((state.ncol, state.nlyr), dtype=state.dtype)
+
+    class FirstOrderLoss:
+        def __init__(self, species_index: int, rate: float):
+            self.species_index = species_index
+            self.rate = rate
+
+        def linearize(self, source_state):
+            tendency = torch.zeros_like(source_state.concentration)
+            jacobian = torch.zeros(
+                (
+                    source_state.ncol,
+                    source_state.nlyr,
+                    source_state.nspecies,
+                    source_state.nspecies,
+                ),
+                dtype=source_state.dtype,
+                device=source_state.device,
+            )
+            tendency[:, :, self.species_index] = (
+                -self.rate * source_state.concentration[:, :, self.species_index]
+            )
+            jacobian[:, :, self.species_index, self.species_index] = -self.rate
+            return kt.LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+    transport = kt.build_transport_matrix(state, kzz)
+    implicit = kt.build_implicit_operator(
+        state,
+        kzz,
+        source_terms=[FirstOrderLoss(species_index=1, rate=2.5)],
+    )
+
+    delta = implicit.global_csr.to_dense() - transport.global_csr.to_dense()
+    diag = torch.diagonal(delta).reshape(state.ncol, state.nlyr, state.nspecies)
+    torch.testing.assert_close(diag[:, :, 0], torch.zeros_like(diag[:, :, 0]))
+    torch.testing.assert_close(
+        diag[:, :, 1],
+        torch.full((state.ncol, state.nlyr), -2.5, dtype=state.dtype),
+    )
+
+
+def test_mass_action_jacobian_keeps_first_order_zero_reactant_derivative():
+    state = _make_state(ncol=1, nlyr=1, ns=3)
+    state.concentration = torch.tensor([[[5.0, 0.0, 0.0]]], dtype=state.dtype)
+    source = kt.IndexedMassActionSource(
+        reactants=[0, 1],
+        products=[2],
+        reactant_coefficients=[1, 1],
+        product_coefficients=[1],
+        rate_constant=2.0,
+    )
+
+    linearization = source.linearize(state)
+
+    torch.testing.assert_close(
+        linearization.tendency,
+        torch.zeros_like(state.concentration),
+    )
+    assert linearization.jacobian[0, 0, 2, 1].item() == pytest.approx(10.0)
+    assert linearization.jacobian[0, 0, 1, 1].item() == pytest.approx(-10.0)
+
+
+def test_implicit_step_system_solves_first_order_source_implicitly():
+    state = _make_state(ncol=1, nlyr=2, ns=2)
+    state.concentration = torch.tensor([[[4.0, 1.0], [2.0, 3.0]]], dtype=state.dtype)
+    kzz = torch.zeros((state.ncol, state.nlyr), dtype=state.dtype)
+
+    class FirstOrderConversion:
+        def linearize(self, source_state):
+            rate = 2.0
+            tendency = torch.zeros_like(source_state.concentration)
+            jacobian = torch.zeros(
+                (
+                    source_state.ncol,
+                    source_state.nlyr,
+                    source_state.nspecies,
+                    source_state.nspecies,
+                ),
+                dtype=source_state.dtype,
+                device=source_state.device,
+            )
+            source = rate * source_state.concentration[:, :, 0]
+            tendency[:, :, 0] = -source
+            tendency[:, :, 1] = source
+            jacobian[:, :, 0, 0] = -rate
+            jacobian[:, :, 1, 0] = rate
+            return kt.LocalSourceLinearization(tendency=tendency, jacobian=jacobian)
+
+    dt = 0.5
+    matrix, rhs = kt.build_implicit_step_system(
+        state,
+        kzz,
+        dt,
+        source_terms=[FirstOrderConversion()],
+    )
+    next_state = kt.solve_sparse_system(matrix, rhs)
+
+    expected_a = state.concentration[:, :, 0] / (1.0 + 2.0 * dt)
+    expected_b = state.concentration[:, :, 1] + dt * 2.0 * expected_a
+    torch.testing.assert_close(next_state[:, :, 0], expected_a)
+    torch.testing.assert_close(next_state[:, :, 1], expected_b)
+
+
 def test_total_cross_section_uses_absorption_branch_only():
     opts = kt.PhotoChemOptions.from_yaml(str(CHAPMAN_CYCLE_YAML))
     module = kt.PhotoChem(opts)
@@ -483,7 +718,10 @@ def test_total_cross_section_uses_absorption_branch_only():
     assert torch.max(torch.abs(sigma[..., absorber_idx] - wrong_summed)).item() > 0.0
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    not _cuda_sparse_solver_available(),
+    reason="kintera built without CUDA sparse-solver support",
+)
 def test_cuda_sparse_solver_matches_cpu():
     ncol, nlyr, ns = 2, 3, 2
     nstate = ncol * nlyr * ns
@@ -502,7 +740,10 @@ def test_cuda_sparse_solver_matches_cpu():
     torch.testing.assert_close(cpu_sol, gpu_sol, atol=1e-12, rtol=1e-12)
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    not _cuda_sparse_solver_available(),
+    reason="kintera built without CUDA sparse-solver support",
+)
 def test_cuda_sparse_solver_reuses_cached_int32_csr_indices():
     dense = torch.tensor(
         [

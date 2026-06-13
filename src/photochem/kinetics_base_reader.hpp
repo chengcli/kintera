@@ -56,7 +56,129 @@ struct KBMasterData {
   std::vector<KBReaction> thermal;
 };
 
+struct KBPunHeader {
+  int natom = 0;
+  int nmol = 0;
+  int nreact = 0;
+  int npart = 0;
+  int version = 0;
+};
+
+struct KBPunSpecies {
+  int id = 0;
+  std::string name;
+  int first_reaction = 0;
+  int n_reactions = 0;
+  double molecular_weight = 0.0;
+  std::vector<int> composition;
+};
+
+struct KBPunParticipant {
+  int coefficient = 1;
+  int species_id = 0;
+  char marker = ' ';
+};
+
+struct KBPunRateBlock {
+  double A = 0.0;
+  double b = 0.0;
+  double C = 0.0;
+  double D = 0.0;
+  double E = 0.0;
+  double F = 0.0;
+  double Tmin = 0.0;
+  double Tmax = 0.0;
+  double Fc = 1.0;
+  double Tin = 0.0;
+  double Tout = 0.0;
+};
+
+struct KBPunReaction {
+  int id = 0;
+  int n_reactants = 0;
+  int n_products = 0;
+  std::vector<KBPunParticipant> participants;
+  std::vector<KBPunRateBlock> rate_blocks;
+  std::vector<int> reactant_ids;
+  std::vector<int> product_ids;
+  std::string raw_line;
+};
+
+struct KBPunNetwork {
+  KBPunHeader header;
+  std::map<std::string, double> elements;
+  std::vector<KBPunSpecies> species;
+  std::vector<KBPunReaction> reactions;
+};
+
+struct KBRunSelection {
+  int nfix = 0;
+  int nvarys = 0;
+  int nvaryf = 0;
+  int nphoto = 0;
+  int nphots = 0;
+  int nphotr = 0;
+  int nphotd = 0;
+  std::vector<int> fixed_species_ids;
+  std::vector<int> varying_slow_species_ids;
+  std::vector<int> varying_fast_species_ids;
+  std::vector<int> photolysis_reaction_ids;
+};
+
+struct KBTitanNetwork {
+  KBPunNetwork pun;
+  KBRunSelection selection;
+  std::vector<std::pair<std::string, std::string>> catalog;
+  int resolved_cross_sections = 0;
+  std::vector<int> missing_selected_photolysis_ids;
+  std::vector<std::string> missing_cross_section_files;
+};
+
+struct KBTitanReactionReport {
+  int total_reactions = 0;
+  int selected_photolysis_reactions = 0;
+  int thermal_candidate_reactions = 0;
+  int missing_rate_blocks = 0;
+  int charged_species_count = 0;
+  int charged_reactions = 0;
+  int charged_thermal_candidate_reactions = 0;
+  int ion_mass_action_reactions = 0;
+  int dissociative_recombination_reactions = 0;
+  int selected_electron_impact_reactions = 0;
+  int electron_reactant_reactions = 0;
+  int electron_product_reactions = 0;
+  int cation_reactant_reactions = 0;
+  int cation_product_reactions = 0;
+  int anion_reactant_reactions = 0;
+  int anion_product_reactions = 0;
+  int charge_balanced_reactions = 0;
+  int charge_imbalanced_reactions = 0;
+  std::map<int, int> n_reactants_counts;
+  std::vector<std::string> charged_species;
+  std::vector<int> selected_photolysis_ids;
+  std::vector<int> charge_imbalanced_reaction_ids;
+  std::vector<int> unsupported_reaction_ids;
+};
+
+struct KBAtmosphereProfile {
+  std::string header;
+  std::vector<double> altitude;
+  std::vector<double> density;
+  std::vector<double> temperature;
+  std::vector<double> pressure;
+  std::vector<double> eddy_diffusion;
+  std::vector<double> wind;
+  std::map<std::string, std::vector<double>> species_profiles;
+  std::vector<std::string> mixing_ratio_species_profiles;
+};
+
 KBMasterData parse_kinetics_base_master(std::string const& filepath);
+
+KBPunNetwork parse_kinetics_base_pun(std::string const& filepath);
+
+KBRunSelection parse_kinetics_base_run_input(std::string const& filepath);
+
+KBAtmosphereProfile parse_kinetics_base_atmosphere(std::string const& filepath);
 
 std::vector<std::pair<std::string, std::string>> parse_kinetics_base_catalog(
     std::string const& filepath);
@@ -64,12 +186,47 @@ std::vector<std::pair<std::string, std::string>> parse_kinetics_base_catalog(
 KBCrossSectionFile parse_kinetics_base_cross_section(
     std::string const& filepath);
 
+KBTitanNetwork parse_kinetics_base_titan(std::string const& pun_path,
+                                         std::string const& run_input_path,
+                                         std::string const& photo_catalog_path,
+                                         std::string const& cross_dir);
+
+KBTitanReactionReport classify_kinetics_base_titan_reactions(
+    KBTitanNetwork const& titan);
+
+KBTitanReactionReport classify_kinetics_base_titan_reactions(
+    std::string const& pun_path, std::string const& run_input_path);
+
 void init_species_from_kinetics_base(std::string const& master_input_path);
 
 KineticsOptions kinetics_options_from_kinetics_base(
     std::string const& master_input_path,
     std::string const& photo_catalog_path = "",
     std::string const& cross_dir = "", bool verbose = false);
+
+//! Translate a KINETICS-base `.pun` network into core `KineticsOptions`.
+/*!
+ * Builds the thermal (non-photolysis) reactions of a `.pun` network for
+ * evaluation through the core `Kinetics` engine, reproducing the validated
+ * Titan rate semantics (`kinetics_base/titan/physics.py::_pun_rate_constant`):
+ *
+ * - CGS-native: rate constants stay in `molecule,cm,s`; the pre-exponential
+ *   `A` is taken raw (no unit conversion), so concentrations stay in
+ *   molecule cm^-3 and tendencies in molecule cm^-3 s^-1.
+ * - Reactions are built **irreversible** (`=>`) so the core SI thermodynamic
+ *   reverse / Kc path is skipped (KB `.pun` gives explicit forward rates only).
+ * - Plain thermal reactions (`block.D <= 0`): single-range Arrhenius with
+ *   `Tref=1` (moses00 `Tmin=1`), `b=block.b`, `Ea_R=-block.C`.
+ * - Falloff reactions (`block.D > 0`): the KB falloff form (see KBFalloff).
+ * - Zero-A reactions (`block.A == 0`): skipped (photolysis / special handled
+ *   by the Stage-3 photolysis path and the Stage-4 EI/ion layer).
+ *
+ * Populates the global species table from the `.pun` species (names +
+ * molecular weights; placeholder thermo, unused since reactions are
+ * irreversible).
+ */
+KineticsOptions kinetics_options_from_kinetics_base_pun(
+    std::string const& pun_path, bool verbose = false);
 PhotoChemOptions photochem_options_from_kinetics_base(
     std::string const& master_input_path,
     std::string const& photo_catalog_path = "",

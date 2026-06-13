@@ -68,6 +68,17 @@ struct PhotolysisOptionsImpl {
 
   //! Branch names for each reaction
   ADD_ARG(std::vector<std::vector<std::string>>, branch_names) = {};
+
+  //! Optional per-wavelength quadrature weights, shape (nwave,).
+  /*!
+   * When empty (default), `forward` integrates the cross-section * actinic
+   * flux with the trapezoidal rule over `wavelength`. When provided, the rate
+   * is instead the weighted sum `J = sum_i w_i * sigma_i * F_i`. This supports
+   * codes that supply a pre-binned actinic flux (flux already integrated over
+   * each wavelength bin); passing unit weights then reproduces the per-bin sum
+   * `sum_i sigma_i * F_i` exactly (e.g. KINETICS-base / Titan).
+   */
+  ADD_ARG(std::vector<double>, quadrature_weights) = {};
 };
 using PhotolysisOptions = std::shared_ptr<PhotolysisOptionsImpl>;
 
@@ -94,6 +105,11 @@ class PhotolysisImpl : public torch::nn::Cloneable<PhotolysisImpl> {
 
   //! Shared temperature grid [K], shape (ntemp,)
   torch::Tensor temp_grid;
+
+  //! Optional per-wavelength quadrature weights, shape (nwave,). Empty unless
+  //! `options->quadrature_weights()` was set (then `forward` uses a weighted
+  //! sum instead of the trapezoidal rule).
+  torch::Tensor quad_weights;
 
   //! Cached dissociative cross-sections on `wavelength`, shape
   //! `(*batch, nwave, nreaction)`

@@ -6,12 +6,14 @@
 
 // kintera
 #include <kintera/kinetics/evolve_implicit.hpp>
+#include <kintera/kinetics/kb_falloff.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/kinetics/kinetics_formatter.hpp>
 #include <kintera/kinetics/lindemann_falloff.hpp>
 #include <kintera/kinetics/sri_falloff.hpp>
 #include <kintera/kinetics/three_body.hpp>
 #include <kintera/kinetics/troe_falloff.hpp>
+#include <kintera/photochem/kinetics_base_reader.hpp>
 
 // python
 #include "pyoptions.hpp"
@@ -37,7 +39,15 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, A)
       .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, b)
       .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, Ea_R)
-      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, E4_R);
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, E4_R)
+      .ADD_OPTION(std::vector<std::vector<double>>,
+                  kintera::ArrheniusOptionsImpl, A_ranges)
+      .ADD_OPTION(std::vector<std::vector<double>>,
+                  kintera::ArrheniusOptionsImpl, b_ranges)
+      .ADD_OPTION(std::vector<std::vector<double>>,
+                  kintera::ArrheniusOptionsImpl, Ea_R_ranges)
+      .ADD_OPTION(std::vector<std::vector<double>>,
+                  kintera::ArrheniusOptionsImpl, T_ranges);
 
   ADD_KINTERA_MODULE(Arrhenius, ArrheniusOptions,
                      &kintera::ArrheniusImpl::forward, py::arg("temp"),
@@ -216,6 +226,36 @@ void bind_kinetics(py::module& m) {
                      py::arg("pres"), py::arg("conc"), py::arg("other"))
       .def("pretty_print", &kintera::SRIFalloffImpl::pretty_print);
 
+  ////////////// KB Falloff //////////////
+  auto pyKBFalloffOptions =
+      py::class_<kintera::KBFalloffOptionsImpl, kintera::KBFalloffOptions>(
+          m, "KBFalloffOptions");
+
+  pyKBFalloffOptions.def(py::init<>())
+      .def("__repr__",
+           [](const kintera::KBFalloffOptions& self) {
+             std::stringstream ss;
+             self->report(ss);
+             return fmt::format("KBFalloffOptions({})", ss.str());
+           })
+      .ADD_OPTION(double, kintera::KBFalloffOptionsImpl, Tref)
+      .ADD_OPTION(double, kintera::KBFalloffOptionsImpl, fc)
+      .ADD_OPTION(std::string, kintera::KBFalloffOptionsImpl, units)
+      .ADD_OPTION(std::vector<kintera::Reaction>, kintera::KBFalloffOptionsImpl,
+                  reactions)
+      .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, k0_A)
+      .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, k0_b)
+      .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, k0_Ea_R)
+      .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, kinf_A)
+      .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl, kinf_b)
+      .ADD_OPTION(std::vector<double>, kintera::KBFalloffOptionsImpl,
+                  kinf_Ea_R);
+
+  ADD_KINTERA_MODULE(KBFalloff, KBFalloffOptions,
+                     &kintera::KBFalloffImpl::forward, py::arg("temp"),
+                     py::arg("pres"), py::arg("conc"), py::arg("other"))
+      .def("pretty_print", &kintera::KBFalloffImpl::pretty_print);
+
   ////////////// Kinetics //////////////
   auto pyKineticsOptions =
       py::class_<kintera::KineticsOptionsImpl, kintera::SpeciesThermoImpl,
@@ -237,6 +277,9 @@ void bind_kinetics(py::module& m) {
                   py::arg("master_input_path"),
                   py::arg("photo_catalog_path") = "", py::arg("cross_dir") = "",
                   py::arg("verbose") = false)
+      .def_static("from_kinetics_base_pun",
+                  &kintera::kinetics_options_from_kinetics_base_pun,
+                  py::arg("pun_path"), py::arg("verbose") = false)
       .def("reactions", &kintera::KineticsOptionsImpl::reactions)
       .ADD_OPTION(double, kintera::KineticsOptionsImpl, Tref)
       .ADD_OPTION(double, kintera::KineticsOptionsImpl, Pref)
@@ -254,6 +297,8 @@ void bind_kinetics(py::module& m) {
                   troe_falloff)
       .ADD_OPTION(kintera::SRIFalloffOptions, kintera::KineticsOptionsImpl,
                   sri_falloff)
+      .ADD_OPTION(kintera::KBFalloffOptions, kintera::KineticsOptionsImpl,
+                  kb_falloff)
       .ADD_OPTION(bool, kintera::KineticsOptionsImpl, evolve_temperature);
 
   ADD_KINTERA_MODULE(Kinetics, KineticsOptions,

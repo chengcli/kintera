@@ -1,4 +1,5 @@
 // pybind11
+#include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
 // torch
@@ -7,6 +8,7 @@
 // kintera
 #include <kintera/kinetics/evolve_implicit.hpp>
 #include <kintera/kintera_formatter.hpp>
+#include <kintera/photochem/kinetics_base_reader.hpp>
 #include <kintera/species.hpp>
 #include <kintera/utils/find_resource.hpp>
 
@@ -65,6 +67,151 @@ PYBIND11_MODULE(kintera, m) {
       .def("equation", &kintera::Reaction::equation)
       .ADD_OPTION(kintera::Composition, kintera::Reaction, reactants)
       .ADD_OPTION(kintera::Composition, kintera::Reaction, products);
+
+  auto pyKBAtmosphereProfile =
+      py::class_<kintera::KBAtmosphereProfile>(m, "KBAtmosphereProfile");
+  pyKBAtmosphereProfile.def(py::init<>())
+      .def_readwrite("header", &kintera::KBAtmosphereProfile::header)
+      .def_readwrite("altitude", &kintera::KBAtmosphereProfile::altitude)
+      .def_readwrite("density", &kintera::KBAtmosphereProfile::density)
+      .def_readwrite("temperature", &kintera::KBAtmosphereProfile::temperature)
+      .def_readwrite("pressure", &kintera::KBAtmosphereProfile::pressure)
+      .def_readwrite("eddy_diffusion",
+                     &kintera::KBAtmosphereProfile::eddy_diffusion)
+      .def_readwrite("wind", &kintera::KBAtmosphereProfile::wind)
+      .def_readwrite("species_profiles",
+                     &kintera::KBAtmosphereProfile::species_profiles)
+      .def_readwrite(
+          "mixing_ratio_species_profiles",
+          &kintera::KBAtmosphereProfile::mixing_ratio_species_profiles);
+
+  m.def("parse_kinetics_base_atmosphere",
+        &kintera::parse_kinetics_base_atmosphere, py::arg("filepath"));
+
+  auto pyKBPunHeader = py::class_<kintera::KBPunHeader>(m, "KBPunHeader");
+  pyKBPunHeader.def(py::init<>())
+      .def_readwrite("natom", &kintera::KBPunHeader::natom)
+      .def_readwrite("nmol", &kintera::KBPunHeader::nmol)
+      .def_readwrite("nreact", &kintera::KBPunHeader::nreact)
+      .def_readwrite("npart", &kintera::KBPunHeader::npart)
+      .def_readwrite("version", &kintera::KBPunHeader::version);
+
+  auto pyKBPunSpecies = py::class_<kintera::KBPunSpecies>(m, "KBPunSpecies");
+  pyKBPunSpecies.def(py::init<>())
+      .def_readwrite("id", &kintera::KBPunSpecies::id)
+      .def_readwrite("name", &kintera::KBPunSpecies::name)
+      .def_readwrite("first_reaction", &kintera::KBPunSpecies::first_reaction)
+      .def_readwrite("n_reactions", &kintera::KBPunSpecies::n_reactions)
+      .def_readwrite("molecular_weight",
+                     &kintera::KBPunSpecies::molecular_weight)
+      .def_readwrite("composition", &kintera::KBPunSpecies::composition);
+
+  auto pyKBPunParticipant =
+      py::class_<kintera::KBPunParticipant>(m, "KBPunParticipant");
+  pyKBPunParticipant.def(py::init<>())
+      .def_readwrite("coefficient", &kintera::KBPunParticipant::coefficient)
+      .def_readwrite("species_id", &kintera::KBPunParticipant::species_id)
+      .def_readwrite("marker", &kintera::KBPunParticipant::marker);
+
+  auto pyKBPunRateBlock =
+      py::class_<kintera::KBPunRateBlock>(m, "KBPunRateBlock");
+  pyKBPunRateBlock.def(py::init<>())
+      .def_readwrite("A", &kintera::KBPunRateBlock::A)
+      .def_readwrite("b", &kintera::KBPunRateBlock::b)
+      .def_readwrite("C", &kintera::KBPunRateBlock::C)
+      .def_readwrite("D", &kintera::KBPunRateBlock::D)
+      .def_readwrite("E", &kintera::KBPunRateBlock::E)
+      .def_readwrite("F", &kintera::KBPunRateBlock::F)
+      .def_readwrite("Tmin", &kintera::KBPunRateBlock::Tmin)
+      .def_readwrite("Tmax", &kintera::KBPunRateBlock::Tmax)
+      .def_readwrite("Fc", &kintera::KBPunRateBlock::Fc)
+      .def_readwrite("Tin", &kintera::KBPunRateBlock::Tin)
+      .def_readwrite("Tout", &kintera::KBPunRateBlock::Tout);
+
+  auto pyKBPunReaction = py::class_<kintera::KBPunReaction>(m, "KBPunReaction");
+  pyKBPunReaction.def(py::init<>())
+      .def_readwrite("id", &kintera::KBPunReaction::id)
+      .def_readwrite("n_reactants", &kintera::KBPunReaction::n_reactants)
+      .def_readwrite("n_products", &kintera::KBPunReaction::n_products)
+      .def_readwrite("participants", &kintera::KBPunReaction::participants)
+      .def_readwrite("rate_blocks", &kintera::KBPunReaction::rate_blocks)
+      .def_readwrite("reactant_ids", &kintera::KBPunReaction::reactant_ids)
+      .def_readwrite("product_ids", &kintera::KBPunReaction::product_ids)
+      .def_readwrite("raw_line", &kintera::KBPunReaction::raw_line);
+
+  auto pyKBPunNetwork = py::class_<kintera::KBPunNetwork>(m, "KBPunNetwork");
+  pyKBPunNetwork.def(py::init<>())
+      .def_readwrite("header", &kintera::KBPunNetwork::header)
+      .def_readwrite("elements", &kintera::KBPunNetwork::elements)
+      .def_readwrite("species", &kintera::KBPunNetwork::species)
+      .def_readwrite("reactions", &kintera::KBPunNetwork::reactions);
+
+  m.def("parse_kinetics_base_pun", &kintera::parse_kinetics_base_pun,
+        py::arg("filepath"));
+
+  auto pyKBTitanReactionReport =
+      py::class_<kintera::KBTitanReactionReport>(m, "KBTitanReactionReport");
+  pyKBTitanReactionReport.def(py::init<>())
+      .def_readwrite("total_reactions",
+                     &kintera::KBTitanReactionReport::total_reactions)
+      .def_readwrite(
+          "selected_photolysis_reactions",
+          &kintera::KBTitanReactionReport::selected_photolysis_reactions)
+      .def_readwrite(
+          "thermal_candidate_reactions",
+          &kintera::KBTitanReactionReport::thermal_candidate_reactions)
+      .def_readwrite("missing_rate_blocks",
+                     &kintera::KBTitanReactionReport::missing_rate_blocks)
+      .def_readwrite("charged_species_count",
+                     &kintera::KBTitanReactionReport::charged_species_count)
+      .def_readwrite("charged_reactions",
+                     &kintera::KBTitanReactionReport::charged_reactions)
+      .def_readwrite(
+          "charged_thermal_candidate_reactions",
+          &kintera::KBTitanReactionReport::charged_thermal_candidate_reactions)
+      .def_readwrite("ion_mass_action_reactions",
+                     &kintera::KBTitanReactionReport::ion_mass_action_reactions)
+      .def_readwrite(
+          "dissociative_recombination_reactions",
+          &kintera::KBTitanReactionReport::dissociative_recombination_reactions)
+      .def_readwrite(
+          "selected_electron_impact_reactions",
+          &kintera::KBTitanReactionReport::selected_electron_impact_reactions)
+      .def_readwrite(
+          "electron_reactant_reactions",
+          &kintera::KBTitanReactionReport::electron_reactant_reactions)
+      .def_readwrite(
+          "electron_product_reactions",
+          &kintera::KBTitanReactionReport::electron_product_reactions)
+      .def_readwrite("cation_reactant_reactions",
+                     &kintera::KBTitanReactionReport::cation_reactant_reactions)
+      .def_readwrite("cation_product_reactions",
+                     &kintera::KBTitanReactionReport::cation_product_reactions)
+      .def_readwrite("anion_reactant_reactions",
+                     &kintera::KBTitanReactionReport::anion_reactant_reactions)
+      .def_readwrite("anion_product_reactions",
+                     &kintera::KBTitanReactionReport::anion_product_reactions)
+      .def_readwrite("charge_balanced_reactions",
+                     &kintera::KBTitanReactionReport::charge_balanced_reactions)
+      .def_readwrite(
+          "charge_imbalanced_reactions",
+          &kintera::KBTitanReactionReport::charge_imbalanced_reactions)
+      .def_readwrite("n_reactants_counts",
+                     &kintera::KBTitanReactionReport::n_reactants_counts)
+      .def_readwrite("charged_species",
+                     &kintera::KBTitanReactionReport::charged_species)
+      .def_readwrite("selected_photolysis_ids",
+                     &kintera::KBTitanReactionReport::selected_photolysis_ids)
+      .def_readwrite(
+          "charge_imbalanced_reaction_ids",
+          &kintera::KBTitanReactionReport::charge_imbalanced_reaction_ids)
+      .def_readwrite("unsupported_reaction_ids",
+                     &kintera::KBTitanReactionReport::unsupported_reaction_ids);
+
+  m.def("classify_kinetics_base_titan_reactions",
+        py::overload_cast<std::string const&, std::string const&>(
+            &kintera::classify_kinetics_base_titan_reactions),
+        py::arg("pun_path"), py::arg("run_input_path"));
 
   bind_thermo(m);
   bind_constants(m);

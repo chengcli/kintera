@@ -3,7 +3,12 @@ from __future__ import annotations
 import torch
 
 from .chemistry import build_chemistry_jacobian, build_photochemistry_jacobian
-from .matrix import SparseSystemMatrix
+from .matrix import SparseSystemMatrix, add_sparse_system_matrices
+from .source import (
+    LocalSourceTerm,
+    build_source_global_operator,
+    build_source_linearization,
+)
 from .atm_state2d import AtmState2D, SpeciesBoundaryConditions2D
 from .transport import build_transport_matrix
 
@@ -17,12 +22,17 @@ def build_implicit_operator(
     kyz: torch.Tensor | None = None,
     binary_diffusion: torch.Tensor | None = None,
     molecular_weights: torch.Tensor | None = None,
+    species_diffusion_scale: torch.Tensor | None = None,
+    density: torch.Tensor | None = None,
+    transport_form: str | None = None,
     kinetics=None,
     photo_chem=None,
     actinic_flux: torch.Tensor | None = None,
+    source_terms: list[LocalSourceTerm] | None = None,
     include_identity: bool = False,
     dt: float | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
+    charge_balance_indices: "tuple[list[int], int] | None" = None,
 ) -> SparseSystemMatrix:
     """Assemble the full implicit operator for transport and chemistry.
 
@@ -40,6 +50,9 @@ def build_implicit_operator(
         kyz=kyz,
         binary_diffusion=binary_diffusion,
         molecular_weights=molecular_weights,
+        species_diffusion_scale=species_diffusion_scale,
+        density=density,
+        form=transport_form,
         boundary_conditions=None,
     )
 
@@ -58,6 +71,11 @@ def build_implicit_operator(
         diag_update = diag_update + build_photochemistry_jacobian(
             photo_chem, state.temperature, state.concentration, actinic_flux
         )
+    if source_terms is not None:
+        diag_update = diag_update + build_source_linearization(
+            state, source_terms,
+            charge_balance_indices=charge_balance_indices,
+        ).jacobian
 
     if include_identity:
         if dt is None:
@@ -66,9 +84,126 @@ def build_implicit_operator(
         diag_update = diag_update + eye.view(1, 1, state.nspecies, state.nspecies) / dt
 
     matrix = operator.add_diagonal(diag_update)
+    if source_terms is not None:
+        global_source_operator = build_source_global_operator(state, source_terms)
+        if global_source_operator is not None:
+            matrix = add_sparse_system_matrices(matrix, global_source_operator)
     if boundary_conditions is None:
         return matrix
 
     from .transport import _apply_boundary_conditions
 
     return _apply_boundary_conditions(state, matrix, boundary_conditions)
+
+
+def build_implicit_step_system(
+    state: AtmState2D,
+    kzz: torch.Tensor,
+    dt: float,
+    *,
+    kyy: torch.Tensor | None = None,
+    kzy: torch.Tensor | None = None,
+    kyz: torch.Tensor | None = None,
+    binary_diffusion: torch.Tensor | None = None,
+    molecular_weights: torch.Tensor | None = None,
+    species_diffusion_scale: torch.Tensor | None = None,
+    density: torch.Tensor | None = None,
+    transport_form: str | None = None,
+    source_terms: list[LocalSourceTerm] | None = None,
+    c0: torch.Tensor | None = None,
+    charge_balance_indices: "tuple[list[int], int] | None" = None,
+) -> tuple[SparseSystemMatrix, torch.Tensor]:
+    """Build a backward-Euler system with linearized local source terms.
+
+    Source terms are linearized around ``state.concentration`` as
+    ``S(c_new) ~= S(c_k) + J(c_k) * (c_new - c_k)`` where ``c_k`` is taken from
+    ``state.concentration``. The returned system solves
+    ``(I - dt * (T + J(c_k))) c_new = c0 + dt * (S(c_k) - J(c_k) c_k)``.
+
+    When ``c0`` is omitted the RHS uses ``state.concentration`` itself as the
+    backward-Euler starting point — this is the original single-shot frozen
+    linearization. Pass ``c0`` explicitly to keep the BE starting point fixed
+    across Newton iterations that re-linearize at successive ``c_k``.
+    """
+
+    source_linearization = None
+    global_source_operator = None
+    if source_terms is not None:
+        source_linearization = build_source_linearization(
+            state, source_terms,
+            charge_balance_indices=charge_balance_indices,
+        )
+        global_source_operator = build_source_global_operator(state, source_terms)
+    operator = build_implicit_operator(
+        state,
+        kzz,
+        kyy=kyy,
+        kzy=kzy,
+        kyz=kyz,
+        binary_diffusion=binary_diffusion,
+        molecular_weights=molecular_weights,
+        species_diffusion_scale=species_diffusion_scale,
+        density=density,
+        transport_form=transport_form,
+        source_terms=source_terms,
+        charge_balance_indices=charge_balance_indices,
+    )
+    # Conditional matrix scaling for numerical conditioning.
+    #
+    # The natural BE system is ``(I - dt*L) c_new = c0 + dt*(S - L*c_k)``
+    # where ``L = T + J(c_k)``. This form is well-conditioned at small dt
+    # (A ≈ I) but at large dt (e.g. dt = 1e+9, |L| ≈ 4e+6) the matrix entries
+    # reach 4e+15 and we lose ~13 digits of precision when solving.
+    #
+    # The 1/dt-scaled form ``(I/dt - L) c_new = c0/dt + (S - L*c_k)`` is
+    # well-conditioned at large dt (entries ~ |L|) but at small dt (e.g.
+    # dt = 1e-15) the diagonal 1/dt = 1e+15 swamps everything and tiny
+    # rounding errors make Newton reject. So we use:
+    #   - natural form when dt < ``RESCALE_THRESHOLD`` (default 1 s)
+    #   - rescaled form when dt >= threshold
+    # Threshold is the geometric mean of dt at which the two forms have
+    # comparable conditioning, ~1 / sqrt(|L|^2). For |L|~4e+6 that's ~5e-4 s;
+    # 1 s is a safe round number on the rescaled side.
+    _RESCALE_THRESHOLD = 1.0
+    identity = torch.eye(operator.nstate, dtype=state.dtype, device=state.device)
+    if float(dt) >= _RESCALE_THRESHOLD:
+        dt_inv = 1.0 / float(dt)
+        system = SparseSystemMatrix.from_dense(
+            dt_inv * identity - operator.global_csr.to_dense(),
+            ncol=state.ncol,
+            nlyr=state.nlyr,
+            nspecies=state.nspecies,
+        )
+        rhs_c = state.concentration if c0 is None else c0
+        rhs = dt_inv * rhs_c
+        if source_linearization is not None:
+            jacobian_state = torch.einsum(
+                "clij,clj->cli",
+                source_linearization.jacobian,
+                state.concentration,
+            )
+            if global_source_operator is not None:
+                jacobian_state = jacobian_state + global_source_operator.matvec(
+                    state.concentration
+                )
+            rhs = rhs + (source_linearization.tendency - jacobian_state)
+    else:
+        system = SparseSystemMatrix.from_dense(
+            identity - float(dt) * operator.global_csr.to_dense(),
+            ncol=state.ncol,
+            nlyr=state.nlyr,
+            nspecies=state.nspecies,
+        )
+        rhs = state.concentration if c0 is None else c0
+        if source_linearization is not None:
+            jacobian_state = torch.einsum(
+                "clij,clj->cli",
+                source_linearization.jacobian,
+                state.concentration,
+            )
+            if global_source_operator is not None:
+                jacobian_state = jacobian_state + global_source_operator.matvec(
+                    state.concentration
+                )
+            rhs = rhs + float(dt) * (source_linearization.tendency - jacobian_state)
+    return system, rhs

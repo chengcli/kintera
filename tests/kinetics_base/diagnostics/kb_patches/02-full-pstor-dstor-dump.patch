@@ -1,0 +1,94 @@
+From: kintera diagnostics
+Date: 2026-05-24
+Subject: Dump full PSTOR / DSTOR per species per altitude for transport diagnostic
+
+KB writes per-species per-altitude PSTOR (production rate) and DSTOR
+(destruction rate, signed negative) into in-memory arrays inside
+OUTPUT_IMP — but only the top-3 contributing reactions per species
+per altitude are persisted to prod+loss/<species>_{prod,loss}.dat.
+
+This patch adds a second pass that writes the FULL summed PSTOR and
+DSTOR per (species, altitude) cell to prod+loss/_full_pstor_dstor.dat.
+
+Why we want it:
+  At steady state, transport_div(species, k) = -(PSTOR + DSTOR)(species, k)
+  for interior cells. With the top-3 prod+loss/ files this can't be
+  computed reliably (the tail reactions are dropped). The dumped
+  full PSTOR/DSTOR closes the diagnostic loop so kintera's transport
+  matrix (build_transport_matrix.matvec) can be compared directly
+  against KB's transport divergence at the converged state.
+
+Effect:
+  - New file: prod+loss/_full_pstor_dstor.dat
+  - One line per (species, altitude) cell, in IV / alt_idx order.
+  - Columns: IV, alt_idx, PSTOR (cm^-3 s^-1), DSTOR (cm^-3 s^-1).
+  - The dump file is opened with STATUS='REPLACE' on each pass through
+    OUTPUT_IMP so the LAST pass (final flow species) wins.
+  - Does NOT affect the KB simulation state.
+
+How to apply (from the KB checkout root):
+  patch -p1 < diagnostics/kb_patches/02-full-pstor-dstor-dump.patch
+
+Consumer:
+  diagnostic_tools/transport_vs_kb.py reads
+  prod+loss/_full_pstor_dstor.dat, reconstructs -(PSTOR + DSTOR) per
+  species per altitude, and compares against kintera's transport
+  divergence on the same KB-converged state.
+
+Finding from running this diagnostic (2026-05-24):
+  3641 interior (species, level) cells. Median |kt − kb|/max ratio = 1.0,
+  90th pctile = 1.004, only 0.3% of cells with rel diff < 0.1. The
+  pattern is opposite-sign at almost all cells, which is the signature
+  of kintera doing ∂_z(K ∂_z c) while KB does ∂_z(K n_tot ∂_z(c/n_tot))
+  (per kinetgen2X.F:15531 "diffusion uses xn = mixing ratio"). Logged
+  in MEMORY.md under project_kintera_transport_form.md.
+
+---
+ src/KINETGENX/kinetgen1X.F | 34 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 34 insertions(+)
+
+diff --git a/src/KINETGENX/kinetgen1X.F b/src/KINETGENX/kinetgen1X.F
+--- a/src/KINETGENX/kinetgen1X.F
++++ b/src/KINETGENX/kinetgen1X.F
+@@ -10996,6 +10996,40 @@
+              enddo
+              close(89)
+  8888     continue
++
++! Full per-species per-altitude PSTOR/DSTOR dump (sam 2026-05-24):
++! Each pass overwrites; final file (last pass) contains chem prod/loss
++! summed over ALL reactions. At steady state, transport_div(species,k)
++! = DSTOR(species,k) - PSTOR(species,k) for non-boundary species. Used
++! by diagnostic_tools/snapshot_transport_balance.py to verify kintera's
++! transport divergence against KB.
++          OPEN(94, FILE='prod+loss/_full_pstor_dstor.dat',
++     >         STATUS='REPLACE')
++          WRITE(94,*) 'IV   alt_idx   PSTOR(cm^-3 s^-1)' //
++     >                '   DSTOR(cm^-3 s^-1)'
++          DO J = 1,NVARY
++            IV = IVARY(J)
++            DO K = 1,NALT
++              WRITE(94,'(I5,2X,I4,2(2X,1PE13.5))') IV, K,
++     >          PSTOR(IV,1,1,K), DSTOR(IV,1,1,K)
++            ENDDO
++          ENDDO
++          CLOSE(94)
++
++! Full SRATE dump (sam 2026-05-24): per-reaction per-altitude rates.
++! Used to verify whether KB's prod+loss header "rxn 195" really uses
++! the formula we expect, or whether some other ZK slot is leaking in.
++          OPEN(95, FILE='prod+loss/_full_srate.dat',
++     >         STATUS='REPLACE')
++          WRITE(95,*) 'rxn  alt_idx  SRATE(cm^-3 s^-1)'
++          DO IX = 1,NREACT
++            DO K = 1,NALT
++              IF (SRATE(IX,1,1,K) .NE. 0.0) THEN
++                WRITE(95,'(I5,2X,I4,2X,1PE13.5)') IX, K,
++     >            SRATE(IX,1,1,K)
++              ENDIF
++            ENDDO
++          ENDDO
++          CLOSE(95)
+
+           DO 2639 IX=1,NREACT
+             DO 2637 IY=1,NVARY

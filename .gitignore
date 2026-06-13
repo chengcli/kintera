@@ -31,10 +31,32 @@ CLAUDE.md
 
 # test outputs
 examples/*.png
+diagnostics/KINETICS-base-compare/
+diagnostics/kinetics_base_oracle_runs/
+diagnostics/kinetics_base_titan_budget_trace/
+diagnostics/**/titan-*-steps/
+diagnostics/**/prod+loss/
+diagnostics/**/kintitan.out.pun
+diagnostics/**/kintitan.res
+diagnostics/**/titandebug.dat
+# diagnostic run-dirs relocated under the KB-titan test case
+tests/kinetics_base/diagnostics/KINETICS-base-compare/
+tests/kinetics_base/diagnostics/KINETICS-base-compare
+tests/kinetics_base/diagnostics/kinetics_base_oracle_runs/
+tests/kinetics_base/diagnostics/kinetics_base_titan_budget_trace/
+tests/kinetics_base/**/titan-*-steps/
+tests/kinetics_base/**/prod+loss/
+tests/kinetics_base/**/kintitan.out.pun
+tests/kinetics_base/**/kintitan.res
+tests/kinetics_base/**/titandebug.dat
 
 # outputs
 *.png
 examples/*.pdf
+
+# dashboard artifacts (generated)
+*.html
+dashboard/make_*.py
 
 # vulcan test temp
 tests/vulcan/cho/_*.py
@@ -49,3 +71,13 @@ tests/vulcan/VULCAN/
 
 # agent
 .codex
+.claude/
+.cursor/
+
+# design / planning docs (working artifacts)
+openspec/
+FULL_KINETICS_SUPPORT_PLAN.md
+IMPLICIT_INTEGRATION_GAP_ANALYSIS.md
+ION_CHEMISTRY_SUPPORT_PLAN.md
+KINETICS_BASE_TITAN_GAP_STATUS.md
+python/kinetics_base/titan/ARCHITECTURE.md

@@ -43,10 +43,14 @@ void bind_photolysis(py::module& m) {
                   temperature)
       .ADD_OPTION(std::vector<double>, kintera::PhotolysisOptionsImpl,
                   cross_section)
+      .ADD_OPTION(std::vector<int>, kintera::PhotolysisOptionsImpl,
+                  cross_section_nslabs)
       .ADD_OPTION(std::vector<std::vector<kintera::Composition>>,
                   kintera::PhotolysisOptionsImpl, branches)
       .ADD_OPTION(std::vector<std::vector<std::string>>,
-                  kintera::PhotolysisOptionsImpl, branch_names);
+                  kintera::PhotolysisOptionsImpl, branch_names)
+      .ADD_OPTION(std::vector<double>, kintera::PhotolysisOptionsImpl,
+                  quadrature_weights);
 
   auto pyPhotoChemOptions =
       py::class_<kintera::PhotoChemOptionsImpl, kintera::SpeciesThermoImpl,
