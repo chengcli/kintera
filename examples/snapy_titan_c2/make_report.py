@@ -93,7 +93,26 @@ def main():
     files = sorted(glob.glob(f"{args.run_dir}/*.out2.*.nc"))
     ds0, dsN = xr.open_dataset(files[0]), xr.open_dataset(files[-1])
     n3, n2 = ds0.sizes["x3"], ds0.sizes["x2"]
-    lon, lat, mu0 = lonlat_mosaic(args.config, (n3, n2))
+    # snapy writes lon/lat into the prim output -- use them directly when
+    # available (robust to any block/tile mosaic layout); fall back to mesh
+    # reconstruction otherwise.
+    out1 = sorted(glob.glob(f"{args.run_dir}/*.out1.*.nc"))
+    ds1 = xr.open_dataset(out1[0]) if out1 else None
+    if ds1 is not None and "lon" in ds1 and "lat" in ds1:
+        import yaml as _yaml
+        lon = np.asarray(ds1["lon"].values, dtype=np.float64)
+        lat = np.asarray(ds1["lat"].values, dtype=np.float64)
+        while lon.ndim > 2:                      # drop time/level dims
+            lon, lat = lon[0], lat[0]
+        if np.abs(lon).max() > 2 * np.pi:        # degrees already
+            lon, lat = np.radians(lon), np.radians(lat)
+        cfg = _yaml.safe_load(open(args.config))
+        p = cfg["problem"]
+        mu0 = (np.sin(lat) * np.sin(np.radians(p.get("subsolar_lat_deg", 0.0)))
+               + np.cos(lat) * np.cos(np.radians(p.get("subsolar_lat_deg", 0.0)))
+               * np.cos(lon - np.radians(p.get("subsolar_lon_deg", 0.0))))
+    else:
+        lon, lat, mu0 = lonlat_mosaic(args.config, (n3, n2))
     lon_d, lat_d = np.degrees(lon), np.degrees(lat)
     ktop = ds0.sizes["x1"] - 1            # top interior layer
     kmid = ds0.sizes["x1"] // 2
