@@ -140,16 +140,42 @@ CUSTOM_RATES = {
 }
 
 
+GAMMA_ROS2 = 1.0 + 1.0 / 2.0 ** 0.5    # 1 + 1/sqrt(2): the L-stable ROS2 root
+
+
+def _batched_solve(A: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Solve A x = b (A:(...,n,n), b:(...,n)) with a Tikhonov fallback for the
+    singular stiff cells (an algebraic photochemical balance can make A exactly
+    singular at large dt: CUDA ``linalg.solve`` RAISES, CPU may return
+    inf/nan)."""
+    n = A.shape[-1]
+    eye = torch.eye(n, dtype=A.dtype, device=A.device)
+    try:
+        x = torch.linalg.solve(A, b.unsqueeze(-1)).squeeze(-1)
+    except RuntimeError:                                       # _LinAlgError
+        lam = 1e-10 * A.abs().amax(dim=(-2, -1), keepdim=True).clamp_min(1e-300)
+        x = torch.linalg.solve(A + lam * eye, b.unsqueeze(-1)).squeeze(-1)
+    bad = ~torch.isfinite(x).all(dim=-1)
+    if bad.any():
+        lam = 1e-10 * A[bad].abs().amax(dim=(-2, -1),
+                                        keepdim=True).clamp_min(1e-300)
+        x[bad] = torch.linalg.solve(A[bad] + lam * eye,
+                                    b[bad].unsqueeze(-1)).squeeze(-1)
+    return x
+
+
 def evolve_implicit_torch(rate: torch.Tensor, stoich: torch.Tensor,
                           jac: torch.Tensor, dt: float) -> torch.Tensor:
     """Linearized backward-Euler step, mirroring ``kintera.evolve_implicit``:
     solve (I/dt - S J) delta = S rate  for delta (..., nsp).
 
-    Pure batched torch (``linalg.solve`` of nsp x nsp systems) so it runs on
-    any device; kintera's compiled CUDA kernel requests more shared memory
-    than available for this network size (73 reactions x 16 species).
-    Verified equivalent to ``kintera.evolve_implicit`` on CPU in
-    ``test_titan_c2.py::test_b0_evolve_matches_kintera``.
+    Pure batched torch so it runs on any device; kintera's compiled CUDA
+    kernel requests more shared memory than available for this network size
+    (73 reactions x 16 species). Verified equivalent to
+    ``kintera.evolve_implicit`` on CPU in
+    ``test_titan_c2.py::test_b0_evolve_matches_kintera``. Retained for that
+    gate and as the first-order reference; the runtime integrator is ROS2
+    (:meth:`TitanC2Chemistry._ros2_substep`).
 
     Args:
         rate: (..., nrxn); stoich: (nsp, nrxn); jac: (..., nrxn, nsp)
@@ -158,22 +184,7 @@ def evolve_implicit_torch(rate: torch.Tensor, stoich: torch.Tensor,
     b = torch.einsum("sr,...r->...s", stoich, rate)            # S rate
     sj = torch.einsum("sr,...rn->...sn", stoich, jac)          # S J
     eye = torch.eye(nsp, dtype=rate.dtype, device=rate.device)
-    A = eye / dt - sj
-    # Stiff cells can make A exactly singular at large dt (an algebraic
-    # photochemical balance): CUDA linalg.solve RAISES on those, CPU may
-    # return inf/nan. Handle both with a tiny Tikhonov regularization.
-    try:
-        x = torch.linalg.solve(A, b.unsqueeze(-1)).squeeze(-1)
-    except RuntimeError:                                       # _LinAlgError
-        lam = 1e-10 * A.abs().amax(dim=(-2, -1), keepdim=True).clamp_min(1e-300)
-        x = torch.linalg.solve(A + lam * eye, b.unsqueeze(-1)).squeeze(-1)
-    bad = ~torch.isfinite(x).all(dim=-1)
-    if bad.any():
-        Ab = A[bad]
-        lam = 1e-10 * Ab.abs().amax(dim=(-2, -1), keepdim=True).clamp_min(1e-300)
-        x[bad] = torch.linalg.solve(Ab + lam * eye,
-                                    b[bad].unsqueeze(-1)).squeeze(-1)
-    return x
+    return _batched_solve(eye / dt - sj, b)
 
 
 def _parse_side(side: str) -> dict[str, int]:
@@ -344,27 +355,79 @@ class TitanC2Chemistry:
 
         return out_rate, out_jac
 
+    def _ros2_substep(self, temp: torch.Tensor, pres: torch.Tensor,
+                      conc: torch.Tensor, jrate: torch.Tensor | None,
+                      dt: float) -> tuple[torch.Tensor, torch.Tensor]:
+        """One 2nd-order, L-stable linearly-implicit Rosenbrock (ROS2) step.
+
+        Returns ``(delta, err)``: the 2nd-order concentration increment and an
+        embedded 2nd/1st-order local-error vector (~O(dt^2) for smooth
+        solutions) used for step control. Two rate evaluations, one Jacobian,
+        one factorization shared across both stages (the Rosenbrock property).
+        Element-conserving: the stoichiometry annihilates any conserved-atom
+        vector, so each stage solve preserves it exactly (up to the >=0 clamp).
+        Tableau validated against ``kintera.evolve_ros2`` to ~1e-12 rel.
+        """
+        g = GAMMA_ROS2
+        rate1, jac = self.rates(temp, pres, conc, jrate)
+        nsp = self.nsp
+        F1 = torch.einsum("sr,...r->...s", self.stoich, rate1)
+        J = torch.einsum("sr,...rn->...sn", self.stoich, jac)
+        eye = torch.eye(nsp, dtype=conc.dtype, device=conc.device)
+        W = eye / (g * dt) - J
+        k1 = _batched_solve(W, F1)
+        conc2 = (conc + k1 / g).clamp_min(0.0)
+        rate2, _ = self.rates(temp, pres, conc2, jrate)        # stage 2: rate only
+        F2 = torch.einsum("sr,...r->...s", self.stoich, rate2)
+        k2 = _batched_solve(W, F2 - (2.0 / (g * dt)) * k1)
+        delta = (3.0 / (2.0 * g)) * k1 + (1.0 / (2.0 * g)) * k2
+        err = 0.5 * (k2 - k1)
+        return delta, err
+
     def advance(self, temp: torch.Tensor, pres: torch.Tensor,
                 scalar_s: torch.Tensor, dt: float,
                 jrate: torch.Tensor | None = None,
-                dt_max: float | None = None) -> None:
-        """Advance chemistry by dt (in-place on scalar_s), with optional
-        sub-stepping for accuracy.
+                rtol: float = 5.0e-2, atol: float = 1.0e-15,
+                dt_max: float | None = None,
+                max_substeps: int = 400) -> None:
+        """Advance chemistry by dt (in-place on scalar_s) with an adaptive,
+        block-synchronized ROS2 integrator.
 
-        Each sub-step is one linearized backward-Euler solve re-evaluated at
-        the current state. A single big step is L-stable but only first-order
-        and can grossly mis-predict stiff radicals when the forcing changes
-        fast within dt -- e.g. an advected parcel crossing the day/night
-        terminator (CH3 error ~5-10x at dt=66 s; <1% at dt~10 s). Set
-        ``dt_max`` (e.g. 10 s) to cap the sub-step; None/0 = single step
-        (backward compatible -- the Gate tests rely on this default).
+        Each sub-step is a 2nd-order Rosenbrock step (:meth:`_ros2_substep`)
+        with an embedded error estimate. ONE step size is chosen for the whole
+        block from the worst-cell error norm, rather than per-cell: a dense
+        batched solve processes every cell regardless of whether it has
+        converged, and the GCM barrier-syncs ranks each hydro step, so per-cell
+        adaptivity buys no wall time here ("they wait anyway"). What it does
+        buy over a hand-tuned fixed sub-step is *error control* -- the
+        controller spends sub-steps only where the chemistry is stiff (parcels
+        crossing the day/night terminator, where a single first-order step
+        overshoots radicals 5-10x).
+
+        Controller: ROS2 (order 2) with an embedded order-1 estimate, so the
+        step exponent is 1/(1+1) = 1/2; safety factor 1.4 (Frey et al. 2025,
+        the default 0.9 systematically over-shrinks). Accept when the
+        block-max scaled error <= 1, else shrink and retry. ``atol`` is in
+        mol/m^3: the reactive species here span 1e-12..1e-16 while the bath is
+        ~1e-5, so atol=1e-15 keeps the species that matter (CH3/H/C2Hx, all
+        >~atol/rtol) in the rtol-controlled regime without chasing negligible
+        trace abundances to zero.
+
+        The step is floored at ``dt / max_substeps`` and force-accepted there,
+        so the integration always covers the full ``dt`` in at most
+        ``max_substeps`` accepted steps (no silent under-integration) even on a
+        pathologically stiff cell -- e.g. a radical building from exactly zero,
+        which only occurs at IC spin-up, not in the near-equilibrium GCM
+        interior where the controller takes a handful of steps.
 
         Args:
-            temp, pres: (...) grid fields
+            temp, pres: (...) grid fields [K], [Pa]
             scalar_s: (nsp, ...) species partial densities [kg/m^3]
             dt: total chemistry time step [s]
             jrate: (..., nphoto) photolysis rates or None (held fixed over dt)
-            dt_max: max sub-step [s]; n_sub = ceil(dt/dt_max)
+            rtol, atol: relative / absolute tolerance for the error norm
+            dt_max: optional hard cap on the sub-step [s] (None -> dt)
+            max_substeps: floor the sub-step at dt/max_substeps; cap the count
         """
         grid = temp.shape
         conc0 = (scalar_s.movedim(0, -1) / self.mw).reshape(-1, self.nsp)
@@ -372,14 +435,24 @@ class TitanC2Chemistry:
         flat_p = pres.reshape(-1)
         flat_j = jrate.reshape(-1, self.nphoto) if jrate is not None else None
 
-        nsub = (1 if (dt_max is None or dt_max <= 0.0)
-                else max(1, int(np.ceil(dt / dt_max))))
-        sub = dt / nsub
         conc = conc0.clamp_min(0.0)
-        for _ in range(nsub):
-            rate, jac = self.rates(flat_t, flat_p, conc, flat_j)
-            conc = (conc + evolve_implicit_torch(rate, self.stoich, jac, sub)
-                    ).clamp_min(0.0)
+        hmax = dt if (dt_max is None or dt_max <= 0.0) else min(dt, float(dt_max))
+        hmin = dt / max_substeps
+        t, h, n = 0.0, hmax, 0
+        while t < dt * (1.0 - 1e-9) and n < max_substeps:
+            h = max(hmin, min(h, dt - t, hmax))
+            delta, err = self._ros2_substep(flat_t, flat_p, conc, flat_j, h)
+            scale = atol + rtol * conc.abs()
+            enorm = (err.abs() / scale).amax().item()          # block-max
+            if enorm <= 1.0 or h <= hmin * (1.0 + 1e-9):       # accept (forced at floor)
+                conc = (conc + delta).clamp_min(0.0)
+                t += h
+                n += 1
+                fac = 5.0 if enorm <= 1e-30 else min(5.0, max(1.0, 1.4 * enorm ** -0.5))
+                h = h * fac
+            else:                                              # reject, shrink
+                h = max(hmin, h * min(0.9, max(0.2, 1.4 * enorm ** -0.5)))
+        self._last_nsub = n
 
         ds = ((conc - conc0) * self.mw).reshape(*grid, self.nsp).movedim(-1, 0)
         scalar_s.add_(ds)
