@@ -357,16 +357,20 @@ class TitanC2Chemistry:
 
     def _ros2_substep(self, temp: torch.Tensor, pres: torch.Tensor,
                       conc: torch.Tensor, jrate: torch.Tensor | None,
-                      dt: float) -> tuple[torch.Tensor, torch.Tensor]:
+                      dt) -> tuple[torch.Tensor, torch.Tensor]:
         """One 2nd-order, L-stable linearly-implicit Rosenbrock (ROS2) step.
 
         Returns ``(delta, err)``: the 2nd-order concentration increment and an
         embedded 2nd/1st-order local-error vector (~O(dt^2) for smooth
         solutions) used for step control. Two rate evaluations, one Jacobian,
         one factorization shared across both stages (the Rosenbrock property).
-        Element-conserving: the stoichiometry annihilates any conserved-atom
-        vector, so each stage solve preserves it exactly (up to the >=0 clamp).
-        Tableau validated against ``kintera.evolve_ros2`` to ~1e-12 rel.
+        Element-conserving for any step size: the stoichiometry annihilates any
+        conserved-atom vector, so each stage solve preserves it exactly (up to
+        the >=0 clamp). Tableau validated against ``kintera.evolve_ros2`` ~1e-12.
+
+        ``dt`` may be a python float (one step size for all cells) or a per-cell
+        tensor of shape ``conc.shape[:-1]`` (each cell its own step -- used by
+        the compacting adaptive controller).
         """
         g = GAMMA_ROS2
         rate1, jac = self.rates(temp, pres, conc, jrate)
@@ -374,12 +378,17 @@ class TitanC2Chemistry:
         F1 = torch.einsum("sr,...r->...s", self.stoich, rate1)
         J = torch.einsum("sr,...rn->...sn", self.stoich, jac)
         eye = torch.eye(nsp, dtype=conc.dtype, device=conc.device)
-        W = eye / (g * dt) - J
+        if torch.is_tensor(dt):
+            W = eye * (1.0 / (g * dt))[..., None, None] - J    # per-cell diag scale
+            c21 = (2.0 / (g * dt))[..., None]
+        else:
+            W = eye / (g * dt) - J
+            c21 = 2.0 / (g * dt)
         k1 = _batched_solve(W, F1)
         conc2 = (conc + k1 / g).clamp_min(0.0)
         rate2, _ = self.rates(temp, pres, conc2, jrate)        # stage 2: rate only
         F2 = torch.einsum("sr,...r->...s", self.stoich, rate2)
-        k2 = _batched_solve(W, F2 - (2.0 / (g * dt)) * k1)
+        k2 = _batched_solve(W, F2 - c21 * k1)
         delta = (3.0 / (2.0 * g)) * k1 + (1.0 / (2.0 * g)) * k2
         err = 0.5 * (k2 - k1)
         return delta, err
@@ -390,68 +399,78 @@ class TitanC2Chemistry:
                 rtol: float = 5.0e-2, atol: float = 1.0e-15,
                 dt_max: float | None = None,
                 max_substeps: int = 400) -> None:
-        """Advance chemistry by dt (in-place on scalar_s) with an adaptive,
-        block-synchronized ROS2 integrator.
+        """Advance chemistry by dt (in-place on scalar_s) with a per-cell
+        adaptive, compacting ROS2 integrator.
 
-        Each sub-step is a 2nd-order Rosenbrock step (:meth:`_ros2_substep`)
-        with an embedded error estimate. ONE step size is chosen for the whole
-        block from the worst-cell error norm, rather than per-cell: a dense
-        batched solve processes every cell regardless of whether it has
-        converged, and the GCM barrier-syncs ranks each hydro step, so per-cell
-        adaptivity buys no wall time here ("they wait anyway"). What it does
-        buy over a hand-tuned fixed sub-step is *error control* -- the
-        controller spends sub-steps only where the chemistry is stiff (parcels
-        crossing the day/night terminator, where a single first-order step
-        overshoots radicals 5-10x).
+        Each cell marches its own time from 0 to dt with its own ROS2 step size
+        (:meth:`_ros2_substep`), chosen from that cell's embedded error
+        estimate. Once a cell reaches dt it is *removed from the active batch*,
+        so the batched solve shrinks to only the still-unconverged cells. This
+        is the key to GPU efficiency here: the stiff cells are a small minority
+        (the day/night terminator strip the jet keeps perturbing, plus the
+        dense lower-boundary cells), and they need ~100 sub-steps; a
+        block-synchronized scheme would force that count on every cell in the
+        block, but compaction lets the ~90% easy cells finish in a handful of
+        sub-steps and drop out, leaving the expensive tail to run on a tiny
+        gathered set.
 
-        Controller: ROS2 (order 2) with an embedded order-1 estimate, so the
-        step exponent is 1/(1+1) = 1/2; safety factor 1.4 (Frey et al. 2025,
-        the default 0.9 systematically over-shrinks). Accept when the
-        block-max scaled error <= 1, else shrink and retry. ``atol`` is in
-        mol/m^3: the reactive species here span 1e-12..1e-16 while the bath is
-        ~1e-5, so atol=1e-15 keeps the species that matter (CH3/H/C2Hx, all
-        >~atol/rtol) in the rtol-controlled regime without chasing negligible
-        trace abundances to zero.
-
-        The step is floored at ``dt / max_substeps`` and force-accepted there,
-        so the integration always covers the full ``dt`` in at most
-        ``max_substeps`` accepted steps (no silent under-integration) even on a
-        pathologically stiff cell -- e.g. a radical building from exactly zero,
-        which only occurs at IC spin-up, not in the near-equilibrium GCM
-        interior where the controller takes a handful of steps.
+        Controller (per cell): ROS2 (order 2) with an embedded order-1
+        estimate, step exponent 1/(1+1)=1/2, safety factor 1.4 (Frey et al.
+        2025; the default 0.9 over-shrinks). Accept when the cell's scaled
+        error <= 1. ``atol`` is in mol/m^3: the reactive species span
+        1e-12..1e-16 while the bath is ~1e-5, so atol=1e-15 keeps the species
+        that matter (CH3/H/C2Hx) in the rtol-controlled regime without chasing
+        negligible trace abundances to zero. The step is floored at
+        dt/max_substeps and force-accepted (held, not grown) there, so every
+        cell covers the full dt in at most ~max_substeps accepted steps -- no
+        silent under-integration even on a radical building from exactly zero.
 
         Args:
             temp, pres: (...) grid fields [K], [Pa]
             scalar_s: (nsp, ...) species partial densities [kg/m^3]
             dt: total chemistry time step [s]
             jrate: (..., nphoto) photolysis rates or None (held fixed over dt)
-            rtol, atol: relative / absolute tolerance for the error norm
+            rtol, atol: relative / absolute tolerance for the per-cell error
             dt_max: optional hard cap on the sub-step [s] (None -> dt)
-            max_substeps: floor the sub-step at dt/max_substeps; cap the count
+            max_substeps: floor the sub-step at dt/max_substeps
         """
         grid = temp.shape
         conc0 = (scalar_s.movedim(0, -1) / self.mw).reshape(-1, self.nsp)
         flat_t = temp.reshape(-1)
         flat_p = pres.reshape(-1)
         flat_j = jrate.reshape(-1, self.nphoto) if jrate is not None else None
+        ncell = conc0.shape[0]
+        dev, dty = conc0.device, conc0.dtype
 
         conc = conc0.clamp_min(0.0)
         hmax = dt if (dt_max is None or dt_max <= 0.0) else min(dt, float(dt_max))
         hmin = dt / max_substeps
-        t, h, n = 0.0, hmax, 0
-        while t < dt * (1.0 - 1e-9) and n < max_substeps:
-            h = max(hmin, min(h, dt - t, hmax))
-            delta, err = self._ros2_substep(flat_t, flat_p, conc, flat_j, h)
-            scale = atol + rtol * conc.abs()
-            enorm = (err.abs() / scale).amax().item()          # block-max
-            if enorm <= 1.0 or h <= hmin * (1.0 + 1e-9):       # accept (forced at floor)
-                conc = (conc + delta).clamp_min(0.0)
-                t += h
-                n += 1
-                fac = 5.0 if enorm <= 1e-30 else min(5.0, max(1.0, 1.4 * enorm ** -0.5))
-                h = h * fac
-            else:                                              # reject, shrink
-                h = max(hmin, h * min(0.9, max(0.2, 1.4 * enorm ** -0.5)))
+        tcell = torch.zeros(ncell, dtype=dty, device=dev)        # per-cell time
+        hcell = torch.full((ncell,), hmax, dtype=dty, device=dev)
+        active = torch.arange(ncell, device=dev)                 # unconverged cells
+        n, cap = 0, 2 * max_substeps
+        while active.numel() > 0 and n < cap:
+            n += 1
+            h = torch.minimum(hcell[active], dt - tcell[active]).clamp_min(hmin)
+            cj = flat_j[active] if flat_j is not None else None
+            delta, err = self._ros2_substep(flat_t[active], flat_p[active],
+                                            conc[active], cj, h)
+            scale = atol + rtol * conc[active].abs()
+            enorm = (err.abs() / scale).amax(dim=-1)             # per-cell error
+            at_floor = h <= hmin * (1.0 + 1e-9)
+            converged = enorm <= 1.0
+            accept = converged | at_floor
+            acc = active[accept]
+            conc[acc] = (conc[acc] + delta[accept]).clamp_min(0.0)
+            tcell[acc] = tcell[acc] + h[accept]
+            # converged -> grow; rejected -> shrink; floor-forced -> hold at hmin
+            fac = 1.4 * enorm.clamp_min(1e-30) ** -0.5
+            new_h = torch.where(converged, h * fac.clamp(1.0, 5.0),
+                                (h * fac.clamp(0.2, 0.9)).clamp_min(hmin))
+            new_h = torch.where(at_floor & ~converged,
+                                torch.full_like(h, hmin), new_h)
+            hcell[active] = new_h
+            active = active[tcell[active] < dt * (1.0 - 1e-9)]
         self._last_nsub = n
 
         ds = ((conc - conc0) * self.mw).reshape(*grid, self.nsp).movedim(-1, 0)
