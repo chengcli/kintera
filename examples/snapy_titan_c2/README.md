@@ -87,17 +87,30 @@ VIRTUAL_ENV=~/pyenv ~/pyenv/bin/python make_report.py \
 | | CPU | GPU | speedup |
 |---|---|---|---|
 | RT (py2sess actinic flux) | 474 ms | 22 ms | **21×** |
-| chemistry (73 rxns, implicit) | 1565 ms | 27 ms | **58×** |
+| chemistry (73 rxns, one implicit solve) | 1565 ms | 27 ms | **58×** |
 | total per step | 2038 ms | 50 ms | **41×** |
+
+The chemistry row is **one** implicit solve. The adaptive ROS2 integrator takes
+several sub-steps per hydro step (one per stiff cell, via compaction), so the
+real per-step chemistry cost scales with the sub-step count — see
+[INTEGRATOR.md](INTEGRATOR.md) for the measured GCM breakdown and tuning.
+
+## Chemistry integrator
+
+A per-cell adaptive, compacting **ROS2** integrator (2nd-order, L-stable,
+element-conserving). Tuning — the `chem_rtol` / `max_substeps` knobs, the
+stiffness cliff, and how the recommendation changes with the dynamics grid —
+is documented in **[INTEGRATOR.md](INTEGRATOR.md)**. Short version: the default
+`chem_rtol = 0.1` is a coarse-grid (dt≈66 s) choice; tighten to 0.05 on finer
+grids, where chemistry stops being the bottleneck.
 
 ## Caveats
 
-- `chem_accel` in the case yaml multiplies ONLY the chemistry timestep — a
-  demo knob to make slow C2 buildup visible in short runs; set 1.0 for
-  physical runs.
-- The positivity clamp makes the implicit step non-conservative when the
-  linearization overshoots on stiff radicals (~1e-5 atoms per 1000 h of
-  forcing at dt=1 h; far smaller at GCM dt).
+- The positivity clamp is the only source of atom drift (ROS2 itself is exactly
+  element-conserving); it fires when a stiff radical's linearized increment
+  overshoots below zero, and is negligible at GCM dt.
+- The dense lower-boundary cells (~100 km) are floor-limited at the current grid
+  (~7–13% error there, below the 150–300 km science region) — see INTEGRATOR.md.
 - py2sess is GPL-3.0 — used as a pip runtime dependency of this example only
   (no code vendored).
 - Pure absorption (ssa=0): adding Titan haze scattering needs a
