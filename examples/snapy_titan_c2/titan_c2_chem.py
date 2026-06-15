@@ -144,23 +144,40 @@ GAMMA_ROS2 = 1.0 + 1.0 / 2.0 ** 0.5    # 1 + 1/sqrt(2): the L-stable ROS2 root
 
 
 def _batched_solve(A: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
-    """Solve A x = b (A:(...,n,n), b:(...,n)) with a Tikhonov fallback for the
-    singular stiff cells (an algebraic photochemical balance can make A exactly
-    singular at large dt: CUDA ``linalg.solve`` RAISES, CPU may return
-    inf/nan)."""
+    """Solve A x = b (A:(...,n,n), b:(...,n)) robustly.
+
+    The well-conditioned path (GCM dt) is a single direct solve. For the
+    singular cells -- W = I/(g dt) - J -> -J at very large dt, whose
+    conservation null space makes it rank-deficient (CUDA ``linalg.solve``
+    RAISES, CPU returns inf/nan) -- escalate Tikhonov regularization and, as a
+    last resort, fall back to least squares (minimum-norm, never raises). The
+    floored stiff cells thus get an approximate-but-bounded step instead of
+    crashing; well-conditioned cells are untouched."""
     n = A.shape[-1]
     eye = torch.eye(n, dtype=A.dtype, device=A.device)
     try:
         x = torch.linalg.solve(A, b.unsqueeze(-1)).squeeze(-1)
-    except RuntimeError:                                       # _LinAlgError
-        lam = 1e-10 * A.abs().amax(dim=(-2, -1), keepdim=True).clamp_min(1e-300)
-        x = torch.linalg.solve(A + lam * eye, b.unsqueeze(-1)).squeeze(-1)
+    except Exception:                       # torch._C._LinAlgError on singular
+        x = b.new_full(b.shape, float("nan"))
     bad = ~torch.isfinite(x).all(dim=-1)
     if bad.any():
-        lam = 1e-10 * A[bad].abs().amax(dim=(-2, -1),
-                                        keepdim=True).clamp_min(1e-300)
-        x[bad] = torch.linalg.solve(A[bad] + lam * eye,
-                                    b[bad].unsqueeze(-1)).squeeze(-1)
+        Ab, bb = A[bad], b[bad]
+        scale = Ab.abs().amax(dim=(-2, -1), keepdim=True).clamp_min(1e-300)
+        done = False
+        for lam_rel in (1e-8, 1e-5, 1e-2):
+            try:
+                xb = torch.linalg.solve(Ab + lam_rel * scale * eye,
+                                        bb.unsqueeze(-1)).squeeze(-1)
+            except Exception:
+                continue
+            if torch.isfinite(xb).all():
+                x[bad] = xb
+                done = True
+                break
+        if not done:                        # minimum-norm least squares
+            xb = torch.linalg.lstsq(Ab + 1e-5 * scale * eye,
+                                    bb.unsqueeze(-1)).solution.squeeze(-1)
+            x[bad] = torch.nan_to_num(xb)
     return x
 
 
