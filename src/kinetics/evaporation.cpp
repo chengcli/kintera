@@ -90,7 +90,12 @@ torch::Tensor EvaporationImpl::forward(
     torch::Tensor T, torch::Tensor P, torch::Tensor C,
     std::map<std::string, torch::Tensor> const& other) {
   // expand T if not yet
-  auto temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
+  auto temp = T;
+  if (T.sizes() == P.sizes()) {
+    auto vec = T.sizes().vec();
+    vec.push_back(diff_c.size(0));
+    temp = T.unsqueeze(-1).expand(vec);
+  }
 
   // expand C if not yet
   auto conc = C.dim() == temp.dim() ? C.unsqueeze(-1) : C;
