@@ -5,12 +5,18 @@ import ctypes
 import torch
 import pydisort
 import pyharp
-
-_native_lib = Path(__file__).with_name("lib") / "libkintera_release.dylib"
-if _native_lib.exists():
-    ctypes.CDLL(str(_native_lib), mode=ctypes.RTLD_GLOBAL)
+import kintera
 
 from .kintera import *
+
+def _add_packaged_resource_directory() -> None:
+    data_dir = Path(kintera.__file__).with_name("data")
+    if data_dir.is_dir():
+        kintera.add_resource_directory(str(data_dir))
+
+
+_add_packaged_resource_directory()
+
 from .atm2d import *
 from .kinetics_base_titan import *
 
