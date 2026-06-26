@@ -8,6 +8,54 @@
 
 namespace kintera {
 
+namespace {
+// ---- NASA-9 thermo (opt-in: SpeciesThermo.use_nasa9_cp) ----
+// T-dependent cp/cv/internal-energy for species that carry NASA-9 data (e.g. H2 rotational/vibrational),
+// leaving species without NASA-9 data (lumped "dry", condensates) exactly on the constant-cref_R baseline.
+//   cp/R = a0/T^2 + a1/T + a2 + a3 T + a4 T^2 + a5 T^3 + a6 T^4
+//   h/R  = -a0/T + a1 lnT + a2 T + a3 T^2/2 + a4 T^3/3 + a5 T^4/4 + a6 T^5/5 + a7  (a7=b1; H continuous at Tmid)
+// Internal energy e/R = h/R - T (ideal gas); the deviation (h(T)-h(T0)) - (T-T0) is referenced to T0 so the
+// NASA-9 and constant-cv thermo coincide at T0 (continuity; preserves uref_R/sref_R latent-heat references).
+constexpr double kNasa9Tref = 300.0;  // matches ThermoOptions default Tref
+
+inline torch::Tensor nasa9_cp_R(torch::Tensor const& a, torch::Tensor const& T) {
+  return a.select(-1, 0) * T.pow(-2) + a.select(-1, 1) / T + a.select(-1, 2) +
+         a.select(-1, 3) * T + a.select(-1, 4) * T.pow(2) +
+         a.select(-1, 5) * T.pow(3) + a.select(-1, 6) * T.pow(4);
+}
+inline torch::Tensor nasa9_h_R(torch::Tensor const& a, torch::Tensor const& T) {
+  return -a.select(-1, 0) / T + a.select(-1, 1) * T.log() + a.select(-1, 2) * T +
+         a.select(-1, 3) * T.pow(2) / 2 + a.select(-1, 4) * T.pow(3) / 3 +
+         a.select(-1, 5) * T.pow(4) / 4 + a.select(-1, 6) * T.pow(5) / 5 +
+         a.select(-1, 7);
+}
+
+struct Nasa9Thermo {
+  torch::Tensor cp_R;  // (..., nsp) NASA-9 cp/R
+  torch::Tensor e_R;   // (..., nsp) internal-energy/R deviation: (h(T)-h(T0)) - (T-T0)   [0 at T0]
+  torch::Tensor mask;  // (nsp,) bool: species carries NASA-9 data
+};
+
+inline Nasa9Thermo eval_nasa9(torch::Tensor temp, SpeciesThermo const& op, int nsp) {
+  auto o = temp.options();
+  auto alow = op->nasa9_coeffs_low_tensor(o).narrow(0, 0, nsp);    // (nsp,9)
+  auto ahigh = op->nasa9_coeffs_high_tensor(o).narrow(0, 0, nsp);  // (nsp,9)
+  auto Tmid = op->nasa9_Tmid_tensor(o).narrow(0, 0, nsp);          // (nsp,)
+  auto mask = (alow.abs().sum(-1) + ahigh.abs().sum(-1)) > 0;      // (nsp,)
+  auto Tb = temp.unsqueeze(-1);                                    // (...,1)
+  auto a = torch::where((Tb < Tmid).unsqueeze(-1), alow, ahigh);   // (...,nsp,9)
+  auto a0 = torch::where((kNasa9Tref < Tmid).unsqueeze(-1), alow, ahigh);  // (nsp,9)
+  auto T0 = torch::full({1}, kNasa9Tref, o);
+  auto cp = nasa9_cp_R(a, Tb);
+  auto e = (nasa9_h_R(a, Tb) - nasa9_h_R(a0, T0)) - (Tb - kNasa9Tref);
+  return {cp, e, mask};
+}
+
+inline bool nasa9_on(SpeciesThermo const& op) {
+  return op->use_nasa9_cp() && op->has_nasa9();
+}
+}  // namespace
+
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
                         SpeciesThermo const& op) {
   auto cv_R_extra = torch::zeros_like(conc);
@@ -33,6 +81,10 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
 
   auto cref_R =
       torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
+  if (nasa9_on(op)) {
+    auto n9 = eval_nasa9(temp, op, conc.size(-1));
+    return torch::where(n9.mask, n9.cp_R - 1.0, cv_R_extra + cref_R);  // ideal gas cv = cp - R
+  }
   return cv_R_extra + cref_R;
 }
 
@@ -57,6 +109,10 @@ torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
   auto cref_R =
       torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
   cref_R.narrow(-1, 0, op->vapor_ids().size()) += 1;
+  if (nasa9_on(op)) {
+    auto n9 = eval_nasa9(temp, op, conc.size(-1));
+    return torch::where(n9.mask, n9.cp_R, cp_R_extra + cref_R);
+  }
   return cp_R_extra + cref_R;
 }
 
@@ -125,7 +181,14 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
   auto cref_R = torch::tensor(op->cref_R(), temp.options());
   auto uref_R = torch::tensor(op->uref_R(), temp.options());
 
-  return uref_R + temp.unsqueeze(-1) * cref_R + intEng_R_extra;
+  auto base = uref_R + temp.unsqueeze(-1) * cref_R + intEng_R_extra;
+  if (nasa9_on(op)) {
+    auto n9 = eval_nasa9(temp, op, conc.size(-1));
+    // NASA-9 internal energy referenced to T0: uref + T0*cref + (h(T)-h(T0)) - (T-T0)
+    auto intEng_nasa = uref_R + kNasa9Tref * cref_R + n9.e_R;
+    return torch::where(n9.mask, intEng_nasa, base);
+  }
+  return base;
 }
 
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,

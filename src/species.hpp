@@ -91,6 +91,12 @@ struct SpeciesThermoImpl {
   ADD_ARG(Nasa9CoeffTable, nasa9_high);
   //! NASA-9 range mid-point temperature [K], one value per species.
   ADD_ARG(std::vector<double>, nasa9_Tmid);
+
+  //! Opt-in: use NASA-9 polynomials for cp/cv/internal-energy of species that carry NASA-9 data
+  //! (gives T-dependent cv, e.g. H2 rotational/vibrational). Default false -> constant-cref_R baseline
+  //! (bit-identical to before). NOTE: only affects cp/cv/intEng (not entropy); intended for dry H2/He
+  //! runs. Do NOT enable together with condensation of a NASA-9 vapor (entropy left on cref_R baseline).
+  ADD_ARG(bool, use_nasa9_cp) = false;
 };
 using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
