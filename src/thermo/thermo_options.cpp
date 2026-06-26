@@ -67,6 +67,18 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
     }
   }
 
+  if (config["reference-state"]["use-h2-cp"]) {
+    thermo->use_h2_cp(config["reference-state"]["use-h2-cp"].as<bool>());
+    if (config["reference-state"]["h2-cp-mode"]) {
+      thermo->h2_cp_mode(
+          config["reference-state"]["h2-cp-mode"].as<std::string>());
+    }
+    if (thermo->verbose()) {
+      std::cout << "[ThermoOptions] use_h2_cp = " << thermo->use_h2_cp() << " ("
+                << thermo->h2_cp_mode() << ")" << std::endl;
+    }
+  }
+
   if (config["dynamics"]) {
     if (config["dynamics"]["equation-of-state"]) {
       thermo->max_iter() =
