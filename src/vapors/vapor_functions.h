@@ -47,6 +47,18 @@ inline double h2o_ideal_ddT(double T) {
 }
 
 DISPATCH_MACRO
+inline double h2o_bryan(double T) {
+  double beta = 24.845, delta = 4.986009, tr = 273.16, pr = 611.7;
+  return logsvp_ideal(T / tr, beta, delta) + log(pr);
+}
+
+DISPATCH_MACRO
+inline double h2o_bryan_ddT(double T) {
+  double beta = 24.845, delta = 4.986009, tr = 273.16;
+  return logsvp_ideal_ddT(T / tr, beta, delta) / tr;
+}
+
+DISPATCH_MACRO
 inline double nh3_ideal(double T) {
   double betal = 20.08, gammal = 5.62, betas = 20.64, gammas = 1.43, tr = 195.4,
          pr = 6060.;
