@@ -10,6 +10,8 @@ __device__ user_func1 func1_table_cuda[] = {
     nullptr,
     h2o_ideal,
     h2o_ideal_ddT,
+    h2o_bryan,
+    h2o_bryan_ddT,
     nh3_ideal,
     nh3_ideal_ddT,
     nh3_h2s_lewis,
