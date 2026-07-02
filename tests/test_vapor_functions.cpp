@@ -8,8 +8,9 @@
 #include <torch/torch.h>
 
 // kintera
-#include <kintera/thermo/log_svp.hpp>
 #include <kintera/vapors/vapor_functions.h>
+
+#include <kintera/thermo/log_svp.hpp>
 
 using namespace kintera;
 
