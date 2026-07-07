@@ -43,6 +43,12 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
   auto options =
       derived_type_ptr ? derived_type_ptr : ArrheniusOptionsImpl::create();
 
+  // Optional multi-range (temperature-banded) buffers. Collected per reaction
+  // and only committed to the options if at least one reaction supplies ranges,
+  // so legacy single-range configs stay on the exact single-range path.
+  std::vector<std::vector<double>> Ar, br, er, tr;
+  bool any_ranged = false;
+
   for (auto const& rxn_node : root) {
     TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
 
@@ -73,9 +79,9 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
     // input unit system is [molecule, cm, s]
     // [A] []^a []^b ... = molecule cm^-3 s^-1
     // [A] = molecule^(1 - a - b - ...) cm^(-3(1 - a - b - ...)) s^-1
+    auto unit = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
+                            -3. * (1. - sum_stoich));
     if (node["A"]) {
-      auto unit = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
-                              -3. * (1. - sum_stoich));
       options->A().push_back(us.convert_from(node["A"].as<double>(), unit));
     } else {
       options->A().push_back(1.);
@@ -84,6 +90,50 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
     options->b().push_back(node["b"].as<double>(0.));
     options->Ea_R().push_back(node["Ea_R"].as<double>(1.));
     options->E4_R().push_back(node["E4"].as<double>(0.));
+
+    // Optional multi-range parameters. A reaction may replace the single (A,b,
+    // Ea_R) with temperature bands via `A_ranges` + `T_ranges` (and optional
+    // `b_ranges`, `Ea_R_ranges`). `T_ranges` lists the ascending upper bound of
+    // each band; band r covers [T_ranges[r-1], T_ranges[r]), the last -> +inf.
+    // The rate within a band is the usual A*(T/Tref)^b*exp(-Ea_R/T).
+    if (node["A_ranges"]) {
+      any_ranged = true;
+      auto av = node["A_ranges"].as<std::vector<double>>();
+      for (auto& a : av) a = us.convert_from(a, unit);
+      TORCH_CHECK(node["T_ranges"],
+                  "reaction with 'A_ranges' must also define 'T_ranges'");
+      auto tv = node["T_ranges"].as<std::vector<double>>();
+      TORCH_CHECK(tv.size() == av.size(),
+                  "'A_ranges' and 'T_ranges' must have equal length");
+      std::vector<double> zeros(av.size(), 0.);
+      auto bv = node["b_ranges"] ? node["b_ranges"].as<std::vector<double>>()
+                                 : zeros;
+      auto ev = node["Ea_R_ranges"]
+                    ? node["Ea_R_ranges"].as<std::vector<double>>()
+                    : zeros;
+      TORCH_CHECK(bv.size() == av.size() && ev.size() == av.size(),
+                  "'b_ranges'/'Ea_R_ranges' must match 'A_ranges' length");
+      Ar.push_back(av);
+      tr.push_back(tv);
+      br.push_back(bv);
+      er.push_back(ev);
+    } else {
+      // single-range placeholder (kept aligned 1:1 with reactions in case some
+      // other reaction in this block is ranged); a 1-band range covering all T.
+      Ar.push_back({options->A().back()});
+      tr.push_back({1.0e30});
+      br.push_back({options->b().back()});
+      er.push_back({options->Ea_R().back()});
+    }
+  }
+
+  // Only activate the multi-range path if at least one reaction supplied ranges;
+  // otherwise leave A_ranges empty so reset() takes the bit-identical single path.
+  if (any_ranged) {
+    options->A_ranges() = Ar;
+    options->b_ranges() = br;
+    options->Ea_R_ranges() = er;
+    options->T_ranges() = tr;
   }
 
   return options;
