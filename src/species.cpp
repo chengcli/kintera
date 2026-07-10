@@ -53,7 +53,7 @@ void clear_species_registry() {
   species_nasa9_Tmid.clear();
 }
 
-} // namespace
+}  // namespace
 
 static std::unordered_map<std::string, Nasa9Entry> &get_nasa9_db() {
   static std::unordered_map<std::string, Nasa9Entry> db;
@@ -70,32 +70,26 @@ static std::unordered_map<std::string, Nasa9Entry> &get_nasa9_db() {
 
     std::string line;
     while (std::getline(ifs, line)) {
-      if (line.empty() || line[0] == '#')
-        continue;
+      if (line.empty() || line[0] == '#') continue;
       // Species name lines begin with a non-numeric, non-whitespace character.
       if (!std::isdigit(line[0]) && line[0] != '-' && line[0] != ' ') {
         std::string name = line;
-        while (!name.empty() && std::isspace(name.back()))
-          name.pop_back();
+        while (!name.empty() && std::isspace(name.back())) name.pop_back();
 
         double vals[20];
         int idx = 0;
         for (int row = 0; row < 4 && std::getline(ifs, line); ++row) {
           std::istringstream iss(line);
           double value;
-          while (iss >> value && idx < 20)
-            vals[idx++] = value;
+          while (iss >> value && idx < 20) vals[idx++] = value;
         }
-        if (idx < 20)
-          continue;
+        if (idx < 20) continue;
 
         Nasa9Entry entry;
-        for (int k = 0; k < 7; ++k)
-          entry.low[k] = vals[k];
+        for (int k = 0; k < 7; ++k) entry.low[k] = vals[k];
         entry.low[7] = vals[8];
         entry.low[8] = vals[9];
-        for (int k = 0; k < 7; ++k)
-          entry.high[k] = vals[10 + k];
+        for (int k = 0; k < 7; ++k) entry.high[k] = vals[10 + k];
         entry.high[7] = vals[18];
         entry.high[8] = vals[19];
         db[name] = entry;
@@ -270,22 +264,20 @@ void SpeciesThermoImpl::accumulate(at::Tensor &data,
 bool SpeciesThermoImpl::has_nasa9() const {
   for (auto const &coeffs : nasa9_low()) {
     for (double v : coeffs) {
-      if (v != 0.0)
-        return true;
+      if (v != 0.0) return true;
     }
   }
   for (auto const &coeffs : nasa9_high()) {
     for (double v : coeffs) {
-      if (v != 0.0)
-        return true;
+      if (v != 0.0) return true;
     }
   }
   return false;
 }
 
-static at::Tensor
-nasa9_coeffs_to_tensor(std::vector<std::array<double, 9>> const &coeffs,
-                       c10::TensorOptions const &options) {
+static at::Tensor nasa9_coeffs_to_tensor(
+    std::vector<std::array<double, 9>> const &coeffs,
+    c10::TensorOptions const &options) {
   auto tensor = torch::empty({static_cast<long>(coeffs.size()), 9},
                              torch::dtype(torch::kFloat64));
   if (!coeffs.empty()) {
@@ -309,8 +301,8 @@ at::Tensor SpeciesThermoImpl::nasa9_coeffs_high_tensor(
   return nasa9_coeffs_to_tensor(nasa9_high(), options);
 }
 
-at::Tensor
-SpeciesThermoImpl::nasa9_Tmid_tensor(c10::TensorOptions const &options) const {
+at::Tensor SpeciesThermoImpl::nasa9_Tmid_tensor(
+    c10::TensorOptions const &options) const {
   auto tensor = torch::empty({static_cast<long>(nasa9_Tmid().size())},
                              torch::dtype(torch::kFloat64));
   if (!nasa9_Tmid().empty()) {
@@ -542,8 +534,7 @@ SpeciesThermo merge_thermo(SpeciesThermo const &thermo1,
   cloud_ids = sort_vectors(cloud_ids, cidx);
 
   // add nvapor to cidx
-  for (auto &idx : cidx)
-    idx += nvapor;
+  for (auto &idx : cidx) idx += nvapor;
 
   auto sorted = merge_vectors(vidx, cidx);
 
@@ -564,4 +555,4 @@ SpeciesThermo merge_thermo(SpeciesThermo const &thermo1,
   return merged;
 }
 
-} // namespace kintera
+}  // namespace kintera

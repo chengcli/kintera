@@ -32,8 +32,7 @@ class EquilibriumDeviceTest : public DeviceTest {};
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(DeviceTest);
 
 TEST_P(EquilibriumDeviceTest, IdealGasReaction) {
-  if (device.type() == torch::kMPS)
-    GTEST_SKIP();
+  if (device.type() == torch::kMPS) GTEST_SKIP();
   auto op = make_options();
   EquilibriumTP eq(op);
   eq->to(device, dtype);
@@ -144,4 +143,4 @@ INSTANTIATE_TEST_SUITE_P(
       return name;
     });
 
-} // namespace
+}  // namespace
