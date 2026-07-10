@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <iostream>
 #include <map>
 #include <set>
@@ -71,19 +72,6 @@ EquilibriumOptionsImpl::from_yaml(std::string const &filename, bool verbose) {
                 "phase component has no species definition: ", component);
   }
 
-  options->elements().assign(element_set.begin(), element_set.end());
-  options->element_matrix().resize(options->elements().size());
-  for (size_t e = 0; e < options->elements().size(); ++e) {
-    auto &row = options->element_matrix()[e];
-    row.resize(options->components().size(), 0.);
-    for (size_t i = 0; i < options->components().size(); ++i) {
-      auto const &composition = compositions.at(options->components()[i]);
-      auto found = composition.find(options->elements()[e]);
-      if (found != composition.end())
-        row[i] = found->second;
-    }
-  }
-
   std::vector<Reaction> reactions;
   for (auto const &reaction_node : config["reactions"]) {
     if (reaction_node["type"] &&
@@ -97,24 +85,35 @@ EquilibriumOptionsImpl::from_yaml(std::string const &filename, bool verbose) {
   }
   TORCH_CHECK(!reactions.empty(), "equilibrium YAML contains no reactions");
 
-  options->stoich().assign(options->components().size(),
-                           std::vector<double>(reactions.size(), 0.));
   for (size_t j = 0; j < reactions.size(); ++j) {
     for (auto const &[name, coefficient] : reactions[j].reactants()) {
       auto found = std::find(options->components().begin(),
                              options->components().end(), name);
       TORCH_CHECK(found != options->components().end(),
                   "reaction references unknown component: ", name);
-      options->stoich()[found - options->components().begin()][j] -=
-          coefficient;
+      (void)coefficient;
     }
     for (auto const &[name, coefficient] : reactions[j].products()) {
       auto found = std::find(options->components().begin(),
                              options->components().end(), name);
       TORCH_CHECK(found != options->components().end(),
                   "reaction references unknown component: ", name);
-      options->stoich()[found - options->components().begin()][j] +=
-          coefficient;
+      (void)coefficient;
+    }
+    for (auto const &element : element_set) {
+      double balance = 0.;
+      for (auto const &[name, coefficient] : reactions[j].reactants()) {
+        auto found = compositions.at(name).find(element);
+        if (found != compositions.at(name).end())
+          balance -= coefficient * found->second;
+      }
+      for (auto const &[name, coefficient] : reactions[j].products()) {
+        auto found = compositions.at(name).find(element);
+        if (found != compositions.at(name).end())
+          balance += coefficient * found->second;
+      }
+      TORCH_CHECK(std::abs(balance) <= 1.e-10, "reaction ", j,
+                  " does not conserve element ", element);
     }
   }
 

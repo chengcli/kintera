@@ -13,8 +13,6 @@
 
 namespace kintera {
 
-using Matrix = std::vector<std::vector<double>>;
-
 struct EquilibriumOptionsImpl final {
   static std::shared_ptr<EquilibriumOptionsImpl> create() {
     return std::make_shared<EquilibriumOptionsImpl>();
@@ -27,12 +25,9 @@ struct EquilibriumOptionsImpl final {
   void validate() const;
 
   ADD_ARG(std::vector<std::string>, components);
-  ADD_ARG(std::vector<std::string>, elements);
   ADD_ARG(std::vector<std::string>, phases);
   ADD_ARG(std::vector<std::string>, reactions);
   ADD_ARG(std::vector<int>, phase_ids);
-  ADD_ARG(Matrix, stoich);
-  ADD_ARG(Matrix, element_matrix);
   ADD_ARG(int, gas_phase) = 0;
   ADD_ARG(double, standard_pressure) = 1.e5;
   ADD_ARG(int, max_iter) = 50;
@@ -41,16 +36,15 @@ struct EquilibriumOptionsImpl final {
 };
 using EquilibriumOptions = std::shared_ptr<EquilibriumOptionsImpl>;
 
-class EquilibriumImpl : public torch::nn::Cloneable<EquilibriumImpl> {
+class EquilibriumTPImpl : public torch::nn::Cloneable<EquilibriumTPImpl> {
 public:
   EquilibriumOptions options;
 
   torch::Tensor stoich;
   torch::Tensor phase_ids;
-  torch::Tensor element_matrix;
 
-  EquilibriumImpl() : options(EquilibriumOptionsImpl::create()) {}
-  explicit EquilibriumImpl(EquilibriumOptions const &options_);
+  EquilibriumTPImpl() : options(EquilibriumOptionsImpl::create()) {}
+  explicit EquilibriumTPImpl(EquilibriumOptions const &options_);
 
   void reset() override;
   void pretty_print(std::ostream &os) const override;
@@ -63,14 +57,13 @@ public:
    *   log_k:      (..., nreaction)
    *
    * Returns equilibrium moles, the final reaction Jacobian/gain matrix, and
-   * diagnostics (..., 4): status, iterations, equilibrium error, and element
-   * conservation error.
+   * diagnostics (..., 3): status, iterations, and equilibrium error.
    */
   std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
   forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor moles,
           torch::Tensor log_k, bool warm_start = false);
 };
 
-TORCH_MODULE(Equilibrium);
+TORCH_MODULE(EquilibriumTP);
 
 } // namespace kintera

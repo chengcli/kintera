@@ -1,6 +1,5 @@
 from .schlichting_young_2022 import (
     COMPONENTS,
-    ELEMENTS,
     PHASES,
     REACTIONS,
     SchlichtingYoung2022,
@@ -12,7 +11,6 @@ from .schlichting_young_2022 import (
 
 __all__ = [
     "COMPONENTS",
-    "ELEMENTS",
     "PHASES",
     "REACTIONS",
     "SchlichtingYoung2022",

@@ -48,10 +48,9 @@ DISPATCH_MACRO T equilibrium_max_error(T const *moles, T pres,
 template <typename T>
 DISPATCH_MACRO int
 equilibrate(T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
-            T const *log_k, T const *stoich, int const *phase_ids,
-            T const *element_matrix, int nspecies, int nreaction, int nphase,
-            int nelement, int gas_phase, T standard_pressure, T ftol,
-            T mole_floor, int max_iter, char *work = nullptr) {
+            T const *log_k, T const *stoich, int const *phase_ids, int nspecies,
+            int nreaction, int nphase, int gas_phase, T standard_pressure,
+            T ftol, T mole_floor, int max_iter, char *work = nullptr) {
   if (!(temp > 0.) || !(pres > 0.) || nspecies <= 0 || nreaction <= 0 ||
       nphase <= 0 || gas_phase < 0 || gas_phase >= nphase) {
     diag[0] = 1.;
@@ -65,7 +64,7 @@ equilibrate(T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
   }
 
   T *phase_totals, *phase_stoich, *residual, *jac, *constraints, *bounds, *step;
-  T *trial, *initial_elements;
+  T *trial;
   bool own_work = work == nullptr;
   if (own_work) {
     phase_totals = (T *)malloc(nphase * sizeof(T));
@@ -76,7 +75,6 @@ equilibrate(T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
     bounds = (T *)malloc(nspecies * sizeof(T));
     step = (T *)malloc(nreaction * sizeof(T));
     trial = (T *)malloc(nspecies * sizeof(T));
-    initial_elements = (T *)malloc(nelement * sizeof(T));
   } else {
     phase_totals = alloc_from<T>(work, nphase);
     phase_stoich = alloc_from<T>(work, nphase * nreaction);
@@ -86,7 +84,6 @@ equilibrate(T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
     bounds = alloc_from<T>(work, nspecies);
     step = alloc_from<T>(work, nreaction);
     trial = alloc_from<T>(work, nspecies);
-    initial_elements = alloc_from<T>(work, nelement);
   }
 
   memcpy(out_moles, in_moles, nspecies * sizeof(T));
@@ -97,13 +94,6 @@ equilibrate(T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
       phase_stoich[phase_ids[i] * nreaction + j] += stoich[i * nreaction + j];
     }
   }
-  for (int e = 0; e < nelement; ++e) {
-    initial_elements[e] = 0.;
-    for (int i = 0; i < nspecies; ++i) {
-      initial_elements[e] += element_matrix[e * nspecies + i] * in_moles[i];
-    }
-  }
-
   T target = log(1. + ftol);
   T max_error = 0.;
   int status = 2;
@@ -185,23 +175,9 @@ equilibrate(T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
                                     nphase, gas_phase, phase_totals, residual);
   memcpy(gain, jac, nreaction * nreaction * sizeof(T));
 
-  T element_error = 0.;
-  for (int e = 0; e < nelement; ++e) {
-    T final_value = 0.;
-    for (int i = 0; i < nspecies; ++i) {
-      final_value += element_matrix[e * nspecies + i] * out_moles[i];
-    }
-    T denom = fabs(initial_elements[e]);
-    T error = denom > 0. ? fabs(final_value - initial_elements[e]) / denom
-                         : fabs(final_value - initial_elements[e]);
-    if (error > element_error)
-      element_error = error;
-  }
-
   diag[0] = static_cast<T>(status);
   diag[1] = static_cast<T>(iter);
   diag[2] = exp(max_error) - 1.;
-  diag[3] = element_error;
 
   if (own_work) {
     free(phase_totals);
@@ -212,7 +188,6 @@ equilibrate(T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
     free(bounds);
     free(step);
     free(trial);
-    free(initial_elements);
   }
   return status;
 }

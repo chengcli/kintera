@@ -12,35 +12,18 @@ from typing import Callable, Literal
 
 import torch
 
-from ..kintera import Equilibrium, EquilibriumOptions
+from ..kintera import EquilibriumOptions, EquilibriumTP, molar_masses_from_yaml
 
 _CONFIG = Path(__file__).with_name("schlichting_young_2022.yaml")
 _BASE_OPTIONS = EquilibriumOptions.from_yaml(str(_CONFIG))
 COMPONENTS = tuple(_BASE_OPTIONS.components())
-ELEMENTS = tuple(_BASE_OPTIONS.elements())
 PHASES = tuple(_BASE_OPTIONS.phases())
 REACTIONS = tuple(_BASE_OPTIONS.reactions())
 _PHASE_IDS = tuple(_BASE_OPTIONS.phase_ids())
 _GAS_PHASE = _BASE_OPTIONS.gas_phase()
 _COMPONENT_INDEX = {name: i for i, name in enumerate(COMPONENTS)}
 
-_ATOMIC_MASS = {
-    "C": 0.012011,
-    "Fe": 0.055845,
-    "H": 0.001008,
-    "Mg": 0.024305,
-    "Na": 0.022990,
-    "O": 0.015999,
-    "Si": 0.028085,
-}
-_ELEMENT_MATRIX = _BASE_OPTIONS.element_matrix()
-_MOLAR_MASS = tuple(
-    sum(
-        _ELEMENT_MATRIX[e][i] * _ATOMIC_MASS[element]
-        for e, element in enumerate(ELEMENTS)
-    )
-    for i in range(len(COMPONENTS))
-)
+_MOLAR_MASS = tuple(molar_masses_from_yaml(str(_CONFIG)))
 
 
 def make_options(
@@ -53,7 +36,6 @@ def make_options(
     options = EquilibriumOptions.from_yaml(str(_CONFIG))
     if scenario == "isolated-core":
         keep = [i for i in range(18) if i not in (1, 3, 4, 6)]
-        options.stoich([[row[j] for j in keep] for row in options.stoich()])
         options.reactions([options.reactions()[j] for j in keep])
     elif scenario != "reactive":
         raise ValueError(f"unknown scenario: {scenario}")
@@ -169,7 +151,7 @@ class SchlichtingYoung2022:
         self.pressure_tolerance = pressure_tolerance
         self.pressure_damping = pressure_damping
         self.options = make_options(scenario)
-        self.solver = Equilibrium(self.options)
+        self.solver = EquilibriumTP(self.options)
 
     def solve(
         self,

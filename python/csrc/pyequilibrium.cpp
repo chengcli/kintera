@@ -27,15 +27,10 @@ void bind_equilibrium(py::module &m) {
       .ADD_OPTION(std::vector<std::string>, kintera::EquilibriumOptionsImpl,
                   components)
       .ADD_OPTION(std::vector<std::string>, kintera::EquilibriumOptionsImpl,
-                  elements)
-      .ADD_OPTION(std::vector<std::string>, kintera::EquilibriumOptionsImpl,
                   phases)
       .ADD_OPTION(std::vector<std::string>, kintera::EquilibriumOptionsImpl,
                   reactions)
       .ADD_OPTION(std::vector<int>, kintera::EquilibriumOptionsImpl, phase_ids)
-      .ADD_OPTION(kintera::Matrix, kintera::EquilibriumOptionsImpl, stoich)
-      .ADD_OPTION(kintera::Matrix, kintera::EquilibriumOptionsImpl,
-                  element_matrix)
       .ADD_OPTION(int, kintera::EquilibriumOptionsImpl, gas_phase)
       .ADD_OPTION(double, kintera::EquilibriumOptionsImpl, standard_pressure)
       .ADD_OPTION(int, kintera::EquilibriumOptionsImpl, max_iter)
@@ -43,8 +38,8 @@ void bind_equilibrium(py::module &m) {
       .ADD_OPTION(double, kintera::EquilibriumOptionsImpl, mole_floor)
       .def("validate", &kintera::EquilibriumOptionsImpl::validate);
 
-  ADD_KINTERA_MODULE(Equilibrium, EquilibriumOptions,
-                     &kintera::EquilibriumImpl::forward, py::arg("temp"),
+  ADD_KINTERA_MODULE(EquilibriumTP, EquilibriumOptions,
+                     &kintera::EquilibriumTPImpl::forward, py::arg("temp"),
                      py::arg("pres"), py::arg("moles"), py::arg("log_k"),
                      py::arg("warm_start") = false);
 }

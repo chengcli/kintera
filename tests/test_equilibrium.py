@@ -1,6 +1,14 @@
+from pathlib import Path
+
 import pytest
 import torch
-from kintera import Equilibrium, EquilibriumOptions
+from kintera import (
+    EquilibriumOptions,
+    EquilibriumTP,
+    atomic_mass,
+    molar_mass,
+    molar_masses_from_yaml,
+)
 from kintera.equilibrium import (
     COMPONENTS,
     SchlichtingYoung2022,
@@ -16,11 +24,10 @@ def test_python_core_binding_is_functional():
         .components(["A", "B"])
         .phases(["gas"])
         .phase_ids([0, 0])
-        .stoich([[-1.0], [1.0]])
-        .element_matrix([[1.0, 1.0]])
+        .reactions(["A <=> B"])
         .gas_phase(0)
     )
-    solver = Equilibrium(options)
+    solver = EquilibriumTP(options)
     moles = torch.tensor([0.8, 0.2], dtype=torch.float64)
     result, gain, diagnostics = solver(
         torch.tensor(1000.0, dtype=torch.float64),
@@ -36,13 +43,26 @@ def test_python_core_binding_is_functional():
     assert diagnostics[0] == 0
 
 
+def test_standalone_molar_mass_utilities():
+    assert atomic_mass("H") == pytest.approx(1.008e-3)
+    assert molar_mass({"H": 2.0, "O": 1.0}) == pytest.approx(18.015e-3)
+
+
 def test_paper_topology_and_pressure_relation():
     options = make_options()
     options.validate()
     assert len(options.components()) == 25
-    assert len(options.elements()) == 7
     assert len(options.reactions()) == 18
-    assert len(options.stoich()[0]) == 18
+    config = (
+        Path(__file__).parents[1]
+        / "python"
+        / "equilibrium"
+        / "schlichting_young_2022.yaml"
+    )
+    assert len(molar_masses_from_yaml(str(config))) == 25
+    assert EquilibriumTP(options).buffer("stoich").shape == (25, 18)
+    isolated = make_options("isolated-core")
+    assert EquilibriumTP(isolated).buffer("stoich").shape == (25, 14)
 
     moles = initial_moles()
     pressure = surface_pressure(moles)
@@ -53,7 +73,7 @@ def test_paper_topology_and_pressure_relation():
 def test_paper_driver_accepts_external_thermodynamics():
     moles = initial_moles()
     options = make_options()
-    stoich = torch.tensor(options.stoich(), dtype=moles.dtype)
+    stoich = EquilibriumTP(options).buffer("stoich").to(dtype=moles.dtype)
     phase_ids = options.phase_ids()
 
     def equilibrium_at_initial_state(temp, pres):
