@@ -1,9 +1,10 @@
+#include "equilibrium_dispatch.hpp"
+
 #include <ATen/Dispatch.h>
 #include <ATen/Parallel.h>
 #include <ATen/native/ReduceOpsUtils.h>
 
 #include "phase_equilibrate_tp.h"
-#include "equilibrium_dispatch.hpp"
 
 namespace kintera {
 
@@ -39,11 +40,11 @@ void call_equilibrium_cpu(at::TensorIterator &iter, at::Tensor const &stoich,
   });
 }
 
-} // namespace kintera
+}  // namespace kintera
 
 namespace at::native {
 
 DEFINE_DISPATCH(call_equilibrium);
 REGISTER_ALL_CPU_DISPATCH(call_equilibrium, &kintera::call_equilibrium_cpu);
 
-} // namespace at::native
+}  // namespace at::native

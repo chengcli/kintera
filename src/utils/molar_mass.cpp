@@ -1,15 +1,12 @@
-#include <harp/compound.hpp>
-#include <harp/element.hpp>
-
-#include <yaml-cpp/yaml.h>
-
-#include <torch/torch.h>
-
-#include <map>
-
 #include "molar_mass.hpp"
 
+#include <torch/torch.h>
+#include <yaml-cpp/yaml.h>
+
+#include <harp/compound.hpp>
+#include <harp/element.hpp>
 #include <kintera/utils/find_resource.hpp>
+#include <map>
 
 namespace kintera {
 
@@ -21,13 +18,12 @@ double molar_mass(Composition const &composition) {
   return harp::get_compound_weight(composition);
 }
 
-std::vector<double>
-molar_masses(std::vector<std::string> const &elements,
-             std::vector<std::vector<double>> const &element_matrix) {
+std::vector<double> molar_masses(
+    std::vector<std::string> const &elements,
+    std::vector<std::vector<double>> const &element_matrix) {
   TORCH_CHECK(elements.size() == element_matrix.size(),
               "elements and element_matrix row counts must match");
-  if (elements.empty())
-    return {};
+  if (elements.empty()) return {};
 
   auto ncomponent = element_matrix[0].size();
   for (auto const &row : element_matrix) {
@@ -82,4 +78,4 @@ std::vector<double> molar_masses_from_yaml(std::string const &filename) {
   return result;
 }
 
-} // namespace kintera
+}  // namespace kintera

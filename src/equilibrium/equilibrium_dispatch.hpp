@@ -13,4 +13,4 @@ using equilibrium_fn = void (*)(at::TensorIterator &iter,
 
 DECLARE_DISPATCH(equilibrium_fn, call_equilibrium);
 
-} // namespace at::native
+}  // namespace at::native

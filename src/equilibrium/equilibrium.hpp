@@ -1,15 +1,14 @@
 #pragma once
 
-#include <memory>
-#include <string>
-#include <tuple>
-#include <vector>
-
+#include <kintera/add_arg.h>
 #include <torch/nn/cloneable.h>
 #include <torch/nn/module.h>
 #include <torch/torch.h>
 
-#include <kintera/add_arg.h>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <vector>
 
 namespace kintera {
 
@@ -18,8 +17,8 @@ struct EquilibriumOptionsImpl final {
     return std::make_shared<EquilibriumOptionsImpl>();
   }
 
-  static std::shared_ptr<EquilibriumOptionsImpl>
-  from_yaml(std::string const &filename, bool verbose = false);
+  static std::shared_ptr<EquilibriumOptionsImpl> from_yaml(
+      std::string const &filename, bool verbose = false);
 
   void report(std::ostream &os) const;
   void validate() const;
@@ -37,7 +36,7 @@ struct EquilibriumOptionsImpl final {
 using EquilibriumOptions = std::shared_ptr<EquilibriumOptionsImpl>;
 
 class EquilibriumTPImpl : public torch::nn::Cloneable<EquilibriumTPImpl> {
-public:
+ public:
   EquilibriumOptions options;
 
   torch::Tensor stoich;
@@ -59,11 +58,11 @@ public:
    * Returns equilibrium moles, the final reaction Jacobian/gain matrix, and
    * diagnostics (..., 3): status, iterations, and equilibrium error.
    */
-  std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
-  forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor moles,
-          torch::Tensor log_k, bool warm_start = false);
+  std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
+      torch::Tensor temp, torch::Tensor pres, torch::Tensor moles,
+      torch::Tensor log_k, bool warm_start = false);
 };
 
 TORCH_MODULE(EquilibriumTP);
 
-} // namespace kintera
+}  // namespace kintera

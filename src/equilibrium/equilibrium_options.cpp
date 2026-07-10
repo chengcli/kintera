@@ -1,20 +1,19 @@
+#include <yaml-cpp/yaml.h>
+
 #include <algorithm>
 #include <cmath>
 #include <iostream>
-#include <map>
-#include <set>
-
-#include <yaml-cpp/yaml.h>
-
 #include <kintera/reaction.hpp>
 #include <kintera/utils/find_resource.hpp>
+#include <map>
+#include <set>
 
 #include "equilibrium.hpp"
 
 namespace kintera {
 
-EquilibriumOptions
-EquilibriumOptionsImpl::from_yaml(std::string const &filename, bool verbose) {
+EquilibriumOptions EquilibriumOptionsImpl::from_yaml(
+    std::string const &filename, bool verbose) {
   auto config = YAML::LoadFile(find_resource(filename));
   TORCH_CHECK(config["phases"], "equilibrium YAML requires 'phases'");
   TORCH_CHECK(config["species"], "equilibrium YAML requires 'species'");
@@ -127,9 +126,8 @@ EquilibriumOptionsImpl::from_yaml(std::string const &filename, bool verbose) {
   }
 
   options->validate();
-  if (verbose)
-    options->report(std::cout);
+  if (verbose) options->report(std::cout);
   return options;
 }
 
-} // namespace kintera
+}  // namespace kintera

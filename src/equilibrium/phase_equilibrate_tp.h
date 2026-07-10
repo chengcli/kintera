@@ -1,13 +1,12 @@
 #pragma once
 
+#include <configure.h>
+#include <kintera/math/leastsq_kkt.h>
+#include <kintera/utils/alloc.h>
+
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
-
-#include <configure.h>
-
-#include <kintera/math/leastsq_kkt.h>
-#include <kintera/utils/alloc.h>
 
 namespace kintera {
 
@@ -18,14 +17,12 @@ DISPATCH_MACRO T equilibrium_max_error(T const *moles, T pres,
                                        int nspecies, int nreaction, int nphase,
                                        int gas_phase, T *phase_totals,
                                        T *residual) {
-  for (int p = 0; p < nphase; ++p)
-    phase_totals[p] = 0.;
+  for (int p = 0; p < nphase; ++p) phase_totals[p] = 0.;
   for (int i = 0; i < nspecies; ++i) {
     phase_totals[phase_ids[i]] += moles[i];
   }
 
-  for (int j = 0; j < nreaction; ++j)
-    residual[j] = -log_k[j];
+  for (int j = 0; j < nreaction; ++j) residual[j] = -log_k[j];
   for (int i = 0; i < nspecies; ++i) {
     T log_activity = log(moles[i] / phase_totals[phase_ids[i]]);
     if (phase_ids[i] == gas_phase) {
@@ -39,19 +36,17 @@ DISPATCH_MACRO T equilibrium_max_error(T const *moles, T pres,
   T max_error = 0.;
   for (int j = 0; j < nreaction; ++j) {
     T value = fabs(residual[j]);
-    if (value > max_error)
-      max_error = value;
+    if (value > max_error) max_error = value;
   }
   return max_error;
 }
 
 template <typename T>
-DISPATCH_MACRO int
-phase_equilibrate_tp(T *gain, T *diag, T *out_moles, T temp, T pres,
-                     T const *in_moles, T const *log_k, T const *stoich,
-                     int const *phase_ids, int nspecies, int nreaction,
-                     int nphase, int gas_phase, T standard_pressure, T ftol,
-                     T mole_floor, int max_iter, char *work = nullptr) {
+DISPATCH_MACRO int phase_equilibrate_tp(
+    T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
+    T const *log_k, T const *stoich, int const *phase_ids, int nspecies,
+    int nreaction, int nphase, int gas_phase, T standard_pressure, T ftol,
+    T mole_floor, int max_iter, char *work = nullptr) {
   if (!(temp > 0.) || !(pres > 0.) || nspecies <= 0 || nreaction <= 0 ||
       nphase <= 0 || gas_phase < 0 || gas_phase >= nphase) {
     diag[0] = 1.;
@@ -150,8 +145,7 @@ phase_equilibrate_tp(T *gain, T *diag, T *out_moles, T temp, T pres,
           delta += stoich[i * nreaction + j] * step[j];
         }
         trial[i] = out_moles[i] + scale * delta;
-        if (!(trial[i] > mole_floor))
-          positive = false;
+        if (!(trial[i] > mole_floor)) positive = false;
       }
       if (positive) {
         T trial_error = equilibrium_max_error(
@@ -193,4 +187,4 @@ phase_equilibrate_tp(T *gain, T *diag, T *out_moles, T temp, T pres,
   return status;
 }
 
-} // namespace kintera
+}  // namespace kintera

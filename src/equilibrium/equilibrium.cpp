@@ -1,13 +1,13 @@
+#include "equilibrium.hpp"
+
 #include <ATen/TensorIterator.h>
 
 #include <algorithm>
 #include <cmath>
-
-#include "equilibrium.hpp"
-#include "equilibrium_dispatch.hpp"
-
 #include <kintera/reaction.hpp>
 #include <kintera/utils/stoichiometry.hpp>
+
+#include "equilibrium_dispatch.hpp"
 
 namespace kintera {
 
@@ -34,9 +34,9 @@ void EquilibriumOptionsImpl::validate() const {
     TORCH_CHECK(phase >= 0 && phase < static_cast<int>(phases().size()),
                 "phase id out of range: ", phase);
   }
-  TORCH_CHECK(gas_phase() >= 0 &&
-                  gas_phase() < static_cast<int>(phases().size()),
-              "gas_phase is out of range");
+  TORCH_CHECK(
+      gas_phase() >= 0 && gas_phase() < static_cast<int>(phases().size()),
+      "gas_phase is out of range");
   TORCH_CHECK(standard_pressure() > 0., "standard_pressure must be positive");
   TORCH_CHECK(max_iter() > 0, "max_iter must be positive");
   TORCH_CHECK(ftol() > 0., "ftol must be positive");
@@ -157,4 +157,4 @@ EquilibriumTPImpl::forward(torch::Tensor temp, torch::Tensor pres,
   return {out_moles, gain.view(gain_shape), diag};
 }
 
-} // namespace kintera
+}  // namespace kintera

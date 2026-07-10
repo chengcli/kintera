@@ -1,10 +1,9 @@
-#include <sstream>
-
 #include <fmt/format.h>
 #include <pybind11/stl.h>
 #include <torch/extension.h>
 
 #include <kintera/equilibrium/equilibrium.hpp>
+#include <sstream>
 
 #include "pyoptions.hpp"
 

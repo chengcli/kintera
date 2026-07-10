@@ -26,7 +26,7 @@ extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 
-} // namespace kintera
+}  // namespace kintera
 
 void bind_thermo(py::module &m);
 void bind_constants(py::module &m);

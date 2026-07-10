@@ -16,11 +16,11 @@
 
 namespace at {
 class Tensor;
-} // namespace at
+}  // namespace at
 
 namespace YAML {
 class Node;
-} // namespace YAML
+}  // namespace YAML
 
 namespace kintera {
 
@@ -108,6 +108,6 @@ extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 extern bool species_initialized;
 
-} // namespace kintera
+}  // namespace kintera
 
 #undef ADD_ARG
