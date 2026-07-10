@@ -2,7 +2,9 @@
 
 #include <filesystem>
 #include <fstream>
+#include <future>
 #include <kintera/equilibrium/equilibrium.hpp>
+#include <kintera/species.hpp>
 #include <kintera/utils/molar_mass.hpp>
 
 #define DEVICE_TESTING_SKIP_DEFAULT_INSTANTIATION
@@ -30,7 +32,8 @@ class EquilibriumDeviceTest : public DeviceTest {};
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(DeviceTest);
 
 TEST_P(EquilibriumDeviceTest, IdealGasReaction) {
-  if (device.type() == torch::kMPS) GTEST_SKIP();
+  if (device.type() == torch::kMPS)
+    GTEST_SKIP();
   auto op = make_options();
   EquilibriumTP eq(op);
   eq->to(device, dtype);
@@ -57,6 +60,22 @@ TEST_P(EquilibriumDeviceTest, IdealGasReaction) {
 TEST(MolarMass, StandaloneUtilities) {
   EXPECT_NEAR(atomic_mass("H"), 1.008e-3, 1.e-8);
   EXPECT_NEAR(molar_mass({{"H", 2.}, {"O", 1.}}), 18.015e-3, 1.e-8);
+}
+
+TEST(Nasa9, ConcurrentFirstDatabaseAccess) {
+  std::vector<std::future<torch::Tensor>> futures;
+  for (int i = 0; i < 8; ++i) {
+    futures.push_back(std::async(std::launch::async, [] {
+      return nasa9_gibbs_rt(torch::tensor(1500., torch::kFloat64),
+                            {"H2", "O2", "H2O"});
+    }));
+  }
+  auto expected = futures.front().get();
+  EXPECT_EQ(expected.sizes(), torch::IntArrayRef({3}));
+  EXPECT_TRUE(torch::isfinite(expected).all().item<bool>());
+  for (size_t i = 1; i < futures.size(); ++i) {
+    EXPECT_TRUE(torch::allclose(futures[i].get(), expected));
+  }
 }
 
 TEST(EquilibriumOptions, ReadsSpeciesAndReactionsFromYaml) {
@@ -125,4 +144,4 @@ INSTANTIATE_TEST_SUITE_P(
       return name;
     });
 
-}  // namespace
+} // namespace
