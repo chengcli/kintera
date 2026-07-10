@@ -3,7 +3,7 @@
 
 #include <kintera/loops.cuh>
 
-#include "equilibrate.h"
+#include "phase_equilibrate_tp.h"
 #include "equilibrium_dispatch.hpp"
 
 namespace kintera {
@@ -48,11 +48,12 @@ void call_equilibrium_cuda(at::TensorIterator &iter, at::Tensor const &stoich,
           auto pres = reinterpret_cast<scalar_t *>(data[4] + strides[4]);
           auto moles = reinterpret_cast<scalar_t *>(data[5] + strides[5]);
           auto log_k = reinterpret_cast<scalar_t *>(data[6] + strides[6]);
-          equilibrate(gain, diag, out, *temp, *pres, moles, log_k, stoich_ptr,
-                      phase_ptr, nspecies, nreaction, nphase, gas_phase,
-                      static_cast<scalar_t>(standard_pressure),
-                      static_cast<scalar_t>(ftol),
-                      static_cast<scalar_t>(mole_floor), max_iter, work);
+          phase_equilibrate_tp(
+              gain, diag, out, *temp, *pres, moles, log_k, stoich_ptr,
+              phase_ptr, nspecies, nreaction, nphase, gas_phase,
+              static_cast<scalar_t>(standard_pressure),
+              static_cast<scalar_t>(ftol), static_cast<scalar_t>(mole_floor),
+              max_iter, work);
         });
   });
 }

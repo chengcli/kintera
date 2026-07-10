@@ -47,10 +47,11 @@ DISPATCH_MACRO T equilibrium_max_error(T const *moles, T pres,
 
 template <typename T>
 DISPATCH_MACRO int
-equilibrate(T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
-            T const *log_k, T const *stoich, int const *phase_ids, int nspecies,
-            int nreaction, int nphase, int gas_phase, T standard_pressure,
-            T ftol, T mole_floor, int max_iter, char *work = nullptr) {
+phase_equilibrate_tp(T *gain, T *diag, T *out_moles, T temp, T pres,
+                     T const *in_moles, T const *log_k, T const *stoich,
+                     int const *phase_ids, int nspecies, int nreaction,
+                     int nphase, int gas_phase, T standard_pressure, T ftol,
+                     T mole_floor, int max_iter, char *work = nullptr) {
   if (!(temp > 0.) || !(pres > 0.) || nspecies <= 0 || nreaction <= 0 ||
       nphase <= 0 || gas_phase < 0 || gas_phase >= nphase) {
     diag[0] = 1.;
