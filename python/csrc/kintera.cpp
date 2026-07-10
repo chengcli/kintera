@@ -46,6 +46,8 @@ PYBIND11_MODULE(kintera, m) {
         py::arg("element_matrix"));
   m.def("molar_masses_from_yaml", &kintera::molar_masses_from_yaml,
         py::arg("filename"));
+  m.def("nasa9_gibbs_rt", &kintera::nasa9_gibbs_rt, py::arg("temp"),
+        py::arg("species"));
 
   auto pySpeciesThermo =
       py::class_<kintera::SpeciesThermoImpl, kintera::SpeciesThermo>(

@@ -35,10 +35,9 @@ void call_equilibrium_cuda(at::TensorIterator &iter, at::Tensor const &stoich,
     int nreaction = stoich.size(1);
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
     auto phase_ptr = phase_ids.data_ptr<int>();
-    int work_size = equilibrium_space<scalar_t>(nspecies, nreaction, nphase);
-    // The KKT workspace scales quadratically with reaction count. One cell
-    // per block keeps the 25-component paper case within shared-memory limits.
-    native::gpu_mem_kernel<1, 7>(
+    size_t work_size = equilibrium_space<scalar_t>(nspecies, nreaction, nphase);
+    // Each equilibrium cell receives an independent global-memory workspace.
+    native::gpu_global_mem_kernel<32, 7>(
         iter, work_size,
         [=] GPU_LAMBDA(char *const data[7], unsigned int strides[7],
                        char *work) {

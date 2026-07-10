@@ -21,6 +21,8 @@
 #include <kintera/utils/molar_mass.hpp>
 #include <kintera/utils/vectors.hpp>
 
+#include <kintera/thermo/nasa9.hpp>
+
 #include "species.hpp"
 
 namespace kintera {
@@ -108,6 +110,36 @@ static std::unordered_map<std::string, Nasa9Entry> &get_nasa9_db() {
     }
   }
   return db;
+}
+
+at::Tensor nasa9_gibbs_rt(at::Tensor temp,
+                          std::vector<std::string> const &species) {
+  TORCH_CHECK(temp.is_floating_point(), "temp must be a floating-point tensor");
+  auto const &database = get_nasa9_db();
+  Nasa9CoeffTable low;
+  Nasa9CoeffTable high;
+  low.reserve(species.size());
+  high.reserve(species.size());
+  for (auto const &name : species) {
+    auto found = database.find(name);
+    TORCH_CHECK(found != database.end(), "NASA-9 species not found: ", name);
+    low.push_back(found->second.low);
+    high.push_back(found->second.high);
+  }
+
+  auto tensor_options = temp.options();
+  auto low_tensor =
+      torch::empty({static_cast<int64_t>(species.size()), 9}, tensor_options);
+  auto high_tensor = torch::empty_like(low_tensor);
+  for (size_t i = 0; i < species.size(); ++i) {
+    for (int j = 0; j < 9; ++j) {
+      low_tensor.index_put_({static_cast<int64_t>(i), j}, low[i][j]);
+      high_tensor.index_put_({static_cast<int64_t>(i), j}, high[i][j]);
+    }
+  }
+  auto midpoint = torch::full({static_cast<int64_t>(species.size())}, 1000.,
+                              tensor_options);
+  return nasa9_gibbs_RT(temp, low_tensor, high_tensor, midpoint);
 }
 
 void init_species_from_yaml(std::string filename) {
