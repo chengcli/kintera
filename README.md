@@ -23,6 +23,29 @@ KINTERA provides efficient implementations of:
 - Phase equilibrium computations
 - Atmospheric chemistry models
 
+### Multiphase Equilibrium
+
+`Equilibrium` is a fixed-temperature, fixed-pressure constrained chemistry
+solver. The C++/CUDA core accepts component moles, phase membership,
+stoichiometry, and precomputed logarithmic equilibrium constants. Case-specific
+physics remains in Python under `kintera.equilibrium`; the
+`SchlichtingYoung2022` driver supplies the published core-mantle-atmosphere
+topology and iterates its atmosphere mass-pressure relation around the core
+solve. Thermodynamic coefficients referenced by that paper but not published
+in it are supplied through the driver's required `log_k_model` callback.
+
+Equilibrium networks use the repository's top-level `phases`, `species`, and
+`reactions` YAML layout. Phase species determine component ordering, species
+compositions generate the elemental matrix, and reactions with
+`type: equilibrium` generate stoichiometry:
+
+```python
+from kintera import Equilibrium, EquilibriumOptions
+
+options = EquilibriumOptions.from_yaml("equilibrium.yaml")
+solver = Equilibrium(options)
+```
+
 The library is written in C++17 with Python bindings, leveraging PyTorch for tensor operations and providing GPU acceleration support via CUDA.
 
 ## Features

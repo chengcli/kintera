@@ -37,6 +37,7 @@ file(GLOB src_files CONFIGURE_DEPENDS
   math/*.cpp
   units/*.cpp
   diffusion/*.cpp
+  equilibrium/*.cpp
   )
 
 add_library(${namel}_${buildl}
@@ -70,6 +71,7 @@ if (CUDAToolkit_FOUND)
     thermo/*.cu
     math/*.cu
     kinetics/*.cu
+    equilibrium/*.cu
     )
 
   add_library(${namel}_cuda_${buildl}

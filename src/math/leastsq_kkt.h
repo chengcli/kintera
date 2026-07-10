@@ -20,7 +20,7 @@
 namespace kintera {
 
 // Compute bitmask hash for a set of integers [0..n-1]
-DISPATCH_MACRO uint64_t hash_set(const int* arr, int size, int n) {
+DISPATCH_MACRO inline uint64_t hash_set(const int* arr, int size, int n) {
   uint64_t mask = 0;
   for (int i = 0; i < size; i++) {
     int x = arr[i];

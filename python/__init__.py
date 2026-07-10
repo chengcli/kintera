@@ -18,6 +18,7 @@ def _add_packaged_resource_directory() -> None:
 _add_packaged_resource_directory()
 
 from .atm2d import *
+from .equilibrium import *
 from .kinetics_base_titan import *
 
 try:
