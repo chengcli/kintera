@@ -54,6 +54,7 @@ packages = [
   "kintera.atm2d.conservation",
   "kintera.atm2d.newton",
   "kintera.atm2d.sources",
+  "kintera.equilibrium",
   "kintera.kinetics_base",
   "kintera.kinetics_base.titan",
   "kintera.kinetics_base_titan",
@@ -64,6 +65,7 @@ include-package-data = false
 "kintera" = [
   "kintera/**/*",
   "data/*.dat",
+  "equilibrium/*.yaml",
   "lib/*.so",
   "lib/*.dylib",
   "*.pyi",

@@ -2,6 +2,7 @@
 #include <array>
 #include <cctype>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -14,13 +15,12 @@
 // torch
 #include <torch/torch.h>
 
-// harp
-#include <harp/compound.hpp>
-
 // kintera
 #include <configure.h>
 
+#include <kintera/thermo/nasa9.hpp>
 #include <kintera/utils/find_resource.hpp>
+#include <kintera/utils/molar_mass.hpp>
 #include <kintera/utils/vectors.hpp>
 
 #include "species.hpp"
@@ -55,54 +55,78 @@ void clear_species_registry() {
 
 }  // namespace
 
-static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
+static std::unordered_map<std::string, Nasa9Entry> &get_nasa9_db() {
   static std::unordered_map<std::string, Nasa9Entry> db;
-  if (!db.empty()) return db;
-
-  std::string path;
-  try {
-    path = find_resource("nasa9.dat");
-  } catch (std::exception const& e) {
-    TORCH_CHECK(false, e.what());
-  }
-  std::ifstream ifs(path);
-  TORCH_CHECK(ifs.good(), "Cannot open NASA-9 data file: ", path);
-
-  std::string line;
-  while (std::getline(ifs, line)) {
-    if (line.empty() || line[0] == '#') continue;
-    // species name line (non-numeric first character)
-    if (!std::isdigit(line[0]) && line[0] != '-' && line[0] != ' ') {
-      std::string name = line;
-      // trim whitespace
-      while (!name.empty() && std::isspace(name.back())) name.pop_back();
-
-      // read 4 lines of 5 values = 20 coefficients
-      double vals[20];
-      int idx = 0;
-      for (int row = 0; row < 4 && std::getline(ifs, line); ++row) {
-        std::istringstream iss(line);
-        double v;
-        while (iss >> v && idx < 20) vals[idx++] = v;
-      }
-      if (idx < 20) continue;
-
-      Nasa9Entry e;
-      // low-T range (vals 0..9): a0-a6, a7(=0), a8, a9
-      // store 9 coefficients: a0-a6, a8, a9 (skip a7)
-      for (int k = 0; k < 7; ++k) e.low[k] = vals[k];
-      e.low[7] = vals[8];  // a8
-      e.low[8] = vals[9];  // a9
-
-      // high-T range (vals 10..19)
-      for (int k = 0; k < 7; ++k) e.high[k] = vals[10 + k];
-      e.high[7] = vals[18];  // a8
-      e.high[8] = vals[19];  // a9
-
-      db[name] = e;
+  static std::once_flag initialized;
+  std::call_once(initialized, [&] {
+    std::string path;
+    try {
+      path = find_resource("nasa9.dat");
+    } catch (std::exception const &e) {
+      TORCH_CHECK(false, e.what());
     }
-  }
+    std::ifstream ifs(path);
+    TORCH_CHECK(ifs.good(), "Cannot open NASA-9 data file: ", path);
+
+    std::string line;
+    while (std::getline(ifs, line)) {
+      if (line.empty() || line[0] == '#') continue;
+      // Species name lines begin with a non-numeric, non-whitespace character.
+      if (!std::isdigit(line[0]) && line[0] != '-' && line[0] != ' ') {
+        std::string name = line;
+        while (!name.empty() && std::isspace(name.back())) name.pop_back();
+
+        double vals[20];
+        int idx = 0;
+        for (int row = 0; row < 4 && std::getline(ifs, line); ++row) {
+          std::istringstream iss(line);
+          double value;
+          while (iss >> value && idx < 20) vals[idx++] = value;
+        }
+        if (idx < 20) continue;
+
+        Nasa9Entry entry;
+        for (int k = 0; k < 7; ++k) entry.low[k] = vals[k];
+        entry.low[7] = vals[8];
+        entry.low[8] = vals[9];
+        for (int k = 0; k < 7; ++k) entry.high[k] = vals[10 + k];
+        entry.high[7] = vals[18];
+        entry.high[8] = vals[19];
+        db[name] = entry;
+      }
+    }
+  });
   return db;
+}
+
+at::Tensor nasa9_gibbs_rt(at::Tensor temp,
+                          std::vector<std::string> const &species) {
+  TORCH_CHECK(temp.is_floating_point(), "temp must be a floating-point tensor");
+  TORCH_CHECK(!species.empty(), "NASA-9 species list must not be empty");
+  auto const &database = get_nasa9_db();
+  Nasa9CoeffTable low;
+  Nasa9CoeffTable high;
+  low.reserve(species.size());
+  high.reserve(species.size());
+  for (auto const &name : species) {
+    auto found = database.find(name);
+    TORCH_CHECK(found != database.end(), "NASA-9 species not found: ", name);
+    low.push_back(found->second.low);
+    high.push_back(found->second.high);
+  }
+
+  static_assert(sizeof(Nasa9CoeffArray) == 9 * sizeof(double));
+  std::array<int64_t, 2> shape = {static_cast<int64_t>(species.size()), 9};
+  auto cpu_options = torch::TensorOptions().dtype(torch::kFloat64);
+  auto low_tensor = torch::from_blob(low.data(), shape, cpu_options)
+                        .clone()
+                        .to(temp.options());
+  auto high_tensor = torch::from_blob(high.data(), shape, cpu_options)
+                         .clone()
+                         .to(temp.options());
+  auto midpoint = torch::full({static_cast<int64_t>(species.size())}, 1000.,
+                              temp.options());
+  return nasa9_gibbs_RT(temp, low_tensor, high_tensor, midpoint);
 }
 
 void init_species_from_yaml(std::string filename) {
@@ -110,23 +134,23 @@ void init_species_from_yaml(std::string filename) {
   init_species_from_yaml(config);
 }
 
-void init_species_from_yaml(YAML::Node const& config) {
+void init_species_from_yaml(YAML::Node const &config) {
   // check if species are defined
   TORCH_CHECK(config["species"],
               "'species' is not defined in the kintera configuration file");
 
   clear_species_registry();
 
-  for (const auto& sp : config["species"]) {
+  for (const auto &sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
     std::map<std::string, double> comp;
 
-    for (const auto& it : sp["composition"]) {
+    for (const auto &it : sp["composition"]) {
       std::string key = it.first.as<std::string>();
       double value = it.second.as<double>();
       comp[key] = value;
     }
-    species_weights.push_back(harp::get_compound_weight(comp));
+    species_weights.push_back(molar_mass(comp));
 
     if (sp["cv_R"]) {
       species_cref_R.push_back(sp["cv_R"].as<double>());
@@ -151,7 +175,7 @@ void init_species_from_yaml(YAML::Node const& config) {
     std::array<double, 9> high_coeffs = {};
     double Tmid = 1000.0;
 
-    auto& nasa9_db = get_nasa9_db();
+    auto &nasa9_db = get_nasa9_db();
     auto name = sp["name"].as<std::string>();
     auto it = nasa9_db.find(name);
     if (it != nasa9_db.end()) {
@@ -169,13 +193,13 @@ void init_species_from_yaml(YAML::Node const& config) {
   species_initialized = true;
 }
 
-void ensure_species_initialized(std::string const& filename) {
+void ensure_species_initialized(std::string const &filename) {
   if (!species_initialized) {
     init_species_from_yaml(filename);
   }
 }
 
-void ensure_species_initialized(YAML::Node const& config) {
+void ensure_species_initialized(YAML::Node const &config) {
   if (!species_initialized) {
     init_species_from_yaml(config);
   }
@@ -198,7 +222,7 @@ std::vector<std::string> SpeciesThermoImpl::species() const {
 }
 
 at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
-                                          SpeciesThermo const& other) const {
+                                          SpeciesThermo const &other) const {
   auto source_ids = merge_vectors(vapor_ids(), cloud_ids());
   auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
   std::vector<int64_t> indices;
@@ -217,9 +241,9 @@ at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
   return data.index_select(-1, id);
 }
 
-void SpeciesThermoImpl::accumulate(at::Tensor& data,
-                                   at::Tensor const& other_data,
-                                   SpeciesThermo const& other) const {
+void SpeciesThermoImpl::accumulate(at::Tensor &data,
+                                   at::Tensor const &other_data,
+                                   SpeciesThermo const &other) const {
   auto source_ids = merge_vectors(vapor_ids(), cloud_ids());
   auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
   std::vector<int64_t> indices;
@@ -238,12 +262,12 @@ void SpeciesThermoImpl::accumulate(at::Tensor& data,
 }
 
 bool SpeciesThermoImpl::has_nasa9() const {
-  for (auto const& coeffs : nasa9_low()) {
+  for (auto const &coeffs : nasa9_low()) {
     for (double v : coeffs) {
       if (v != 0.0) return true;
     }
   }
-  for (auto const& coeffs : nasa9_high()) {
+  for (auto const &coeffs : nasa9_high()) {
     for (double v : coeffs) {
       if (v != 0.0) return true;
     }
@@ -252,8 +276,8 @@ bool SpeciesThermoImpl::has_nasa9() const {
 }
 
 static at::Tensor nasa9_coeffs_to_tensor(
-    std::vector<std::array<double, 9>> const& coeffs,
-    c10::TensorOptions const& options) {
+    std::vector<std::array<double, 9>> const &coeffs,
+    c10::TensorOptions const &options) {
   auto tensor = torch::empty({static_cast<long>(coeffs.size()), 9},
                              torch::dtype(torch::kFloat64));
   if (!coeffs.empty()) {
@@ -268,17 +292,17 @@ static at::Tensor nasa9_coeffs_to_tensor(
 }
 
 at::Tensor SpeciesThermoImpl::nasa9_coeffs_low_tensor(
-    c10::TensorOptions const& options) const {
+    c10::TensorOptions const &options) const {
   return nasa9_coeffs_to_tensor(nasa9_low(), options);
 }
 
 at::Tensor SpeciesThermoImpl::nasa9_coeffs_high_tensor(
-    c10::TensorOptions const& options) const {
+    c10::TensorOptions const &options) const {
   return nasa9_coeffs_to_tensor(nasa9_high(), options);
 }
 
 at::Tensor SpeciesThermoImpl::nasa9_Tmid_tensor(
-    c10::TensorOptions const& options) const {
+    c10::TensorOptions const &options) const {
   auto tensor = torch::empty({static_cast<long>(nasa9_Tmid().size())},
                              torch::dtype(torch::kFloat64));
   if (!nasa9_Tmid().empty()) {
@@ -329,7 +353,7 @@ void populate_thermo(SpeciesThermo thermo) {
   }
 }
 
-void check_dimensions(SpeciesThermo const& thermo) {
+void check_dimensions(SpeciesThermo const &thermo) {
   int nspecies = thermo->vapor_ids().size() + thermo->cloud_ids().size();
 
   TORCH_CHECK(thermo->cref_R().size() == nspecies,
@@ -380,8 +404,8 @@ void check_dimensions(SpeciesThermo const& thermo) {
               ". Expected = ", nspecies);
 }
 
-SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
-                           SpeciesThermo const& thermo2) {
+SpeciesThermo merge_thermo(SpeciesThermo const &thermo1,
+                           SpeciesThermo const &thermo2) {
   // check dimensions
   check_dimensions(thermo1);
   check_dimensions(thermo2);
@@ -389,20 +413,20 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   // return a new SpeciesThermo object with merged data
   auto merged = SpeciesThermoImpl::create();
 
-  auto& vapor_ids = merged->vapor_ids();
-  auto& cloud_ids = merged->cloud_ids();
+  auto &vapor_ids = merged->vapor_ids();
+  auto &cloud_ids = merged->cloud_ids();
 
-  auto& cref_R = merged->cref_R();
-  auto& uref_R = merged->uref_R();
-  auto& sref_R = merged->sref_R();
-  auto& intEng_R_extra = merged->intEng_R_extra();
-  auto& cp_R_extra = merged->cp_R_extra();
-  auto& entropy_R_extra = merged->entropy_R_extra();
-  auto& czh = merged->czh();
-  auto& czh_ddC = merged->czh_ddC();
-  auto& nasa9_low = merged->nasa9_low();
-  auto& nasa9_high = merged->nasa9_high();
-  auto& nasa9_Tmid = merged->nasa9_Tmid();
+  auto &cref_R = merged->cref_R();
+  auto &uref_R = merged->uref_R();
+  auto &sref_R = merged->sref_R();
+  auto &intEng_R_extra = merged->intEng_R_extra();
+  auto &cp_R_extra = merged->cp_R_extra();
+  auto &entropy_R_extra = merged->entropy_R_extra();
+  auto &czh = merged->czh();
+  auto &czh_ddC = merged->czh_ddC();
+  auto &nasa9_low = merged->nasa9_low();
+  auto &nasa9_high = merged->nasa9_high();
+  auto &nasa9_Tmid = merged->nasa9_Tmid();
 
   // concatenate fields
   int nvapor1 = thermo1->vapor_ids().size();
@@ -510,7 +534,7 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   cloud_ids = sort_vectors(cloud_ids, cidx);
 
   // add nvapor to cidx
-  for (auto& idx : cidx) idx += nvapor;
+  for (auto &idx : cidx) idx += nvapor;
 
   auto sorted = merge_vectors(vidx, cidx);
 

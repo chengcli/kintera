@@ -28,11 +28,15 @@ using Nasa9CoeffArray = std::array<double, 9>;
 using Nasa9CoeffTable = std::vector<Nasa9CoeffArray>;
 
 void init_species_from_yaml(std::string filename);
-void init_species_from_yaml(YAML::Node const& config);
+void init_species_from_yaml(YAML::Node const &config);
 //! Initialize species and thermo data from a KINETICS-base master input file.
-void init_species_from_kinetics_base(std::string const& master_input_path);
-void ensure_species_initialized(std::string const& filename);
-void ensure_species_initialized(YAML::Node const& config);
+void init_species_from_kinetics_base(std::string const &master_input_path);
+void ensure_species_initialized(std::string const &filename);
+void ensure_species_initialized(YAML::Node const &config);
+
+//! Evaluate standard-state Gibbs energy g/RT from the bundled NASA-9 database.
+at::Tensor nasa9_gibbs_rt(at::Tensor temp,
+                          std::vector<std::string> const &species);
 
 struct SpeciesThermoImpl {
   static std::shared_ptr<SpeciesThermoImpl> create() {
@@ -45,16 +49,16 @@ struct SpeciesThermoImpl {
   std::vector<std::string> species() const;
 
   at::Tensor narrow_copy(at::Tensor data,
-                         std::shared_ptr<SpeciesThermoImpl> const& other) const;
-  void accumulate(at::Tensor& data, at::Tensor const& other_data,
-                  std::shared_ptr<SpeciesThermoImpl> const& other) const;
+                         std::shared_ptr<SpeciesThermoImpl> const &other) const;
+  void accumulate(at::Tensor &data, at::Tensor const &other_data,
+                  std::shared_ptr<SpeciesThermoImpl> const &other) const;
   bool has_nasa9() const;
   at::Tensor nasa9_coeffs_low_tensor(
-      c10::TensorOptions const& options = c10::TensorOptions()) const;
+      c10::TensorOptions const &options = c10::TensorOptions()) const;
   at::Tensor nasa9_coeffs_high_tensor(
-      c10::TensorOptions const& options = c10::TensorOptions()) const;
+      c10::TensorOptions const &options = c10::TensorOptions()) const;
   at::Tensor nasa9_Tmid_tensor(
-      c10::TensorOptions const& options = c10::TensorOptions()) const;
+      c10::TensorOptions const &options = c10::TensorOptions()) const;
 
   ADD_ARG(std::vector<int>, vapor_ids);
   ADD_ARG(std::vector<int>, cloud_ids);
@@ -92,10 +96,10 @@ using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
 void populate_thermo(SpeciesThermo thermo);
 
-void check_dimensions(SpeciesThermo const& thermo);
+void check_dimensions(SpeciesThermo const &thermo);
 
-SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
-                           SpeciesThermo const& thermo2);
+SpeciesThermo merge_thermo(SpeciesThermo const &thermo1,
+                           SpeciesThermo const &thermo2);
 
 extern std::vector<std::string> species_names;
 extern std::vector<double> species_weights;
