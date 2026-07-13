@@ -281,11 +281,16 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
         int j = reaction_set[k];
         T log_frac_sum = 0.;
         for (int i = 0; i < nspecies; ++i) {
-          if (stoich[i * nreaction + j] < 0 && xfrac0[i] > 0.) {
+          if (stoich[i * nreaction + j] < 0.) {
+            if (!(xfrac0[i] > 0.)) {
+              feasible = false;
+              break;
+            }
             log_frac_sum +=
                 (-stoich[i * nreaction + j]) * log(xfrac0[i] / trial_xg);
           }
         }
+        if (!feasible) break;
         trial_error = fmax(trial_error, fabs(logsvp[j] - log_frac_sum));
       }
       if (feasible && trial_error < current_error) {

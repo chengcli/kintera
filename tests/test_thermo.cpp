@@ -49,6 +49,14 @@ TEST(LeastSquaresKkt, LineSearchCanScaleNewtonDirectionToBound) {
   EXPECT_EQ(status, 0);
   EXPECT_DOUBLE_EQ(rhs[0], 2.);
   EXPECT_EQ(max_iter, 1);
+
+  double state[] = {1.};
+  double trial[] = {0.};
+  EXPECT_FALSE(
+      constrained_newton_trial(trial, state, constraint, rhs, 1, 1, 1, 0, 1.));
+  EXPECT_TRUE(constrained_newton_trial(trial, state, constraint, rhs, 1, 1, 1,
+                                       0, 0.25));
+  EXPECT_DOUBLE_EQ(trial[0], 0.5);
 }
 
 TEST_P(DeviceTest, thermo_y) {

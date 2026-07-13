@@ -9,6 +9,7 @@
 #include <configure.h>
 
 // kintera
+#include <kintera/math/core.h>
 #include <kintera/math/leastsq_kkt.h>
 #include <kintera/utils/alloc.h>
 
