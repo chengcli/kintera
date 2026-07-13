@@ -270,7 +270,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
                                    *nactive, ngas, 0, lambda);
       T xsum = 0.;
       for (int i = 0; i < nspecies && feasible; ++i) xsum += xfrac0[i];
-      feasible = feasible && xsum > 0. && isfinite(xsum);
+      feasible = feasible && xsum > 0. && std::isfinite(xsum);
       for (int i = 0; i < nspecies && feasible; ++i) xfrac0[i] /= xsum;
 
       T trial_error = 0.;

@@ -278,11 +278,11 @@ DISPATCH_MACRO int equilibrate_uv(
           zh += energy * conc0[i];
           zc += heat * conc0[i];
         }
-        feasible = zc > 0. && isfinite(zc);
+        feasible = zc > 0. && std::isfinite(zc);
         if (!feasible) break;
         T delta_temp = (h0 - zh) / zc;
         trial_temp += delta_temp;
-        feasible = trial_temp > 0. && isfinite(trial_temp);
+        feasible = trial_temp > 0. && std::isfinite(trial_temp);
         if (fabs(delta_temp) <= 1.e-4) {
           energy_converged = feasible;
           break;

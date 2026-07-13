@@ -41,7 +41,7 @@ DISPATCH_MACRO int constrained_newton_step(T* b, T const* a, T const* c,
   memcpy(direct_b, b, n * sizeof(T));
   bool usable = dsolve_lu(direct_a, direct_b, n);
   for (int j = 0; j < n && usable; ++j) {
-    if (!isfinite(direct_b[j])) usable = false;
+    if (!std::isfinite(direct_b[j])) usable = false;
   }
   for (int i = 0; i < nconstraint && usable; ++i) {
     T value = 0.;
@@ -84,7 +84,7 @@ DISPATCH_MACRO bool constrained_newton_trial(T* trial, T const* state,
       delta -= constraint[i * nstep + j] * step[j];
     }
     trial[i] = state[i] + scale * delta;
-    if (!isfinite(trial[i]) || trial[i] < 0.) return false;
+    if (!std::isfinite(trial[i]) || trial[i] < 0.) return false;
     if (i < npositive && !(trial[i] > floor)) return false;
     if (max_ratio > 0. && i < nlimited && state[i] > 0. &&
         (trial[i] > max_ratio * state[i] || trial[i] * max_ratio < state[i])) {
