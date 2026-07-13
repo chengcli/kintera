@@ -5,9 +5,9 @@
 
 namespace at::native {
 
-using equilibrium_fn = void (*)(at::TensorIterator &iter,
-                                at::Tensor const &stoich,
-                                at::Tensor const &phase_ids, int nphase,
+using equilibrium_fn = void (*)(at::TensorIterator& iter,
+                                at::Tensor const& stoich,
+                                at::Tensor const& phase_ids, int nphase,
                                 int gas_phase, double standard_pressure,
                                 double ftol, double mole_floor, int max_iter);
 

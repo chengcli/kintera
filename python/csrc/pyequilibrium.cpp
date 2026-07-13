@@ -9,14 +9,14 @@
 
 namespace py = pybind11;
 
-void bind_equilibrium(py::module &m) {
+void bind_equilibrium(py::module& m) {
   auto pyOptions =
       py::class_<kintera::EquilibriumOptionsImpl, kintera::EquilibriumOptions>(
           m, "EquilibriumOptions");
 
   pyOptions.def(py::init<>())
       .def("__repr__",
-           [](kintera::EquilibriumOptions const &self) {
+           [](kintera::EquilibriumOptions const& self) {
              std::stringstream ss;
              self->report(ss);
              return ss.str();

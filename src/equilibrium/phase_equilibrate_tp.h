@@ -13,12 +13,12 @@
 namespace kintera {
 
 template <typename T>
-DISPATCH_MACRO T equilibrium_max_error(T const *moles, T pres,
-                                       T standard_pressure, T const *log_k,
-                                       T const *stoich, int const *phase_ids,
+DISPATCH_MACRO T equilibrium_max_error(T const* moles, T pres,
+                                       T standard_pressure, T const* log_k,
+                                       T const* stoich, int const* phase_ids,
                                        int nspecies, int nreaction, int nphase,
-                                       int gas_phase, T *phase_totals,
-                                       T *residual) {
+                                       int gas_phase, T* phase_totals,
+                                       T* residual) {
   for (int p = 0; p < nphase; ++p) phase_totals[p] = 0.;
   for (int i = 0; i < nspecies; ++i) {
     phase_totals[phase_ids[i]] += moles[i];
@@ -45,10 +45,10 @@ DISPATCH_MACRO T equilibrium_max_error(T const *moles, T pres,
 
 template <typename T>
 DISPATCH_MACRO int phase_equilibrate_tp(
-    T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
-    T const *log_k, T const *stoich, int const *phase_ids, int nspecies,
+    T* gain, T* diag, T* out_moles, T temp, T pres, T const* in_moles,
+    T const* log_k, T const* stoich, int const* phase_ids, int nspecies,
     int nreaction, int nphase, int gas_phase, T standard_pressure, T ftol,
-    T mole_floor, int max_iter, char *work = nullptr) {
+    T mole_floor, int max_iter, char* work = nullptr) {
   if (!(temp > 0.) || !(pres > 0.) || nspecies <= 0 || nreaction <= 0 ||
       nphase <= 0 || gas_phase < 0 || gas_phase >= nphase) {
     diag[0] = 1.;
@@ -65,15 +65,15 @@ DISPATCH_MACRO int phase_equilibrate_tp(
   T *bounds, *step, *trial;
   bool own_work = work == nullptr;
   if (own_work) {
-    phase_totals = (T *)malloc(nphase * sizeof(T));
-    phase_stoich = (T *)malloc(nphase * nreaction * sizeof(T));
-    residual = (T *)malloc(nreaction * sizeof(T));
-    jac = (T *)malloc(nreaction * nreaction * sizeof(T));
-    newton_jac = (T *)malloc(nreaction * nreaction * sizeof(T));
-    constraints = (T *)malloc(nspecies * nreaction * sizeof(T));
-    bounds = (T *)malloc(nspecies * sizeof(T));
-    step = (T *)malloc(nreaction * sizeof(T));
-    trial = (T *)malloc(nspecies * sizeof(T));
+    phase_totals = (T*)malloc(nphase * sizeof(T));
+    phase_stoich = (T*)malloc(nphase * nreaction * sizeof(T));
+    residual = (T*)malloc(nreaction * sizeof(T));
+    jac = (T*)malloc(nreaction * nreaction * sizeof(T));
+    newton_jac = (T*)malloc(nreaction * nreaction * sizeof(T));
+    constraints = (T*)malloc(nspecies * nreaction * sizeof(T));
+    bounds = (T*)malloc(nspecies * sizeof(T));
+    step = (T*)malloc(nreaction * sizeof(T));
+    trial = (T*)malloc(nspecies * sizeof(T));
   } else {
     phase_totals = alloc_from<T>(work, nphase);
     phase_stoich = alloc_from<T>(work, nphase * nreaction);
