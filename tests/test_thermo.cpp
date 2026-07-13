@@ -6,6 +6,7 @@
 
 // kintera
 #include <kintera/constants.h>
+#include <kintera/math/constrained_newton.h>
 #include <kintera/math/lubksb.h>
 #include <kintera/math/ludcmp.h>
 
@@ -19,6 +20,36 @@
 
 using namespace kintera;
 using namespace torch::indexing;
+
+TEST(LeastSquaresKkt, DirectlySolvesIllConditionedSquareSystem) {
+  double matrix[] = {1., 1., 1., 1. + 1.e-10};
+  double rhs[] = {0., -1.e-10};
+  int max_iter = 10;
+
+  int status = constrained_newton_step(
+      rhs, matrix, static_cast<double const*>(nullptr),
+      static_cast<double const*>(nullptr), 2, 0, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_NEAR(rhs[0], 1., 1.e-6);
+  EXPECT_NEAR(rhs[1], -1., 1.e-6);
+  EXPECT_EQ(max_iter, 1);
+}
+
+TEST(LeastSquaresKkt, LineSearchCanScaleNewtonDirectionToBound) {
+  double matrix[] = {1.};
+  double constraint[] = {1.};
+  double bound[] = {1.};
+  double rhs[] = {2.};
+  int max_iter = 10;
+
+  int status =
+      constrained_newton_step(rhs, matrix, constraint, bound, 1, 1, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_DOUBLE_EQ(rhs[0], 2.);
+  EXPECT_EQ(max_iter, 1);
+}
 
 TEST_P(DeviceTest, thermo_y) {
   auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");

@@ -18,7 +18,6 @@ size_t equilibrium_space(int nspecies, int nreaction, int nphase) {
   bump(alignof(T), nphase * nreaction * sizeof(T));
   bump(alignof(T), nreaction * sizeof(T));
   bump(alignof(T), nreaction * nreaction * sizeof(T));
-  bump(alignof(T), nreaction * nreaction * sizeof(T));
   bump(alignof(T), nspecies * nreaction * sizeof(T));
   bump(alignof(T), nspecies * sizeof(T));
   bump(alignof(T), nreaction * sizeof(T));

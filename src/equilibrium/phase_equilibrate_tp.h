@@ -1,8 +1,8 @@
 #pragma once
 
 #include <configure.h>
+#include <kintera/math/constrained_newton.h>
 #include <kintera/math/core.h>
-#include <kintera/math/leastsq_kkt.h>
 #include <kintera/utils/alloc.h>
 
 #include <cmath>
@@ -61,7 +61,7 @@ DISPATCH_MACRO int phase_equilibrate_tp(
     }
   }
 
-  T *phase_totals, *phase_stoich, *residual, *jac, *newton_jac, *constraints;
+  T *phase_totals, *phase_stoich, *residual, *jac, *constraints;
   T *bounds, *step, *trial;
   bool own_work = work == nullptr;
   if (own_work) {
@@ -69,7 +69,6 @@ DISPATCH_MACRO int phase_equilibrate_tp(
     phase_stoich = (T*)malloc(nphase * nreaction * sizeof(T));
     residual = (T*)malloc(nreaction * sizeof(T));
     jac = (T*)malloc(nreaction * nreaction * sizeof(T));
-    newton_jac = (T*)malloc(nreaction * nreaction * sizeof(T));
     constraints = (T*)malloc(nspecies * nreaction * sizeof(T));
     bounds = (T*)malloc(nspecies * sizeof(T));
     step = (T*)malloc(nreaction * sizeof(T));
@@ -79,7 +78,6 @@ DISPATCH_MACRO int phase_equilibrate_tp(
     phase_stoich = alloc_from<T>(work, nphase * nreaction);
     residual = alloc_from<T>(work, nreaction);
     jac = alloc_from<T>(work, nreaction * nreaction);
-    newton_jac = alloc_from<T>(work, nreaction * nreaction);
     constraints = alloc_from<T>(work, nspecies * nreaction);
     bounds = alloc_from<T>(work, nspecies);
     step = alloc_from<T>(work, nreaction);
@@ -131,64 +129,22 @@ DISPATCH_MACRO int phase_equilibrate_tp(
       }
     }
 
-    // The reaction Jacobian is square. Solve the Newton system directly before
-    // falling back to constrained least squares. Forming J^T J in the KKT
-    // solver squares the condition number and loses useful precision for
-    // multiphase systems spanning many orders of magnitude in abundance.
-    memcpy(newton_jac, jac, nreaction * nreaction * sizeof(T));
-    bool direct_ok = dsolve_lu(newton_jac, step, nreaction);
-    for (int j = 0; j < nreaction && direct_ok; ++j) {
-      if (!isfinite(step[j])) direct_ok = false;
-    }
-
-    bool accepted = false;
-    T scale = 1.;
-    while (direct_ok && scale >= 1.e-12) {
-      bool positive = true;
-      for (int i = 0; i < nspecies; ++i) {
-        T delta = 0.;
-        for (int j = 0; j < nreaction; ++j) {
-          delta += stoich[i * nreaction + j] * step[j];
-        }
-        trial[i] = out_moles[i] + scale * delta;
-        if (!(trial[i] > mole_floor)) positive = false;
-      }
-      if (positive) {
-        T trial_error = equilibrium_max_error(
-            trial, pres, standard_pressure, log_k, stoich, phase_ids, nspecies,
-            nreaction, nphase, gas_phase, phase_totals, residual);
-        if (trial_error < max_error) {
-          memcpy(out_moles, trial, nspecies * sizeof(T));
-          accepted = true;
-          break;
-        }
-      }
-      scale *= .5;
-    }
-    if (accepted) continue;
-
-    // A direct Newton direction can fail close to an active mole bound. Retain
-    // the active-set KKT solve as the bounded fallback for those cases.
-    for (int j = 0; j < nreaction; ++j) step[j] = -residual[j];
+    // Use the original square Jacobian whenever its direction can be made
+    // feasible by line search.  KKT remains the active-bound fallback.
     int kkt_iter = max_iter;
-    int err = leastsq_kkt(step, jac, constraints, bounds, nreaction, nreaction,
-                          nspecies, 0, &kkt_iter, 1.e-12, work);
+    int err = constrained_newton_step(step, jac, constraints, bounds, nreaction,
+                                      nspecies, &kkt_iter, 1.e-12, work);
     if (err != 0) {
       status = 3;
       break;
     }
 
-    scale = 1.;
+    bool accepted = false;
+    T scale = 1.;
     while (scale >= 1.e-12) {
-      bool positive = true;
-      for (int i = 0; i < nspecies; ++i) {
-        T delta = 0.;
-        for (int j = 0; j < nreaction; ++j) {
-          delta += stoich[i * nreaction + j] * step[j];
-        }
-        trial[i] = out_moles[i] + scale * delta;
-        if (!(trial[i] > mole_floor)) positive = false;
-      }
+      bool positive = constrained_newton_trial(trial, out_moles, constraints,
+                                               step, nspecies, nreaction,
+                                               nspecies, 0, scale, mole_floor);
       if (positive) {
         T trial_error = equilibrium_max_error(
             trial, pres, standard_pressure, log_k, stoich, phase_ids, nspecies,
@@ -221,7 +177,6 @@ DISPATCH_MACRO int phase_equilibrate_tp(
     free(phase_stoich);
     free(residual);
     free(jac);
-    free(newton_jac);
     free(constraints);
     free(bounds);
     free(step);

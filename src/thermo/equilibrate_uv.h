@@ -10,8 +10,8 @@
 
 // kintera
 #include <kintera/constants.h>
+#include <kintera/math/constrained_newton.h>
 #include <kintera/math/core.h>
-#include <kintera/math/leastsq_kkt.h>
 
 #include <kintera/utils/user_funcs.hpp>
 
@@ -240,58 +240,100 @@ DISPATCH_MACRO int equilibrate_uv(
       }
     // note that stoich_active is negated
 
-    // solve constrained optimization problem (KKT)
+    T current_error = 0.;
+    for (int k = 0; k < (*nactive); ++k) {
+      current_error = fmax(current_error, fabs(rhs[k]));
+    }
+
+    // Solve the original square Newton system, using KKT only when a bound is
+    // active in the Newton direction.
     int max_kkt_iter = *max_iter;
-    err_code = leastsq_kkt(rhs, gain, stoich_active, conc, *nactive, *nactive,
-                           nspecies, 0, &max_kkt_iter, -1.e-10, work);
+    err_code = constrained_newton_step(rhs, gain, stoich_active, conc, *nactive,
+                                       nspecies, &max_kkt_iter, -1.e-10, work);
     if (err_code != 0) break;
 
-    // rate -> conc
-    memcpy(conc0, conc, nspecies * sizeof(T));
+    // Backtrack on the coupled UV residual.  Each trial composition gets its
+    // own energy-conserving temperature before its chemistry is evaluated.
+    bool accepted = false;
     T lambda = 1.;  // scale
-    while (true) {
-      bool good = true;
-      for (int i = 0; i < nspecies; i++) {
-        for (int k = 0; k < (*nactive); k++) {
-          conc[i] -= stoich_active[i * (*nactive) + k] * rhs[k] * lambda;
+    T accepted_temp = *temp;
+    while (lambda >= 1.e-12) {
+      bool feasible = constrained_newton_trial(
+          conc0, conc, stoich_active, rhs, nspecies, *nactive, 0, ngas, lambda,
+          static_cast<T>(0.), static_cast<T>(100.));
+      T trial_temp = *temp;
+      bool energy_converged = false;
+      for (int temp_iter = 0; temp_iter < 50 && feasible; ++temp_iter) {
+        T zh = 0.;
+        T zc = 0.;
+        for (int i = 0; i < nspecies; ++i) {
+          T energy = intEng_offset[i] + cv_const[i] * trial_temp;
+          if (intEng_R_extra[i]) {
+            energy += intEng_R_extra[i](trial_temp, conc0[i]) * constants::Rgas;
+          }
+          T heat = cv_const[i];
+          if (cv_R_extra[i]) {
+            heat += cv_R_extra[i](trial_temp, conc0[i]) * constants::Rgas;
+          }
+          zh += energy * conc0[i];
+          zc += heat * conc0[i];
         }
-        if ((i < ngas) && (conc0[i] > 0.) &&
-            ((conc[i] / conc0[i] > 100.) || (conc[i] / conc0[i] < 0.01)))
-          good = false;
+        feasible = zc > 0. && isfinite(zc);
+        if (!feasible) break;
+        T delta_temp = (h0 - zh) / zc;
+        trial_temp += delta_temp;
+        feasible = trial_temp > 0. && isfinite(trial_temp);
+        if (fabs(delta_temp) <= 1.e-4) {
+          energy_converged = feasible;
+          break;
+        }
       }
-      if (good) break;
-      lambda *= 0.99;
-      memcpy(conc, conc0, nspecies * sizeof(T));
-    }
+      feasible = feasible && energy_converged;
 
-    // temperature iteration
-    T temp0 = 0.;
-    while (fabs(*temp - temp0) > 1e-4) {
-      T zh = 0.;
-      T zc = 0.;
-
-      // re-evaluate internal energy and its derivative
-      for (int i = 0; i < nspecies; i++) {
-        intEng[i] = intEng_offset[i] + cv_const[i] * (*temp);
-        if (intEng_R_extra[i]) {
-          intEng[i] += intEng_R_extra[i](*temp, conc[i]) * constants::Rgas;
+      T trial_error = 0.;
+      for (int k = 0; k < (*nactive) && feasible; ++k) {
+        int j = reaction_set[k];
+        T stoich_sum = 0.;
+        T log_conc_sum = 0.;
+        for (int i = 0; i < nspecies; ++i) {
+          if (stoich[i * nreaction + j] < 0.) {
+            stoich_sum += -stoich[i * nreaction + j];
+            if (conc0[i] == 0.) {
+              log_conc_sum = -99.;
+            } else {
+              log_conc_sum += (-stoich[i * nreaction + j]) * log(conc0[i]);
+            }
+          }
         }
-        intEng_ddT[i] = cv_const[i];
-        if (cv_R_extra[i]) {
-          intEng_ddT[i] += cv_R_extra[i](*temp, conc[i]) * constants::Rgas;
-        }
-        zh += intEng[i] * conc[i];
-        zc += intEng_ddT[i] * conc[i];
+        T trial_logsvp = logsvp_func[j](trial_temp) -
+                         stoich_sum * log(constants::Rgas * trial_temp);
+        trial_error = fmax(trial_error, fabs(trial_logsvp - log_conc_sum));
       }
-
-      temp0 = *temp;
-      (*temp) += (h0 - zh) / zc;
+      if (feasible && trial_error < current_error) {
+        memcpy(conc, conc0, nspecies * sizeof(T));
+        accepted_temp = trial_temp;
+        accepted = true;
+        break;
+      }
+      lambda *= .5;
     }
-
-    if (*temp <= 0.) {
-      printf("Error: Non-positive temperature after adjustment.\n");
-      err_code = 3;  // error: non-positive temperature after adjustment
+    if (!accepted) {
+      err_code = 4;
       break;
+    }
+    *temp = accepted_temp;
+
+    // Keep the thermodynamic linearization synchronized with the accepted
+    // temperature and composition for the next coupled Newton iteration.
+    for (int i = 0; i < nspecies; ++i) {
+      intEng[i] = intEng_offset[i] + cv_const[i] * (*temp);
+      if (intEng_R_extra[i]) {
+        intEng[i] += intEng_R_extra[i](*temp, conc[i]) * constants::Rgas;
+      }
+      intEng_ddT[i] = cv_const[i];
+      if (cv_R_extra[i]) {
+        intEng_ddT[i] += cv_R_extra[i](*temp, conc[i]) * constants::Rgas;
+      }
     }
   }
 
