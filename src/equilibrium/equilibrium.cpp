@@ -11,7 +11,7 @@
 
 namespace kintera {
 
-void EquilibriumOptionsImpl::report(std::ostream &os) const {
+void EquilibriumOptionsImpl::report(std::ostream& os) const {
   os << "-- equilibrium options --\n"
      << "* components = " << components().size() << "\n"
      << "* phases = " << phases().size() << "\n"
@@ -42,15 +42,15 @@ void EquilibriumOptionsImpl::validate() const {
   TORCH_CHECK(ftol() > 0., "ftol must be positive");
   TORCH_CHECK(mole_floor() >= 0., "mole_floor must be nonnegative");
 
-  for (auto const &equation : reactions()) {
+  for (auto const& equation : reactions()) {
     Reaction reaction(equation);
-    for (auto const &[name, coefficient] : reaction.reactants()) {
+    for (auto const& [name, coefficient] : reaction.reactants()) {
       (void)coefficient;
       TORCH_CHECK(std::find(components().begin(), components().end(), name) !=
                       components().end(),
                   "reaction references unknown component: ", name);
     }
-    for (auto const &[name, coefficient] : reaction.products()) {
+    for (auto const& [name, coefficient] : reaction.products()) {
       (void)coefficient;
       TORCH_CHECK(std::find(components().begin(), components().end(), name) !=
                       components().end(),
@@ -59,7 +59,7 @@ void EquilibriumOptionsImpl::validate() const {
   }
 }
 
-EquilibriumTPImpl::EquilibriumTPImpl(EquilibriumOptions const &options_)
+EquilibriumTPImpl::EquilibriumTPImpl(EquilibriumOptions const& options_)
     : options(options_) {
   reset();
 }
@@ -68,7 +68,7 @@ void EquilibriumTPImpl::reset() {
   options->validate();
   std::vector<Reaction> reactions;
   reactions.reserve(options->reactions().size());
-  for (auto const &equation : options->reactions())
+  for (auto const& equation : options->reactions())
     reactions.emplace_back(equation);
   stoich = register_buffer(
       "stoich", generate_stoichiometry_matrix(reactions, options->components())
@@ -82,7 +82,7 @@ void EquilibriumTPImpl::reset() {
                               torch::tensor(options->phase_ids(), torch::kInt));
 }
 
-void EquilibriumTPImpl::pretty_print(std::ostream &os) const {
+void EquilibriumTPImpl::pretty_print(std::ostream& os) const {
   os << "EquilibriumTP(components=" << options->components().size()
      << ", phases=" << options->phases().size() << ")";
 }

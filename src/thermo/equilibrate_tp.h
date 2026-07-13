@@ -10,8 +10,8 @@
 #include <configure.h>
 
 // kintera
+#include <kintera/math/constrained_newton.h>
 #include <kintera/math/core.h>
-#include <kintera/math/leastsq_kkt.h>
 
 #include <kintera/utils/user_funcs.hpp>
 
@@ -145,7 +145,6 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
 
   int iter = 0;
   int kkt_err = 0;
-  T lambda = 0.;  // rate scale factor
   while (iter++ < *max_iter) {
     /*printf("iter = %d\n ", iter);
     // print xfrac
@@ -242,10 +241,16 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
       }
     // note that stoich_active is negated
 
-    // solve constrained optimization problem (KKT)
+    T current_error = 0.;
+    for (int k = 0; k < (*nactive); ++k) {
+      current_error = fmax(current_error, fabs(rhs[k]));
+    }
+
+    // Solve the square Newton system directly unless an active bound requires
+    // the constrained KKT fallback.
     int max_kkt_iter = *max_iter;
-    kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, *nactive, *nactive,
-                          nspecies, 0, &max_kkt_iter, 0., work);
+    kkt_err = constrained_newton_step(rhs, gain, stoich_active, xfrac, *nactive,
+                                      nspecies, &max_kkt_iter, 0., work);
     if (kkt_err != 0) break;
 
     /* print rate
@@ -255,28 +260,50 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
     }
     printf("\n");*/
 
-    // rate -> xfrac
-    // copy xfrac to xfrac0
-    memcpy(xfrac0, xfrac, nspecies * sizeof(T));
+    // Backtrack until the bounded trial state reduces the nonlinear
+    // equilibrium residual.  Normalization does not change gas mixing ratios.
+    bool accepted = false;
     T lambda = 1.;  // scale
-    T xsum;
-    while (true) {
-      bool positive_vapor = true;
-      xsum = 0.;
-      for (int i = 0; i < nspecies; i++) {
-        for (int k = 0; k < (*nactive); k++) {
-          xfrac[i] -= stoich_active[i * (*nactive) + k] * rhs[k] * lambda;
-        }
-        if (i < ngas && xfrac[i] <= 0.) positive_vapor = false;
-        xsum += xfrac[i];
-      }
-      if (positive_vapor) break;
-      lambda *= 0.99;
-      memcpy(xfrac, xfrac0, nspecies * sizeof(T));
-    }
+    while (lambda >= 1.e-12) {
+      bool feasible =
+          constrained_newton_trial(xfrac0, xfrac, stoich_active, rhs, nspecies,
+                                   *nactive, ngas, 0, lambda);
+      T xsum = 0.;
+      for (int i = 0; i < nspecies && feasible; ++i) xsum += xfrac0[i];
+      feasible = feasible && xsum > 0. && std::isfinite(xsum);
+      for (int i = 0; i < nspecies && feasible; ++i) xfrac0[i] /= xsum;
 
-    // re-normalize mole fractions
-    for (int i = 0; i < nspecies; i++) xfrac[i] /= xsum;
+      T trial_error = 0.;
+      T trial_xg = 0.;
+      for (int i = 0; i < ngas && feasible; ++i) trial_xg += xfrac0[i];
+      feasible = feasible && trial_xg > 0.;
+      for (int k = 0; k < (*nactive) && feasible; ++k) {
+        int j = reaction_set[k];
+        T log_frac_sum = 0.;
+        for (int i = 0; i < nspecies; ++i) {
+          if (stoich[i * nreaction + j] < 0.) {
+            if (!(xfrac0[i] > 0.)) {
+              feasible = false;
+              break;
+            }
+            log_frac_sum +=
+                (-stoich[i * nreaction + j]) * log(xfrac0[i] / trial_xg);
+          }
+        }
+        if (!feasible) break;
+        trial_error = fmax(trial_error, fabs(logsvp[j] - log_frac_sum));
+      }
+      if (feasible && trial_error < current_error) {
+        memcpy(xfrac, xfrac0, nspecies * sizeof(T));
+        accepted = true;
+        break;
+      }
+      lambda *= .5;
+    }
+    if (!accepted) {
+      kkt_err = 3;
+      break;
+    }
   }
 
   /*///////// Construct a gain matrix of active reactions ///////////

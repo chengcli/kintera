@@ -1,22 +1,24 @@
 #pragma once
 
 #include <configure.h>
-#include <kintera/math/leastsq_kkt.h>
+#include <kintera/math/constrained_newton.h>
+#include <kintera/math/core.h>
 #include <kintera/utils/alloc.h>
 
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace kintera {
 
 template <typename T>
-DISPATCH_MACRO T equilibrium_max_error(T const *moles, T pres,
-                                       T standard_pressure, T const *log_k,
-                                       T const *stoich, int const *phase_ids,
+DISPATCH_MACRO T equilibrium_max_error(T const* moles, T pres,
+                                       T standard_pressure, T const* log_k,
+                                       T const* stoich, int const* phase_ids,
                                        int nspecies, int nreaction, int nphase,
-                                       int gas_phase, T *phase_totals,
-                                       T *residual) {
+                                       int gas_phase, T* phase_totals,
+                                       T* residual) {
   for (int p = 0; p < nphase; ++p) phase_totals[p] = 0.;
   for (int i = 0; i < nspecies; ++i) {
     phase_totals[phase_ids[i]] += moles[i];
@@ -43,10 +45,10 @@ DISPATCH_MACRO T equilibrium_max_error(T const *moles, T pres,
 
 template <typename T>
 DISPATCH_MACRO int phase_equilibrate_tp(
-    T *gain, T *diag, T *out_moles, T temp, T pres, T const *in_moles,
-    T const *log_k, T const *stoich, int const *phase_ids, int nspecies,
+    T* gain, T* diag, T* out_moles, T temp, T pres, T const* in_moles,
+    T const* log_k, T const* stoich, int const* phase_ids, int nspecies,
     int nreaction, int nphase, int gas_phase, T standard_pressure, T ftol,
-    T mole_floor, int max_iter, char *work = nullptr) {
+    T mole_floor, int max_iter, char* work = nullptr) {
   if (!(temp > 0.) || !(pres > 0.) || nspecies <= 0 || nreaction <= 0 ||
       nphase <= 0 || gas_phase < 0 || gas_phase >= nphase) {
     diag[0] = 1.;
@@ -59,18 +61,18 @@ DISPATCH_MACRO int phase_equilibrate_tp(
     }
   }
 
-  T *phase_totals, *phase_stoich, *residual, *jac, *constraints, *bounds, *step;
-  T *trial;
+  T *phase_totals, *phase_stoich, *residual, *jac, *constraints;
+  T *bounds, *step, *trial;
   bool own_work = work == nullptr;
   if (own_work) {
-    phase_totals = (T *)malloc(nphase * sizeof(T));
-    phase_stoich = (T *)malloc(nphase * nreaction * sizeof(T));
-    residual = (T *)malloc(nreaction * sizeof(T));
-    jac = (T *)malloc(nreaction * nreaction * sizeof(T));
-    constraints = (T *)malloc(nspecies * nreaction * sizeof(T));
-    bounds = (T *)malloc(nspecies * sizeof(T));
-    step = (T *)malloc(nreaction * sizeof(T));
-    trial = (T *)malloc(nspecies * sizeof(T));
+    phase_totals = (T*)malloc(nphase * sizeof(T));
+    phase_stoich = (T*)malloc(nphase * nreaction * sizeof(T));
+    residual = (T*)malloc(nreaction * sizeof(T));
+    jac = (T*)malloc(nreaction * nreaction * sizeof(T));
+    constraints = (T*)malloc(nspecies * nreaction * sizeof(T));
+    bounds = (T*)malloc(nspecies * sizeof(T));
+    step = (T*)malloc(nreaction * sizeof(T));
+    trial = (T*)malloc(nspecies * sizeof(T));
   } else {
     phase_totals = alloc_from<T>(work, nphase);
     phase_stoich = alloc_from<T>(work, nphase * nreaction);
@@ -90,7 +92,7 @@ DISPATCH_MACRO int phase_equilibrate_tp(
       phase_stoich[phase_ids[i] * nreaction + j] += stoich[i * nreaction + j];
     }
   }
-  T target = log(1. + ftol);
+  T target = fmax(log1p(ftol), 4. * std::numeric_limits<T>::epsilon());
   T max_error = 0.;
   int status = 2;
   int iter = 0;
@@ -127,26 +129,22 @@ DISPATCH_MACRO int phase_equilibrate_tp(
       }
     }
 
+    // Use the original square Jacobian whenever its direction can be made
+    // feasible by line search.  KKT remains the active-bound fallback.
     int kkt_iter = max_iter;
-    int err = leastsq_kkt(step, jac, constraints, bounds, nreaction, nreaction,
-                          nspecies, 0, &kkt_iter, 1.e-12, work);
+    int err = constrained_newton_step(step, jac, constraints, bounds, nreaction,
+                                      nspecies, &kkt_iter, 1.e-12, work);
     if (err != 0) {
       status = 3;
       break;
     }
 
-    T scale = 1.;
     bool accepted = false;
-    while (scale >= 1.e-8) {
-      bool positive = true;
-      for (int i = 0; i < nspecies; ++i) {
-        T delta = 0.;
-        for (int j = 0; j < nreaction; ++j) {
-          delta += stoich[i * nreaction + j] * step[j];
-        }
-        trial[i] = out_moles[i] + scale * delta;
-        if (!(trial[i] > mole_floor)) positive = false;
-      }
+    T scale = 1.;
+    while (scale >= 1.e-12) {
+      bool positive = constrained_newton_trial(trial, out_moles, constraints,
+                                               step, nspecies, nreaction,
+                                               nspecies, 0, scale, mole_floor);
       if (positive) {
         T trial_error = equilibrium_max_error(
             trial, pres, standard_pressure, log_k, stoich, phase_ids, nspecies,

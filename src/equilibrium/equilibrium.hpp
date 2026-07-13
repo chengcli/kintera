@@ -18,9 +18,9 @@ struct EquilibriumOptionsImpl final {
   }
 
   static std::shared_ptr<EquilibriumOptionsImpl> from_yaml(
-      std::string const &filename, bool verbose = false);
+      std::string const& filename, bool verbose = false);
 
-  void report(std::ostream &os) const;
+  void report(std::ostream& os) const;
   void validate() const;
 
   ADD_ARG(std::vector<std::string>, components);
@@ -43,10 +43,10 @@ class EquilibriumTPImpl : public torch::nn::Cloneable<EquilibriumTPImpl> {
   torch::Tensor phase_ids;
 
   EquilibriumTPImpl() : options(EquilibriumOptionsImpl::create()) {}
-  explicit EquilibriumTPImpl(EquilibriumOptions const &options_);
+  explicit EquilibriumTPImpl(EquilibriumOptions const& options_);
 
   void reset() override;
-  void pretty_print(std::ostream &os) const override;
+  void pretty_print(std::ostream& os) const override;
 
   //! Solve fixed-temperature, fixed-pressure multiphase equilibrium.
   /*!
