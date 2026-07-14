@@ -69,18 +69,20 @@ inline State speciate(torch::Tensor const& temp, torch::Tensor const& cc, double
   auto A = [&](int sp) {
     return torch::where(hot, high.select(0, sp), low.select(0, sp));  // (...,9)
   };
-  auto Tb = temp.unsqueeze(-1);
+  auto Tb = temp;  // per-cell (spatial...): h_R_of/cp_R_of/s_R_of consume the coeff axis via
+                   // a.select(-1,k) -> (spatial...), so T must NOT carry a trailing singleton
+                   // (else it OUTER-PRODUCTS). n=1 masked this for all prior validation.
   auto aH2 = A(0), aH = A(1), aHe = A(2);
 
   State s;
-  s.hH2 = h_R_of(aH2, Tb).squeeze(-1);
-  s.hH = h_R_of(aH, Tb).squeeze(-1);
-  s.hHe = h_R_of(aHe, Tb).squeeze(-1);
-  s.cpH2 = cp_R_of(aH2, Tb).squeeze(-1);
-  s.cpH = cp_R_of(aH, Tb).squeeze(-1);
-  s.cpHe = cp_R_of(aHe, Tb).squeeze(-1);
-  auto sH2 = s_R_of(aH2, Tb).squeeze(-1);
-  auto sH = s_R_of(aH, Tb).squeeze(-1);
+  s.hH2 = h_R_of(aH2, Tb);
+  s.hH = h_R_of(aH, Tb);
+  s.hHe = h_R_of(aHe, Tb);
+  s.cpH2 = cp_R_of(aH2, Tb);
+  s.cpH = cp_R_of(aH, Tb);
+  s.cpHe = cp_R_of(aHe, Tb);
+  auto sH2 = s_R_of(aH2, Tb);
+  auto sH = s_R_of(aH, Tb);
 
   auto gH = s.hH / temp - sH;        // G/(RT)
   auto gH2 = s.hH2 / temp - sH2;
