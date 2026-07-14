@@ -1,6 +1,9 @@
 // kintera
 #include "eval_uhs.hpp"
 
+#include <map>
+#include <mutex>
+
 #include <kintera/utils/utils_dispatch.hpp>
 
 #include "h2_dissociation.hpp"
@@ -163,7 +166,23 @@ inline std::pair<h2diss::Result, torch::Tensor> eval_h2diss(torch::Tensor temp,
                                                             SpeciesThermo const& op, int nsp) {
   int id = op->h2_diss_id();
   TORCH_CHECK(id >= 0 && id < nsp, "h2_diss_id out of range: ", id);
-  auto ab = nasa9_coeffs_by_name({"H2", "H", "He"}, temp.options());
+  // The H2/H/He NASA-9 coefficients are universal constants; fetching them rebuilds tensors and
+  // (on CUDA) copies host->device. This sits inside the P->T / U->T Newton loops, so cache one
+  // tensor per device+dtype.
+  static std::mutex h2diss_mtx;
+  static std::map<std::string, torch::Tensor> h2diss_coeffs;
+  torch::Tensor ab;
+  {
+    std::lock_guard<std::mutex> lock(h2diss_mtx);
+    auto key = temp.device().str() + "/" + std::string(c10::toString(temp.scalar_type()));
+    auto it = h2diss_coeffs.find(key);
+    if (it == h2diss_coeffs.end()) {
+      it = h2diss_coeffs
+               .emplace(key, nasa9_coeffs_by_name({"H2", "H", "He"}, temp.options()))
+               .first;
+    }
+    ab = it->second;
+  }
   auto c = conc.select(-1, id);
   auto r = h2diss::eval(temp, c, op->h2_diss_nH(), op->h2_diss_nHe(), ab);
   auto mask = torch::zeros({nsp}, temp.options().dtype(torch::kBool));

@@ -89,8 +89,13 @@ inline State speciate(torch::Tensor const& temp, torch::Tensor const& cc, double
   s.Kc = Kp * kP0 / (constants::Rgas * temp);           // mol/m^3
 
   auto nHc = nH * cc;
+  // root of 2[H]^2 + Kc[H] - Kc*nHc = 0 in the cancellation-free form
+  // H = 2*Kc*nHc / (Kc + sqrt(Kc^2 + 8*Kc*nHc)): exact -> nHc as Kc -> inf (full dissociation),
+  // whereas (-Kc + sqrt(...))/4 loses all precision there (large-Kc cancellation).
   auto disc = (s.Kc * s.Kc + 8.0 * s.Kc * nHc).clamp_min(0.);
-  s.H = ((-s.Kc + disc.sqrt()) / 4.0).clamp_min(0.).minimum(nHc);
+  s.H = (2.0 * s.Kc * nHc / (s.Kc + disc.sqrt()).clamp_min(1e-300))
+            .clamp_min(0.)
+            .minimum(nHc);
   s.H2 = (nHc - s.H) / 2.0;
   s.He = nHe * cc;
   s.ntot = s.H + s.H2 + s.He;
