@@ -270,9 +270,15 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
   // call the evaluation function
   at::native::call_func2(cz.device().type(), iter, op->czh());
 
-  if (h2diss_on(op)) {  // dissociation MAKES particles: cz > 1 (this is the delta term in grad_ad)
+  if (h2diss_on(op)) {
+    // Dissociation MAKES particles, so its contribution to the compressibility factor is
+    // Z_chem = n_tot/c > 1 (this is the delta term that carries ~12% of grad_ad).
+    // COMPOSE with whatever czh() returned (a real-gas / non-ideal Z) rather than overwrite it:
+    //     Z_total = Z_chem * Z_nonideal
+    // Today czh() is unregistered => Z_nonideal == 1 and this is a no-op, but it means a future
+    // non-ideal Z and this chemical Z stack correctly instead of one silently clobbering the other.
     auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
-    cz = torch::where(mask, r.cz.unsqueeze(-1).expand_as(cz), cz);
+    cz = torch::where(mask, r.cz.unsqueeze(-1) * cz, cz);
   }
   return cz;
 }
@@ -296,8 +302,24 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
   at::native::call_func2(cz_ddC.device().type(), iter, op->czh_ddC());
 
   if (h2diss_on(op)) {
-    auto [r, mask] = eval_h2diss(temp, cz_ddC.detach() * 0 + conc, op, conc.size(-1));
-    cz_ddC = torch::where(mask, r.cz_ddC.unsqueeze(-1).expand_as(cz_ddC), cz_ddC);
+    // product rule for Z_total = Z_chem * Z_nonideal (see eval_czh)
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    // Z_nonideal ALONE (not eval_czh, which now already carries Z_chem -> would double-count).
+    // It is exactly what eval_czh initialises before the h2diss factor: 1 for gas, 0 for clouds,
+    // as modified by any registered czh() function.
+    auto zni = torch::zeros_like(conc);
+    zni.narrow(-1, 0, op->vapor_ids().size()) = 1.;
+    auto it2 = at::TensorIteratorConfig()
+                   .resize_outputs(false)
+                   .check_all_same_dtype(true)
+                   .declare_static_shape(zni.sizes(), /*squash_dim=*/{conc.dim() - 1})
+                   .add_output(zni)
+                   .add_owned_input(temp.unsqueeze(-1))
+                   .add_input(conc)
+                   .build();
+    at::native::call_func2(zni.device().type(), it2, op->czh());
+    auto d = r.cz_ddC.unsqueeze(-1) * zni + r.cz.unsqueeze(-1) * cz_ddC;
+    cz_ddC = torch::where(mask, d, cz_ddC);
   }
   return cz_ddC;
 }
