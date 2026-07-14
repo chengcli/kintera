@@ -81,6 +81,18 @@ EquilibriumOptions EquilibriumOptionsImpl::from_yaml(
     auto equation = reaction_node["equation"].as<std::string>();
     options->reactions().push_back(equation);
     reactions.emplace_back(equation);
+
+    if (reaction_node["log-reaction-constant"]) {
+      auto coefficients = reaction_node["log-reaction-constant"];
+      TORCH_CHECK(coefficients.IsMap(),
+                  "'log-reaction-constant' must be a dictionary");
+      options->A().push_back(coefficients["A"].as<double>(0.));
+      options->B2().push_back(coefficients["B2"].as<double>(0.));
+      options->B1().push_back(coefficients["B1"].as<double>(0.));
+      options->C().push_back(coefficients["C"].as<double>(0.));
+      options->D1().push_back(coefficients["D1"].as<double>(0.));
+      options->D2().push_back(coefficients["D2"].as<double>(0.));
+    }
   }
   TORCH_CHECK(!reactions.empty(), "equilibrium YAML contains no reactions");
 

@@ -56,6 +56,58 @@ TEST_P(EquilibriumDeviceTest, IdealGasReaction) {
       torch::allclose(moles, torch::tensor({{0.8, 0.2}}, tensor_options)));
 }
 
+TEST_P(EquilibriumDeviceTest, EvaluatesLogReactionConstant) {
+  if (device.type() == torch::kMPS) GTEST_SKIP();
+  auto op = make_options();
+  op->A({0.1}).B2({0.4}).B1({0.4}).C({0.3}).D1({0.1}).D2({0.05});
+  EquilibriumTP eq(op);
+  eq->to(device, dtype);
+
+  auto tensor_options = torch::device(device).dtype(dtype);
+  auto temp = torch::tensor({2., 4.}, tensor_options);
+  auto pres = torch::tensor(1.e5, tensor_options);
+  auto moles = torch::tensor({0.8, 0.2}, tensor_options);
+
+  auto [result, gain, diag] = eq->forward(temp, pres, moles);
+  auto expected_log_k = 0.1 + 0.4 / temp.square() + 0.4 / temp +
+                        0.3 * temp.log() + 0.1 * temp + 0.05 * temp.square();
+  auto expected_b = torch::sigmoid(expected_log_k);
+  EXPECT_TRUE(torch::allclose(result.select(-1, 1), expected_b, 2.e-5, 1.e-6));
+  EXPECT_TRUE(torch::all(diag.select(-1, 0) == 0).item<bool>());
+
+  auto explicit_log_k = torch::zeros({2, 1}, tensor_options);
+  auto [overridden, override_gain, override_diag] =
+      eq->forward(temp, pres, moles, explicit_log_k);
+  EXPECT_TRUE(torch::allclose(overridden.select(-1, 1),
+                              torch::full({2}, .5, tensor_options), 1.e-5,
+                              1.e-6));
+}
+
+TEST(EquilibriumOptions, RequiresCoefficientsWhenLogKIsOmitted) {
+  auto op = make_options();
+  EquilibriumTP equilibrium(op);
+  auto tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
+  EXPECT_THROW(equilibrium->forward(torch::tensor(1000., tensor_options),
+                                    torch::tensor(1.e5, tensor_options),
+                                    torch::tensor({0.8, 0.2}, tensor_options)),
+               c10::Error);
+}
+
+TEST(EquilibriumOptions, RejectsPartialLogReactionConstants) {
+  auto op = EquilibriumOptionsImpl::create();
+  op->components({"A", "B", "C"})
+      .phases({"gas"})
+      .phase_ids({0, 0, 0})
+      .reactions({"A <=> B", "B <=> C"})
+      .A({1.})
+      .B2({0.})
+      .B1({0.})
+      .C({0.})
+      .D1({0.})
+      .D2({0.});
+  EXPECT_THROW(op->validate(), c10::Error);
+}
+
 TEST(MolarMass, StandaloneUtilities) {
   EXPECT_NEAR(atomic_mass("H"), 1.008e-3, 1.e-8);
   EXPECT_NEAR(molar_mass({{"H", 2.}, {"O", 1.}}), 18.015e-3, 1.e-8);
@@ -90,7 +142,9 @@ TEST(EquilibriumOptions, ReadsSpeciesAndReactionsFromYaml) {
          << "  - {name: A, composition: {H: 1}}\n"
          << "  - {name: B, composition: {H: 1}}\n"
          << "reactions:\n"
-         << "  - {type: equilibrium, equation: 'A <=> B'}\n"
+         << "  - type: equilibrium\n"
+         << "    equation: 'A <=> B'\n"
+         << "    log-reaction-constant: {A: 1, B1: 2}\n"
          << "  - {type: arrhenius, equation: 'B => A'}\n"
          << "equilibrium: {standard-pressure: 200000, max-iter: 12, "
             "ftol: 1.e-7}\n";
@@ -100,6 +154,12 @@ TEST(EquilibriumOptions, ReadsSpeciesAndReactionsFromYaml) {
   EXPECT_EQ(op->components(), std::vector<std::string>({"A", "B"}));
   EXPECT_EQ(op->reactions(), std::vector<std::string>({"A <=> B"}));
   EXPECT_EQ(op->phase_ids(), std::vector<int>({0, 0}));
+  EXPECT_EQ(op->A(), std::vector<double>({1.}));
+  EXPECT_EQ(op->B1(), std::vector<double>({2.}));
+  EXPECT_EQ(op->B2(), std::vector<double>({0.}));
+  EXPECT_EQ(op->C(), std::vector<double>({0.}));
+  EXPECT_EQ(op->D1(), std::vector<double>({0.}));
+  EXPECT_EQ(op->D2(), std::vector<double>({0.}));
   EXPECT_DOUBLE_EQ(op->standard_pressure(), 2.e5);
   EXPECT_EQ(op->max_iter(), 12);
   EquilibriumTP equilibrium(op);

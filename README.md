@@ -26,10 +26,9 @@ KINTERA provides efficient implementations of:
 ### Multiphase Equilibrium
 
 `EquilibriumTP` is a fixed-temperature, fixed-pressure constrained chemistry
-solver. The C++/CUDA core accepts component moles and precomputed logarithmic
-equilibrium constants; the module derives phase membership and stoichiometry
-from its options. Case-specific thermodynamics remains in Python under
-`kintera.equilibrium`.
+solver. The C++/CUDA core accepts component moles and either precomputed
+logarithmic equilibrium constants or polynomial coefficients from its options.
+The module derives phase membership and stoichiometry from those options.
 
 Equilibrium networks use the repository's top-level `phases`, `species`, and
 `reactions` YAML layout. Phase species determine component ordering, species
@@ -42,6 +41,19 @@ from kintera import EquilibriumOptions, EquilibriumTP
 options = EquilibriumOptions.from_yaml("equilibrium.yaml")
 solver = EquilibriumTP(options)
 ```
+
+An equilibrium reaction can provide a built-in natural-log equilibrium
+constant, with temperature `T` in kelvin:
+
+```yaml
+- equation: "A <=> B"
+  type: equilibrium
+  log-reaction-constant: {A: 1, B2: 2, B1: 3, C: 4, D1: 5, D2: 6}
+```
+
+This evaluates `ln(K) = A + B2/T^2 + B1/T + C*ln(T) + D1*T + D2*T^2` when
+`solver(temp, pressure, moles)` is called. Passing `log_k` explicitly overrides
+the configured coefficients.
 
 `Nasa9LogK` evaluates ideal-gas equilibrium constants from the bundled NASA-9
 database. See `examples/equilibrium_nasa9.yaml` and

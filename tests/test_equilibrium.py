@@ -36,6 +36,46 @@ def test_python_core_binding_is_functional():
     assert diagnostics[0] == 0
 
 
+def test_polynomial_log_reaction_constant_and_explicit_override():
+    options = (
+        EquilibriumOptions()
+        .components(["A", "B"])
+        .phases(["gas"])
+        .phase_ids([0, 0])
+        .reactions(["A <=> B"])
+        .gas_phase(0)
+        .A([0.1])
+        .B2([0.4])
+        .B1([0.4])
+        .C([0.3])
+        .D1([0.1])
+        .D2([0.05])
+    )
+    solver = EquilibriumTP(options)
+    temp = torch.tensor([2.0, 4.0], dtype=torch.float64)
+    pressure = torch.tensor(1.0e5, dtype=torch.float64)
+    initial = torch.tensor([0.8, 0.2], dtype=torch.float64)
+
+    result, _, diagnostics = solver(temp, pressure, initial)
+    expected_log_k = (
+        0.1
+        + 0.4 / temp.square()
+        + 0.4 / temp
+        + 0.3 * temp.log()
+        + 0.1 * temp
+        + 0.05 * temp.square()
+    )
+    torch.testing.assert_close(result[:, 1], torch.sigmoid(expected_log_k))
+    assert torch.all(diagnostics[:, 0] == 0)
+
+    overridden, _, _ = solver(
+        temp, pressure, initial, torch.zeros((2, 1), dtype=torch.float64)
+    )
+    torch.testing.assert_close(
+        overridden[:, 1], torch.full((2,), 0.5, dtype=torch.float64)
+    )
+
+
 def test_standalone_molar_mass_utilities():
     assert atomic_mass("H") == pytest.approx(1.008e-3)
     assert molar_mass({"H": 2.0, "O": 1.0}) == pytest.approx(18.015e-3)

@@ -27,6 +27,13 @@ struct EquilibriumOptionsImpl final {
   ADD_ARG(std::vector<std::string>, phases);
   ADD_ARG(std::vector<std::string>, reactions);
   ADD_ARG(std::vector<int>, phase_ids);
+  //! Coefficients for ln(K) = A + B2/T^2 + B1/T + C*ln(T) + D1*T + D2*T^2.
+  ADD_ARG(std::vector<double>, A) = {};
+  ADD_ARG(std::vector<double>, B2) = {};
+  ADD_ARG(std::vector<double>, B1) = {};
+  ADD_ARG(std::vector<double>, C) = {};
+  ADD_ARG(std::vector<double>, D1) = {};
+  ADD_ARG(std::vector<double>, D2) = {};
   ADD_ARG(int, gas_phase) = 0;
   ADD_ARG(double, standard_pressure) = 1.e5;
   ADD_ARG(int, max_iter) = 50;
@@ -41,6 +48,12 @@ class EquilibriumTPImpl : public torch::nn::Cloneable<EquilibriumTPImpl> {
 
   torch::Tensor stoich;
   torch::Tensor phase_ids;
+  torch::Tensor A;
+  torch::Tensor B2;
+  torch::Tensor B1;
+  torch::Tensor C;
+  torch::Tensor D1;
+  torch::Tensor D2;
 
   EquilibriumTPImpl() : options(EquilibriumOptionsImpl::create()) {}
   explicit EquilibriumTPImpl(EquilibriumOptions const& options_);
@@ -53,14 +66,16 @@ class EquilibriumTPImpl : public torch::nn::Cloneable<EquilibriumTPImpl> {
    * Shapes use arbitrary broadcast batch dimensions:
    *   temp, pres: (...)
    *   moles:      (..., ncomponent)
-   *   log_k:      (..., nreaction)
+   *   log_k:      optional (..., nreaction); when omitted, evaluate the
+   *               coefficients stored in EquilibriumOptions
    *
    * Returns equilibrium moles, the final reaction Jacobian/gain matrix, and
    * diagnostics (..., 3): status, iterations, and equilibrium error.
    */
   std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> forward(
       torch::Tensor temp, torch::Tensor pres, torch::Tensor moles,
-      torch::Tensor log_k, bool warm_start = false);
+      torch::optional<torch::Tensor> log_k = torch::nullopt,
+      bool warm_start = false);
 };
 
 TORCH_MODULE(EquilibriumTP);

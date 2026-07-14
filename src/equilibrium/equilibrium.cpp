@@ -16,6 +16,7 @@ void EquilibriumOptionsImpl::report(std::ostream& os) const {
      << "* components = " << components().size() << "\n"
      << "* phases = " << phases().size() << "\n"
      << "* reactions = " << reactions().size() << "\n"
+     << "* log-reaction-constants = " << A().size() << "\n"
      << "* gas_phase = " << gas_phase() << "\n"
      << "* standard_pressure = " << standard_pressure() << " Pa\n"
      << "* max_iter = " << max_iter() << "\n"
@@ -28,6 +29,15 @@ void EquilibriumOptionsImpl::validate() const {
   TORCH_CHECK(phase_ids().size() == components().size(),
               "phase_ids must contain one entry per component");
   TORCH_CHECK(!reactions().empty(), "Equilibrium requires reactions");
+  auto ncoeff = A().size();
+  TORCH_CHECK(B2().size() == ncoeff && B1().size() == ncoeff &&
+                  C().size() == ncoeff && D1().size() == ncoeff &&
+                  D2().size() == ncoeff,
+              "equilibrium log-reaction-constant coefficient lengths must "
+              "match");
+  TORCH_CHECK(ncoeff == 0 || ncoeff == reactions().size(),
+              "log-reaction-constant must be specified for every equilibrium "
+              "reaction or for none");
   TORCH_CHECK(components().size() <= 64,
               "the active-set solver currently supports at most 64 components");
   for (int phase : phase_ids()) {
@@ -80,6 +90,13 @@ void EquilibriumTPImpl::reset() {
               "stoich reaction columns must be independent");
   phase_ids = register_buffer("phase_ids",
                               torch::tensor(options->phase_ids(), torch::kInt));
+  auto tensor_options = torch::TensorOptions().dtype(torch::kFloat64);
+  A = register_buffer("A", torch::tensor(options->A(), tensor_options));
+  B2 = register_buffer("B2", torch::tensor(options->B2(), tensor_options));
+  B1 = register_buffer("B1", torch::tensor(options->B1(), tensor_options));
+  C = register_buffer("C", torch::tensor(options->C(), tensor_options));
+  D1 = register_buffer("D1", torch::tensor(options->D1(), tensor_options));
+  D2 = register_buffer("D2", torch::tensor(options->D2(), tensor_options));
 }
 
 void EquilibriumTPImpl::pretty_print(std::ostream& os) const {
@@ -89,10 +106,37 @@ void EquilibriumTPImpl::pretty_print(std::ostream& os) const {
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor>
 EquilibriumTPImpl::forward(torch::Tensor temp, torch::Tensor pres,
-                           torch::Tensor moles, torch::Tensor log_k,
+                           torch::Tensor moles,
+                           torch::optional<torch::Tensor> log_k_override,
                            bool warm_start) {
   (void)warm_start;
   TORCH_CHECK(moles.dim() >= 1, "moles must have a component dimension");
+  TORCH_CHECK(temp.is_floating_point() && pres.is_floating_point() &&
+                  moles.is_floating_point(),
+              "all equilibrium inputs must be floating-point tensors");
+
+  torch::Tensor log_k;
+  if (log_k_override.has_value()) {
+    log_k = *log_k_override;
+  } else {
+    TORCH_CHECK(A.numel() == stoich.size(1),
+                "log_k was omitted but log-reaction-constant coefficients "
+                "are not configured for every equilibrium reaction");
+    TORCH_CHECK(torch::all(temp > 0.).item<bool>(),
+                "temperature must be positive when evaluating "
+                "log-reaction-constant");
+    auto T = temp.unsqueeze(-1);
+    auto coefficient_options = temp.options();
+    auto a = A.to(coefficient_options);
+    auto b2 = B2.to(coefficient_options);
+    auto b1 = B1.to(coefficient_options);
+    auto c = C.to(coefficient_options);
+    auto d1 = D1.to(coefficient_options);
+    auto d2 = D2.to(coefficient_options);
+    log_k =
+        a + b2 / T.square() + b1 / T + c * T.log() + d1 * T + d2 * T.square();
+  }
+
   TORCH_CHECK(log_k.dim() >= 1, "log_k must have a reaction dimension");
   int nspecies = stoich.size(0);
   int nreaction = stoich.size(1);
@@ -100,8 +144,8 @@ EquilibriumTPImpl::forward(torch::Tensor temp, torch::Tensor pres,
               nspecies);
   TORCH_CHECK(log_k.size(-1) == nreaction, "log_k last dimension must be ",
               nreaction);
-  TORCH_CHECK(moles.is_floating_point() && log_k.is_floating_point(),
-              "moles and log_k must be floating-point tensors");
+  TORCH_CHECK(log_k.is_floating_point(),
+              "log_k must be a floating-point tensor");
   TORCH_CHECK(moles.device() == log_k.device() &&
                   moles.device() == temp.device() &&
                   moles.device() == pres.device(),
