@@ -129,6 +129,25 @@ at::Tensor nasa9_gibbs_rt(at::Tensor temp,
   return nasa9_gibbs_RT(temp, low_tensor, high_tensor, midpoint);
 }
 
+at::Tensor nasa9_coeffs_by_name(std::vector<std::string> const& species,
+                                at::TensorOptions const& options) {
+  auto const& database = get_nasa9_db();
+  Nasa9CoeffTable low, high;
+  low.reserve(species.size());
+  high.reserve(species.size());
+  for (auto const& name : species) {
+    auto found = database.find(name);
+    TORCH_CHECK(found != database.end(), "NASA-9 species not found: ", name);
+    low.push_back(found->second.low);
+    high.push_back(found->second.high);
+  }
+  std::array<int64_t, 2> shape = {static_cast<int64_t>(species.size()), 9};
+  auto cpu = torch::TensorOptions().dtype(torch::kFloat64);
+  auto lo = torch::from_blob(low.data(), shape, cpu).clone().to(options);
+  auto hi = torch::from_blob(high.data(), shape, cpu).clone().to(options);
+  return torch::stack({lo, hi}, 0);  // (2, nsp, 9)
+}
+
 void init_species_from_yaml(std::string filename) {
   auto config = YAML::LoadFile(filename);
   init_species_from_yaml(config);

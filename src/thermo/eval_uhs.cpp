@@ -3,6 +3,7 @@
 
 #include <kintera/utils/utils_dispatch.hpp>
 
+#include "h2_dissociation.hpp"
 #include "log_svp.hpp"
 #include "thermo.hpp"
 
@@ -148,6 +149,28 @@ inline H2Thermo eval_h2cp(torch::Tensor temp, SpeciesThermo const& op,
 }
 
 inline bool h2_on(SpeciesThermo const& op) { return op->use_h2_cp(); }
+
+// ---- H2 <-> 2H equilibrium on ONE lumped H/He species (opt-in: use_h2_dissociation) ----
+// Resolves the equilibrium internally at (T, c): no advected H, no chemistry operator, no stiff
+// solve. Supplies cz / e / cv / cp all from the SAME speciation (see thermo/h2_dissociation.hpp).
+inline bool h2diss_on(SpeciesThermo const& op) {
+  return op->use_h2_dissociation() && op->h2_diss_nH() > 0.;
+}
+
+//! (...) -> the lumped species' concentration column, and a (nsp,) bool mask selecting it.
+inline std::pair<h2diss::Result, torch::Tensor> eval_h2diss(torch::Tensor temp,
+                                                            torch::Tensor conc,
+                                                            SpeciesThermo const& op, int nsp) {
+  int id = op->h2_diss_id();
+  TORCH_CHECK(id >= 0 && id < nsp, "h2_diss_id out of range: ", id);
+  auto ab = nasa9_coeffs_by_name({"H2", "H", "He"}, temp.options());
+  auto c = conc.select(-1, id);
+  auto r = h2diss::eval(temp, c, op->h2_diss_nH(), op->h2_diss_nHe(), ab);
+  auto mask = torch::zeros({nsp}, temp.options().dtype(torch::kBool));
+  mask[id] = true;
+  return {r, mask};
+}
+
 }  // namespace
 
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
@@ -184,6 +207,10 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
     auto h2 = eval_h2cp(temp, op, conc.size(-1));
     cv_R = torch::where(h2.mask, h2.cp_R - 1.0, cv_R);
   }
+  if (h2diss_on(op)) {  // reacting cv: NOT cp - R (the composition shifts with T)
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    cv_R = torch::where(mask, r.cv_R.unsqueeze(-1).expand_as(cv_R), cv_R);
+  }
   return cv_R;
 }
 
@@ -217,6 +244,10 @@ torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
     auto h2 = eval_h2cp(temp, op, conc.size(-1));
     cp_R = torch::where(h2.mask, h2.cp_R, cp_R);
   }
+  if (h2diss_on(op)) {  // exact reacting-gas Mayer relation, not cv + R
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    cp_R = torch::where(mask, r.cp_R.unsqueeze(-1).expand_as(cp_R), cp_R);
+  }
   return cp_R;
 }
 
@@ -239,6 +270,10 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
   // call the evaluation function
   at::native::call_func2(cz.device().type(), iter, op->czh());
 
+  if (h2diss_on(op)) {  // dissociation MAKES particles: cz > 1 (this is the delta term in grad_ad)
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    cz = torch::where(mask, r.cz.unsqueeze(-1).expand_as(cz), cz);
+  }
   return cz;
 }
 
@@ -260,6 +295,10 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
   // call the evaluation function
   at::native::call_func2(cz_ddC.device().type(), iter, op->czh_ddC());
 
+  if (h2diss_on(op)) {
+    auto [r, mask] = eval_h2diss(temp, cz_ddC.detach() * 0 + conc, op, conc.size(-1));
+    cz_ddC = torch::where(mask, r.cz_ddC.unsqueeze(-1).expand_as(cz_ddC), cz_ddC);
+  }
   return cz_ddC;
 }
 
@@ -297,6 +336,11 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
     auto h2 = eval_h2cp(temp, op, conc.size(-1));
     auto intEng_h2 = uref_R + kNasa9Tref * cref_R + h2.e_R;
     result = torch::where(h2.mask, intEng_h2, result);
+  }
+  if (h2diss_on(op)) {  // e_R carries the 436 kJ/mol dissociation energy (NASA-9 h is absolute)
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    auto intEng_d = uref_R + kNasa9Tref * cref_R + r.e_R.unsqueeze(-1);
+    result = torch::where(mask, intEng_d.expand_as(result), result);
   }
   return result;
 }
