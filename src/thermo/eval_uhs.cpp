@@ -1,10 +1,9 @@
 // kintera
 #include "eval_uhs.hpp"
 
+#include <kintera/utils/utils_dispatch.hpp>
 #include <map>
 #include <mutex>
-
-#include <kintera/utils/utils_dispatch.hpp>
 
 #include "h2_dissociation.hpp"
 #include "log_svp.hpp"
@@ -153,32 +152,35 @@ inline H2Thermo eval_h2cp(torch::Tensor temp, SpeciesThermo const& op,
 
 inline bool h2_on(SpeciesThermo const& op) { return op->use_h2_cp(); }
 
-// ---- H2 <-> 2H equilibrium on ONE lumped H/He species (opt-in: use_h2_dissociation) ----
-// Resolves the equilibrium internally at (T, c): no advected H, no chemistry operator, no stiff
-// solve. Supplies cz / e / cv / cp all from the SAME speciation (see thermo/h2_dissociation.hpp).
+// ---- H2 <-> 2H equilibrium on ONE lumped H/He species (opt-in:
+// use_h2_dissociation) ---- Resolves the equilibrium internally at (T, c): no
+// advected H, no chemistry operator, no stiff solve. Supplies cz / e / cv / cp
+// all from the SAME speciation (see thermo/h2_dissociation.hpp).
 inline bool h2diss_on(SpeciesThermo const& op) {
   return op->use_h2_dissociation() && op->h2_diss_nH() > 0.;
 }
 
-//! (...) -> the lumped species' concentration column, and a (nsp,) bool mask selecting it.
-inline std::pair<h2diss::Result, torch::Tensor> eval_h2diss(torch::Tensor temp,
-                                                            torch::Tensor conc,
-                                                            SpeciesThermo const& op, int nsp) {
+//! (...) -> the lumped species' concentration column, and a (nsp,) bool mask
+//! selecting it.
+inline std::pair<h2diss::Result, torch::Tensor> eval_h2diss(
+    torch::Tensor temp, torch::Tensor conc, SpeciesThermo const& op, int nsp) {
   int id = op->h2_diss_id();
   TORCH_CHECK(id >= 0 && id < nsp, "h2_diss_id out of range: ", id);
-  // The H2/H/He NASA-9 coefficients are universal constants; fetching them rebuilds tensors and
-  // (on CUDA) copies host->device. This sits inside the P->T / U->T Newton loops, so cache one
-  // tensor per device+dtype.
+  // The H2/H/He NASA-9 coefficients are universal constants; fetching them
+  // rebuilds tensors and (on CUDA) copies host->device. This sits inside the
+  // P->T / U->T Newton loops, so cache one tensor per device+dtype.
   static std::mutex h2diss_mtx;
   static std::map<std::string, torch::Tensor> h2diss_coeffs;
   torch::Tensor ab;
   {
     std::lock_guard<std::mutex> lock(h2diss_mtx);
-    auto key = temp.device().str() + "/" + std::string(c10::toString(temp.scalar_type()));
+    auto key = temp.device().str() + "/" +
+               std::string(c10::toString(temp.scalar_type()));
     auto it = h2diss_coeffs.find(key);
     if (it == h2diss_coeffs.end()) {
       it = h2diss_coeffs
-               .emplace(key, nasa9_coeffs_by_name({"H2", "H", "He"}, temp.options()))
+               .emplace(key,
+                        nasa9_coeffs_by_name({"H2", "H", "He"}, temp.options()))
                .first;
     }
     ab = it->second;
@@ -226,7 +228,8 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
     auto h2 = eval_h2cp(temp, op, conc.size(-1));
     cv_R = torch::where(h2.mask, h2.cp_R - 1.0, cv_R);
   }
-  if (h2diss_on(op)) {  // reacting cv: NOT cp - R (the composition shifts with T)
+  if (h2diss_on(
+          op)) {  // reacting cv: NOT cp - R (the composition shifts with T)
     auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
     cv_R = torch::where(mask, r.cv_R.unsqueeze(-1).expand_as(cv_R), cv_R);
   }
@@ -290,12 +293,14 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
   at::native::call_func2(cz.device().type(), iter, op->czh());
 
   if (h2diss_on(op)) {
-    // Dissociation MAKES particles, so its contribution to the compressibility factor is
-    // Z_chem = n_tot/c > 1 (this is the delta term that carries ~12% of grad_ad).
-    // COMPOSE with whatever czh() returned (a real-gas / non-ideal Z) rather than overwrite it:
+    // Dissociation MAKES particles, so its contribution to the compressibility
+    // factor is Z_chem = n_tot/c > 1 (this is the delta term that carries ~12%
+    // of grad_ad). COMPOSE with whatever czh() returned (a real-gas / non-ideal
+    // Z) rather than overwrite it:
     //     Z_total = Z_chem * Z_nonideal
-    // Today czh() is unregistered => Z_nonideal == 1 and this is a no-op, but it means a future
-    // non-ideal Z and this chemical Z stack correctly instead of one silently clobbering the other.
+    // Today czh() is unregistered => Z_nonideal == 1 and this is a no-op, but
+    // it means a future non-ideal Z and this chemical Z stack correctly instead
+    // of one silently clobbering the other.
     auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
     cz = torch::where(mask, r.cz.unsqueeze(-1) * cz, cz);
   }
@@ -323,19 +328,21 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
   if (h2diss_on(op)) {
     // product rule for Z_total = Z_chem * Z_nonideal (see eval_czh)
     auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
-    // Z_nonideal ALONE (not eval_czh, which now already carries Z_chem -> would double-count).
-    // It is exactly what eval_czh initialises before the h2diss factor: 1 for gas, 0 for clouds,
-    // as modified by any registered czh() function.
+    // Z_nonideal ALONE (not eval_czh, which now already carries Z_chem -> would
+    // double-count). It is exactly what eval_czh initialises before the h2diss
+    // factor: 1 for gas, 0 for clouds, as modified by any registered czh()
+    // function.
     auto zni = torch::zeros_like(conc);
     zni.narrow(-1, 0, op->vapor_ids().size()) = 1.;
-    auto it2 = at::TensorIteratorConfig()
-                   .resize_outputs(false)
-                   .check_all_same_dtype(true)
-                   .declare_static_shape(zni.sizes(), /*squash_dim=*/{conc.dim() - 1})
-                   .add_output(zni)
-                   .add_owned_input(temp.unsqueeze(-1))
-                   .add_input(conc)
-                   .build();
+    auto it2 =
+        at::TensorIteratorConfig()
+            .resize_outputs(false)
+            .check_all_same_dtype(true)
+            .declare_static_shape(zni.sizes(), /*squash_dim=*/{conc.dim() - 1})
+            .add_output(zni)
+            .add_owned_input(temp.unsqueeze(-1))
+            .add_input(conc)
+            .build();
     at::native::call_func2(zni.device().type(), it2, op->czh());
     auto d = r.cz_ddC.unsqueeze(-1) * zni + r.cz.unsqueeze(-1) * cz_ddC;
     cz_ddC = torch::where(mask, d, cz_ddC);
@@ -378,7 +385,8 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
     auto intEng_h2 = uref_R + kNasa9Tref * cref_R + h2.e_R;
     result = torch::where(h2.mask, intEng_h2, result);
   }
-  if (h2diss_on(op)) {  // e_R carries the 436 kJ/mol dissociation energy (NASA-9 h is absolute)
+  if (h2diss_on(op)) {  // e_R carries the 436 kJ/mol dissociation energy
+                        // (NASA-9 h is absolute)
     auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
     auto intEng_d = uref_R + kNasa9Tref * cref_R + r.e_R.unsqueeze(-1);
     result = torch::where(mask, intEng_d.expand_as(result), result);
