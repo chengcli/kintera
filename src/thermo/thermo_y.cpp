@@ -362,7 +362,15 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
     auto cv_R = eval_cv_R(out, conc_gas, options);
     auto cp_R = eval_cp_R(out, conc_gas, options);
     auto temp_pre = out.clone();
-    out += func / ((cp_R - cv_R) * conc_gas).sum(-1);
+    // Newton: T <- T - f/f'.  f = T*sum(cz*c) - P/R increases with T, so the
+    // step must be SUBTRACTED. (cp_R-cv_R)*c >= f' = sum(cz + T dcz/dT)*c for a
+    // dissociating gas (Mayer: cp-cv = (z+T z_T)^2/(z+c z_c) with z_T>0,
+    // z_c<0), so this is a safely damped Newton. The old '+=' doubled the error
+    // each iteration; it was invisible because for cz == 1 the initial guess T0
+    // = P/(R*sum c) is already exact (func == 0) and the loop exits at once.
+    // use_h2_dissociation is the first cz != 1 consumer and made PV->T diverge
+    // (3900 -> 17000 K).
+    out -= func / ((cp_R - cv_R) * conc_gas).sum(-1);
     if ((1. - temp_pre / out).abs().max().item<double>() < options->ftol()) {
       break;
     }
