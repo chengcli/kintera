@@ -165,7 +165,7 @@ void init_species_from_yaml(YAML::Node const& config) {
     }
 
     if (sp["s0_R"]) {
-      species_sref_R.push_back(sp["u0_R"].as<double>());
+      species_sref_R.push_back(sp["s0_R"].as<double>());
     } else {
       species_sref_R.push_back(0.);
     }
