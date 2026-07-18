@@ -84,6 +84,13 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(bool, verbose) = false;
   ADD_ARG(bool, offset_zero) = false;
 
+  //! Use the fused per-cell scalar h2diss Newton kernels (Design C / ISSUES P1)
+  //! for VU->T and PV->T instead of the torch tensor-op inversions. Default OFF
+  //! => the torch path stays the oracle. Only engages on the single-lumped-gas-
+  //! species fast path (see ThermoYImpl::_h2diss_fast_path); falls back to torch
+  //! otherwise. YAML: reference-state.fused-h2diss.
+  ADD_ARG(bool, fused_h2diss) = false;
+
   ADD_ARG(NucleationOptions, nucleation) = nullptr;
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
@@ -233,6 +240,30 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    */
   void _intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
                        torch::Tensor& out) const;
+
+  //! \brief Predicate for the fused scalar h2diss kernels. True only when the
+  //! flag is set AND the config is the single-lumped-gas-species case the
+  //! kernels assume: one gas species (ngas==1), no clouds, and h2diss active on
+  //! species[0]. In that case every per-species sum in the torch Newton loops
+  //! collapses to the one h2diss column, so the scalar per-cell solve is exact
+  //! (up to fp reordering + per-cell early exit). Any other config => torch.
+  bool _h2diss_fast_path() const {
+    return options->fused_h2diss() && options->use_h2_dissociation() &&
+           options->h2_diss_nH() > 0. && options->h2_diss_id() == 0 &&
+           options->vapor_ids().size() == 1 && options->cloud_ids().size() == 0;
+  }
+
+  //! \brief Fused per-cell scalar Newton for VU->T (same math as
+  //! _intEng_to_temp; one launch per solve, per-cell early exit). CPU only for
+  //! now (GPU deferred to S5). Preconditions per _h2diss_fast_path().
+  void _intEng_to_temp_fused(torch::Tensor ivol, torch::Tensor intEng,
+                             torch::Tensor& out) const;
+
+  //! \brief Fused per-cell scalar Newton for PV->T (same math as _pres_to_temp,
+  //! including the damped/subtracted Newton step). CPU only. Preconditions per
+  //! _h2diss_fast_path().
+  void _pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
+                           torch::Tensor& out) const;
 
   //! \brief calculate pressure (Pa)
   /*!

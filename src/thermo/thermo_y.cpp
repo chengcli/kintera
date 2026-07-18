@@ -1,10 +1,19 @@
+// C/C++
+#include <atomic>
+#include <cmath>
+
+// torch
+#include <ATen/Parallel.h>  // at::parallel_for (fused kernels)
+
 // kintera
 #include <kintera/constants.h>
 
 #include <kintera/utils/check_resize.hpp>
 #include <kintera/utils/serialize.hpp>
 
+#include "../species.hpp"  // nasa9_coeffs_by_name (fused kernels)
 #include "eval_uhs.hpp"
+#include "h2_dissociation_scalar.hpp"  // fused per-cell scalar EOS (Design C)
 #include "log_svp.hpp"
 #include "thermo.hpp"
 #include "thermo_dispatch.hpp"
@@ -405,6 +414,11 @@ void ThermoYImpl::_cv_vol(torch::Tensor ivol, torch::Tensor temp,
 
 void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
                                   torch::Tensor& out) const {
+  if (_h2diss_fast_path() && ivol.is_cpu()) {
+    _intEng_to_temp_fused(ivol, intEng, out);
+    return;
+  }
+
   // kg/m^3 -> mol/m^3
   auto u0_sum = (ivol * u0).sum(-1);
   auto cv0_sum = (ivol * cv0).sum(-1);
@@ -435,6 +449,76 @@ void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
     // data["ivol"] = ivol;
     // data["intEng"] = intEng;
     // save_tensors(data, filename);
+  }
+}
+
+void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
+                                        torch::Tensor intEng,
+                                        torch::Tensor& out) const {
+  // Fast path (guaranteed by _h2diss_fast_path): the ONLY gas species is the
+  // lumped h2diss "dry" at index 0, no clouds -> the torch Newton's per-species
+  // sums (u*conc).sum(-1) / (cv*conc).sum(-1) each collapse to that one column.
+  // This is the SAME math as the torch _intEng_to_temp loop, re-expressed as one
+  // scalar solve per cell (Design C): u_dry(T) = (uref0 + Tref*cref0 + e_R)*Rgas
+  // [J/mol], cv_dry(T) = cv_R*Rgas, solved for u_dry(T)*c == intEng.
+  const double nH = options->h2_diss_nH();
+  const double nHe = options->h2_diss_nHe();
+  const double uref0 = options->uref_R()[0];  // /R, T=0 ref (post offset_zero)
+  const double cref0 = options->cref_R()[0];  // /R
+  const double ftol = options->ftol();
+  const int max_iter = options->max_iter();
+  const double Rgas = constants::Rgas;
+  constexpr double kTref = 300.0;  // == h2diss kTref (energy-reference continuity)
+
+  // The SAME (2,3,9) coefficient block the torch path consumes, fetched ONCE per
+  // solve (not per Newton iteration). CPU tensor -> host data_ptr.
+  auto ab_t = nasa9_coeffs_by_name(
+                  {"H2", "H", "He"},
+                  torch::TensorOptions().dtype(torch::kFloat64))
+                  .contiguous();
+  const double* ab = ab_t.data_ptr<double>();
+
+  const double invmu0 = inv_mu[0].item<double>();  // mol/kg
+  const double u0_0 = u0[0].item<double>();         // J/kg  (const-cv baseline)
+  const double cv0_0 = cv0[0].item<double>();       // J/(kg K)
+
+  auto rho_t = ivol.select(-1, 0).contiguous();  // (...) kg/m^3
+  auto ie_t = intEng.contiguous();               // (...) J/m^3
+  TORCH_CHECK(out.is_contiguous() && out.scalar_type() == torch::kFloat64,
+              "_intEng_to_temp_fused: out must be contiguous float64");
+  const double* rho = rho_t.data_ptr<double>();
+  const double* eint = ie_t.data_ptr<double>();
+  double* T = out.data_ptr<double>();
+  const int64_t n = rho_t.numel();
+
+  std::atomic<int64_t> nbad{0};
+  at::parallel_for(0, n, /*grain_size=*/512, [&](int64_t lo, int64_t hi) {
+    for (int64_t i = lo; i < hi; ++i) {
+      const double rho_i = rho[i];
+      const double c = rho_i * invmu0;  // mol/m^3 (dry conc)
+      const double e_tgt = eint[i];     // J/m^3
+      // const-cv cold guess, identical to the torch path
+      double Ti = (e_tgt - rho_i * u0_0) / (rho_i * cv0_0);
+      bool ok = false;
+      for (int it = 0; it < max_iter; ++it) {
+        auto R = h2diss_scalar::eval(Ti, c, nH, nHe, ab);
+        const double u = (uref0 + kTref * cref0 + R.e_R) * Rgas;  // J/mol
+        const double cv = R.cv_R * Rgas;                          // J/(mol K)
+        const double Tnew = Ti + (e_tgt - u * c) / (cv * c);
+        const double conv = std::fabs(1.0 - Ti / Tnew);
+        Ti = Tnew;
+        if (conv < ftol) {
+          ok = true;
+          break;
+        }
+      }
+      T[i] = Ti;
+      if (!ok) nbad.fetch_add(1, std::memory_order_relaxed);
+    }
+  });
+  if (nbad.load() > 0) {
+    TORCH_WARN("ThermoYImpl::_intEng_to_temp_fused: ", nbad.load(),
+               " cell(s) hit max_iter");
   }
 }
 
