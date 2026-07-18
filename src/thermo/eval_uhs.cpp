@@ -250,10 +250,12 @@ torch::Tensor h2diss_pack_fused(torch::Tensor const& temp,
   const double* cp = c.data_ptr<double>();
   double* o = out.data_ptr<double>();
   const int64_t n = T.numel();
+  // T0-reference hoist (model constant; see h2_dissociation_scalar.hpp)
+  const double e0 = h2diss_scalar::e0_ref(nH, nHe, ab);
 
   at::parallel_for(0, n, /*grain_size=*/512, [&](int64_t lo, int64_t hi) {
     for (int64_t i = lo; i < hi; ++i) {
-      auto r = h2diss_scalar::eval(Tp[i], cp[i], nH, nHe, ab);
+      auto r = h2diss_scalar::eval(Tp[i], cp[i], nH, nHe, ab, e0);
       o[5 * i + 0] = r.e_R;
       o[5 * i + 1] = r.cv_R;
       o[5 * i + 2] = r.cp_R;

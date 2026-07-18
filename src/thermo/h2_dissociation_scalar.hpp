@@ -33,22 +33,31 @@ namespace h2diss_scalar {
 constexpr double kP0 = 1.0e5;   // NASA-9 standard state [Pa]  (== h2diss::kP0)
 constexpr double kTref = 300.;  // energy reference [K]        (== h2diss::kTref)
 
-//! One species' NASA-9 coefficient row (9 doubles).
+//! One species' NASA-9 coefficient row (9 doubles). The lnT overloads take a
+//! precomputed std::log(T) -- speciate() would otherwise evaluate the SAME
+//! log(T) five times per call (profile: log/exp are ~40% of the whole fused
+//! run). Bit-identical: same std::log value, just computed once.
 inline double cp_R_of(double const* a, double T) {
   return a[0] / (T * T) + a[1] / T + a[2] + a[3] * T + a[4] * (T * T) +
          a[5] * (T * T * T) + a[6] * (T * T * T * T);
 }
 //! h/R [K] -- ABSOLUTE (a[7] carries the formation enthalpy), so 2 h_H - h_H2 =
 //! D(T).
-inline double h_R_of(double const* a, double T) {
+inline double h_R_of(double const* a, double T, double lnT) {
   double T2 = T * T, T3 = T2 * T, T4 = T3 * T, T5 = T4 * T;
-  return -a[0] / T + a[1] * std::log(T) + a[2] * T + a[3] * T2 / 2 +
-         a[4] * T3 / 3 + a[5] * T4 / 4 + a[6] * T5 / 5 + a[7];
+  return -a[0] / T + a[1] * lnT + a[2] * T + a[3] * T2 / 2 + a[4] * T3 / 3 +
+         a[5] * T4 / 4 + a[6] * T5 / 5 + a[7];
+}
+inline double h_R_of(double const* a, double T) {
+  return h_R_of(a, T, std::log(T));
+}
+inline double s_R_of(double const* a, double T, double lnT) {
+  double T2 = T * T, T3 = T2 * T, T4 = T3 * T;
+  return -a[0] / (2 * T2) - a[1] / T + a[2] * lnT + a[3] * T + a[4] * T2 / 2 +
+         a[5] * T3 / 3 + a[6] * T4 / 4 + a[8];
 }
 inline double s_R_of(double const* a, double T) {
-  double T2 = T * T, T3 = T2 * T, T4 = T3 * T;
-  return -a[0] / (2 * T2) - a[1] / T + a[2] * std::log(T) + a[3] * T +
-         a[4] * T2 / 2 + a[5] * T3 / 3 + a[6] * T4 / 4 + a[8];
+  return s_R_of(a, T, std::log(T));
 }
 
 //! Everything the model needs at one (T, c). Mirrors h2diss::State.
@@ -66,16 +75,17 @@ inline State speciate(double temp, double cc, double nH, double nHe,
   double const* aH2 = ab + r * 27 + 0 * 9;
   double const* aH = ab + r * 27 + 1 * 9;
   double const* aHe = ab + r * 27 + 2 * 9;
+  const double lnT = std::log(temp);  // shared by the 5 log-bearing polys
 
   State s;
-  s.hH2 = h_R_of(aH2, temp);
-  s.hH = h_R_of(aH, temp);
-  s.hHe = h_R_of(aHe, temp);
+  s.hH2 = h_R_of(aH2, temp, lnT);
+  s.hH = h_R_of(aH, temp, lnT);
+  s.hHe = h_R_of(aHe, temp, lnT);
   s.cpH2 = cp_R_of(aH2, temp);
   s.cpH = cp_R_of(aH, temp);
   s.cpHe = cp_R_of(aHe, temp);
-  double sH2 = s_R_of(aH2, temp);
-  double sH = s_R_of(aH, temp);
+  double sH2 = s_R_of(aH2, temp, lnT);
+  double sH = s_R_of(aH, temp, lnT);
 
   double gH = s.hH / temp - sH;  // G/(RT)
   double gH2 = s.hH2 / temp - sH2;
@@ -117,10 +127,13 @@ inline double e0_ref(double nH, double nHe, double const* ab) {
   return speciate(kTref, 1.0, nH, nHe, ab).U;  // cc=1: c-independent
 }
 
-//! Faithful scalar copy of h2diss::eval. `c` is the molar conc of the lumped
-//! species [mol/m^3]; `ab` the (2,3,9) coefficient block.
+//! Scalar h2diss::eval with a PRECOMPUTED T0 reference (`e0` = e0_ref(...)):
+//! skips the second speciate() the faithful eval performs at kTref every call
+//! -- at 300 K dissociation is ~e^-70, so s0.U/cc is c-independent to ~1e-13
+//! rel (gated by tests/test_h2diss_scalar.cpp T0ReferenceIsCIndependent),
+//! far below ftol. Halves the per-iteration cost of the fused Newton kernels.
 inline Result eval(double temp, double c, double nH, double nHe,
-                   double const* ab) {
+                   double const* ab, double e0) {
   double cc = std::max(c, 1e-30);
   State s = speciate(temp, cc, nH, nHe, ab);
 
@@ -143,17 +156,23 @@ inline Result eval(double temp, double c, double nH, double nHe,
   double den = std::max(1e-8, cz + cc * dcz_dc);
   double cp_R = cv_R + num / den;
 
-  // reference the internal energy to kTref at the SAME c (continuity)
-  State s0 = speciate(kTref, cc, nH, nHe, ab);
-  double e_R = s.U - s0.U;
-
   Result out;
   out.cz = cz;
   out.cz_ddC = dcz_dc;
   out.cp_R = cp_R;
   out.cv_R = cv_R;
-  out.e_R = e_R;
+  out.e_R = s.U - e0;
   return out;
+}
+
+//! Faithful scalar copy of h2diss::eval (recomputes the T0 reference at the
+//! SAME cc, matching torch bit-for-bit; the transcription guard compares THIS).
+inline Result eval(double temp, double c, double nH, double nHe,
+                   double const* ab) {
+  double cc = std::max(c, 1e-30);
+  // reference the internal energy to kTref at the SAME c (continuity)
+  State s0 = speciate(kTref, cc, nH, nHe, ab);
+  return eval(temp, c, nH, nHe, ab, s0.U);
 }
 
 }  // namespace h2diss_scalar

@@ -498,6 +498,12 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   double* T = out.data_ptr<double>();
   const int64_t n = rho_t.numel();
 
+  // T0-reference hoist: s0.U/c is a model constant (all-H2 at 300 K; gated
+  // c-independent to ~1e-13 by the transcription test) -- compute ONCE per
+  // solve instead of re-speciating at kTref every Newton iteration of every
+  // cell (halves the per-iteration transcendental cost).
+  const double e0 = h2diss_scalar::e0_ref(nH, nHe, ab);
+
   // warm start from the previous solve's converged T (seed only: the per-cell
   // Newton still iterates to ftol, so a stale seed costs iterations, never
   // accuracy). Falls back per cell to the const-cv guess if the seed is bad.
@@ -515,7 +521,7 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
       if (warm && std::isfinite(warm[i]) && warm[i] > 0.) Ti = warm[i];
       bool ok = false;
       for (int it = 0; it < max_iter; ++it) {
-        auto R = h2diss_scalar::eval(Ti, c, nH, nHe, ab);
+        auto R = h2diss_scalar::eval(Ti, c, nH, nHe, ab, e0);
         const double u = (uref0 + kTref * cref0 + R.e_R) * Rgas;  // J/mol
         const double cv = R.cv_R * Rgas;                          // J/(mol K)
         const double Tnew = Ti + (e_tgt - u * c) / (cv * c);
@@ -567,6 +573,8 @@ void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
   double* T = out.data_ptr<double>();
   const int64_t n = rho_t.numel();
 
+  const double e0 = h2diss_scalar::e0_ref(nH, nHe, ab);  // T0 hoist (see VU->T)
+
   // warm start (see _intEng_to_temp_fused): consecutive PV->T solves are the
   // L/R face states of the same faces -- the previous answer is 1-2 Newton
   // iterations away. Seed only; per-cell ftol exit guards accuracy.
@@ -583,7 +591,7 @@ void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
       if (warm && std::isfinite(warm[i]) && warm[i] > 0.) Ti = warm[i];
       bool ok = false;
       for (int it = 0; it < max_iter; ++it) {
-        auto R = h2diss_scalar::eval(Ti, c, nH, nHe, ab);
+        auto R = h2diss_scalar::eval(Ti, c, nH, nHe, ab, e0);
         const double func = Ti * R.cz * c - P / Rgas;
         const double Tnew = Ti - func / ((R.cp_R - R.cv_R) * c);
         const double conv = std::fabs(1.0 - Ti / Tnew);
