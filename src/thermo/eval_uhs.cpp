@@ -183,7 +183,7 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   entropy_R.narrow(-1, 0, ngas) =
       sref_R.narrow(0, 0, ngas) + entropy_R_extra +
       temp.log().unsqueeze(-1) * cp_gas_R - pres.log().unsqueeze(-1) -
-      (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).log();
+      (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).clamp_min(1e-300).log();
 
   // std::cout << "entropy_R = " << entropy_R << std::endl;
 
@@ -243,7 +243,7 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   entropy_R.narrow(-1, 0, ngas) =
       sref_R.narrow(0, 0, ngas) + entropy_R_extra +
       temp.log().unsqueeze(-1) * cp_gas_R - pres.log().unsqueeze(-1) -
-      (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).log();
+      (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).clamp_min(1e-300).log();
 
   //////////// Evaluate condensate entropy ////////////
 
