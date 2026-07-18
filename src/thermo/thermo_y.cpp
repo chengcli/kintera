@@ -1,4 +1,5 @@
 // C/C++
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 
@@ -360,6 +361,11 @@ void ThermoYImpl::_yfrac_to_ivol(torch::Tensor rho, torch::Tensor yfrac,
 
 void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
                                 torch::Tensor& out) const {
+  if (_h2diss_fast_path() && ivol.is_cpu()) {
+    _pres_to_temp_fused(pres, ivol, out);
+    return;
+  }
+
   int ngas = options->vapor_ids().size();
 
   // kg/m^3 -> mol/m^3
@@ -518,6 +524,67 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   });
   if (nbad.load() > 0) {
     TORCH_WARN("ThermoYImpl::_intEng_to_temp_fused: ", nbad.load(),
+               " cell(s) hit max_iter");
+  }
+}
+
+void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
+                                      torch::Tensor& out) const {
+  // Fast path (per _h2diss_fast_path): one gas species (the lumped h2diss
+  // "dry"), no clouds -> the torch sums collapse to one column. Same math as the
+  // torch _pres_to_temp loop, per cell: f(T) = T*cz*c - P/R, with the DAMPED
+  // Newton step T -= f / ((cp_R - cv_R)*c). The step is SUBTRACTED: f increases
+  // with T, and (cp_R-cv_R)*c >= f' = (cz + T dcz/dT)*c for a dissociating gas
+  // (Mayer: cp-cv=(z+T z_T)^2/(z+c z_c), z_T>0, z_c<0), so it is safely damped
+  // (see the long comment in _pres_to_temp). PV->T needs no energy reference.
+  const double nH = options->h2_diss_nH();
+  const double nHe = options->h2_diss_nHe();
+  const double gas_floor = options->gas_floor();
+  const double ftol = options->ftol();
+  const int max_iter = options->max_iter();
+  const double Rgas = constants::Rgas;
+
+  auto ab_t = nasa9_coeffs_by_name(
+                  {"H2", "H", "He"},
+                  torch::TensorOptions().dtype(torch::kFloat64))
+                  .contiguous();
+  const double* ab = ab_t.data_ptr<double>();
+  const double invmu0 = inv_mu[0].item<double>();  // mol/kg
+
+  auto rho_t = ivol.select(-1, 0).contiguous();  // (...) kg/m^3
+  auto p_t = pres.contiguous();                  // (...) Pa
+  TORCH_CHECK(out.is_contiguous() && out.scalar_type() == torch::kFloat64,
+              "_pres_to_temp_fused: out must be contiguous float64");
+  const double* rho = rho_t.data_ptr<double>();
+  const double* pp = p_t.data_ptr<double>();
+  double* T = out.data_ptr<double>();
+  const int64_t n = rho_t.numel();
+
+  std::atomic<int64_t> nbad{0};
+  at::parallel_for(0, n, /*grain_size=*/512, [&](int64_t lo, int64_t hi) {
+    for (int64_t i = lo; i < hi; ++i) {
+      const double c =
+          std::max(rho[i] * invmu0, gas_floor);  // mol/m^3 (dry gas conc)
+      const double P = pp[i];
+      double Ti = P / (c * Rgas);  // ideal-gas guess (exact when cz==1)
+      bool ok = false;
+      for (int it = 0; it < max_iter; ++it) {
+        auto R = h2diss_scalar::eval(Ti, c, nH, nHe, ab);
+        const double func = Ti * R.cz * c - P / Rgas;
+        const double Tnew = Ti - func / ((R.cp_R - R.cv_R) * c);
+        const double conv = std::fabs(1.0 - Ti / Tnew);
+        Ti = Tnew;
+        if (conv < ftol) {
+          ok = true;
+          break;
+        }
+      }
+      T[i] = Ti;
+      if (!ok) nbad.fetch_add(1, std::memory_order_relaxed);
+    }
+  });
+  if (nbad.load() > 0) {
+    TORCH_WARN("ThermoYImpl::_pres_to_temp_fused: ", nbad.load(),
                " cell(s) hit max_iter");
   }
 }
