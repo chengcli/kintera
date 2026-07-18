@@ -163,11 +163,18 @@ inline bool h2diss_on(SpeciesThermo const& op) {
   return op->use_h2_dissociation() && op->h2_diss_nH() > 0.;
 }
 
+inline torch::Tensor h2diss_coeffs_for(torch::Tensor const& temp) {
+  return h2diss_coeffs_cached(temp);
+}
+
+}  // namespace
+
 // The H2/H/He NASA-9 coefficients are universal constants; fetching them
 // rebuilds tensors and (on CUDA) copies host->device. This sits inside the
 // P->T / U->T Newton loops, so cache one CONTIGUOUS tensor per device+dtype.
-// Shared by the torch path (eval_h2diss) and the fused fast path.
-inline torch::Tensor h2diss_coeffs_for(torch::Tensor const& temp) {
+// Shared by the torch path (eval_h2diss), the fused hook fast paths, and the
+// fused Newton kernels in thermo_y.cpp (hence public).
+torch::Tensor h2diss_coeffs_cached(torch::Tensor const& temp) {
   static std::mutex h2diss_mtx;
   static std::map<std::string, torch::Tensor> h2diss_coeffs;
   std::lock_guard<std::mutex> lock(h2diss_mtx);
@@ -183,6 +190,8 @@ inline torch::Tensor h2diss_coeffs_for(torch::Tensor const& temp) {
   }
   return it->second;
 }
+
+namespace {  // re-enter file-local scope for the remaining helpers
 
 //! (...) -> the lumped species' concentration column, and a (nsp,) bool mask
 //! selecting it.

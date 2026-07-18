@@ -69,6 +69,10 @@ void ThermoYImpl::reset() {
   inv_mu =
       register_buffer("inv_mu", 1. / torch::tensor(mu_vec, torch::kFloat64));
 
+  // fused-kernel warm-start seeds (empty until the first fused solve)
+  warm_vu = register_buffer("warm_vu", torch::empty({0}, torch::kFloat64));
+  warm_pv = register_buffer("warm_pv", torch::empty({0}, torch::kFloat64));
+
   if (options->verbose()) {
     std::cout << "[ThermoY] species molecular weights (kg/mol): "
               << fmt::format("{}", mu_vec) << std::endl;
@@ -476,12 +480,9 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   const double Rgas = constants::Rgas;
   constexpr double kTref = 300.0;  // == h2diss kTref (energy-reference continuity)
 
-  // The SAME (2,3,9) coefficient block the torch path consumes, fetched ONCE per
-  // solve (not per Newton iteration). CPU tensor -> host data_ptr.
-  auto ab_t = nasa9_coeffs_by_name(
-                  {"H2", "H", "He"},
-                  torch::TensorOptions().dtype(torch::kFloat64))
-                  .contiguous();
+  // The SAME (2,3,9) coefficient block the torch path consumes, from the shared
+  // per-device cache. CPU tensor -> host data_ptr.
+  auto ab_t = h2diss_coeffs_cached(intEng);
   const double* ab = ab_t.data_ptr<double>();
 
   const double invmu0 = inv_mu[0].item<double>();  // mol/kg
@@ -497,6 +498,12 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   double* T = out.data_ptr<double>();
   const int64_t n = rho_t.numel();
 
+  // warm start from the previous solve's converged T (seed only: the per-cell
+  // Newton still iterates to ftol, so a stale seed costs iterations, never
+  // accuracy). Falls back per cell to the const-cv guess if the seed is bad.
+  const double* warm =
+      (warm_vu.numel() == n) ? warm_vu.data_ptr<double>() : nullptr;
+
   std::atomic<int64_t> nbad{0};
   at::parallel_for(0, n, /*grain_size=*/512, [&](int64_t lo, int64_t hi) {
     for (int64_t i = lo; i < hi; ++i) {
@@ -505,6 +512,7 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
       const double e_tgt = eint[i];     // J/m^3
       // const-cv cold guess, identical to the torch path
       double Ti = (e_tgt - rho_i * u0_0) / (rho_i * cv0_0);
+      if (warm && std::isfinite(warm[i]) && warm[i] > 0.) Ti = warm[i];
       bool ok = false;
       for (int it = 0; it < max_iter; ++it) {
         auto R = h2diss_scalar::eval(Ti, c, nH, nHe, ab);
@@ -526,6 +534,8 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
     TORCH_WARN("ThermoYImpl::_intEng_to_temp_fused: ", nbad.load(),
                " cell(s) hit max_iter");
   }
+  warm_vu.resize_({n});
+  warm_vu.copy_(out.reshape({n}));
 }
 
 void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
@@ -544,10 +554,7 @@ void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
   const int max_iter = options->max_iter();
   const double Rgas = constants::Rgas;
 
-  auto ab_t = nasa9_coeffs_by_name(
-                  {"H2", "H", "He"},
-                  torch::TensorOptions().dtype(torch::kFloat64))
-                  .contiguous();
+  auto ab_t = h2diss_coeffs_cached(pres);
   const double* ab = ab_t.data_ptr<double>();
   const double invmu0 = inv_mu[0].item<double>();  // mol/kg
 
@@ -560,6 +567,12 @@ void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
   double* T = out.data_ptr<double>();
   const int64_t n = rho_t.numel();
 
+  // warm start (see _intEng_to_temp_fused): consecutive PV->T solves are the
+  // L/R face states of the same faces -- the previous answer is 1-2 Newton
+  // iterations away. Seed only; per-cell ftol exit guards accuracy.
+  const double* warm =
+      (warm_pv.numel() == n) ? warm_pv.data_ptr<double>() : nullptr;
+
   std::atomic<int64_t> nbad{0};
   at::parallel_for(0, n, /*grain_size=*/512, [&](int64_t lo, int64_t hi) {
     for (int64_t i = lo; i < hi; ++i) {
@@ -567,6 +580,7 @@ void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
           std::max(rho[i] * invmu0, gas_floor);  // mol/m^3 (dry gas conc)
       const double P = pp[i];
       double Ti = P / (c * Rgas);  // ideal-gas guess (exact when cz==1)
+      if (warm && std::isfinite(warm[i]) && warm[i] > 0.) Ti = warm[i];
       bool ok = false;
       for (int it = 0; it < max_iter; ++it) {
         auto R = h2diss_scalar::eval(Ti, c, nH, nHe, ab);
@@ -587,6 +601,8 @@ void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
     TORCH_WARN("ThermoYImpl::_pres_to_temp_fused: ", nbad.load(),
                " cell(s) hit max_iter");
   }
+  warm_pv.resize_({n});
+  warm_pv.copy_(out.reshape({n}));
 }
 
 void ThermoYImpl::_temp_to_pres(torch::Tensor ivol, torch::Tensor temp,

@@ -138,6 +138,12 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! stoichiometry matrix (nspecies, nreaction)
   torch::Tensor stoich;
 
+  //! fused-kernel warm-start seeds (Design C S5a follow-on): the previous
+  //! solve's converged T, flat, per instance (never static -- see the global
+  //! species-registry trap). Pure seeds: any content is corrected by the
+  //! per-cell Newton to ftol, so stale/mismatched values only cost iterations.
+  torch::Tensor warm_vu, warm_pv;
+
   //! kkt warm start active set
   torch::Tensor reaction_set, nactive;
 
