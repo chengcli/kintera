@@ -1,11 +1,14 @@
 // kintera
 #include "eval_uhs.hpp"
 
+#include <ATen/Parallel.h>  // at::parallel_for (fused h2diss fast path)
+
 #include <kintera/utils/utils_dispatch.hpp>
 #include <map>
 #include <mutex>
 
 #include "h2_dissociation.hpp"
+#include "h2_dissociation_scalar.hpp"  // fused per-cell fast path (Design C)
 #include "log_svp.hpp"
 #include "thermo.hpp"
 
@@ -160,31 +163,34 @@ inline bool h2diss_on(SpeciesThermo const& op) {
   return op->use_h2_dissociation() && op->h2_diss_nH() > 0.;
 }
 
+// The H2/H/He NASA-9 coefficients are universal constants; fetching them
+// rebuilds tensors and (on CUDA) copies host->device. This sits inside the
+// P->T / U->T Newton loops, so cache one CONTIGUOUS tensor per device+dtype.
+// Shared by the torch path (eval_h2diss) and the fused fast path.
+inline torch::Tensor h2diss_coeffs_for(torch::Tensor const& temp) {
+  static std::mutex h2diss_mtx;
+  static std::map<std::string, torch::Tensor> h2diss_coeffs;
+  std::lock_guard<std::mutex> lock(h2diss_mtx);
+  auto key = temp.device().str() + "/" +
+             std::string(c10::toString(temp.scalar_type()));
+  auto it = h2diss_coeffs.find(key);
+  if (it == h2diss_coeffs.end()) {
+    it = h2diss_coeffs
+             .emplace(key, nasa9_coeffs_by_name({"H2", "H", "He"},
+                                                temp.options())
+                               .contiguous())
+             .first;
+  }
+  return it->second;
+}
+
 //! (...) -> the lumped species' concentration column, and a (nsp,) bool mask
 //! selecting it.
 inline std::pair<h2diss::Result, torch::Tensor> eval_h2diss(
     torch::Tensor temp, torch::Tensor conc, SpeciesThermo const& op, int nsp) {
   int id = op->h2_diss_id();
   TORCH_CHECK(id >= 0 && id < nsp, "h2_diss_id out of range: ", id);
-  // The H2/H/He NASA-9 coefficients are universal constants; fetching them
-  // rebuilds tensors and (on CUDA) copies host->device. This sits inside the
-  // P->T / U->T Newton loops, so cache one tensor per device+dtype.
-  static std::mutex h2diss_mtx;
-  static std::map<std::string, torch::Tensor> h2diss_coeffs;
-  torch::Tensor ab;
-  {
-    std::lock_guard<std::mutex> lock(h2diss_mtx);
-    auto key = temp.device().str() + "/" +
-               std::string(c10::toString(temp.scalar_type()));
-    auto it = h2diss_coeffs.find(key);
-    if (it == h2diss_coeffs.end()) {
-      it = h2diss_coeffs
-               .emplace(key,
-                        nasa9_coeffs_by_name({"H2", "H", "He"}, temp.options()))
-               .first;
-    }
-    ab = it->second;
-  }
+  auto ab = h2diss_coeffs_for(temp);
   auto c = conc.select(-1, id);
   auto r = h2diss::eval(temp, c, op->h2_diss_nH(), op->h2_diss_nHe(), ab);
   auto mask = torch::zeros({nsp}, temp.options().dtype(torch::kBool));
@@ -192,10 +198,70 @@ inline std::pair<h2diss::Result, torch::Tensor> eval_h2diss(
   return {r, mask};
 }
 
+// ---- Fused scalar fast path for the five h2diss eval_* hooks (Design C /
+// ISSUES P1, step S5a) ----
+// py-spy on the production BD run (job 625600) measured these hooks -- each a
+// ~100-op torch chain re-evaluating the FULL dissociation state to keep one
+// field -- at 70% of the fused-ON cycle budget (the Riemann W->I/W->A/WA->L
+// face surface). The fast path runs the whole evaluation as ONE
+// at::parallel_for launch over cells via the oracle-gated scalar transcription
+// (h2_dissociation_scalar.hpp) and returns the requested field. Preconditions
+// mirror ThermoYImpl::_h2diss_fast_path: single lumped gas species at id 0, no
+// clouds, CPU, fp64, flag ON (default OFF -> torch chains stay the oracle).
+inline bool h2diss_fused_ok(SpeciesThermo const& op, torch::Tensor const& temp,
+                            torch::Tensor const& conc) {
+  // A registered czh() user function would compose a non-ideal Z with the
+  // chemical Z (see eval_czh); the fast path assumes Z_nonideal == 1, so
+  // REQUIRE czh unregistered rather than assume it.
+  for (auto const& f : op->czh()) {
+    if (!f.empty()) return false;
+  }
+  return h2diss_on(op) && op->fused_h2diss() && op->h2_diss_id() == 0 &&
+         op->vapor_ids().size() == 1 && op->cloud_ids().size() == 0 &&
+         conc.size(-1) == 1 && temp.is_cpu() &&
+         temp.scalar_type() == torch::kFloat64;
+}
+
+//! One launch -> (..., 5) = [e_R, cv_R, cp_R, cz, cz_ddC] per cell.
+torch::Tensor h2diss_pack_fused(torch::Tensor const& temp,
+                                torch::Tensor const& conc,
+                                SpeciesThermo const& op) {
+  auto ab_t = h2diss_coeffs_for(temp);
+  const double* ab = ab_t.data_ptr<double>();
+  const double nH = op->h2_diss_nH();
+  const double nHe = op->h2_diss_nHe();
+
+  auto T = temp.contiguous();
+  auto c = conc.select(-1, 0).contiguous();
+  auto vec = temp.sizes().vec();
+  vec.push_back(5);
+  auto out = torch::empty(vec, temp.options());
+
+  const double* Tp = T.data_ptr<double>();
+  const double* cp = c.data_ptr<double>();
+  double* o = out.data_ptr<double>();
+  const int64_t n = T.numel();
+
+  at::parallel_for(0, n, /*grain_size=*/512, [&](int64_t lo, int64_t hi) {
+    for (int64_t i = lo; i < hi; ++i) {
+      auto r = h2diss_scalar::eval(Tp[i], cp[i], nH, nHe, ab);
+      o[5 * i + 0] = r.e_R;
+      o[5 * i + 1] = r.cv_R;
+      o[5 * i + 2] = r.cp_R;
+      o[5 * i + 3] = r.cz;
+      o[5 * i + 4] = r.cz_ddC;
+    }
+  });
+  return out;
+}
+
 }  // namespace
 
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
                         SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {  // reacting cv, one launch
+    return h2diss_pack_fused(temp, conc, op).select(-1, 1).unsqueeze(-1);
+  }
   auto cv_R_extra = torch::zeros_like(conc);
 
   // bundle iterator
@@ -238,6 +304,9 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
 
 torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
                         SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {  // reacting-gas Mayer cp, one launch
+    return h2diss_pack_fused(temp, conc, op).select(-1, 2).unsqueeze(-1);
+  }
   auto cp_R_extra = torch::zeros_like(conc);
 
   // bundle iterator
@@ -275,6 +344,11 @@ torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
 
 torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
                        SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {
+    // Z_total = Z_chem * Z_nonideal; czh() is unregistered on this fast path
+    // (guarded by _h2diss_fast_path-class preconditions) => Z_nonideal == 1.
+    return h2diss_pack_fused(temp, conc, op).select(-1, 3).unsqueeze(-1);
+  }
   auto cz = torch::zeros_like(conc);
   cz.narrow(-1, 0, op->vapor_ids().size()) = 1.;
 
@@ -309,6 +383,11 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
 
 torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
                            SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {
+    // product rule collapses: Z_nonideal == 1 (czh unregistered, checked) and
+    // its ddC == 0, so d(Z_total)/dc = dcz_dc.
+    return h2diss_pack_fused(temp, conc, op).select(-1, 4).unsqueeze(-1);
+  }
   auto cz_ddC = torch::zeros_like(conc);
 
   // bundle iterator
@@ -352,6 +431,13 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
 
 torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
                             SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {
+    // matches the torch h2diss branch below: uref + T0*cref + e_R (e_R == 0 at
+    // T0 = kNasa9Tref; uref_R already offset to T=0 by ThermoY::reset).
+    const double u0c = op->uref_R()[0] + kNasa9Tref * op->cref_R()[0];
+    return (h2diss_pack_fused(temp, conc, op).select(-1, 0) + u0c)
+        .unsqueeze(-1);
+  }
   auto intEng_R_extra = torch::zeros_like(conc);
 
   // bundle iterator

@@ -84,12 +84,8 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(bool, verbose) = false;
   ADD_ARG(bool, offset_zero) = false;
 
-  //! Use the fused per-cell scalar h2diss Newton kernels (Design C / ISSUES P1)
-  //! for VU->T and PV->T instead of the torch tensor-op inversions. Default OFF
-  //! => the torch path stays the oracle. Only engages on the single-lumped-gas-
-  //! species fast path (see ThermoYImpl::_h2diss_fast_path); falls back to torch
-  //! otherwise. YAML: reference-state.fused-h2diss.
-  ADD_ARG(bool, fused_h2diss) = false;
+  // NOTE: fused_h2diss (Design C) lives on SpeciesThermoImpl (species.hpp) so
+  // the eval_* hooks can see it; inherited here.
 
   ADD_ARG(NucleationOptions, nucleation) = nullptr;
 };

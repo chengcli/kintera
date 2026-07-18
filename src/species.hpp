@@ -128,6 +128,15 @@ struct SpeciesThermoImpl {
   ADD_ARG(int, h2_diss_id) = 0;
   ADD_ARG(double, h2_diss_nH) = 0.;
   ADD_ARG(double, h2_diss_nHe) = 0.;
+  //! Opt-in (Design C / ISSUES P1): run the h2diss thermo through fused
+  //! per-cell scalar kernels -- the two Newton inversions in thermo_y.cpp AND
+  //! the five eval_* hooks in eval_uhs.cpp -- instead of the torch tensor-op
+  //! chains. Same math (h2_dissociation_scalar.hpp, oracle-gated); one launch
+  //! per call instead of ~100. Only engages on the single-lumped-gas-species
+  //! CPU fast path; default OFF keeps the torch path as the oracle. Lives here
+  //! (not ThermoOptions) so the eval_* hooks, which receive SpeciesThermo, can
+  //! see it. YAML: reference-state.fused-h2diss.
+  ADD_ARG(bool, fused_h2diss) = false;
 };
 using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
