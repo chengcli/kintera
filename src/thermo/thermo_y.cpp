@@ -468,9 +468,9 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   // Fast path (guaranteed by _h2diss_fast_path): the ONLY gas species is the
   // lumped h2diss "dry" at index 0, no clouds -> the torch Newton's per-species
   // sums (u*conc).sum(-1) / (cv*conc).sum(-1) each collapse to that one column.
-  // This is the SAME math as the torch _intEng_to_temp loop, re-expressed as one
-  // scalar solve per cell (Design C): u_dry(T) = (uref0 + Tref*cref0 + e_R)*Rgas
-  // [J/mol], cv_dry(T) = cv_R*Rgas, solved for u_dry(T)*c == intEng.
+  // This is the SAME math as the torch _intEng_to_temp loop, re-expressed as
+  // one scalar solve per cell (Design C): u_dry(T) = (uref0 + Tref*cref0 +
+  // e_R)*Rgas [J/mol], cv_dry(T) = cv_R*Rgas, solved for u_dry(T)*c == intEng.
   const double nH = options->h2_diss_nH();
   const double nHe = options->h2_diss_nHe();
   const double uref0 = options->uref_R()[0];  // /R, T=0 ref (post offset_zero)
@@ -478,7 +478,8 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   const double ftol = options->ftol();
   const int max_iter = options->max_iter();
   const double Rgas = constants::Rgas;
-  constexpr double kTref = 300.0;  // == h2diss kTref (energy-reference continuity)
+  constexpr double kTref =
+      300.0;  // == h2diss kTref (energy-reference continuity)
 
   // The SAME (2,3,9) coefficient block the torch path consumes, from the shared
   // per-device cache. CPU tensor -> host data_ptr.
@@ -486,8 +487,8 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   const double* ab = ab_t.data_ptr<double>();
 
   const double invmu0 = inv_mu[0].item<double>();  // mol/kg
-  const double u0_0 = u0[0].item<double>();         // J/kg  (const-cv baseline)
-  const double cv0_0 = cv0[0].item<double>();       // J/(kg K)
+  const double u0_0 = u0[0].item<double>();        // J/kg  (const-cv baseline)
+  const double cv0_0 = cv0[0].item<double>();      // J/(kg K)
 
   auto rho_t = ivol.select(-1, 0).contiguous();  // (...) kg/m^3
   auto ie_t = intEng.contiguous();               // (...) J/m^3
@@ -507,7 +508,8 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   // warm start from the previous solve's converged T (seed only: the per-cell
   // Newton still iterates to ftol, so a stale seed costs iterations, never
   // accuracy). Falls back per cell to the const-cv guess if the seed is bad.
-  auto warm_vu = named_buffers(/*recurse=*/false)["warm_vu"];  // ABI: buffer dict, not a member
+  auto warm_vu = named_buffers(
+      /*recurse=*/false)["warm_vu"];  // ABI: buffer dict, not a member
   const double* warm =
       (warm_vu.numel() == n) ? warm_vu.data_ptr<double>() : nullptr;
 
@@ -548,12 +550,13 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
 void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
                                       torch::Tensor& out) const {
   // Fast path (per _h2diss_fast_path): one gas species (the lumped h2diss
-  // "dry"), no clouds -> the torch sums collapse to one column. Same math as the
-  // torch _pres_to_temp loop, per cell: f(T) = T*cz*c - P/R, with the DAMPED
-  // Newton step T -= f / ((cp_R - cv_R)*c). The step is SUBTRACTED: f increases
-  // with T, and (cp_R-cv_R)*c >= f' = (cz + T dcz/dT)*c for a dissociating gas
-  // (Mayer: cp-cv=(z+T z_T)^2/(z+c z_c), z_T>0, z_c<0), so it is safely damped
-  // (see the long comment in _pres_to_temp). PV->T needs no energy reference.
+  // "dry"), no clouds -> the torch sums collapse to one column. Same math as
+  // the torch _pres_to_temp loop, per cell: f(T) = T*cz*c - P/R, with the
+  // DAMPED Newton step T -= f / ((cp_R - cv_R)*c). The step is SUBTRACTED: f
+  // increases with T, and (cp_R-cv_R)*c >= f' = (cz + T dcz/dT)*c for a
+  // dissociating gas (Mayer: cp-cv=(z+T z_T)^2/(z+c z_c), z_T>0, z_c<0), so it
+  // is safely damped (see the long comment in _pres_to_temp). PV->T needs no
+  // energy reference.
   const double nH = options->h2_diss_nH();
   const double nHe = options->h2_diss_nHe();
   const double gas_floor = options->gas_floor();
@@ -579,7 +582,8 @@ void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
   // warm start (see _intEng_to_temp_fused): consecutive PV->T solves are the
   // L/R face states of the same faces -- the previous answer is 1-2 Newton
   // iterations away. Seed only; per-cell ftol exit guards accuracy.
-  auto warm_pv = named_buffers(/*recurse=*/false)["warm_pv"];  // ABI: buffer dict, not a member
+  auto warm_pv = named_buffers(
+      /*recurse=*/false)["warm_pv"];  // ABI: buffer dict, not a member
   const double* warm =
       (warm_pv.numel() == n) ? warm_pv.data_ptr<double>() : nullptr;
 

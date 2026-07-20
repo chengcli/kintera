@@ -3,35 +3,37 @@
 //
 // WHY: the torch h2diss::eval expresses the H2<->2H equilibrium thermo as ~1000
 // tensor ops; on the BD field (512 cells/rank) that is ~1.12 s/cyc of pure ATen
-// dispatch overhead (E0: 93% field-size-independent). The fused kernel (Design C
-// / ISSUES P1(3)) turns the loop inside out -- one launch per solve, per-cell
+// dispatch overhead (E0: 93% field-size-independent). The fused kernel (Design
+// C / ISSUES P1(3)) turns the loop inside out -- one launch per solve, per-cell
 // Newton -- and needs the physics as ONE scalar function body. This header is
-// that body: cp_R_of/h_R_of/s_R_of/speciate/eval, line-for-line the same math as
-// h2_dissociation.hpp, in double. NO torch, NO printf, header-only, host-callable
-// now (GPU DISPATCH_MACRO templating is deferred to S5).
+// that body: cp_R_of/h_R_of/s_R_of/speciate/eval, line-for-line the same math
+// as h2_dissociation.hpp, in double. NO torch, NO printf, header-only,
+// host-callable now (GPU DISPATCH_MACRO templating is deferred to S5).
 //
-// SINGLE SOURCE OF TRUTH for the NASA-9 coefficients: the caller passes `ab`, the
-// SAME (2,3,9) = [low|high][H2,H,He][coeff] block that nasa9_coeffs_by_name(
+// SINGLE SOURCE OF TRUTH for the NASA-9 coefficients: the caller passes `ab`,
+// the SAME (2,3,9) = [low|high][H2,H,He][coeff] block that
+// nasa9_coeffs_by_name(
 // {"H2","H","He"}) builds for the torch path. We never hardcode the 54 numbers.
 // Layout (row-major, contiguous): ab[range*27 + species*9 + k], range 0=low
 // 1=high, species 0=H2 1=H 2=He, k in 0..8 with k=7 the h integration constant
 // (a8) and k=8 the s integration constant (a9). Matches a.select(-1,k) in the
 // torch helpers.
 //
-// GATE: tests/test_h2diss_scalar.cpp compares this against torch h2diss::eval on
-// a (T,c) grid to ~1e-14 rel. Do NOT change the semantics here without re-running
-// it -- it is the transcription guard.
+// GATE: tests/test_h2diss_scalar.cpp compares this against torch h2diss::eval
+// on a (T,c) grid to ~1e-14 rel. Do NOT change the semantics here without
+// re-running it -- it is the transcription guard.
+
+#include <kintera/constants.h>  // constants::Rgas (torch-free)
 
 #include <algorithm>  // std::min, std::max
 #include <cmath>      // std::log, std::sqrt, std::exp, std::fmax, std::fmin
 
-#include <kintera/constants.h>  // constants::Rgas (torch-free)
-
 namespace kintera {
 namespace h2diss_scalar {
 
-constexpr double kP0 = 1.0e5;   // NASA-9 standard state [Pa]  (== h2diss::kP0)
-constexpr double kTref = 300.;  // energy reference [K]        (== h2diss::kTref)
+constexpr double kP0 = 1.0e5;  // NASA-9 standard state [Pa]  (== h2diss::kP0)
+constexpr double kTref =
+    300.;  // energy reference [K]        (== h2diss::kTref)
 
 //! One species' NASA-9 coefficient row (9 doubles). The lnT overloads take a
 //! precomputed std::log(T) -- speciate() would otherwise evaluate the SAME
@@ -118,11 +120,12 @@ struct Result {
   double e_R;  // internal energy /R, referenced to kTref
 };
 
-//! The T0=300 K internal-energy reference, s0.U. It is a MODEL CONSTANT: at 300 K
-//! dissociation is ~e^-70, so [H]~0 and s0.U depends only on (nH,nHe,ab), NOT c
-//! (the c cancels: n_i proportional to cc, U divides by cc). eval() below still
-//! computes it faithfully via speciate(kTref,cc) to match torch to ~1e-30; the
-//! fused Newton loop (S2/S3) hoists THIS constant out of the iteration instead.
+//! The T0=300 K internal-energy reference, s0.U. It is a MODEL CONSTANT: at 300
+//! K dissociation is ~e^-70, so [H]~0 and s0.U depends only on (nH,nHe,ab), NOT
+//! c (the c cancels: n_i proportional to cc, U divides by cc). eval() below
+//! still computes it faithfully via speciate(kTref,cc) to match torch to
+//! ~1e-30; the fused Newton loop (S2/S3) hoists THIS constant out of the
+//! iteration instead.
 inline double e0_ref(double nH, double nHe, double const* ab) {
   return speciate(kTref, 1.0, nH, nHe, ab).U;  // cc=1: c-independent
 }

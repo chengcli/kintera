@@ -95,8 +95,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
   }
 
   if (config["reference-state"]["fused-h2diss"]) {
-    thermo->fused_h2diss(
-        config["reference-state"]["fused-h2diss"].as<bool>());
+    thermo->fused_h2diss(config["reference-state"]["fused-h2diss"].as<bool>());
     if (thermo->verbose()) {
       std::cout << "[ThermoOptions] fused_h2diss = " << thermo->fused_h2diss()
                 << std::endl;

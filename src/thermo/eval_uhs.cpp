@@ -183,9 +183,9 @@ torch::Tensor h2diss_coeffs_cached(torch::Tensor const& temp) {
   auto it = h2diss_coeffs.find(key);
   if (it == h2diss_coeffs.end()) {
     it = h2diss_coeffs
-             .emplace(key, nasa9_coeffs_by_name({"H2", "H", "He"},
-                                                temp.options())
-                               .contiguous())
+             .emplace(key,
+                      nasa9_coeffs_by_name({"H2", "H", "He"}, temp.options())
+                          .contiguous())
              .first;
   }
   return it->second;
