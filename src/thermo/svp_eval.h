@@ -7,8 +7,9 @@
 #include <configure.h>
 
 // kintera
-#include <kintera/utils/user_funcs.hpp>
 #include <kintera/vapors/vapor_functions.h>
+
+#include <kintera/utils/user_funcs.hpp>
 
 namespace kintera {
 
@@ -19,7 +20,8 @@ constexpr int KSVP_NPARAM = 6;
 
 //! \brief Evaluate log saturation vapor pressure for one reaction.
 //!
-//! \param kind   0 = named func-table formula (use \p fptr); 1 = inline 'ideal';
+//! \param kind   0 = named func-table formula (use \p fptr); 1 = inline
+//! 'ideal';
 //!               2 = inline 'antoine'.
 //! \param p      pointer to this reaction's parameter block (KSVP_NPARAM long).
 //! \param fptr   func-table pointer for the named case (kind == 0).

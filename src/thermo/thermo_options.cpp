@@ -59,8 +59,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
   }
 
   if (config["reference-state"]["use-nasa9-cp"]) {
-    thermo->use_nasa9_cp(
-        config["reference-state"]["use-nasa9-cp"].as<bool>());
+    thermo->use_nasa9_cp(config["reference-state"]["use-nasa9-cp"].as<bool>());
     if (thermo->verbose()) {
       std::cout << "[ThermoOptions] use_nasa9_cp = " << thermo->use_nasa9_cp()
                 << std::endl;

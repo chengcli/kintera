@@ -168,9 +168,9 @@ DISPATCH_MACRO int equilibrate_uv(
       double const* p = svp_params + j * KSVP_NPARAM;
       logsvp[j] = eval_logsvp(svp_kind[j], p, logsvp_func[j], *temp) -
                   stoich_sum * log(constants::Rgas * (*temp));
-      logsvp_ddT[j] = eval_logsvp_ddT(svp_kind[j], p, logsvp_func_ddT[j],
-                                      *temp) -
-                      stoich_sum / (*temp);
+      logsvp_ddT[j] =
+          eval_logsvp_ddT(svp_kind[j], p, logsvp_func_ddT[j], *temp) -
+          stoich_sum / (*temp);
     }
 
     // calculate heat capacity

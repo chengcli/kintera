@@ -17,9 +17,9 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
     _svp_params = op->svp_params();
 
     // Classify each column: 0 = named func-table formula, 1 = inline 'ideal',
-    // 2 = inline 'antoine'. For inline columns, swap in a valid sentinel name so
-    // the func-table dispatch does not fail; the column is overwritten with the
-    // analytic torch-op result afterwards.
+    // 2 = inline 'antoine'. For inline columns, swap in a valid sentinel name
+    // so the func-table dispatch does not fail; the column is overwritten with
+    // the analytic torch-op result afterwards.
     _formula_kind.assign(_logsvp.size(), 0);
     for (size_t i = 0; i < _logsvp.size(); ++i) {
       if (_logsvp[i] == "ideal") {

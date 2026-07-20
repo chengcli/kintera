@@ -106,8 +106,8 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
       TORCH_CHECK(tv.size() == av.size(),
                   "'A_ranges' and 'T_ranges' must have equal length");
       std::vector<double> zeros(av.size(), 0.);
-      auto bv = node["b_ranges"] ? node["b_ranges"].as<std::vector<double>>()
-                                 : zeros;
+      auto bv =
+          node["b_ranges"] ? node["b_ranges"].as<std::vector<double>>() : zeros;
       auto ev = node["Ea_R_ranges"]
                     ? node["Ea_R_ranges"].as<std::vector<double>>()
                     : zeros;
@@ -127,8 +127,9 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
     }
   }
 
-  // Only activate the multi-range path if at least one reaction supplied ranges;
-  // otherwise leave A_ranges empty so reset() takes the bit-identical single path.
+  // Only activate the multi-range path if at least one reaction supplied
+  // ranges; otherwise leave A_ranges empty so reset() takes the bit-identical
+  // single path.
   if (any_ranged) {
     options->A_ranges() = Ar;
     options->b_ranges() = br;
