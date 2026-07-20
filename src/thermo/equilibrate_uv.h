@@ -318,6 +318,7 @@ DISPATCH_MACRO int equilibrate_uv(
     free(weight);
     free(rhs);
     free(stoich_active);
+    free(conc0);
     free(gain_cpy);
   }
 

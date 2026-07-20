@@ -333,6 +333,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     free(eval);
     free(ct_indx);
     free(lu_indx);
+    free(skip_row);
   }
 
   if (iter >= *max_iter) {
