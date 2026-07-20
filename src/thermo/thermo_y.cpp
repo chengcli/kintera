@@ -70,8 +70,8 @@ void ThermoYImpl::reset() {
       register_buffer("inv_mu", 1. / torch::tensor(mu_vec, torch::kFloat64));
 
   // fused-kernel warm-start seeds (empty until the first fused solve)
-  warm_vu = register_buffer("warm_vu", torch::empty({0}, torch::kFloat64));
-  warm_pv = register_buffer("warm_pv", torch::empty({0}, torch::kFloat64));
+  register_buffer("warm_vu", torch::empty({0}, torch::kFloat64));
+  register_buffer("warm_pv", torch::empty({0}, torch::kFloat64));
 
   if (options->verbose()) {
     std::cout << "[ThermoY] species molecular weights (kg/mol): "
@@ -507,6 +507,7 @@ void ThermoYImpl::_intEng_to_temp_fused(torch::Tensor ivol,
   // warm start from the previous solve's converged T (seed only: the per-cell
   // Newton still iterates to ftol, so a stale seed costs iterations, never
   // accuracy). Falls back per cell to the const-cv guess if the seed is bad.
+  auto warm_vu = named_buffers(/*recurse=*/false)["warm_vu"];  // ABI: buffer dict, not a member
   const double* warm =
       (warm_vu.numel() == n) ? warm_vu.data_ptr<double>() : nullptr;
 
@@ -578,6 +579,7 @@ void ThermoYImpl::_pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
   // warm start (see _intEng_to_temp_fused): consecutive PV->T solves are the
   // L/R face states of the same faces -- the previous answer is 1-2 Newton
   // iterations away. Seed only; per-cell ftol exit guards accuracy.
+  auto warm_pv = named_buffers(/*recurse=*/false)["warm_pv"];  // ABI: buffer dict, not a member
   const double* warm =
       (warm_pv.numel() == n) ? warm_pv.data_ptr<double>() : nullptr;
 
