@@ -225,13 +225,16 @@ DISPATCH_MACRO int equilibrate_uv(
       }
     }
 
+    // set before the break: (*nactive) sizes the gain scatter at exit, and a
+    // converged solve has an empty active set
+    (*nactive) = first;
+
     if (first == 0) {
       // all reactions are in equilibrium, no need to adjust saturation
       break;
     }
 
     // form active stoichiometric and constraint matrix
-    (*nactive) = first;
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < (*nactive); k++) {
         int j = reaction_set[k];
@@ -305,11 +308,13 @@ DISPATCH_MACRO int equilibrate_uv(
   memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
+  // mmdot wrote gain as (*nactive) x (*nactive), so the copy's leading
+  // dimension is (*nactive), not nreaction (cf. equilibrate_tp, #105)
   for (int i = 0; i < (*nactive); i++) {
-    for (int j = 0; j < nreaction; j++) {
+    for (int j = 0; j < (*nactive); j++) {
       int k = reaction_set[i];
       int l = reaction_set[j];
-      gain[k * nreaction + l] = gain_cpy[i * nreaction + j];
+      gain[k * nreaction + l] = gain_cpy[i * (*nactive) + j];
     }
   }
 
