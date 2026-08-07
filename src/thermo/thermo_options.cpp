@@ -1,4 +1,5 @@
 // C/C++
+#include <algorithm>
 #include <set>
 
 // yaml
@@ -9,6 +10,7 @@
 
 #include <kintera/kinetics/coagulation.hpp>
 #include <kintera/kinetics/evaporation.hpp>
+#include <kintera/utils/suggest.hpp>
 
 #include "thermo.hpp"
 
@@ -36,6 +38,24 @@ ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename,
 ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                                            bool verbose) {
   if (!config["reference-state"]) return nullptr;
+
+  // `reference-state` is read by presence checks alone, so an unrecognized key
+  // -- a typo -- is silently ignored and the option keeps its default. Reject
+  // it instead. The list is the union of what reads this block: thermo (all of
+  // it) and kinetics (Tref, Pref); photochem reads no sub-key. The sibling
+  // `dynamics/equation-of-state` block is deliberately NOT checked -- snapy
+  // owns most of its keys and kintera must not reject them.
+  static const std::vector<std::string> ref_state_keys = {
+      "Tref",         "Pref",      "use-nasa9-cp", "use-h2-dissociation",
+      "fused-h2diss", "use-h2-cp", "h2-cp-mode"};
+  for (auto const& item : config["reference-state"]) {
+    auto key = item.first.as<std::string>();
+    TORCH_CHECK(std::find(ref_state_keys.begin(), ref_state_keys.end(), key) !=
+                    ref_state_keys.end(),
+                "unknown key 'reference-state/", key, "'; did you mean '",
+                suggest(key, ref_state_keys), "'?");
+  }
+
   ensure_species_initialized(config);
 
   auto thermo = ThermoOptionsImpl::create();
