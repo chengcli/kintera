@@ -86,6 +86,7 @@ if (CUDAToolkit_FOUND)
 
   target_link_libraries(${namel}_cuda_${buildl}
       PUBLIC
+      ${namel}_${buildl}
       CUDA::cudart
       CUDA::cusolver
       CUDA::cusparse
