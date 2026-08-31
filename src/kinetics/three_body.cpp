@@ -216,18 +216,22 @@ torch::Tensor ThreeBodyImpl::forward(
     // (..., nspecies_full, nreaction). This avoids confusing a normal
     // concentration tensor (..., nspecies) with the expanded autodiff form
     // when nspecies happens to equal nreaction.
-    // The last axis is just a repeated reaction index, so any slice along it
-    // contains the physical species concentrations.
-    int last_dim = C.dim() - 1;
-    auto C_actual = C.select(last_dim, 0);  // (..., nspecies)
-    nspecies_kinetics = C_actual.size(-1);
+    //
+    // Every slice along the reaction axis holds the same physical
+    // concentrations, so *any* of them gives the right M_eff -- but the axis
+    // must be carried through, not selected away. KineticsImpl differentiates
+    // the summed rate in a single backward pass and relies on this expansion
+    // to keep the reactions separate; `C.select(last_dim, 0)` used to drop the
+    // axis, so the entire sum_r d(k_r)/dC_s collapsed onto the block's first
+    // reaction column and every other reaction got exactly zero.
+    nspecies_kinetics = C.size(-2);
+    int ncontract = std::min(nspecies_kinetics, nspecies_full);
 
     // Build effective third-body concentration for each reaction:
-    // M_eff_r = sum_s C_s * efficiency[r, s]
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(
-        1, 0, std::min(nspecies_kinetics, nspecies_full));
-    auto eff_T = eff_matrix_kinetics.transpose(0, 1);
-    M_eff = torch::matmul(C_actual, eff_T);
+    // M_eff_r = sum_s C_{s,r} * efficiency[r, s]
+    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, ncontract);
+    M_eff = (C.narrow(-2, 0, ncontract) * eff_matrix_kinetics.transpose(0, 1))
+                .sum(-2);
   } else {
     // Standard path: C already has shape (..., nspecies).
     nspecies_kinetics = C.size(-1);

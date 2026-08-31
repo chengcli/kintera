@@ -90,22 +90,21 @@ torch::Tensor KBFalloffImpl::forward(
   auto k_high = compute_arrhenius(temp, kinf_A, kinf_b, kinf_Ea_R);
 
   // Total number density n. Prefer an explicit field; else sum over species.
-  torch::Tensor n;
+  // n_e is aligned with the reaction dim of k_low / k_high.
+  torch::Tensor n_e;
   auto it = other.find("number_density");
   if (it != other.end()) {
-    n = it->second;
+    n_e = it->second.unsqueeze(-1);
+  } else if (C.dim() >= 2 && C.size(-1) == nreaction) {
+    // C has shape (..., nspecies, nreaction); the reaction copies are
+    // numerically identical, but the axis carries KineticsImpl's per-reaction
+    // autograd bookkeeping. Sum over species only -- selecting a single slice
+    // (C[..., :, 0]) routed every reaction's dn/dC into the block's first
+    // reaction column and zeroed the rest.
+    n_e = C.sum(-2);  // (..., nreaction)
   } else {
-    torch::Tensor C_actual;
-    if (C.dim() >= 2 && C.size(-1) == nreaction) {
-      // C has shape (..., nspecies, nreaction); all reaction copies identical
-      C_actual = C.select(C.dim() - 1, 0);  // (..., nspecies)
-    } else {
-      C_actual = C;  // (..., nspecies)
-    }
-    n = C_actual.sum(-1);  // (...)
+    n_e = C.sum(-1).unsqueeze(-1);  // (..., 1), broadcasts over reactions
   }
-  // align n with the reaction dim
-  auto n_e = n.unsqueeze(-1);
 
   // KB falloff blend with fc broadening
   auto ratio = k_low * n_e / k_high;

@@ -299,16 +299,19 @@ torch::Tensor TroeFalloffImpl::forward(
   int nspecies_kinetics, nspecies_full = efficiency_matrix.size(1);
 
   if (C.dim() >= 2 && C.size(-1) == nreaction) {
-    // C has shape (..., nspecies, nreaction)
-    // Extract concentration: C[..., :, 0] -> (..., nspecies)
-    int last_dim = C.dim() - 1;
-    auto C_actual = C.select(last_dim, 0);  // (..., nspecies)
-    nspecies_kinetics = C_actual.size(-1);
+    // C has shape (..., nspecies, nreaction): KineticsImpl expands the
+    // concentration once per reaction so that a single backward pass over the
+    // summed rate still yields d(k_r)/dC_s separately for each reaction.
+    // Contract over species while KEEPING the reaction axis -- selecting one
+    // slice away (C[..., :, 0]) collapsed the whole sum_r d(k_r)/dC_s onto
+    // this block's first reaction column and left every other reaction at
+    // exactly zero.
+    nspecies_kinetics = C.size(-2);
+    int ncontract = std::min(nspecies_kinetics, nspecies_full);
 
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(
-        1, 0, std::min(nspecies_kinetics, nspecies_full));
-    auto eff_T = eff_matrix_kinetics.transpose(0, 1);
-    M_eff = torch::matmul(C_actual, eff_T);
+    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, ncontract);
+    M_eff = (C.narrow(-2, 0, ncontract) * eff_matrix_kinetics.transpose(0, 1))
+                .sum(-2);
   } else {
     nspecies_kinetics = C.size(-1);
     auto eff_matrix_kinetics = efficiency_matrix.narrow(
