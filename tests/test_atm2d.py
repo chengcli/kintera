@@ -772,3 +772,52 @@ def test_cuda_sparse_solver_reuses_cached_int32_csr_indices():
 
     assert crow1.data_ptr() == crow3.data_ptr() == crow4.data_ptr()
     assert col1.data_ptr() == col3.data_ptr() == col4.data_ptr()
+
+
+def test_newton_implicit_step_honors_mr_transport_form():
+    """``newton_implicit_step`` shall forward ``density``/``transport_form``
+    down to the transport operator.
+
+    Regression: both arguments were previously absent from this entry
+    point, so every coupled Newton solve silently used the concentration
+    form -- ``density`` reached ``build_implicit_step_system`` as ``None``,
+    which both suppressed the mixing-ratio default and made an explicit
+    request via ``KINTERA_TRANSPORT_FORM`` raise. The two forms disagree
+    on a variable-density column, so this pinned the coupled solver away
+    from the discretization that references like VULCAN/KINETICS-base use.
+
+    Discriminating setup: a column with uniform mixing ratio has zero
+    mixing-ratio-form flux, so an mr BE step is a no-op, while the
+    concentration form spuriously redistributes mass down the density
+    gradient.
+    """
+    from kintera.atm2d.newton.coupled import newton_implicit_step
+
+    ncol, nlyr, ns = 1, 6, 2
+    x1f = torch.linspace(0.0, 6.0e5, nlyr + 1, dtype=torch.float64)
+    x2f = torch.tensor([0.0, 1.0], dtype=torch.float64)
+    temp = torch.full((ncol, nlyr), 250.0, dtype=torch.float64)
+    pres = torch.logspace(5.0, 3.0, nlyr, dtype=torch.float64).unsqueeze(0)
+    z = 0.5 * (x1f[:-1] + x1f[1:])
+    density = (1.0e15 * torch.exp(-z / 1.0e5)).unsqueeze(0).contiguous()
+    chi = torch.tensor([0.3, 0.7], dtype=torch.float64)
+    conc = density.unsqueeze(-1) * chi.view(1, 1, ns)
+    kzz = torch.full((ncol, nlyr), 1.0e5, dtype=torch.float64)
+
+    def step(form, dens):
+        state = kt.AtmState2D(
+            x1f=x1f, x2f=x2f, temperature=temp, pressure=pres,
+            concentration=conc.clone(),
+        )
+        result = newton_implicit_step(
+            state, 1.0e3, kzz=kzz, source_terms=None,
+            density=dens, transport_form=form, max_iterations=5,
+        )
+        return (result.concentration - conc).abs().max().item()
+
+    scale = conc.abs().max().item()
+    # mr form: uniform mixing ratio => no transport at all.
+    assert step("mr_diffusion", density) < 1e-12 * scale
+    # c form: same input moves mass => the two forms are genuinely
+    # distinguishable here, so the assertion above has teeth.
+    assert step("c_diffusion", None) > 1e-6 * scale

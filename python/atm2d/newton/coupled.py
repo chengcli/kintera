@@ -27,6 +27,8 @@ def newton_implicit_step(
     species_diffusion_scale: torch.Tensor | None = None,
     binary_diffusion: torch.Tensor | None = None,
     molecular_weights: torch.Tensor | None = None,
+    density: torch.Tensor | None = None,
+    transport_form: str | None = None,
     system_postprocess: SystemPostprocess | None = None,
     concentration_postprocess: ConcentrationPostprocess | None = None,
     max_iterations: int = 100,
@@ -47,6 +49,29 @@ def newton_implicit_step(
 
     See :func:`atm2d.newton.coupled.newton_implicit_step` for the full
     parameter docstring (preserved from the pre-refactor ``newton.py``).
+
+    Parameters
+    ----------
+    density:
+        Cell-centered total number density, shape ``(ncol, nlyr)``.
+        Required by the mixing-ratio transport forms, which discretize
+        ``d/dz (K n d/dz (c/n))`` rather than ``d/dz (K dc/dz)``.
+    transport_form:
+        Transport discretization, forwarded to
+        :func:`atm2d.assembly.build_implicit_step_system` (one of
+        ``c_diffusion``, ``mr_diffusion``, ``mr_exp``, ``mr_hybrid``).
+        ``None`` defers to ``KINTERA_TRANSPORT_FORM`` and then to the
+        density-dependent default.
+
+        Both arguments were previously unreachable from this entry
+        point, which silently pinned every coupled Newton solve to the
+        concentration form: ``density`` defaulted to ``None`` inside
+        ``build_implicit_step_system``, so the mixing-ratio default
+        could never engage and requesting it by env var raised. That
+        matters for variable-density columns -- the two forms disagree
+        in sign on the transport divergence across most cells of a
+        deep atmosphere -- and blocked reproducing references
+        (VULCAN, KINETICS-base) that use the mixing-ratio form.
     """
     c0 = state.concentration.clone()
     c_k = c0
@@ -76,6 +101,8 @@ def newton_implicit_step(
             species_diffusion_scale=species_diffusion_scale,
             binary_diffusion=binary_diffusion,
             molecular_weights=molecular_weights,
+            density=density,
+            transport_form=transport_form,
             source_terms=source_terms,
             c0=c0,
             charge_balance_indices=charge_balance_indices,
