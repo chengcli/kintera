@@ -864,3 +864,73 @@ def test_newton_implicit_step_restores_state_on_non_finite_iterate():
     # The failure must not leak into the caller's state.
     assert torch.isfinite(state.concentration).all()
     torch.testing.assert_close(state.concentration, entry, atol=0.0, rtol=0.0)
+
+
+def test_affine_with_identity_matches_dense_construction():
+    """``affine_with_identity`` is the sparse form of the BE matrix assembly.
+
+    ``build_implicit_step_system`` used to build ``coeff*I + scale*L`` as
+    ``from_dense(coeff * torch.eye(n) - operator.global_csr.to_dense())``,
+    which is O(nstate^2) in time and memory for an O(nnz) operation. This
+    pins the sparse replacement to the dense result exactly, including the
+    case where the operator already stores diagonal entries (which must be
+    summed with the identity contribution, not overwritten).
+    """
+    import torch
+
+    from kintera.atm2d.matrix import SparseSystemMatrix
+
+    torch.manual_seed(7)
+    ncol, nlyr, nspecies = 2, 5, 3
+    n = ncol * nlyr * nspecies
+
+    dense = torch.zeros(n, n, dtype=torch.float64)
+    rows = torch.randint(0, n, (4 * n,))
+    cols = torch.randint(0, n, (4 * n,))
+    dense[rows, cols] = torch.randn(4 * n, dtype=torch.float64)
+    # ensure the operator carries its own diagonal entries
+    diag = torch.arange(n)
+    dense[diag, diag] = torch.randn(n, dtype=torch.float64)
+
+    operator = SparseSystemMatrix.from_dense(
+        dense, ncol=ncol, nlyr=nlyr, nspecies=nspecies
+    )
+    eye = torch.eye(n, dtype=torch.float64)
+    for scale, coeff in ((-1.0, 1e-3), (-100.0, 1.0), (2.5, -0.5)):
+        expected = coeff * eye + scale * operator.global_csr.to_dense()
+        got = operator.affine_with_identity(scale, coeff).global_csr.to_dense()
+        assert torch.equal(got, expected), (scale, coeff)
+
+
+def test_build_implicit_step_system_matches_dense_reference():
+    """End-to-end: the assembled BE system equals the old dense formula.
+
+    Covers both branches of the dt-conditional rescaling in
+    ``build_implicit_step_system`` (``dt >= 1`` uses ``I/dt - L``, ``dt < 1``
+    uses ``I - dt*L``).
+    """
+    import torch
+
+    from kintera.atm2d.assembly import build_implicit_step_system
+
+    torch.manual_seed(11)
+    ncol, nlyr, nspecies = 1, 6, 4
+    state = _make_state(ncol=ncol, nlyr=nlyr, ns=nspecies)
+    state.concentration = (
+        torch.rand(ncol, nlyr, nspecies, dtype=torch.float64) + 0.5
+    )
+    kzz = torch.full((ncol, nlyr), 1.0e5, dtype=torch.float64)
+
+    for dt in (1.0e-3, 10.0):
+        system, _ = build_implicit_step_system(state, kzz, dt)
+        # rebuild the operator alone and apply the old dense formula
+        from kintera.atm2d.assembly import build_implicit_operator
+
+        operator = build_implicit_operator(state, kzz)
+        n = operator.nstate
+        eye = torch.eye(n, dtype=torch.float64)
+        if dt >= 1.0:
+            expected = (1.0 / dt) * eye - operator.global_csr.to_dense()
+        else:
+            expected = eye - dt * operator.global_csr.to_dense()
+        assert torch.equal(system.global_csr.to_dense(), expected), dt

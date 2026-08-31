@@ -165,15 +165,9 @@ def build_implicit_step_system(
     # comparable conditioning, ~1 / sqrt(|L|^2). For |L|~4e+6 that's ~5e-4 s;
     # 1 s is a safe round number on the rescaled side.
     _RESCALE_THRESHOLD = 1.0
-    identity = torch.eye(operator.nstate, dtype=state.dtype, device=state.device)
     if float(dt) >= _RESCALE_THRESHOLD:
         dt_inv = 1.0 / float(dt)
-        system = SparseSystemMatrix.from_dense(
-            dt_inv * identity - operator.global_csr.to_dense(),
-            ncol=state.ncol,
-            nlyr=state.nlyr,
-            nspecies=state.nspecies,
-        )
+        system = operator.affine_with_identity(-1.0, dt_inv)
         rhs_c = state.concentration if c0 is None else c0
         rhs = dt_inv * rhs_c
         if source_linearization is not None:
@@ -188,12 +182,7 @@ def build_implicit_step_system(
                 )
             rhs = rhs + (source_linearization.tendency - jacobian_state)
     else:
-        system = SparseSystemMatrix.from_dense(
-            identity - float(dt) * operator.global_csr.to_dense(),
-            ncol=state.ncol,
-            nlyr=state.nlyr,
-            nspecies=state.nspecies,
-        )
+        system = operator.affine_with_identity(-float(dt), 1.0)
         rhs = state.concentration if c0 is None else c0
         if source_linearization is not None:
             jacobian_state = torch.einsum(

@@ -132,6 +132,53 @@ class SparseSystemMatrix:
         out = torch.sparse.mm(self.global_csr, flat).reshape(self.ncol, self.nlyr, self.nspecies)
         return out
 
+    def affine_with_identity(
+        self,
+        scale: float,
+        identity_coeff: float,
+        *,
+        rhs_override_mask: torch.Tensor | None = None,
+        rhs_override_values: torch.Tensor | None = None,
+    ) -> "SparseSystemMatrix":
+        """Return ``identity_coeff * I + scale * self`` without densifying.
+
+        This is the backward-Euler matrix assembly, and doing it through
+        ``from_dense(coeff * torch.eye(n) - operator.global_csr.to_dense())``
+        costs O(nstate^2) time and memory for an O(nnz) operation. On a
+        100-layer, 64-species column ``nstate`` is 6400, so each of the
+        identity and the densified operator is a 327 MB float64 array that is
+        then rescanned entry by entry to recover ~265k nonzeros -- and both
+        grow quadratically with layers x species.
+
+        Duplicate ``(i, i)`` entries are summed by ``from_coo``'s coalesce, so
+        an operator that already stores a diagonal is handled correctly.
+        """
+        coo = self.global_csr.to_sparse_coo().coalesce()
+        diag = torch.arange(self.nstate, device=self.device, dtype=torch.int64)
+        indices = torch.cat([coo.indices(), torch.stack([diag, diag])], dim=1)
+        values = torch.cat(
+            [
+                coo.values() * scale,
+                torch.full(
+                    (self.nstate,),
+                    identity_coeff,
+                    dtype=self.dtype,
+                    device=self.device,
+                ),
+            ]
+        )
+        return SparseSystemMatrix.from_coo(
+            indices,
+            values,
+            ncol=self.ncol,
+            nlyr=self.nlyr,
+            nspecies=self.nspecies,
+            device=self.device,
+            dtype=self.dtype,
+            rhs_override_mask=rhs_override_mask,
+            rhs_override_values=rhs_override_values,
+        )
+
     def add_diagonal(self, blocks: torch.Tensor) -> "SparseSystemMatrix":
         """Add cell-local species blocks to the diagonal of the operator."""
         block_tensor = torch.as_tensor(blocks, dtype=self.dtype, device=self.device)
