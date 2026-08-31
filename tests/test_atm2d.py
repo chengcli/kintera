@@ -821,3 +821,46 @@ def test_newton_implicit_step_honors_mr_transport_form():
     # c form: same input moves mass => the two forms are genuinely
     # distinguishable here, so the assertion above has teeth.
     assert step("c_diffusion", None) > 1e-6 * scale
+
+
+def test_newton_implicit_step_restores_state_on_non_finite_iterate():
+    """A Newton step that diverges to non-finite shall leave
+    ``state.concentration`` untouched.
+
+    Regression: the non-finite early-return assigned the bad iterate to
+    ``state.concentration`` and returned without restoring the entry
+    value, while every other exit path restores it. That breaks the
+    contract ``adaptive_advance`` documents and depends on ("on
+    rejection the state is left untouched"): the controller shrinks dt
+    and retries, but each retry then starts from NaN, so one
+    recoverable rejection cascades until dt hits the floor and the whole
+    advance raises.
+    """
+    from kintera.atm2d.newton.coupled import newton_implicit_step
+
+    ncol, nlyr, ns = 1, 3, 2
+    state = _make_state(ncol=ncol, nlyr=nlyr, ns=ns)
+    state.concentration = torch.ones(ncol, nlyr, ns, dtype=state.dtype)
+    entry = state.concentration.clone()
+    kzz = torch.zeros((ncol, nlyr), dtype=state.dtype)
+
+    class Diverging:
+        """Source whose linearization is non-finite, forcing the bail-out."""
+
+        def linearize(self, source_state):
+            return kt.LocalSourceLinearization(
+                tendency=torch.full_like(source_state.concentration, float("nan")),
+                jacobian=torch.zeros(
+                    (ncol, nlyr, ns, ns), dtype=source_state.dtype
+                ),
+            )
+
+    result = newton_implicit_step(
+        state, 1.0, kzz=kzz, source_terms=[Diverging()], max_iterations=3
+    )
+
+    assert not result.converged
+    assert not torch.isfinite(result.concentration).all()
+    # The failure must not leak into the caller's state.
+    assert torch.isfinite(state.concentration).all()
+    torch.testing.assert_close(state.concentration, entry, atol=0.0, rtol=0.0)
