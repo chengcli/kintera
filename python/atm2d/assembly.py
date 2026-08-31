@@ -5,6 +5,7 @@ import torch
 from .chemistry import build_chemistry_jacobian, build_photochemistry_jacobian
 from .matrix import SparseSystemMatrix, add_sparse_system_matrices
 from .source import (
+    LocalSourceLinearization,
     LocalSourceTerm,
     build_source_global_operator,
     build_source_linearization,
@@ -33,6 +34,9 @@ def build_implicit_operator(
     dt: float | None = None,
     boundary_conditions: SpeciesBoundaryConditions2D | None = None,
     charge_balance_indices: "tuple[list[int], int] | None" = None,
+    source_linearization: LocalSourceLinearization | None = None,
+    global_source_operator: SparseSystemMatrix | None = None,
+    _source_operator_computed: bool = False,
 ) -> SparseSystemMatrix:
     """Assemble the full implicit operator for transport and chemistry.
 
@@ -41,6 +45,16 @@ def build_implicit_operator(
     contribute cell-local Jacobian blocks on the diagonal. When
     ``include_identity`` is enabled, ``I / dt`` is also added to the diagonal
     for backward-Euler style steady-state or implicit time-marching solves.
+
+    ``source_linearization`` / ``global_source_operator`` let a caller that has
+    already linearized ``source_terms`` around this exact state hand the result
+    in rather than have it recomputed here. ``build_implicit_step_system``
+    needs the linearization for the right-hand side and used to compute it a
+    second time through this function -- on a Mars column that is the full
+    chemistry plus 2610-wavelength photolysis Jacobian (60 ms) evaluated twice
+    per Newton iteration. Pass ``_source_operator_computed=True`` to declare
+    that ``global_source_operator`` is authoritative even when it is ``None``
+    (the common case: most source terms contribute no global operator).
     """
     operator = build_transport_matrix(
         state,
@@ -72,10 +86,12 @@ def build_implicit_operator(
             photo_chem, state.temperature, state.concentration, actinic_flux
         )
     if source_terms is not None:
-        diag_update = diag_update + build_source_linearization(
-            state, source_terms,
-            charge_balance_indices=charge_balance_indices,
-        ).jacobian
+        if source_linearization is None:
+            source_linearization = build_source_linearization(
+                state, source_terms,
+                charge_balance_indices=charge_balance_indices,
+            )
+        diag_update = diag_update + source_linearization.jacobian
 
     if include_identity:
         if dt is None:
@@ -85,7 +101,8 @@ def build_implicit_operator(
 
     matrix = operator.add_diagonal(diag_update)
     if source_terms is not None:
-        global_source_operator = build_source_global_operator(state, source_terms)
+        if not _source_operator_computed:
+            global_source_operator = build_source_global_operator(state, source_terms)
         if global_source_operator is not None:
             matrix = add_sparse_system_matrices(matrix, global_source_operator)
     if boundary_conditions is None:
@@ -147,6 +164,11 @@ def build_implicit_step_system(
         transport_form=transport_form,
         source_terms=source_terms,
         charge_balance_indices=charge_balance_indices,
+        # Both were just built above, around this same state -- reuse them
+        # instead of paying for the chemistry/photolysis Jacobian twice.
+        source_linearization=source_linearization,
+        global_source_operator=global_source_operator,
+        _source_operator_computed=True,
     )
     # Conditional matrix scaling for numerical conditioning.
     #
