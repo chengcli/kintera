@@ -189,7 +189,19 @@ def rosenbrock2_step(
     denom = c_new.abs().clamp_min(torch.finfo(c_new.dtype).tiny)
     rel = err / denom
     if error_floor > 0.0:
-        rel = torch.where(c_new > error_floor, rel, torch.zeros_like(rel))
+        # Require the ENTRY value to be resolved too, not just the result.
+        # A species that is exactly zero in the initial condition (VULCAN's
+        # ini_mix populates only CO2/N2/O2/CO/H2O/H2/O3, so every other
+        # species starts at 0) appears for the first time during the step,
+        # and |c_new - y2| / c_new is then O(1) *at any dt* -- there is no
+        # smallness to exploit, because this is the species' first
+        # appearance rather than a truncation error. Measured on the Mars
+        # cold start, the estimate was pinned by exactly such cells
+        # (dt=1e-4: O@L99 with c0=0, rel=10.5; dt=1e-2: CN@L97 with c0=0,
+        # y2=1.1e-47 against c_new=1.30, rel=1.0000), which made it *rise*
+        # as dt fell and stopped the step controller from ever growing dt.
+        resolved = (c_new > error_floor) & (c0 > error_floor)
+        rel = torch.where(resolved, rel, torch.zeros_like(rel))
     # Also drop the bottom layer when a pin owns it, as VULCAN does
     # (`if use_botflux or use_fix_sp_bot: delta[0] = 0`).
     if concentration_postprocess is not None:
