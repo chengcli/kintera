@@ -1,3 +1,4 @@
+import math
 import functools
 from pathlib import Path
 
@@ -934,3 +935,69 @@ def test_build_implicit_step_system_matches_dense_reference():
         else:
             expected = eye - dt * operator.global_csr.to_dense()
         assert torch.equal(system.global_csr.to_dense(), expected), dt
+
+
+def _decay_source(rate):
+    """Linear decay dc/dt = -rate * c, whose exact solution is c0*exp(-rate*t)."""
+
+    class Decay:
+        def linearize(self, source_state):
+            c = source_state.concentration
+            tendency = -rate * c
+            eye = torch.eye(c.shape[-1], dtype=c.dtype).expand(
+                c.shape[0], c.shape[1], c.shape[-1], c.shape[-1]
+            )
+            return kt.LocalSourceLinearization(tendency=tendency, jacobian=-rate * eye)
+
+    return Decay()
+
+
+def test_rosenbrock2_is_second_order_accurate():
+    """Ros2 must show ~2nd-order convergence on a problem with an exact solution.
+
+    Uses pure linear decay with Kzz = 0 so transport contributes nothing and
+    the answer is c0*exp(-rate*t). Halving dt should cut the error ~4x; a
+    first-order scheme (or a mis-transcribed Rosenbrock coefficient) would
+    show ~2x and fail here.
+    """
+    from kintera.atm2d import rosenbrock2_step
+
+    rate = 0.7
+    t_end = 1.0
+    state = _make_state(ncol=1, nlyr=3, ns=2)
+    c0 = torch.full_like(state.concentration, 1.0)
+    kzz = torch.zeros((1, 3), dtype=torch.float64)
+
+    errors = []
+    for nsteps in (8, 16, 32, 64):
+        state.concentration = c0.clone()
+        dt = t_end / nsteps
+        for _ in range(nsteps):
+            res = rosenbrock2_step(
+                state, dt, kzz=kzz, source_terms=[_decay_source(rate)]
+            )
+            assert res.finite
+            state.concentration = res.concentration
+        exact = c0 * math.exp(-rate * t_end)
+        errors.append(float((state.concentration - exact).abs().max()))
+
+    for coarse, fine in zip(errors, errors[1:]):
+        order = math.log2(coarse / fine)
+        assert 1.8 < order < 2.2, (order, errors)
+
+
+def test_rosenbrock2_leaves_entry_state_untouched():
+    """The step must not mutate ``state`` -- stage 2 parks y2 there internally.
+
+    ``adaptive_advance`` retries a rejected step from the entry state, so a
+    leaked intermediate would corrupt every subsequent attempt.
+    """
+    from kintera.atm2d import rosenbrock2_step
+
+    state = _make_state(ncol=1, nlyr=4, ns=2)
+    entry = state.concentration.clone()
+    kzz = torch.full((1, 4), 1.0e5, dtype=torch.float64)
+    res = rosenbrock2_step(state, 10.0, kzz=kzz, source_terms=[_decay_source(0.3)])
+    assert res.finite
+    assert torch.equal(state.concentration, entry)
+    assert not torch.equal(res.concentration, entry)

@@ -1,4 +1,5 @@
 from .assembly import build_implicit_operator, build_implicit_step_system
+from .rosenbrock import GAMMA as ROS2_GAMMA, Ros2Result, rosenbrock2_step
 from .chemistry import build_chemistry_jacobian, build_photochemistry_jacobian
 from .matrix import SparseSystemMatrix
 from .radiation import RadiativeTransferResult, compute_actinic_flux_disort
@@ -63,6 +64,9 @@ __all__ = [
     "compute_actinic_flux_disort",
     "default_accept",
     "newton_implicit_step",
+    "rosenbrock2_step",
+    "Ros2Result",
+    "ROS2_GAMMA",
     "per_species_relative_change",
     "solve_sparse_system",
 ]
