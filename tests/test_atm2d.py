@@ -1001,3 +1001,51 @@ def test_rosenbrock2_leaves_entry_state_untouched():
     assert res.finite
     assert torch.equal(state.concentration, entry)
     assert not torch.equal(res.concentration, entry)
+
+
+def test_layer_relative_floor_ignores_trace_species_per_layer():
+    """No single absolute floor can serve a column spanning many decades.
+
+    Two layers, 1e22 and 1e10 cm^-3, each with one abundant species that does
+    not move and one dust-level species that doubles. The dust should never
+    decide convergence; the abundant species always should.
+    """
+    from kintera.atm2d import per_species_relative_change
+
+    old = torch.tensor([[[1.0e22, 1.0e4], [1.0e10, 1.0e-8]]], dtype=torch.float64)
+    new = torch.tensor([[[1.0e22, 2.0e4], [1.0e10, 2.0e-8]]], dtype=torch.float64)
+
+    # Absolute floor small enough for the top layer: the deep layer's dust
+    # doubles and pins the maximum at 1.0, reporting non-convergence.
+    assert per_species_relative_change(
+        new, old, species_scale_floor=1.0) == pytest.approx(1.0)
+
+    # Absolute floor large enough to silence the deep dust: now a real 50%
+    # change in the *top* layer's abundant species reads as 5e-3, so the test
+    # has gone blind to genuine chemistry there.
+    moved_top = new.clone()
+    moved_top[0, 1, 0] = 1.5e10
+    assert per_species_relative_change(
+        moved_top, old, species_scale_floor=1.0e12) == pytest.approx(5.0e-3)
+
+    # Relative floor: silences the dust in both layers at once...
+    assert per_species_relative_change(
+        new, old, species_scale_floor=1.0,
+        layer_relative_floor=1.0e-10) == pytest.approx(1.0e-8)
+
+    # ...while still reporting the real 50% change at full weight.
+    assert per_species_relative_change(
+        moved_top, old, species_scale_floor=1.0,
+        layer_relative_floor=1.0e-10) == pytest.approx(0.5)
+
+
+def test_layer_relative_floor_defaults_to_previous_behaviour():
+    """Default (0.0) must reproduce the pure absolute-floor semantics."""
+    from kintera.atm2d import per_species_relative_change
+
+    old = torch.tensor([[[1.0e12, 0.0]]], dtype=torch.float64)
+    new = torch.tensor([[[1.0e12, 1.0e3]]], dtype=torch.float64)
+    a = per_species_relative_change(new, old, species_scale_floor=1.0)
+    b = per_species_relative_change(new, old, species_scale_floor=1.0,
+                                    layer_relative_floor=0.0)
+    assert a == b == pytest.approx(1.0e3)

@@ -34,6 +34,7 @@ def newton_implicit_step(
     max_iterations: int = 100,
     convergence_tol: float = 1e-4,
     species_scale_floor: float = 1.0,
+    layer_relative_floor: float = 0.0,
     damping_trigger: float = 1.0,
     damping_factor: float = 0.5,
     out_of_basin_threshold: float = float("inf"),
@@ -113,7 +114,9 @@ def newton_implicit_step(
             c_proposed = solve_sparse_system(system, rhs)
             if damping_factor < 1.0:
                 raw_change = per_species_relative_change(
-                    c_proposed, c_k, species_scale_floor=species_scale_floor
+                    c_proposed, c_k,
+                    species_scale_floor=species_scale_floor,
+                    layer_relative_floor=layer_relative_floor,
                 )
                 if raw_change > damping_trigger:
                     c_new = c_k + damping_factor * (c_proposed - c_k)
@@ -145,7 +148,9 @@ def newton_implicit_step(
                     residual_history=residual_history,
                 )
             max_rel = per_species_relative_change(
-                c_new, c_k, species_scale_floor=species_scale_floor
+                c_new, c_k,
+                species_scale_floor=species_scale_floor,
+                layer_relative_floor=layer_relative_floor,
             )
             prev_max_rel = residual_history[-1] if residual_history else None
             if record_residuals:
