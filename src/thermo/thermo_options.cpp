@@ -58,6 +58,30 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
     }
   }
 
+  if (config["reference-state"]["use-nasa9-cp"]) {
+    thermo->use_nasa9_cp(config["reference-state"]["use-nasa9-cp"].as<bool>());
+    if (thermo->verbose()) {
+      std::cout << "[ThermoOptions] use_nasa9_cp = " << thermo->use_nasa9_cp()
+                << std::endl;
+    }
+  }
+
+  if (config["reference-state"]["use-h2-cp"]) {
+    thermo->use_h2_cp(config["reference-state"]["use-h2-cp"].as<bool>());
+    if (config["reference-state"]["h2-cp-mode"]) {
+      thermo->h2_cp_mode(
+          config["reference-state"]["h2-cp-mode"].as<std::string>());
+      TORCH_CHECK(thermo->h2_cp_mode() == "equilibrium" ||
+                      thermo->h2_cp_mode() == "normal",
+                  "Invalid h2-cp-mode '", thermo->h2_cp_mode(),
+                  "'; allowed: equilibrium, normal");
+    }
+    if (thermo->verbose()) {
+      std::cout << "[ThermoOptions] use_h2_cp = " << thermo->use_h2_cp() << " ("
+                << thermo->h2_cp_mode() << ")" << std::endl;
+    }
+  }
+
   if (config["dynamics"]) {
     if (config["dynamics"]["equation-of-state"]) {
       thermo->max_iter() =
