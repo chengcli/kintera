@@ -45,6 +45,12 @@ struct NucleationOptionsImpl {
   ADD_ARG(std::vector<double>, minT) = {};
   ADD_ARG(std::vector<double>, maxT) = {};
   ADD_ARG(std::vector<std::string>, logsvp) = {};
+  //! Inline SVP parameters, one vector per reaction. Empty ⇒ the formula is a
+  //! named function from the func table; non-empty ⇒ the formula is a generic
+  //! analytic form ('ideal' or 'antoine') evaluated from these parameters.
+  //!   ideal:   {T3, P3, beta, gamma, betas, gammas}
+  //!   antoine: {A, B, C}
+  ADD_ARG(std::vector<std::vector<double>>, svp_params) = {};
 };
 using NucleationOptions = std::shared_ptr<NucleationOptionsImpl>;
 

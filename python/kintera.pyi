@@ -421,7 +421,8 @@ class NucleationOptions:
         Set the log saturation vapor pressure functions.
 
         Args:
-            value (list[str]): List of log SVP function names
+            value (list[str]): List of log SVP function names. The inline
+                formulas 'ideal' and 'antoine' take parameters from YAML only.
 
         Returns:
             NucleationOptions: class object for method chaining
