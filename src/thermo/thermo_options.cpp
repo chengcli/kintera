@@ -73,6 +73,14 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
         std::cout << "[ThermoOptions] setting EOS ftol = " << thermo->ftol()
                   << std::endl;
       }
+
+      thermo->uv_solver() =
+          config["dynamics"]["equation-of-state"]["uv-solver"].as<std::string>(
+              "auto");
+      TORCH_CHECK(thermo->uv_solver() == "auto" ||
+                      thermo->uv_solver() == "kkt" ||
+                      thermo->uv_solver() == "partition",
+                  "Invalid UV solver: ", thermo->uv_solver());
     }
   }
 

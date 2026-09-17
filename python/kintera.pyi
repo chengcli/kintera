@@ -665,6 +665,12 @@ class ThermoOptions(SpeciesThermo):
         ...
 
     @overload
+    def uv_solver(self) -> str: ...
+
+    @overload
+    def uv_solver(self, value: str) -> ThermoOptions: ...
+
+    @overload
     def ftol(self) -> float:
         """
         Get the convergence tolerance for free energy.

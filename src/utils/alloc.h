@@ -132,6 +132,12 @@ size_t equilibrate_tp_space(int nspecies, int nreaction) {
 }
 
 template <typename T>
+size_t equilibrate_uv_partition_space(int nspecies, int nreaction) {
+  return 2 * pool_allocation_bytes(nspecies * sizeof(T)) +
+         pool_allocation_bytes(nreaction * sizeof(T));
+}
+
+template <typename T>
 size_t equilibrate_uv_space(int nspecies, int nreaction) {
   size_t bytes = 0;
   auto bump = [&](size_t, size_t nbytes) {

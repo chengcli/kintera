@@ -61,10 +61,19 @@ Basic Configuration
    # Convergence criteria
    op.max_iter(15)  # Maximum iterations
    op.ftol(1.e-8)   # Convergence tolerance
+   op.uv_solver("auto")  # UV phase-equilibrium solver
 
    # Reference state
    op.Tref(300.0)   # Reference temperature (K)
    op.Pref(1.e5)    # Reference pressure (Pa)
+
+The UV solver accepts ``auto`` (default), ``kkt``, and ``partition``.
+``auto`` uses direct vapor-cloud partitioning for disjoint nucleation reactions
+with one vapor reactant and one cloud product, and otherwise uses KKT.
+``partition`` requires that reaction structure and reports a convergence
+failure rather than switching solvers if its energy root cannot be found.
+``kkt`` always uses the constrained least-squares solver. The same option can
+be set in YAML as ``dynamics.equation-of-state.uv-solver``.
 
 Species Configuration
 ~~~~~~~~~~~~~~~~~~~~~

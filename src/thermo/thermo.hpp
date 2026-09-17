@@ -68,6 +68,7 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
        << "* Pref = " << Pref() << " Pa\n"
        << "* max_iter = " << max_iter() << "\n"
        << "* ftol = " << ftol() << "\n"
+       << "* uv_solver = " << uv_solver() << "\n"
        << "* gas_floor = " << gas_floor() << "\n"
        << "* offset_zero = " << (offset_zero() ? "true" : "false") << "\n"
        << "* verbose = " << (verbose() ? "true" : "false") << "\n";
@@ -85,6 +86,7 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(bool, offset_zero) = false;
 
   ADD_ARG(NucleationOptions, nucleation) = nullptr;
+  ADD_ARG(std::string, uv_solver) = "auto";
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 
@@ -140,6 +142,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 
   //! options with which this `ThermoY` was constructed
   ThermoOptions options;
+  bool uv_partitionable = false;
 
   ThermoYImpl() : options(ThermoOptionsImpl::create()) {}
   explicit ThermoYImpl(const ThermoOptions& options_);

@@ -24,6 +24,211 @@ DISPATCH_MACRO bool is_depleted_cloud(T amount, T reference) {
          amount <= 8. * std::numeric_limits<T>::epsilon() * reference;
 }
 
+template <typename T>
+DISPATCH_MACRO bool partition_uv_state(
+    T temperature, T* conc, T const* baseline, T const* totals, T* molar_energy,
+    T const* stoich, int nspecies, int nreaction, T const* intEng_offset,
+    T const* cv_const, user_func1 const* logsvp_func,
+    user_func1 const* logsvp_func_ddT, user_func2 const* intEng_R_extra,
+    user_func2 const* cv_R_extra, T* energy, T* derivative) {
+  memcpy(conc, baseline, nspecies * sizeof(T));
+  for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
+    int vapor_index = -1;
+    int cloud_index = -1;
+    T reactant_coefficient = 0.;
+    T product_coefficient = 0.;
+    for (int species_index = 0; species_index < nspecies; ++species_index) {
+      T coefficient = stoich[species_index * nreaction + reaction_index];
+      if (coefficient < 0.) {
+        vapor_index = species_index;
+        reactant_coefficient = -coefficient;
+      } else if (coefficient > 0.) {
+        cloud_index = species_index;
+        product_coefficient = coefficient;
+      }
+    }
+    T total = totals[reaction_index];
+    if (total == 0.) {
+      conc[vapor_index] = 0.;
+      conc[cloud_index] = 0.;
+      continue;
+    }
+    T log_saturation =
+        logsvp_func[reaction_index](temperature) / reactant_coefficient -
+        log(constants::Rgas * temperature);
+    if (!std::isfinite(log_saturation)) return false;
+    T vapor = log_saturation >= log(total) ? total : exp(log_saturation);
+    if (vapor > total) vapor = total;
+    conc[vapor_index] = vapor;
+    conc[cloud_index] =
+        (total - vapor) * product_coefficient / reactant_coefficient;
+  }
+
+  *energy = 0.;
+  *derivative = 0.;
+  for (int species_index = 0; species_index < nspecies; ++species_index) {
+    molar_energy[species_index] =
+        intEng_offset[species_index] + cv_const[species_index] * temperature;
+    T molar_cv = cv_const[species_index];
+    if (intEng_R_extra[species_index]) {
+      molar_energy[species_index] +=
+          intEng_R_extra[species_index](temperature, conc[species_index]) *
+          constants::Rgas;
+    }
+    if (cv_R_extra[species_index]) {
+      molar_cv += cv_R_extra[species_index](temperature, conc[species_index]) *
+                  constants::Rgas;
+    }
+    *energy += molar_energy[species_index] * conc[species_index];
+    *derivative += molar_cv * conc[species_index];
+  }
+
+  for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
+    int vapor_index = -1;
+    int cloud_index = -1;
+    T reactant_coefficient = 0.;
+    T product_coefficient = 0.;
+    for (int species_index = 0; species_index < nspecies; ++species_index) {
+      T coefficient = stoich[species_index * nreaction + reaction_index];
+      if (coefficient < 0.) {
+        vapor_index = species_index;
+        reactant_coefficient = -coefficient;
+      } else if (coefficient > 0.) {
+        cloud_index = species_index;
+        product_coefficient = coefficient;
+      }
+    }
+    if (conc[vapor_index] >= totals[reaction_index]) continue;
+    T vapor_derivative =
+        conc[vapor_index] *
+        (logsvp_func_ddT[reaction_index](temperature) / reactant_coefficient -
+         1. / temperature);
+    *derivative += vapor_derivative *
+                   (molar_energy[vapor_index] - product_coefficient /
+                                                    reactant_coefficient *
+                                                    molar_energy[cloud_index]);
+  }
+  return std::isfinite(*energy) && std::isfinite(*derivative);
+}
+
+template <typename T>
+DISPATCH_MACRO int equilibrate_uv_partition(
+    T* gain, T* diag, T* temp, T* conc, T h0, T const* stoich, int nspecies,
+    int nreaction, T const* intEng_offset, T const* cv_const,
+    user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
+    user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
+    int* max_iter, int* nactive, char* work) {
+  size_t mark = pool_mark(work);
+  T* baseline = (T*)pmalloc(work, nspecies * sizeof(T));
+  T* molar_energy = (T*)pmalloc(work, nspecies * sizeof(T));
+  T* totals = (T*)pmalloc(work, nreaction * sizeof(T));
+  memcpy(baseline, conc, nspecies * sizeof(T));
+  T original_temperature = *temp;
+  bool valid = true;
+
+  for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
+    int vapor_index = -1;
+    int cloud_index = -1;
+    T reactant_coefficient = 0.;
+    T product_coefficient = 0.;
+    for (int species_index = 0; species_index < nspecies; ++species_index) {
+      T coefficient = stoich[species_index * nreaction + reaction_index];
+      if (coefficient < 0.) {
+        vapor_index = species_index;
+        reactant_coefficient = -coefficient;
+      } else if (coefficient > 0.) {
+        cloud_index = species_index;
+        product_coefficient = coefficient;
+      }
+    }
+    totals[reaction_index] = baseline[vapor_index] + reactant_coefficient /
+                                                         product_coefficient *
+                                                         baseline[cloud_index];
+    if (!std::isfinite(totals[reaction_index]) || totals[reaction_index] < 0.)
+      valid = false;
+  }
+
+  T energy = 0.;
+  T derivative = 0.;
+  T residual = 0.;
+  T energy_scale = fabs(h0) > 1. ? fabs(h0) : 1.;
+  T tolerance = 64. * std::numeric_limits<T>::epsilon() * energy_scale;
+  int iterations = 1;
+  if (valid) {
+    valid = partition_uv_state(
+        *temp, conc, baseline, totals, molar_energy, stoich, nspecies,
+        nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
+        intEng_R_extra, cv_R_extra, &energy, &derivative);
+    residual = energy - h0;
+  }
+
+  if (valid && fabs(residual) > tolerance) {
+    T lower = *temp;
+    T upper = *temp;
+    T bracket_energy = energy;
+    T bracket_derivative = derivative;
+    bool bracketed = false;
+    for (int bracket_step = 0; bracket_step < 64; ++bracket_step) {
+      T candidate = residual > 0. ? lower * 0.5 : upper * 2.;
+      if (!(candidate > 0.) || !std::isfinite(candidate)) break;
+      if (!partition_uv_state(
+              candidate, conc, baseline, totals, molar_energy, stoich, nspecies,
+              nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
+              intEng_R_extra, cv_R_extra, &bracket_energy, &bracket_derivative))
+        break;
+      if (residual > 0.) {
+        lower = candidate;
+        bracketed = bracket_energy <= h0;
+      } else {
+        upper = candidate;
+        bracketed = bracket_energy >= h0;
+      }
+      if (bracketed) break;
+    }
+    valid = bracketed;
+
+    T current = original_temperature;
+    while (valid && fabs(residual) > tolerance && iterations < *max_iter) {
+      T candidate = current - residual / derivative;
+      if (!std::isfinite(candidate) || candidate <= lower ||
+          candidate >= upper) {
+        candidate = lower + 0.5 * (upper - lower);
+      }
+      if (candidate == current) candidate = lower + 0.5 * (upper - lower);
+      if (candidate == current) break;
+      valid = partition_uv_state(
+          candidate, conc, baseline, totals, molar_energy, stoich, nspecies,
+          nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
+          intEng_R_extra, cv_R_extra, &energy, &derivative);
+      if (!valid) break;
+      current = candidate;
+      residual = energy - h0;
+      if (residual < 0.)
+        lower = current;
+      else
+        upper = current;
+      ++iterations;
+    }
+    *temp = current;
+  }
+
+  int status = valid && fabs(residual) <= tolerance ? 0 : -1;
+  if (status == 0) {
+    memset(gain, 0, nreaction * nreaction * sizeof(T));
+    diag[0] = iterations;
+    *nactive = 0;
+    *max_iter = iterations;
+  } else {
+    memcpy(conc, baseline, nspecies * sizeof(T));
+    *temp = original_temperature;
+  }
+  pfree(baseline);
+  pfree(molar_energy);
+  pfree(totals);
+  pool_rewind(work, mark);
+  return status;
+}
+
 /*!
  * \brief Calculate thermodynamic equilibrium at fixed volume and internal
  * energy
@@ -68,7 +273,7 @@ DISPATCH_MACRO int equilibrate_uv(
     user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
     user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
     float logsvp_eps, int* max_iter, int* reaction_set, int* nactive,
-    char* work = nullptr) {
+    int uv_solver = 0, char* work = nullptr) {
   // check positive temperature
   if (*temp <= 0) {
     printf("Error: Non-positive temperature = %g.\n", *temp);
@@ -97,6 +302,18 @@ DISPATCH_MACRO int equilibrate_uv(
     if (cv_const[i] < 0) {
       printf("Error: Negative heat capacity for species %d.\n", i);
       return 1;  // error: negative heat capacity
+    }
+  }
+
+  if (uv_solver != 0) {
+    int partition_status = equilibrate_uv_partition(
+        gain, diag, temp, conc, h0, stoich, nspecies, nreaction, intEng_offset,
+        cv_const, logsvp_func, logsvp_func_ddT, intEng_R_extra, cv_R_extra,
+        max_iter, nactive, work);
+    if (partition_status == 0) return 0;
+    if (uv_solver == 2) {
+      printf("[Warning] equilibrate_uv partition did not converge.\n");
+      return 2;
     }
   }
 

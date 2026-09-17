@@ -64,7 +64,7 @@ void call_equilibrate_uv_cpu(at::TensorIterator& iter, int ngas,
                              at::Tensor const& cv_const,
                              std::vector<std::string> const& logsvp_func,
                              std::vector<std::string> const& intEng_extra_func,
-                             double logsvp_eps, int max_iter) {
+                             double logsvp_eps, int max_iter, int uv_solver) {
   int grain_size = iter.numel() / at::get_num_threads();
 
   /////  (1) Get svp functions   /////
@@ -118,7 +118,7 @@ void call_equilibrate_uv_cpu(at::TensorIterator& iter, int ngas,
                            nspecies, nreaction, ngas, intEng_offset_ptr,
                            cv_const_ptr, logsvp_ptrs, logsvp_ddT_ptrs,
                            intEng_extra_ptrs, intEng_extra_ddT_ptrs, logsvp_eps,
-                           &max_iter_i, reaction_set, nactive);
+                           &max_iter_i, reaction_set, nactive, uv_solver);
           }
         },
         grain_size);

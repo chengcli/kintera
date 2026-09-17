@@ -123,6 +123,32 @@ void ThermoYImpl::reset() {
     }
   }
 
+  uv_partitionable = !reactions.empty();
+  std::vector<bool> used_species(nspecies, false);
+  auto stoich_values = stoich.accessor<double, 2>();
+  for (int reaction_index = 0; reaction_index < reactions.size();
+       ++reaction_index) {
+    int vapor_count = 0;
+    int cloud_count = 0;
+    for (int species_index = 0; species_index < nspecies; ++species_index) {
+      double coefficient = stoich_values[species_index][reaction_index];
+      if (coefficient == 0.) continue;
+      if (!std::isfinite(coefficient) || used_species[species_index]) {
+        uv_partitionable = false;
+      }
+      used_species[species_index] = true;
+      if (species_index < options->vapor_ids().size() && coefficient < 0.) {
+        ++vapor_count;
+      } else if (species_index >= options->vapor_ids().size() &&
+                 coefficient > 0.) {
+        ++cloud_count;
+      } else {
+        uv_partitionable = false;
+      }
+    }
+    if (vapor_count != 1 || cloud_count != 1) uv_partitionable = false;
+  }
+
   if (options->verbose()) {
     std::cout << "[ThermoY] stoichiometry matrix: " << std::endl;
     std::cout << stoich << std::endl;
@@ -283,13 +309,22 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
           .add_owned_input(nactive.unsqueeze(-1))
           .build();
 
+  int uv_solver = -1;
+  if (options->uv_solver() == "kkt") uv_solver = 0;
+  if (options->uv_solver() == "auto") uv_solver = 1;
+  if (options->uv_solver() == "partition") uv_solver = 2;
+  TORCH_CHECK(uv_solver >= 0, "Invalid UV solver: ", options->uv_solver());
+  TORCH_CHECK(uv_solver != 2 || uv_partitionable,
+              "UV partition solver requires disjoint vapor-cloud reactions");
+  if (!uv_partitionable) uv_solver = 0;
+
   // call the equilibrium solver
   at::native::call_equilibrate_uv(
       conc.device().type(), iter, options->vapor_ids().size(), stoich,
       u0 / inv_mu,   // J/kg -> J/mol
       cv0 / inv_mu,  // J/(kg K) -> J/(mol K)
       options->nucleation()->logsvp(), options->intEng_R_extra(),
-      options->ftol(), options->max_iter());
+      options->ftol(), options->max_iter(), uv_solver);
 
   ivol = conc / inv_mu;
   yfrac.copy_(compute("V->Y", {ivol}));

@@ -12,6 +12,7 @@
 #include <kintera/math/constrained_newton.h>
 #include <kintera/math/lubksb.h>
 #include <kintera/math/ludcmp.h>
+#include <kintera/vapors/vapor_functions.h>
 
 #include <kintera/thermo/eval_uhs.hpp>
 #include <kintera/thermo/relative_humidity.hpp>
@@ -548,7 +549,73 @@ dynamics:
 
   EXPECT_DOUBLE_EQ(trace_diag.item<double>(), 1.);
   EXPECT_DOUBLE_EQ(trace_yfrac[2][0].item<double>(), 0.);
+
+  op_thermo->uv_solver("partition");
+  EXPECT_TRUE(thermo_y->uv_partitionable);
+  auto cold_conc =
+      torch::tensor({0.2493891969, 6.330521766e-26, 0., 1.9957527307e-16,
+                     1.224047439e-16, 7.291174753e-34, 4.651872658e-34},
+                    tensor_options);
+  auto cold_mass = cold_conc * torch::tensor(species_weights, tensor_options);
+  auto cold_rho = cold_mass.sum().reshape({1});
+  auto cold_yfrac = (cold_mass.slice(0, 1) / cold_rho).reshape({6, 1});
+  auto cold_initial = cold_yfrac.clone();
+  auto cold_ivol = thermo_y->compute("DY->V", {cold_rho, cold_yfrac});
+  auto cold_temp = torch::tensor({12.597949986163009}, tensor_options);
+  auto cold_intEng = thermo_y->compute("VT->U", {cold_ivol, cold_temp});
+  auto cold_diag = torch::zeros({1, 1}, tensor_options);
+
+  thermo_y->forward(cold_rho, cold_intEng, cold_yfrac, false, cold_diag);
+
+  EXPECT_LT(cold_diag.item<double>(), op_thermo->max_iter());
+  EXPECT_GT(cold_yfrac[1][0].item<double>(), 0.);
+  EXPECT_TRUE(torch::all(cold_yfrac >= 0.).item<bool>());
+  auto cold_ivol_after = thermo_y->compute("DY->V", {cold_rho, cold_yfrac});
+  auto cold_conc_after = (cold_ivol_after * thermo_y->inv_mu).flatten();
+  auto cold_temp_after =
+      thermo_y->compute("VU->T", {cold_ivol_after, cold_intEng});
+  auto cold_energy_after =
+      thermo_y->compute("VT->U", {cold_ivol_after, cold_temp_after});
+  EXPECT_TRUE(torch::allclose(cold_intEng, cold_energy_after, 1.e-12, 1.e-8));
+  EXPECT_NEAR(cold_temp_after.item<double>(), cold_temp.item<double>(), 1.e-6);
+  EXPECT_DOUBLE_EQ((cold_conc_after[2] + cold_conc_after[5]).item<double>(),
+                   (cold_conc[2] + cold_conc[5]).item<double>());
+  double adjusted_temperature = cold_temp_after.item<double>();
+  double log_saturation = h2s_ideal(adjusted_temperature) -
+                          std::log(constants::Rgas * adjusted_temperature);
+  EXPECT_NEAR(std::log(cold_conc_after[2].item<double>()), log_saturation,
+              1.e-6);
+
+  op_thermo->uv_solver("auto");
+  auto cold_auto = cold_initial.clone();
+  auto auto_diag = torch::zeros({1, 1}, tensor_options);
+  thermo_y->forward(cold_rho, cold_intEng, cold_auto, false, auto_diag);
+  EXPECT_LT(auto_diag.item<double>(), op_thermo->max_iter());
+  EXPECT_TRUE(torch::allclose(cold_auto, cold_yfrac, 1.e-12, 0.));
+
+  op_thermo->uv_solver("kkt");
+  auto kkt_diag = torch::zeros({1, 1}, tensor_options);
+  thermo_y->forward(trace_rho, trace_intEng, trace_yfrac, false, kkt_diag);
+  EXPECT_LT(kkt_diag.item<double>(), op_thermo->max_iter());
+
   init_species_from_yaml("jupiter.yaml");
+}
+
+TEST_P(DeviceTest, equilibrate_uv_partition_rejects_coupled_reactions) {
+  if (device.type() == torch::kMPS) {
+    GTEST_SKIP() << "equilibrate_uv has no MPS backend.";
+  }
+
+  auto options = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  options->uv_solver("partition");
+  ThermoY thermo_y(options);
+  EXPECT_FALSE(thermo_y->uv_partitionable);
+  auto density = torch::ones({1}, torch::device(device).dtype(dtype));
+  auto energy = torch::ones({1}, torch::device(device).dtype(dtype));
+  auto fractions =
+      torch::zeros({static_cast<int>(options->species().size()) - 1, 1},
+                   torch::device(device).dtype(dtype));
+  EXPECT_THROW(thermo_y->forward(density, energy, fractions), c10::Error);
 }
 
 TEST_P(DeviceTest, equilibrate_uv_large) {

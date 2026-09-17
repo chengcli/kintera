@@ -114,6 +114,13 @@ ThermoOptions
       :param value: Tolerance value
       :return: Self for method chaining
 
+   .. method:: uv_solver(value: str) -> ThermoOptions
+
+      Select ``auto`` (default), ``kkt``, or ``partition`` for UV equilibrium.
+
+      :param value: UV solver mode
+      :return: Self for method chaining
+
    .. method:: Tref(value: float) -> ThermoOptions
 
       Set reference temperature.
