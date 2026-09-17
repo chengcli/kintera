@@ -60,7 +60,7 @@ size_t leastsq_kkt_space(int n2, int n3) {
   };
   bump(alignof(T), size * size * sizeof(T));  // aug
   bump(alignof(T), n2 * n2 * sizeof(T));      // ata
-  bump(alignof(T), n2 * sizeof(T));           // atb
+  bump(alignof(T), n2 * sizeof(T));           // column_norm
   bump(alignof(T), size * sizeof(T));         // rhs
   bump(alignof(T), n3 * sizeof(T));           // eval
   bump(alignof(int), n3 * sizeof(int));       // ct_indx

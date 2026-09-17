@@ -32,10 +32,12 @@ namespace kintera {
  * \param[in] n                 size of matrix
  * \param[in] work              workspace if not null, otherwise allocated
  * internally
+ * \param[in] pivot_tolerance   minimum pivot relative to its row scale
+ * \return permutation sign, or 0 if the matrix is singular
  */
 template <typename T>
 DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
-                          int* skip_row = nullptr) {
+                          int* skip_row = nullptr, T pivot_tolerance = 0.) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
   T* vv;
@@ -73,6 +75,7 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
     big = 0.0;
     imax = j;
     for (i = j; i < n; i++) {
+      if (skip_row && skip_row[i]) continue;
       sum = X(i, j);
       for (k = 0; k < j; k++) sum -= X(i, k) * X(k, j);
       X(i, j) = sum;
@@ -80,6 +83,10 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
         big = dum;
         imax = i;
       }
+    }
+    if (!(big > pivot_tolerance)) {
+      if (work == nullptr) free(vv);
+      return 0;
     }
     if (j != imax) {
       for (k = 0; k < n; k++) {

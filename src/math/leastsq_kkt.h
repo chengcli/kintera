@@ -1,8 +1,10 @@
 #pragma once
 
 // C/C++
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 // base
 #include <configure.h>
@@ -29,6 +31,24 @@ DISPATCH_MACRO inline uint64_t hash_set(const int* arr, int size, int n) {
     }
   }
   return mask;
+}
+
+template <typename T>
+DISPATCH_MACRO T kkt_column_scale(T objective_scale, T column_norm) {
+  return column_norm > 0. ? objective_scale / column_norm : 1.;
+}
+
+template <typename T>
+DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d,
+                              T const* column_norm, T objective_scale, int n2,
+                              int row) {
+  T scale = fabs(d[row]);
+  for (int j = 0; j < n2; ++j) {
+    T value = fabs(c[row * n2 + j] *
+                   kkt_column_scale(objective_scale, column_norm[j]));
+    if (value > scale) scale = value;
+  }
+  return scale > 0. ? scale : 1.;
 }
 
 template <typename T>
@@ -85,7 +105,8 @@ DISPATCH_MACRO void populate_rhs(T* rhs, T const* atb, T const* d, int n2,
  * This subroutine solves the constrained least square problem using the active
  * set method based on the KKT conditions. The first `neq` rows of the
  * constraint matrix `C` are treated as equality constraints, while the
- * remaining rows are treated as inequality constraints.
+ * remaining rows are treated as inequality constraints. Objective columns and
+ * constraint rows are scaled internally; the returned solution is unscaled.
  *
  * \param[in,out] b[0..n1-1]    right-hand-side vector and output. Input
  *                              dimension is n1, output dimension is n2,
@@ -99,11 +120,14 @@ DISPATCH_MACRO void populate_rhs(T* rhs, T const* atb, T const* d, int n2,
  * \param[in] neq               number of equality constraints, 0 <= neq <= n3
  * \param[in,out] max_iter      in: maximum number of iterations to perform,
  *                              out: number of iterations actually performed
+ * \param[in] reg               diagonal perturbation in scaled KKT units;
+ *                              zero uses regularization only if LU fails
  * \param[in] work              workspace if not null, otherwise allocated
  *                              internally.
  *
  * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
- *         2 on failure (max_iter reached without convergence).
+ *         2 on failure (max_iter reached without convergence), or 3 if the
+ *         KKT system remains singular or has an inconsistent zero row.
  */
 template <typename T>
 DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
@@ -124,13 +148,13 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
 
   // Allocate memory for the augmented matrix and right-hand side vector
   int size = n2 + n3;
-  T *aug, *ata, *atb, *rhs, *eval;
+  T *aug, *ata, *column_norm, *rhs, *eval;
   int *ct_indx, *lu_indx, *skip_row;
 
   if (work == nullptr) {
     aug = (T*)malloc(size * size * sizeof(T));
     ata = (T*)malloc(n2 * n2 * sizeof(T));
-    atb = (T*)malloc(n2 * sizeof(T));
+    column_norm = (T*)malloc(n2 * sizeof(T));
     rhs = (T*)malloc(size * sizeof(T));
 
     // evaluation of constraints
@@ -147,7 +171,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
   } else {
     aug = alloc_from<T>(work, size * size);
     ata = alloc_from<T>(work, n2 * n2);
-    atb = alloc_from<T>(work, n2);
+    column_norm = alloc_from<T>(work, n2);
     rhs = alloc_from<T>(work, size);
     eval = alloc_from<T>(work, n3);
     ct_indx = alloc_from<int>(work, n3);
@@ -155,21 +179,29 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     skip_row = alloc_from<int>(work, size);
   }
 
+  T objective_scale = 1.;
+  for (int i = 0; i < n1; ++i) {
+    T value = fabs(b[i]);
+    if (value > objective_scale) objective_scale = value;
+  }
+
+  for (int j = 0; j < n2; ++j) {
+    column_norm[j] = 0.;
+    for (int i = 0; i < n1; ++i) {
+      T value = fabs(A(i, j));
+      if (value > column_norm[j]) column_norm[j] = value;
+    }
+  }
+
   // populate A^T.A
   for (int i = 0; i < n2; ++i) {
     for (int j = 0; j < n2; ++j) {
       ATA(i, j) = 0.0;
       for (int k = 0; k < n1; ++k) {
-        ATA(i, j) += A(k, i) * A(k, j);
+        T left = column_norm[i] > 0. ? A(k, i) / column_norm[i] : 0.;
+        T right = column_norm[j] > 0. ? A(k, j) / column_norm[j] : 0.;
+        ATA(i, j) += left * right;
       }
-    }
-  }
-
-  // populate A^T.b
-  for (int i = 0; i < n2; ++i) {
-    atb[i] = 0.0;
-    for (int j = 0; j < n1; ++j) {
-      atb[i] += A(j, i) * b[j];
     }
   }
 
@@ -179,6 +211,9 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
 
   int nactive = neq;
   int iter = 0;
+  int status = 0;
+  T fallback_reg = sizeof(T) == sizeof(float) ? 1.e-5 : 1.e-10;
+  T pivot_tolerance = 10. * std::numeric_limits<T>::epsilon();
 
   while (iter++ < *max_iter) {
     /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
@@ -197,21 +232,61 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     printf("\n");*/
     uint64_t hash0 = hash_set(ct_indx, nactive, n3);
 
-    populate_aug(aug, ata, c, n2, nactive, ct_indx, reg);
-    populate_rhs(rhs, atb, d, n2, nactive, ct_indx);
+    int nact = nactive;
+    bool solved = false;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      T primal_reg = attempt == 0 ? 0. : fallback_reg;
+      T dual_reg = attempt == 0 ? reg : (reg == 0. ? -fallback_reg : reg);
+      for (int i = 0; i < n2; ++i) {
+        rhs[i] = 0.;
+        for (int k = 0; k < n1; ++k) {
+          T value = column_norm[i] > 0. ? A(k, i) / column_norm[i] : 0.;
+          rhs[i] += value * (b[k] / objective_scale);
+        }
+        for (int j = 0; j < n2; ++j)
+          AUG(i, j) = ATA(i, j) + (i == j ? primal_reg : 0.);
+      }
+      for (int i = 0; i < nactive; ++i) {
+        int row = ct_indx[i];
+        T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+        for (int j = 0; j < n2; ++j) {
+          T value = C(row, j) *
+                        kkt_column_scale(objective_scale, column_norm[j]) /
+                    row_scale;
+          AUG(n2 + i, j) = value;
+          AUG(j, n2 + i) = value;
+        }
+        rhs[n2 + i] = d[row] / row_scale;
+        for (int j = 0; j < nactive; ++j)
+          AUG(n2 + i, n2 + j) = i == j ? dual_reg : 0.;
+      }
 
-    // solve the KKT system
-    // determine the non-zero rows
-    for (int i = 0; i < n2 + nactive; ++i) {
-      bool all_zero = true;
-      for (int j = 0; j < n2 + nactive; ++j) {
-        if (aug[i * (n2 + nactive) + j] != 0.0) {
-          all_zero = false;
+      for (int i = 0; i < n2 + nactive; ++i) {
+        bool all_zero = true;
+        for (int j = 0; j < n2 + nactive; ++j) {
+          if (aug[i * (n2 + nactive) + j] != 0.0) {
+            all_zero = false;
+            break;
+          }
+        }
+        skip_row[i] = all_zero;
+        if (all_zero && rhs[i] != 0.) {
+          status = 3;
           break;
         }
       }
-      skip_row[i] = all_zero;
-      if (all_zero) rhs[i] = 0.0;
+      if (status != 0) break;
+
+      if (ludcmp(aug, lu_indx, n2 + nactive, work, skip_row,
+                 pivot_tolerance) != 0) {
+        lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
+        solved = true;
+        break;
+      }
+    }
+    if (!solved) {
+      status = 3;
+      break;
     }
 
     /* print aug
@@ -225,15 +300,15 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       printf("\n");
     }*/
 
-    ludcmp(aug, lu_indx, n2 + nactive, work, skip_row);
-    lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
-
     // evaluate the inactive constraints
     for (int i = nactive; i < n3; ++i) {
       int k = ct_indx[i];
-      eval[k] = 0.;
+      T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, k);
+      eval[k] = -d[k] / row_scale;
       for (int j = 0; j < n2; ++j) {
-        eval[k] += C(k, j) * rhs[j];
+        eval[k] += C(k, j) *
+                   kkt_column_scale(objective_scale, column_norm[j]) /
+                   row_scale * rhs[j];
       }
     }
 
@@ -303,7 +378,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     // |  EQ   |   INEQ  |   INACTIVE    |
     while (first < last) {
       int k = ct_indx[first];
-      if (eval[k] > d[k]) {
+      if (eval[k] > 0.) {
         // add the inactive constraint back to the active set
         ++first;
       } else {
@@ -320,20 +395,24 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     if (hash0 == hash1) break;
   }
 
-  // copy to output vector b
-  for (int i = 0; i < n2; ++i) {
-    b[i] = rhs[i];
-  }
+  if (status == 0)
+    for (int i = 0; i < n2; ++i)
+      b[i] = rhs[i] * kkt_column_scale(objective_scale, column_norm[i]);
 
   if (work == nullptr) {
     free(aug);
     free(ata);
-    free(atb);
+    free(column_norm);
     free(rhs);
     free(eval);
     free(ct_indx);
     free(lu_indx);
     free(skip_row);
+  }
+
+  if (status != 0) {
+    *max_iter = iter;
+    return status;
   }
 
   if (iter >= *max_iter) {
