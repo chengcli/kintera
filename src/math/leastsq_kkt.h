@@ -68,7 +68,7 @@ DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d, T const* column_norm,
 template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
                                int n2, int n3, int neq, int* max_iter,
-                               float reg = 0.) {
+                               float reg = 0., char* work = nullptr) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
     printf(
@@ -86,15 +86,15 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
   int size = n2 + n3;
   T *aug, *ata, *column_norm, *rhs, *eval;
   int *ct_indx, *lu_indx, *skip_row;
-  size_t mark = pool_mark<Backend>();
-  aug = (T*)pmalloc<Backend>(size * size * sizeof(T));
-  ata = (T*)pmalloc<Backend>(n2 * n2 * sizeof(T));
-  column_norm = (T*)pmalloc<Backend>(n2 * sizeof(T));
-  rhs = (T*)pmalloc<Backend>(size * sizeof(T));
-  eval = (T*)pmalloc<Backend>(n3 * sizeof(T));
-  ct_indx = (int*)pmalloc<Backend>(n3 * sizeof(int));
-  lu_indx = (int*)pmalloc<Backend>(size * sizeof(int));
-  skip_row = (int*)pmalloc<Backend>(size * sizeof(int));
+  size_t mark = pool_mark<Backend>(work);
+  aug = (T*)pmalloc<Backend>(work, size * size * sizeof(T));
+  ata = (T*)pmalloc<Backend>(work, n2 * n2 * sizeof(T));
+  column_norm = (T*)pmalloc<Backend>(work, n2 * sizeof(T));
+  rhs = (T*)pmalloc<Backend>(work, size * sizeof(T));
+  eval = (T*)pmalloc<Backend>(work, n3 * sizeof(T));
+  ct_indx = (int*)pmalloc<Backend>(work, n3 * sizeof(int));
+  lu_indx = (int*)pmalloc<Backend>(work, size * sizeof(int));
+  skip_row = (int*)pmalloc<Backend>(work, size * sizeof(int));
 
   T objective_scale = 1.;
   for (int i = 0; i < n1; ++i) {
@@ -182,7 +182,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       if (status != 0) break;
 
       if (ludcmp<T, Backend>(aug, lu_indx, n2 + nactive, skip_row,
-                             pivot_tolerance) != 0) {
+                             pivot_tolerance, work) != 0) {
         lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
         solved = true;
         break;
@@ -278,7 +278,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
   pfree<Backend>(ct_indx);
   pfree<Backend>(lu_indx);
   pfree<Backend>(skip_row);
-  pool_rewind<Backend>(mark);
+  pool_rewind<Backend>(work, mark);
 
   if (status != 0) {
     *max_iter = iter;

@@ -45,7 +45,8 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
                                   T const* stoich, int nspecies, int nreaction,
                                   int ngas, user_func1 const* logsvp_func,
                                   float logsvp_eps, int* max_iter,
-                                  int* reaction_set, int* nactive) {
+                                  int* reaction_set, int* nactive,
+                                  char* work = nullptr) {
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
     printf("Error: Non-positive temperature or pressure.\n");
@@ -84,14 +85,14 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   T *logsvp, *weight, *rhs;
   T *stoich_active, *stoich_sum, *xfrac0;
   T* gain_cpy;
-  size_t mark = pool_mark();
-  logsvp = (T*)pmalloc(nreaction * sizeof(T));
-  weight = (T*)pmalloc(nreaction * nspecies * sizeof(T));
-  rhs = (T*)pmalloc(nreaction * sizeof(T));
-  stoich_active = (T*)pmalloc(nspecies * nreaction * sizeof(T));
-  stoich_sum = (T*)pmalloc(nreaction * sizeof(T));
-  xfrac0 = (T*)pmalloc(nspecies * sizeof(T));
-  gain_cpy = (T*)pmalloc(nreaction * nreaction * sizeof(T));
+  size_t mark = pool_mark(work);
+  logsvp = (T*)pmalloc(work, nreaction * sizeof(T));
+  weight = (T*)pmalloc(work, nreaction * nspecies * sizeof(T));
+  rhs = (T*)pmalloc(work, nreaction * sizeof(T));
+  stoich_active = (T*)pmalloc(work, nspecies * nreaction * sizeof(T));
+  stoich_sum = (T*)pmalloc(work, nreaction * sizeof(T));
+  xfrac0 = (T*)pmalloc(work, nspecies * sizeof(T));
+  gain_cpy = (T*)pmalloc(work, nreaction * nreaction * sizeof(T));
 
   memset(weight, 0, nreaction * nspecies * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
@@ -208,7 +209,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
     kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, *nactive, *nactive,
-                          nspecies, 0, &max_kkt_iter);
+                          nspecies, 0, &max_kkt_iter, 0., work);
     if (kkt_err != 0) break;
 
     /* print rate
@@ -312,7 +313,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   pfree(stoich_sum);
   pfree(xfrac0);
   pfree(gain_cpy);
-  pool_rewind(mark);
+  pool_rewind(work, mark);
 
   if (iter >= *max_iter) {
     printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);

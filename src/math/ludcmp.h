@@ -35,11 +35,11 @@ namespace kintera {
  */
 template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, int* skip_row = nullptr,
-                          T pivot_tolerance = 0.) {
+                          T pivot_tolerance = 0., char* work = nullptr) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
-  size_t mark = pool_mark<Backend>();
-  T* vv = (T*)pmalloc<Backend>(n * sizeof(T));
+  size_t mark = pool_mark<Backend>(work);
+  T* vv = (T*)pmalloc<Backend>(work, n * sizeof(T));
 
   for (i = 0; i < n; i++) indx[i] = i;
 
@@ -52,7 +52,7 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, int* skip_row = nullptr,
     if (big == 0.0) {
       // printf("Singular matrix in routine ludcmp\n");
       pfree<Backend>(vv);
-      pool_rewind<Backend>(mark);
+      pool_rewind<Backend>(work, mark);
       return 0;
     }
     vv[i] = 1.0 / big;
@@ -78,7 +78,7 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, int* skip_row = nullptr,
     }
     if (!(big > pivot_tolerance)) {
       pfree<Backend>(vv);
-      pool_rewind<Backend>(mark);
+      pool_rewind<Backend>(work, mark);
       return 0;
     }
     if (j != imax) {
@@ -97,7 +97,7 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, int* skip_row = nullptr,
     }
   }
   pfree<Backend>(vv);
-  pool_rewind<Backend>(mark);
+  pool_rewind<Backend>(work, mark);
   return d;
 }
 

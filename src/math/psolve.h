@@ -112,14 +112,14 @@ DISPATCH_MACRO void sort_eigenpairs_desc(T* evals, T* V, int n) {
    A: n x n, b: n, output x: n
 */
 template <typename T>
-DISPATCH_MACRO void psolve(T* b, const T* A, int n) {
-  size_t mark = pool_mark();
-  T* ATA = (T*)pmalloc(n * n * sizeof(T));
-  T* V = (T*)pmalloc(n * n * sizeof(T));
-  T* eval = (T*)pmalloc(n * sizeof(T));
-  T* vi = (T*)pmalloc(n * sizeof(T));
-  T* Avi = (T*)pmalloc(n * sizeof(T));
-  T* b0 = (T*)pmalloc(n * sizeof(T));
+DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
+  size_t mark = pool_mark(work);
+  T* ATA = (T*)pmalloc(work, n * n * sizeof(T));
+  T* V = (T*)pmalloc(work, n * n * sizeof(T));
+  T* eval = (T*)pmalloc(work, n * sizeof(T));
+  T* vi = (T*)pmalloc(work, n * sizeof(T));
+  T* Avi = (T*)pmalloc(work, n * sizeof(T));
+  T* b0 = (T*)pmalloc(work, n * sizeof(T));
 
   matmul_ATA(ATA, A, n);
   memcpy(b0, b, n * sizeof(T));
@@ -164,7 +164,7 @@ DISPATCH_MACRO void psolve(T* b, const T* A, int n) {
   pfree(vi);
   pfree(Avi);
   pfree(b0);
-  pool_rewind(mark);
+  pool_rewind(work, mark);
 }
 
 }  // namespace kintera

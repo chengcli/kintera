@@ -11,7 +11,6 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/native/cuda/Loops.cuh>
 #include <c10/cuda/CUDAException.h>
-#include <kintera/utils/alloc.h>
 
 namespace kintera {
 namespace native {
@@ -57,7 +56,7 @@ __global__ void element_kernel(int64_t numel, func_t f) {
   int idx = blockIdx.x * blockDim.x + tid;
 
   // Shared memory allocation
-  extern __shared__ unsigned char memory[];
+  extern __shared__ __align__(8) unsigned char memory[];
   char *smem = reinterpret_cast<char *>(memory);
 
   if (idx < numel) {
@@ -98,8 +97,7 @@ void gpu_mem_kernel(at::TensorIterator &iter, int work_size, const func_t &f) {
   dim3 block(Threads);
   dim3 grid((numel + block.x - 1) / block.x);
   auto stream = at::cuda::getCurrentCUDAStream();
-  size_t header = sizeof(shared_pool::State) * block.x;
-  size_t shared = header + block.x * work_size;
+  size_t shared = block.x * work_size;
 
   int device = -1;
   C10_CUDA_CHECK(cudaGetDevice(&device));
@@ -110,9 +108,8 @@ void gpu_mem_kernel(at::TensorIterator &iter, int work_size, const func_t &f) {
   auto device_lambda = [=] __device__(int idx, char *smem) {
     auto offsets = offset_calc.get(idx);
     int tid = threadIdx.x;
-    char* work = smem + header + tid * work_size;
-    shared_pool_init(work, work_size);
-    f(data.data(), offsets.data());
+    char* work = smem + tid * work_size;
+    f(data.data(), offsets.data(), work);
   };
 
   // request the full size

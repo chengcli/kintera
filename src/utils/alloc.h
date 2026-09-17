@@ -18,33 +18,11 @@ DISPATCH_MACRO inline uintptr_t align_up(uintptr_t p, size_t a) {
 
 enum class PoolBackend { Shared, DisortGlobal };
 
-namespace shared_pool {
-struct State {
-  char* base;
-  uint32_t capacity;
-  uint32_t offset;
-};
-
-#ifdef __CUDACC__
-static __device__ inline State& state() {
-  extern __shared__ unsigned char memory[];
-  return reinterpret_cast<State*>(memory)[threadIdx.x];
-}
-#endif
-}  // namespace shared_pool
-
-DISPATCH_MACRO inline void shared_pool_init(char* base, size_t capacity) {
-#ifdef __CUDA_ARCH__
-  if (capacity > UINT32_MAX) pmem::trap("shared pool too large", capacity);
-  shared_pool::state() = {base, static_cast<uint32_t>(capacity), 0};
-#endif
-}
-
 template <PoolBackend Backend = PoolBackend::Shared>
-DISPATCH_MACRO inline size_t pool_mark() {
+DISPATCH_MACRO inline size_t pool_mark(char* work) {
 #ifdef __CUDA_ARCH__
   if constexpr (Backend == PoolBackend::Shared) {
-    return shared_pool::state().offset;
+    return reinterpret_cast<uintptr_t>(work);
   } else {
     return pmem::pool_state(pmem::slice_base())->offset;
   }
@@ -54,27 +32,22 @@ DISPATCH_MACRO inline size_t pool_mark() {
 }
 
 template <PoolBackend Backend = PoolBackend::Shared>
-DISPATCH_MACRO inline void pool_rewind(size_t offset) {
+DISPATCH_MACRO inline void pool_rewind(char*& work, size_t mark) {
 #ifdef __CUDA_ARCH__
   if constexpr (Backend == PoolBackend::Shared) {
-    shared_pool::state().offset = static_cast<uint32_t>(offset);
+    work = reinterpret_cast<char*>(mark);
   } else {
-    pmem::pool_state(pmem::slice_base())->offset =
-        static_cast<uint32_t>(offset);
+    pmem::pool_state(pmem::slice_base())->offset = static_cast<uint32_t>(mark);
   }
 #endif
 }
 
 template <PoolBackend Backend = PoolBackend::Shared>
-DISPATCH_MACRO inline void* pmalloc(size_t bytes) {
+DISPATCH_MACRO inline void* pmalloc(char*& work, size_t bytes) {
 #ifdef __CUDA_ARCH__
   if constexpr (Backend == PoolBackend::Shared) {
-    auto& state = shared_pool::state();
-    size_t size = align_up(bytes == 0 ? 8 : bytes, 8);
-    if (size > state.capacity - state.offset)
-      pmem::trap("shared pool exhausted", bytes);
-    void* result = state.base + state.offset;
-    state.offset += static_cast<uint32_t>(size);
+    void* result = work;
+    work += align_up(bytes == 0 ? 8 : bytes, 8);
     return result;
   }
 #endif

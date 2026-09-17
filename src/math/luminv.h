@@ -25,9 +25,10 @@ namespace kintera {
  * \param[in] n size of matrix
  */
 template <typename T>
-DISPATCH_MACRO void luminv(T* y, T const* a, int const* indx, int n) {
-  size_t mark = pool_mark();
-  T* col = (T*)pmalloc(n * sizeof(T));
+DISPATCH_MACRO void luminv(T* y, T const* a, int const* indx, int n,
+                           char* work = nullptr) {
+  size_t mark = pool_mark(work);
+  T* col = (T*)pmalloc(work, n * sizeof(T));
   for (int j = 0; j < n; j++) {
     for (int i = 0; i < n; i++) col[i] = 0.0;
     col[j] = 1.0;
@@ -35,7 +36,7 @@ DISPATCH_MACRO void luminv(T* y, T const* a, int const* indx, int n) {
     for (int i = 0; i < n; i++) y[i * n + j] = col[i];
   }
   pfree(col);
-  pool_rewind(mark);
+  pool_rewind(work, mark);
 }
 
 }  // namespace kintera

@@ -35,7 +35,8 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
         pool_workspace_bytes(equilibrate_tp_space<scalar_t>(nspecies, nreaction));
     native::gpu_mem_kernel<32, 7>(
         iter, mem_size,
-        [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7]) {
+        [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7],
+                       char* work) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto xfrac = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
@@ -48,7 +49,7 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                        stoich_ptr, nspecies,
                        nreaction, ngas, logsvp_ptrs,
                        logsvp_eps, &max_iter_i, reaction_set,
-                       nactive);
+                       nactive, work);
       });
   });
 }
@@ -98,7 +99,8 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
         pool_workspace_bytes(equilibrate_uv_space<scalar_t>(nspecies, nreaction));
     native::gpu_mem_kernel<32, 7>(
         iter, mem_size,
-        [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7]) {
+        [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7],
+                       char* work) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto conc = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
@@ -113,7 +115,7 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
                        logsvp_ptrs, logsvp_ddT_ptrs,
                        intEng_extra_ptrs, intEng_extra_ddT_ptrs,
                        logsvp_eps, &max_iter_i, reaction_set,
-                       nactive);
+                       nactive, work);
       });
   });
 }

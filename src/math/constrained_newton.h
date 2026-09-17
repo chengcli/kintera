@@ -26,10 +26,11 @@ namespace kintera {
 template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int constrained_newton_step(T* b, T const* a, T const* c,
                                            T const* d, int n, int nconstraint,
-                                           int* max_iter, float reg = 0.) {
-  size_t mark = pool_mark<Backend>();
-  T* direct_a = (T*)pmalloc<Backend>(n * n * sizeof(T));
-  T* direct_b = (T*)pmalloc<Backend>(n * sizeof(T));
+                                           int* max_iter, float reg = 0.,
+                                           char* work = nullptr) {
+  size_t mark = pool_mark<Backend>(work);
+  T* direct_a = (T*)pmalloc<Backend>(work, n * n * sizeof(T));
+  T* direct_b = (T*)pmalloc<Backend>(work, n * sizeof(T));
 
   memcpy(direct_a, a, n * n * sizeof(T));
   memcpy(direct_b, b, n * sizeof(T));
@@ -49,10 +50,10 @@ DISPATCH_MACRO int constrained_newton_step(T* b, T const* a, T const* c,
   }
   pfree<Backend>(direct_a);
   pfree<Backend>(direct_b);
-  pool_rewind<Backend>(mark);
+  pool_rewind<Backend>(work, mark);
   if (usable) return 0;
   return leastsq_kkt<T, Backend>(b, a, c, d, n, n, nconstraint, 0, max_iter,
-                                 reg);
+                                 reg, work);
 }
 
 /*!
