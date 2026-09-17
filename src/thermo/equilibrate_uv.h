@@ -18,6 +18,12 @@
 
 namespace kintera {
 
+template <typename T>
+DISPATCH_MACRO bool is_depleted_cloud(T amount, T reference) {
+  return reference > 0. && amount >= 0. &&
+         amount <= 8. * std::numeric_limits<T>::epsilon() * reference;
+}
+
 /*!
  * \brief Calculate thermodynamic equilibrium at fixed volume and internal
  * energy
@@ -125,14 +131,9 @@ DISPATCH_MACRO int equilibrate_uv(
   int iter = 0;
   int err_code = 0;
   bool converged = false;
-  while (iter++ < *max_iter) {
-    /*printf("iteration %d: T = %g\n", iter, *temp);
-    // print conc
-    printf("concentrations: ");
-    for (int i = 0; i < nspecies; i++) {
-      printf("%g ", conc[i]);
-    }
-    printf("\n");*/
+  *nactive = 0;
+  while (iter < *max_iter) {
+    ++iter;
 
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
@@ -178,12 +179,10 @@ DISPATCH_MACRO int equilibrate_uv(
 
       if (log_conc_sum < logsvp[j] - logsvp_eps && prod > 0. &&
           limiting_reactant < std::numeric_limits<T>::max()) {
-        T extent_tol =
-            8. * std::numeric_limits<T>::epsilon() * limiting_reactant;
         for (int i = ngas; i < nspecies; ++i) {
           T coefficient = stoich[i * nreaction + j];
           if (coefficient > 0. && conc[i] > 0. &&
-              conc[i] / coefficient <= extent_tol) {
+              is_depleted_cloud(conc[i] / coefficient, limiting_reactant)) {
             conc[i] = 0.;
             prod = 0.;
           }
@@ -222,7 +221,7 @@ DISPATCH_MACRO int equilibrate_uv(
     }
 
     // form active stoichiometric and constraint matrix
-    (*nactive) = first;
+    *nactive = first;
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < (*nactive); k++) {
         int j = reaction_set[k];
@@ -262,9 +261,7 @@ DISPATCH_MACRO int equilibrate_uv(
     }
 
     for (int i = ngas; i < nspecies; ++i) {
-      if (conc0[i] <= 0. || conc[i] < 0. ||
-          conc[i] > 8. * std::numeric_limits<T>::epsilon() * conc0[i])
-        continue;
+      if (!is_depleted_cloud(conc[i], conc0[i])) continue;
       for (int k = 0; k < (*nactive); ++k) {
         if (stoich_active[i * (*nactive) + k] < 0.) {
           conc[i] = 0.;
@@ -305,14 +302,14 @@ DISPATCH_MACRO int equilibrate_uv(
   }
 
   // restore the reaction order of gain
-  memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
+  if (*nactive > 0) memcpy(gain_cpy, gain, (*nactive) * (*nactive) * sizeof(T));
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
   for (int i = 0; i < (*nactive); i++) {
-    for (int j = 0; j < nreaction; j++) {
+    for (int j = 0; j < (*nactive); j++) {
       int k = reaction_set[i];
       int l = reaction_set[j];
-      gain[k * nreaction + l] = gain_cpy[i * nreaction + j];
+      gain[k * nreaction + l] = gain_cpy[i * (*nactive) + j];
     }
   }
 

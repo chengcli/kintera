@@ -49,6 +49,37 @@ TEST(LeastSquaresKkt, ScalesTraceSpeciesConstraints) {
   }
 }
 
+TEST(LeastSquaresKkt, ConvergesOnLastAllowedIteration) {
+  double matrix[] = {1., 0., 0., 1.};
+  double rhs[] = {2., 3.};
+  int max_iter = 1;
+
+  int status =
+      leastsq_kkt<double>(rhs, matrix, nullptr, nullptr, 2, 2, 0, 0, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_EQ(max_iter, 1);
+  EXPECT_DOUBLE_EQ(rhs[0], 2.);
+  EXPECT_DOUBLE_EQ(rhs[1], 3.);
+}
+
+TEST(LeastSquaresKkt, HandlesMoreThan64Constraints) {
+  double matrix[] = {1.};
+  double rhs[] = {2.};
+  double constraints[65] = {};
+  double bounds[65];
+  for (double& bound : bounds) bound = 1.;
+  constraints[64] = 1.;
+  int max_iter = 10;
+
+  int status =
+      leastsq_kkt(rhs, matrix, constraints, bounds, 1, 1, 65, 0, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_LT(max_iter, 10);
+  EXPECT_NEAR(rhs[0], 1., 1.e-10);
+}
+
 TEST(LeastSquaresKkt, RegularizesRedundantActiveConstraints) {
   double matrix[] = {1., 0., 0., 1.};
   double constraints[] = {1., 0., 1., 0.};
@@ -493,11 +524,12 @@ dynamics:
   auto final_diag = torch::zeros({1, 1}, tensor_options);
   testing::internal::CaptureStdout();
   testing::internal::CaptureStderr();
-  thermo_y->forward(rho, intEng, yfrac, false, final_diag);
+  auto final_gain = thermo_y->forward(rho, intEng, yfrac, false, final_diag);
   auto output = testing::internal::GetCapturedStdout() +
                 testing::internal::GetCapturedStderr();
   EXPECT_EQ(output.find("equilibrate_uv did not converge"), std::string::npos);
   EXPECT_DOUBLE_EQ(final_diag.item<double>(), 1.);
+  EXPECT_TRUE(torch::all(final_gain == 0.).item<bool>());
 
   op_thermo->max_iter(30);
   auto trace_conc = torch::tensor(

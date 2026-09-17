@@ -12,7 +12,6 @@
 // math
 #include "lubksb.h"
 #include "ludcmp.h"
-#include "psolve.h"
 
 #define A(i, j) a[(i) * n2 + (j)]
 #define ATA(i, j) ata[(i) * n2 + (j)]
@@ -20,18 +19,6 @@
 #define C(i, j) c[(i) * n2 + (j)]
 
 namespace kintera {
-
-// Compute bitmask hash for a set of integers [0..n-1]
-DISPATCH_MACRO inline uint64_t hash_set(const int* arr, int size, int n) {
-  uint64_t mask = 0;
-  for (int i = 0; i < size; i++) {
-    int x = arr[i];
-    if (x >= 0 && x < n) {
-      mask |= (1ULL << x);
-    }
-  }
-  return mask;
-}
 
 template <typename T>
 DISPATCH_MACRO T kkt_column_scale(T objective_scale, T column_norm) {
@@ -48,54 +35,6 @@ DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d, T const* column_norm,
     if (value > scale) scale = value;
   }
   return scale > 0. ? scale : 1.;
-}
-
-template <typename T>
-DISPATCH_MACRO void populate_aug(T* aug, T const* ata, T const* c, int n2,
-                                 int nact, int const* ct_indx, float reg = 0.) {
-  // populate A^T.A (upper left block)
-  for (int i = 0; i < n2; ++i) {
-    for (int j = 0; j < n2; ++j) {
-      AUG(i, j) = ATA(i, j);
-    }
-  }
-
-  // populate C (lower left block)
-  for (int i = 0; i < nact; ++i) {
-    for (int j = 0; j < n2; ++j) {
-      AUG(n2 + i, j) = C(ct_indx[i], j);
-    }
-  }
-
-  // populate C^T (upper right block)
-  for (int i = 0; i < n2; ++i) {
-    for (int j = 0; j < nact; ++j) {
-      AUG(i, n2 + j) = C(ct_indx[j], i);
-    }
-  }
-
-  // zero (lower right block)
-  for (int i = 0; i < nact; ++i) {
-    for (int j = 0; j < nact; ++j) {
-      AUG(n2 + i, n2 + j) = 0.0;
-    }
-    // add a small diagonal perturbation to improve numerical stability
-    AUG(n2 + i, n2 + i) = reg;
-  }
-}
-
-template <typename T>
-DISPATCH_MACRO void populate_rhs(T* rhs, T const* atb, T const* d, int n2,
-                                 int nact, int const* ct_indx) {
-  // populate A^T.b (upper part)
-  for (int i = 0; i < n2; ++i) {
-    rhs[i] = atb[i];
-  }
-
-  // populate d (lower part)
-  for (int i = 0; i < nact; ++i) {
-    rhs[n2 + i] = d[ct_indx[i]];
-  }
 }
 
 /*!
@@ -190,26 +129,12 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
   int nactive = neq;
   int iter = 0;
   int status = 0;
+  bool converged = false;
   T fallback_reg = sizeof(T) == sizeof(float) ? 1.e-5 : 1.e-10;
   T pivot_tolerance = 10. * std::numeric_limits<T>::epsilon();
 
-  while (iter++ < *max_iter) {
-    /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
-    printf("ct_indx = ");
-    for (int i = 0; i < neq; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = neq; i < nactive; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = nactive; i < n3; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("\n");*/
-    uint64_t hash0 = hash_set(ct_indx, nactive, n3);
-
+  while (iter < *max_iter) {
+    ++iter;
     int nact = nactive;
     bool solved = false;
     for (int attempt = 0; attempt < 2; ++attempt) {
@@ -268,17 +193,6 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       break;
     }
 
-    /* print aug
-    printf("aug = \n");
-    for (int i = 0; i < n2 + nactive; ++i) {
-      for (int j = 0; j < n2 + nactive; ++j) {
-        printf("%f ", aug[i * (n2 + nactive) + j]);
-      }
-      printf("| %f", rhs[i]);
-      if (skip_row[i]) printf(" *");
-      printf("\n");
-    }*/
-
     // evaluate the inactive constraints
     for (int i = nactive; i < n3; ++i) {
       int k = ct_indx[i];
@@ -290,16 +204,9 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       }
     }
 
-    /* print solution vector (rhs)
-    printf("rhs = ");
-    for (int i = 0; i < n2; ++i) {
-      printf("%f ", rhs[i]);
-    }
-    printf("| ");
-    for (int i = n2; i < n2 + nactive; ++i) {
-      printf("%f ", rhs[i]);
-    }
-    printf("\n");*/
+    for (int i = 0; i < n3; ++i) skip_row[i] = 0;
+    for (int i = 0; i < nactive; ++i) skip_row[ct_indx[i]] = 1;
+    int previous_active = nactive;
 
     // remove inactive constraints (three-way swap)
     //           mu < 0
@@ -331,21 +238,6 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       }
     }
 
-    /* print ct_indx after removing
-    printf("ct_indx after removing = ");
-    for (int i = 0; i < neq; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = neq; i < nactive; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = nactive; i < n3; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("\n");*/
-
     // add back inactive constraints (two-way swap)
     //                     C.x <= d
     //                     |<----->|
@@ -368,9 +260,10 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     }
 
     nactive = first;
-    uint64_t hash1 = hash_set(ct_indx, nactive, n3);
-    // no change in active set, we are done
-    if (hash0 == hash1) break;
+    converged = nactive == previous_active;
+    for (int i = 0; i < nactive && converged; ++i)
+      converged = skip_row[ct_indx[i]] != 0;
+    if (converged) break;
   }
 
   if (status == 0)
@@ -392,7 +285,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     return status;
   }
 
-  if (iter >= *max_iter) {
+  if (!converged) {
     *max_iter = iter;
     printf("Warning: leastsq_kkt maximum number of iterations reached (%d).\n",
            *max_iter);
