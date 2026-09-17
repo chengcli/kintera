@@ -112,24 +112,14 @@ DISPATCH_MACRO void sort_eigenpairs_desc(T* evals, T* V, int n) {
    A: n x n, b: n, output x: n
 */
 template <typename T>
-DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
-  T *ATA, *V, *eval, *vi, *Avi, *b0;
-
-  if (work == nullptr) {
-    ATA = (T*)malloc(n * n * sizeof(T));
-    V = (T*)malloc(n * n * sizeof(T));
-    eval = (T*)malloc(n * sizeof(T));
-    vi = (T*)malloc(n * sizeof(T));
-    Avi = (T*)malloc(n * sizeof(T));
-    b0 = (T*)malloc(n * sizeof(T));
-  } else {
-    ATA = alloc_from<T>(work, n * n);
-    V = alloc_from<T>(work, n * n);
-    eval = alloc_from<T>(work, n);
-    vi = alloc_from<T>(work, n);
-    Avi = alloc_from<T>(work, n);
-    b0 = alloc_from<T>(work, n);
-  }
+DISPATCH_MACRO void psolve(T* b, const T* A, int n) {
+  size_t mark = pool_mark();
+  T* ATA = (T*)pmalloc(n * n * sizeof(T));
+  T* V = (T*)pmalloc(n * n * sizeof(T));
+  T* eval = (T*)pmalloc(n * sizeof(T));
+  T* vi = (T*)pmalloc(n * sizeof(T));
+  T* Avi = (T*)pmalloc(n * sizeof(T));
+  T* b0 = (T*)pmalloc(n * sizeof(T));
 
   matmul_ATA(ATA, A, n);
   memcpy(b0, b, n * sizeof(T));
@@ -168,14 +158,13 @@ DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
     for (int k = 0; k < n; ++k) b[k] += coeff * vi[k];
   }
 
-  if (work == nullptr) {
-    free(ATA);
-    free(V);
-    free(eval);
-    free(vi);
-    free(Avi);
-    free(b0);
-  }
+  pfree(ATA);
+  pfree(V);
+  pfree(eval);
+  pfree(vi);
+  pfree(Avi);
+  pfree(b0);
+  pool_rewind(mark);
 }
 
 }  // namespace kintera

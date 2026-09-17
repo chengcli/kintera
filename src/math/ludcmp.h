@@ -30,25 +30,16 @@ namespace kintera {
  * depending on whether the number of row interchanges was even or odd,
  *                              respectively.
  * \param[in] n                 size of matrix
- * \param[in] work              workspace if not null, otherwise allocated
- * internally
  * \param[in] pivot_tolerance   minimum pivot relative to its row scale
  * \return permutation sign, or 0 if the matrix is singular
  */
-template <typename T>
-DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
-                          int* skip_row = nullptr, T pivot_tolerance = 0.) {
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
+DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, int* skip_row = nullptr,
+                          T pivot_tolerance = 0.) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
-  T* vv;
-
-  if (work == nullptr) {
-    // allocate workspace
-    vv = (T*)malloc(n * sizeof(T));
-  } else {
-    // use user-provided workspace
-    vv = alloc_from<T>(work, n);
-  }
+  size_t mark = pool_mark<Backend>();
+  T* vv = (T*)pmalloc<Backend>(n * sizeof(T));
 
   for (i = 0; i < n; i++) indx[i] = i;
 
@@ -60,7 +51,8 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
       if ((temp = fabs(X(i, j))) > big) big = temp;
     if (big == 0.0) {
       // printf("Singular matrix in routine ludcmp\n");
-      if (work == nullptr) free(vv);
+      pfree<Backend>(vv);
+      pool_rewind<Backend>(mark);
       return 0;
     }
     vv[i] = 1.0 / big;
@@ -85,7 +77,8 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
       }
     }
     if (!(big > pivot_tolerance)) {
-      if (work == nullptr) free(vv);
+      pfree<Backend>(vv);
+      pool_rewind<Backend>(mark);
       return 0;
     }
     if (j != imax) {
@@ -103,7 +96,8 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
       for (i = j + 1; i < n; i++) X(i, j) *= dum;
     }
   }
-  if (work == nullptr) free(vv);
+  pfree<Backend>(vv);
+  pool_rewind<Backend>(mark);
   return d;
 }
 

@@ -24,10 +24,11 @@ namespace kintera {
  */
 template <typename T>
 DISPATCH_MACRO void leastsq(T* b, T const* a, int n1, int n2) {
-  T* c = (T*)malloc(n1 * sizeof(T));
+  size_t mark = pool_mark();
+  T* c = (T*)pmalloc(n1 * sizeof(T));
   memcpy(c, b, n1 * sizeof(T));
 
-  T* y = (T*)malloc(n2 * n2 * sizeof(T));
+  T* y = (T*)pmalloc(n2 * n2 * sizeof(T));
 
   for (int i = 0; i < n2; ++i) {
     // calculate A^T.A
@@ -43,13 +44,14 @@ DISPATCH_MACRO void leastsq(T* b, T const* a, int n1, int n2) {
   }
 
   // calculate (A^T.A)^{-1}.(A^T.b)
-  int* indx = (int*)malloc(n2 * sizeof(int));
+  int* indx = (int*)pmalloc(n2 * sizeof(int));
   ludcmp(y, indx, n2);
   lubksb(b, y, indx, n2);
 
-  free(c);
-  free(indx);
-  free(y);
+  pfree(c);
+  pfree(indx);
+  pfree(y);
+  pool_rewind(mark);
 }
 
 }  // namespace kintera

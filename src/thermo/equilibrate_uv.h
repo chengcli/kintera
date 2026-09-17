@@ -60,8 +60,7 @@ DISPATCH_MACRO int equilibrate_uv(
     int nreaction, int ngas, T const* intEng_offset, T const* cv_const,
     user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
     user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
-    float logsvp_eps, int* max_iter, int* reaction_set, int* nactive,
-    char* work = nullptr) {
+    float logsvp_eps, int* max_iter, int* reaction_set, int* nactive) {
   // check positive temperature
   if (*temp <= 0) {
     printf("Error: Non-positive temperature = %g.\n", *temp);
@@ -96,38 +95,16 @@ DISPATCH_MACRO int equilibrate_uv(
   T *intEng, *intEng_ddT, *logsvp, *logsvp_ddT, *weight, *rhs;
   T *stoich_active, *conc0;
   T* gain_cpy;
-
-  if (work == nullptr) {
-    intEng = (T*)malloc(nspecies * sizeof(T));
-    intEng_ddT = (T*)malloc(nspecies * sizeof(T));
-    logsvp = (T*)malloc(nreaction * sizeof(T));
-    logsvp_ddT = (T*)malloc(nreaction * sizeof(T));
-
-    // weight matrix
-    weight = (T*)malloc(nreaction * nspecies * sizeof(T));
-
-    // right-hand-side vector
-    rhs = (T*)malloc(nreaction * sizeof(T));
-
-    // active stoichiometric matrix
-    stoich_active = (T*)malloc(nspecies * nreaction * sizeof(T));
-
-    // concentration copy
-    conc0 = (T*)malloc(nspecies * sizeof(T));
-
-    // gain matrix copy
-    gain_cpy = (T*)malloc(nreaction * nreaction * sizeof(T));
-  } else {
-    intEng = alloc_from<T>(work, nspecies);
-    intEng_ddT = alloc_from<T>(work, nspecies);
-    logsvp = alloc_from<T>(work, nreaction);
-    logsvp_ddT = alloc_from<T>(work, nreaction);
-    weight = alloc_from<T>(work, nreaction * nspecies);
-    rhs = alloc_from<T>(work, nreaction);
-    stoich_active = alloc_from<T>(work, nspecies * nreaction);
-    conc0 = alloc_from<T>(work, nspecies);
-    gain_cpy = alloc_from<T>(work, nreaction * nreaction);
-  }
+  size_t mark = pool_mark();
+  intEng = (T*)pmalloc(nspecies * sizeof(T));
+  intEng_ddT = (T*)pmalloc(nspecies * sizeof(T));
+  logsvp = (T*)pmalloc(nreaction * sizeof(T));
+  logsvp_ddT = (T*)pmalloc(nreaction * sizeof(T));
+  weight = (T*)pmalloc(nreaction * nspecies * sizeof(T));
+  rhs = (T*)pmalloc(nreaction * sizeof(T));
+  stoich_active = (T*)pmalloc(nspecies * nreaction * sizeof(T));
+  conc0 = (T*)pmalloc(nspecies * sizeof(T));
+  gain_cpy = (T*)pmalloc(nreaction * nreaction * sizeof(T));
 
   memset(weight, 0, nreaction * nspecies * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
@@ -243,7 +220,7 @@ DISPATCH_MACRO int equilibrate_uv(
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
     err_code = leastsq_kkt(rhs, gain, stoich_active, conc, *nactive, *nactive,
-                           nspecies, 0, &max_kkt_iter, 0., work);
+                           nspecies, 0, &max_kkt_iter);
     if (err_code != 0) break;
 
     // rate -> conc
@@ -310,17 +287,16 @@ DISPATCH_MACRO int equilibrate_uv(
   // save number of iterations to diag
   diag[0] = iter;
 
-  if (work == nullptr) {
-    free(intEng);
-    free(intEng_ddT);
-    free(logsvp);
-    free(logsvp_ddT);
-    free(weight);
-    free(rhs);
-    free(stoich_active);
-    free(conc0);
-    free(gain_cpy);
-  }
+  pfree(intEng);
+  pfree(intEng_ddT);
+  pfree(logsvp);
+  pfree(logsvp_ddT);
+  pfree(weight);
+  pfree(rhs);
+  pfree(stoich_active);
+  pfree(conc0);
+  pfree(gain_cpy);
+  pool_rewind(mark);
 
   if (iter >= *max_iter) {
     printf("[Warning] equilibrate_uv did not converge after %d iterations.\n",

@@ -23,20 +23,13 @@ namespace kintera {
  * positive scaling makes it feasible.  Only a direction pointing out of an
  * already-active bound is sent through constrained least squares.
  */
-template <typename T>
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int constrained_newton_step(T* b, T const* a, T const* c,
                                            T const* d, int n, int nconstraint,
-                                           int* max_iter, float reg = 0.,
-                                           char* work = nullptr) {
-  T *direct_a, *direct_b;
-  if (work == nullptr) {
-    direct_a = (T*)malloc(n * n * sizeof(T));
-    direct_b = (T*)malloc(n * sizeof(T));
-  } else {
-    char* cursor = work;
-    direct_a = alloc_from<T>(cursor, n * n);
-    direct_b = alloc_from<T>(cursor, n);
-  }
+                                           int* max_iter, float reg = 0.) {
+  size_t mark = pool_mark<Backend>();
+  T* direct_a = (T*)pmalloc<Backend>(n * n * sizeof(T));
+  T* direct_b = (T*)pmalloc<Backend>(n * sizeof(T));
 
   memcpy(direct_a, a, n * n * sizeof(T));
   memcpy(direct_b, b, n * sizeof(T));
@@ -54,13 +47,12 @@ DISPATCH_MACRO int constrained_newton_step(T* b, T const* a, T const* c,
     memcpy(b, direct_b, n * sizeof(T));
     *max_iter = 1;
   }
-  if (work == nullptr) {
-    free(direct_a);
-    free(direct_b);
-  }
+  pfree<Backend>(direct_a);
+  pfree<Backend>(direct_b);
+  pool_rewind<Backend>(mark);
   if (usable) return 0;
-
-  return leastsq_kkt(b, a, c, d, n, n, nconstraint, 0, max_iter, reg, work);
+  return leastsq_kkt<T, Backend>(b, a, c, d, n, n, nconstraint, 0, max_iter,
+                                 reg);
 }
 
 /*!

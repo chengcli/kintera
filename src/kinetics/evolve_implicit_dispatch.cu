@@ -26,13 +26,12 @@ void call_evolve_implicit_cuda(at::TensorIterator& iter,
 
     native::gpu_mem_kernel<32, 3>(
         iter, mem_size,
-        [=] GPU_LAMBDA(char* const data[3], unsigned int strides[3],
-                       char* work) {
+        [=] GPU_LAMBDA(char* const data[3], unsigned int strides[3]) {
           auto delta = reinterpret_cast<scalar_t*>(data[0] + strides[0]);
           auto rate = reinterpret_cast<scalar_t*>(data[1] + strides[1]);
           auto jac = reinterpret_cast<scalar_t*>(data[2] + strides[2]);
           evolve_implicit_cell(delta, rate, jac, stoich_ptr, nspecies,
-                               nreaction, inv_dt, work);
+                               nreaction, inv_dt);
         });
   });
 }

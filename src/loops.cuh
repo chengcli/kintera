@@ -1,7 +1,6 @@
 #pragma once
 
 #include <algorithm>
-#include <limits>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -12,6 +11,7 @@
 #include <ATen/cuda/CUDAContext.h>
 #include <ATen/native/cuda/Loops.cuh>
 #include <c10/cuda/CUDAException.h>
+#include <kintera/utils/alloc.h>
 
 namespace kintera {
 namespace native {
@@ -98,7 +98,8 @@ void gpu_mem_kernel(at::TensorIterator &iter, int work_size, const func_t &f) {
   dim3 block(Threads);
   dim3 grid((numel + block.x - 1) / block.x);
   auto stream = at::cuda::getCurrentCUDAStream();
-  size_t shared = block.x * work_size;
+  size_t header = sizeof(shared_pool::State) * block.x;
+  size_t shared = header + block.x * work_size;
 
   int device = -1;
   C10_CUDA_CHECK(cudaGetDevice(&device));
@@ -109,7 +110,9 @@ void gpu_mem_kernel(at::TensorIterator &iter, int work_size, const func_t &f) {
   auto device_lambda = [=] __device__(int idx, char *smem) {
     auto offsets = offset_calc.get(idx);
     int tid = threadIdx.x;
-    f(data.data(), offsets.data(), smem + tid * work_size);
+    char* work = smem + header + tid * work_size;
+    shared_pool_init(work, work_size);
+    f(data.data(), offsets.data());
   };
 
   // request the full size
@@ -151,52 +154,6 @@ void gpu_mem_kernel(at::TensorIterator &iter, int work_size, const func_t &f) {
 
   element_kernel<<<grid, block, shared, stream>>>(numel, device_lambda);
 
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
-}
-
-template <typename func_t>
-__global__ void global_mem_element_kernel(int64_t numel, char *workspace,
-                                          size_t work_size, func_t f) {
-  int64_t idx = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
-  if (idx < numel) {
-    f(idx, workspace + idx * work_size);
-  }
-}
-
-template <int Threads, int Arity, typename func_t>
-void gpu_global_mem_kernel(at::TensorIterator &iter, size_t work_size,
-                           const func_t &f) {
-  TORCH_CHECK(iter.ninputs() + iter.noutputs() == Arity);
-  TORCH_CHECK(work_size > 0, "CUDA workspace size must be positive");
-
-  std::array<char *, Arity> data;
-  for (int i = 0; i < Arity; ++i) {
-    data[i] = reinterpret_cast<char *>(iter.data_ptr(i));
-  }
-
-  int64_t numel = iter.numel();
-  if (numel == 0) {
-    return;
-  }
-  TORCH_CHECK(work_size <=
-                  static_cast<size_t>(std::numeric_limits<int64_t>::max()),
-              "CUDA workspace per cell is too large");
-  auto workspace =
-      at::empty({numel, static_cast<int64_t>(work_size)},
-                at::TensorOptions().device(iter.device()).dtype(at::kByte));
-  auto *workspace_ptr = reinterpret_cast<char *>(workspace.data_ptr());
-  auto offset_calc = ::make_offset_calculator<Arity>(iter);
-
-  auto device_lambda = [=] __device__(int64_t idx, char *work) {
-    auto offsets = offset_calc.get(idx);
-    f(data.data(), offsets.data(), work);
-  };
-
-  dim3 block(Threads);
-  dim3 grid((numel + block.x - 1) / block.x);
-  auto stream = at::cuda::getCurrentCUDAStream();
-  global_mem_element_kernel<<<grid, block, 0, stream>>>(
-      numel, workspace_ptr, work_size, device_lambda);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 

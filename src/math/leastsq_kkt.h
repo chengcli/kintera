@@ -39,9 +39,8 @@ DISPATCH_MACRO T kkt_column_scale(T objective_scale, T column_norm) {
 }
 
 template <typename T>
-DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d,
-                              T const* column_norm, T objective_scale, int n2,
-                              int row) {
+DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d, T const* column_norm,
+                               T objective_scale, int n2, int row) {
   T scale = fabs(d[row]);
   for (int j = 0; j < n2; ++j) {
     T value = fabs(c[row * n2 + j] *
@@ -122,17 +121,15 @@ DISPATCH_MACRO void populate_rhs(T* rhs, T const* atb, T const* d, int n2,
  *                              out: number of iterations actually performed
  * \param[in] reg               diagonal perturbation in scaled KKT units;
  *                              zero uses regularization only if LU fails
- * \param[in] work              workspace if not null, otherwise allocated
- *                              internally.
  *
  * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
  *         2 on failure (max_iter reached without convergence), or 3 if the
  *         KKT system remains singular or has an inconsistent zero row.
  */
-template <typename T>
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
                                int n2, int n3, int neq, int* max_iter,
-                               float reg = 0., char* work = nullptr) {
+                               float reg = 0.) {
   // check if n1 > 0, n2 > 0, n3 >= 0
   if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
     printf(
@@ -150,34 +147,15 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
   int size = n2 + n3;
   T *aug, *ata, *column_norm, *rhs, *eval;
   int *ct_indx, *lu_indx, *skip_row;
-
-  if (work == nullptr) {
-    aug = (T*)malloc(size * size * sizeof(T));
-    ata = (T*)malloc(n2 * n2 * sizeof(T));
-    column_norm = (T*)malloc(n2 * sizeof(T));
-    rhs = (T*)malloc(size * sizeof(T));
-
-    // evaluation of constraints
-    eval = (T*)malloc(n3 * sizeof(T));
-
-    // index for the active set
-    ct_indx = (int*)malloc(n3 * sizeof(int));
-
-    // index array for the LU decomposition
-    lu_indx = (int*)malloc(size * sizeof(int));
-
-    // row indices to skip
-    skip_row = (int*)malloc(size * sizeof(int));
-  } else {
-    aug = alloc_from<T>(work, size * size);
-    ata = alloc_from<T>(work, n2 * n2);
-    column_norm = alloc_from<T>(work, n2);
-    rhs = alloc_from<T>(work, size);
-    eval = alloc_from<T>(work, n3);
-    ct_indx = alloc_from<int>(work, n3);
-    lu_indx = alloc_from<int>(work, size);
-    skip_row = alloc_from<int>(work, size);
-  }
+  size_t mark = pool_mark<Backend>();
+  aug = (T*)pmalloc<Backend>(size * size * sizeof(T));
+  ata = (T*)pmalloc<Backend>(n2 * n2 * sizeof(T));
+  column_norm = (T*)pmalloc<Backend>(n2 * sizeof(T));
+  rhs = (T*)pmalloc<Backend>(size * sizeof(T));
+  eval = (T*)pmalloc<Backend>(n3 * sizeof(T));
+  ct_indx = (int*)pmalloc<Backend>(n3 * sizeof(int));
+  lu_indx = (int*)pmalloc<Backend>(size * sizeof(int));
+  skip_row = (int*)pmalloc<Backend>(size * sizeof(int));
 
   T objective_scale = 1.;
   for (int i = 0; i < n1; ++i) {
@@ -248,10 +226,11 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       }
       for (int i = 0; i < nactive; ++i) {
         int row = ct_indx[i];
-        T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+        T row_scale =
+            kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
         for (int j = 0; j < n2; ++j) {
           T value = C(row, j) *
-                        kkt_column_scale(objective_scale, column_norm[j]) /
+                    kkt_column_scale(objective_scale, column_norm[j]) /
                     row_scale;
           AUG(n2 + i, j) = value;
           AUG(j, n2 + i) = value;
@@ -277,8 +256,8 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       }
       if (status != 0) break;
 
-      if (ludcmp(aug, lu_indx, n2 + nactive, work, skip_row,
-                 pivot_tolerance) != 0) {
+      if (ludcmp<T, Backend>(aug, lu_indx, n2 + nactive, skip_row,
+                             pivot_tolerance) != 0) {
         lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
         solved = true;
         break;
@@ -306,8 +285,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, k);
       eval[k] = -d[k] / row_scale;
       for (int j = 0; j < n2; ++j) {
-        eval[k] += C(k, j) *
-                   kkt_column_scale(objective_scale, column_norm[j]) /
+        eval[k] += C(k, j) * kkt_column_scale(objective_scale, column_norm[j]) /
                    row_scale * rhs[j];
       }
     }
@@ -399,16 +377,15 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     for (int i = 0; i < n2; ++i)
       b[i] = rhs[i] * kkt_column_scale(objective_scale, column_norm[i]);
 
-  if (work == nullptr) {
-    free(aug);
-    free(ata);
-    free(column_norm);
-    free(rhs);
-    free(eval);
-    free(ct_indx);
-    free(lu_indx);
-    free(skip_row);
-  }
+  pfree<Backend>(aug);
+  pfree<Backend>(ata);
+  pfree<Backend>(column_norm);
+  pfree<Backend>(rhs);
+  pfree<Backend>(eval);
+  pfree<Backend>(ct_indx);
+  pfree<Backend>(lu_indx);
+  pfree<Backend>(skip_row);
+  pool_rewind<Backend>(mark);
 
   if (status != 0) {
     *max_iter = iter;

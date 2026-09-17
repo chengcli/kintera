@@ -1,5 +1,3 @@
-#include <vector>
-
 // external
 #include <gtest/gtest.h>
 
@@ -26,26 +24,23 @@ using namespace torch::indexing;
 TEST(LeastSquaresKkt, ScalesTraceSpeciesConstraints) {
   double matrix[] = {-4.369930087445457e19, -4790.297762242115,
                      -4802.781240192355, -8.048578465493849e35};
-  double constraints[] = {0., 0., 1., 0., 0., 1., -1., 0.,
-                          0., 0., 0., -1., 0., 0.};
-  double bounds[] = {0.4162445055546258, 2.2883661294100312e-20,
+  double constraints[] = {0., 0., 1., 0., 0.,  1., -1.,
+                          0., 0., 0., 0., -1., 0., 0.};
+  double bounds[] = {0.4162445055546258,     2.2883661294100312e-20,
                      1.2424554277345191e-36, 6.965266854905543e-23,
-                     1.209489121141968e-19, 4.57170555240497e-38,
+                     1.209489121141968e-19,  4.57170555240497e-38,
                      2.406554145054398e-38};
-  std::vector<char> workspace(leastsq_kkt_space<double>(2, 7));
-
-  for (bool use_workspace : {false, true}) {
+  for (int repeat = 0; repeat < 2; ++repeat) {
     double rhs[] = {14.340180275068828, -0.08596112159418112};
     int max_iter = 30;
-    int status = leastsq_kkt(rhs, matrix, constraints, bounds, 2, 2, 7, 0,
-                             &max_iter, 0.,
-                             use_workspace ? workspace.data() : nullptr);
+    int status =
+        leastsq_kkt(rhs, matrix, constraints, bounds, 2, 2, 7, 0, &max_iter);
 
     EXPECT_EQ(status, 0);
     EXPECT_LT(max_iter, 30);
     for (int row = 0; row < 7; ++row) {
-      double projection = constraints[2 * row] * rhs[0] +
-                          constraints[2 * row + 1] * rhs[1];
+      double projection =
+          constraints[2 * row] * rhs[0] + constraints[2 * row + 1] * rhs[1];
       EXPECT_LE(projection, bounds[row] * (1. + 1.e-10)) << row;
     }
   }
@@ -55,14 +50,11 @@ TEST(LeastSquaresKkt, RegularizesRedundantActiveConstraints) {
   double matrix[] = {1., 0., 0., 1.};
   double constraints[] = {1., 0., 1., 0.};
   double bounds[] = {1., 1.};
-  std::vector<char> workspace(leastsq_kkt_space<double>(2, 2));
-
-  for (bool use_workspace : {false, true}) {
+  for (int repeat = 0; repeat < 2; ++repeat) {
     double rhs[] = {2., 0.};
     int max_iter = 10;
-    int status = leastsq_kkt(rhs, matrix, constraints, bounds, 2, 2, 2, 2,
-                             &max_iter, 0.,
-                             use_workspace ? workspace.data() : nullptr);
+    int status =
+        leastsq_kkt(rhs, matrix, constraints, bounds, 2, 2, 2, 2, &max_iter);
 
     EXPECT_EQ(status, 0);
     EXPECT_NEAR(rhs[0], 1., 1.e-8);
@@ -72,14 +64,11 @@ TEST(LeastSquaresKkt, RegularizesRedundantActiveConstraints) {
 
 TEST(LeastSquaresKkt, RegularizesRankDeficientObjective) {
   double matrix[] = {1., 1., 2., 2.};
-  std::vector<char> workspace(leastsq_kkt_space<double>(2, 0));
-
-  for (bool use_workspace : {false, true}) {
+  for (int repeat = 0; repeat < 2; ++repeat) {
     double rhs[] = {1., 2.};
     int max_iter = 10;
-    int status = leastsq_kkt<double>(
-        rhs, matrix, nullptr, nullptr, 2, 2, 0, 0, &max_iter, 0.,
-        use_workspace ? workspace.data() : nullptr);
+    int status = leastsq_kkt<double>(rhs, matrix, nullptr, nullptr, 2, 2, 0, 0,
+                                     &max_iter);
 
     EXPECT_EQ(status, 0);
     EXPECT_NEAR(rhs[0], 0.5, 1.e-6);
@@ -94,8 +83,8 @@ TEST(LeastSquaresKkt, RejectsInconsistentZeroConstraint) {
   double bound[] = {1.};
   int max_iter = 10;
 
-  int status = leastsq_kkt(rhs, matrix, constraint, bound, 1, 1, 1, 1,
-                           &max_iter);
+  int status =
+      leastsq_kkt(rhs, matrix, constraint, bound, 1, 1, 1, 1, &max_iter);
 
   EXPECT_EQ(status, 3);
   EXPECT_EQ(rhs[0], 2.);
@@ -108,8 +97,8 @@ TEST(LeastSquaresKkt, PreservesEqualityConstraint) {
   double bound[] = {1.};
   int max_iter = 10;
 
-  int status = leastsq_kkt(rhs, matrix, constraint, bound, 2, 2, 1, 1,
-                           &max_iter);
+  int status =
+      leastsq_kkt(rhs, matrix, constraint, bound, 2, 2, 1, 1, &max_iter);
 
   EXPECT_EQ(status, 0);
   EXPECT_NEAR(rhs[0], 1.5, 1.e-12);
@@ -548,7 +537,7 @@ void test_ludcmp_skip() {
   int indx[3];
   int skip_row[3] = {0, 1, 0};
 
-  ludcmp(array, indx, 3, nullptr, skip_row);
+  ludcmp(array, indx, 3, skip_row);
   lubksb(rhs, array, indx, 3, skip_row);
 
   printf("rhs = \n");

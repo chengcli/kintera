@@ -24,8 +24,8 @@ namespace kintera {
 template <typename T>
 size_t evolve_implicit_space(int nspecies, int nreaction) {
   size_t bytes = 0;
-  auto bump = [&](size_t align, size_t nbytes) {
-    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  auto bump = [&](size_t, size_t nbytes) {
+    bytes += pool_allocation_bytes(nbytes);
   };
   bump(alignof(T), nspecies * nspecies * sizeof(T));  // A
   bump(alignof(T), nspecies * nspecies * sizeof(T));  // Alu
@@ -50,19 +50,16 @@ size_t evolve_implicit_space(int nspecies, int nreaction) {
  *             (nspecies, nreaction). Shared (constant) across all cells.
  * \param[in]  nspecies, nreaction    system dimensions.
  * \param[in]  inv_dt                 1 / dt.
- * \param[in]  work                   per-thread scratch, >=
- * evolve_implicit_space.
  */
 template <typename T>
 DISPATCH_MACRO void evolve_implicit_cell(T* delta, const T* rate, const T* jac,
                                          const T* stoich, int nspecies,
-                                         int nreaction, T inv_dt, char* work) {
-  char* cur = work;
-  T* A = alloc_from<T>(cur, nspecies * nspecies);
-  T* Alu = alloc_from<T>(cur, nspecies * nspecies);
-  T* sr = alloc_from<T>(cur, nspecies);
-  T* x = alloc_from<T>(cur, nspecies);
-  char* pw = cur;  // remaining scratch is the psolve workspace
+                                         int nreaction, T inv_dt) {
+  size_t mark = pool_mark();
+  T* A = (T*)pmalloc(nspecies * nspecies * sizeof(T));
+  T* Alu = (T*)pmalloc(nspecies * nspecies * sizeof(T));
+  T* sr = (T*)pmalloc(nspecies * sizeof(T));
+  T* x = (T*)pmalloc(nspecies * sizeof(T));
 
   // A = S * J  (then turned into I/dt - S*J below);  sr = S * rate
   mmdot(A, stoich, jac, nspecies, nreaction, nspecies);
@@ -80,10 +77,16 @@ DISPATCH_MACRO void evolve_implicit_cell(T* delta, const T* rate, const T* jac,
     // singular cell: minimum-norm least-squares via pseudo-inverse, matching
     // the linalg_lstsq fallback in the original torch implementation.
     for (int t = 0; t < nspecies; ++t) x[t] = sr[t];
-    psolve(x, A, nspecies, pw);
+    psolve(x, A, nspecies);
   }
 
   for (int t = 0; t < nspecies; ++t) delta[t] = x[t];
+
+  pfree(A);
+  pfree(Alu);
+  pfree(sr);
+  pfree(x);
+  pool_rewind(mark);
 }
 
 }  // namespace kintera
