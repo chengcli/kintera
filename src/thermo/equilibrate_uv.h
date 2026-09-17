@@ -159,10 +159,13 @@ DISPATCH_MACRO int equilibrate_uv(
       int j = reaction_set[first];
       T log_conc_sum = 0.0;
       T prod = 1.0;
+      T limiting_reactant = std::numeric_limits<T>::max();
 
       // active set condition variables
       for (int i = 0; i < nspecies; i++) {
         if (stoich[i * nreaction + j] < 0) {  // reactant
+          T available = conc[i] / (-stoich[i * nreaction + j]);
+          if (available < limiting_reactant) limiting_reactant = available;
           if (conc[i] == 0.) {
             log_conc_sum = -99;  // force to be in active set
           } else {
@@ -170,6 +173,20 @@ DISPATCH_MACRO int equilibrate_uv(
           }
         } else if (stoich[i * nreaction + j] > 0) {  // product
           prod *= conc[i];
+        }
+      }
+
+      if (log_conc_sum < logsvp[j] - logsvp_eps && prod > 0. &&
+          limiting_reactant < std::numeric_limits<T>::max()) {
+        T extent_tol =
+            8. * std::numeric_limits<T>::epsilon() * limiting_reactant;
+        for (int i = ngas; i < nspecies; ++i) {
+          T coefficient = stoich[i * nreaction + j];
+          if (coefficient > 0. && conc[i] > 0. &&
+              conc[i] / coefficient <= extent_tol) {
+            conc[i] = 0.;
+            prod = 0.;
+          }
         }
       }
 

@@ -2,6 +2,8 @@
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
 
+#include <cmath>
+
 // torch
 #include <torch/torch.h>
 
@@ -496,6 +498,24 @@ dynamics:
                 testing::internal::GetCapturedStderr();
   EXPECT_EQ(output.find("equilibrate_uv did not converge"), std::string::npos);
   EXPECT_DOUBLE_EQ(final_diag.item<double>(), 1.);
+
+  op_thermo->max_iter(30);
+  auto trace_conc = torch::tensor(
+      {325.96348426613355, 8.1247303078597515, std::exp(-6.4175548244587679),
+       1.e-20, 6.7784957553955697e-5, 0., 4.1234878195558463e-6},
+      tensor_options);
+  auto trace_mass = trace_conc * torch::tensor(species_weights, tensor_options);
+  auto trace_rho = trace_mass.sum().reshape({1});
+  auto trace_yfrac = (trace_mass.slice(0, 1) / trace_rho).reshape({6, 1});
+  auto trace_ivol = thermo_y->compute("DY->V", {trace_rho, trace_yfrac});
+  auto trace_temp = torch::tensor({86.95274487484208}, tensor_options);
+  auto trace_intEng = thermo_y->compute("VT->U", {trace_ivol, trace_temp});
+  auto trace_diag = torch::zeros({1, 1}, tensor_options);
+
+  thermo_y->forward(trace_rho, trace_intEng, trace_yfrac, false, trace_diag);
+
+  EXPECT_DOUBLE_EQ(trace_diag.item<double>(), 1.);
+  EXPECT_DOUBLE_EQ(trace_yfrac[2][0].item<double>(), 0.);
   init_species_from_yaml("jupiter.yaml");
 }
 
