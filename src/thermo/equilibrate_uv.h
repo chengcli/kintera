@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 // base
 #include <configure.h>
@@ -123,6 +124,7 @@ DISPATCH_MACRO int equilibrate_uv(
 
   int iter = 0;
   int err_code = 0;
+  bool converged = false;
   while (iter++ < *max_iter) {
     /*printf("iteration %d: T = %g\n", iter, *temp);
     // print conc
@@ -198,6 +200,7 @@ DISPATCH_MACRO int equilibrate_uv(
 
     if (first == 0) {
       // all reactions are in equilibrium, no need to adjust saturation
+      converged = true;
       break;
     }
 
@@ -239,6 +242,18 @@ DISPATCH_MACRO int equilibrate_uv(
       if (good) break;
       lambda *= 0.99;
       memcpy(conc, conc0, nspecies * sizeof(T));
+    }
+
+    for (int i = ngas; i < nspecies; ++i) {
+      if (conc0[i] <= 0. || conc[i] < 0. ||
+          conc[i] > 8. * std::numeric_limits<T>::epsilon() * conc0[i])
+        continue;
+      for (int k = 0; k < (*nactive); ++k) {
+        if (stoich_active[i * (*nactive) + k] < 0.) {
+          conc[i] = 0.;
+          break;
+        }
+      }
     }
 
     // temperature iteration
@@ -298,7 +313,7 @@ DISPATCH_MACRO int equilibrate_uv(
   pfree(gain_cpy);
   pool_rewind(mark);
 
-  if (iter >= *max_iter) {
+  if (!converged && iter >= *max_iter) {
     printf("[Warning] equilibrate_uv did not converge after %d iterations.\n",
            *max_iter);
     return 2 * 10 + err_code;  // failure to converge

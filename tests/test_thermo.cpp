@@ -1,5 +1,6 @@
 // external
 #include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
 
 // torch
 #include <torch/torch.h>
@@ -423,6 +424,79 @@ TEST_P(DeviceTest, equilibrate_uv) {
   std::cout << "intEng after = " << intEng2 << std::endl;
 
   EXPECT_EQ(torch::allclose(intEng, intEng2, 1e-4, 1e-4), true);
+}
+
+TEST_P(DeviceTest, equilibrate_uv_depleted_cloud) {
+  if (dtype != torch::kFloat64 || device.type() == torch::kMPS) {
+    GTEST_SKIP();
+  }
+
+  auto config = YAML::Load(R"(
+reference-state: {Tref: 0.0, Pref: 1.e5}
+species:
+  - {name: dry, composition: {H: 1.5, He: 0.15}, cv_R: 2.5}
+  - {name: CH4, composition: {C: 1, H: 4}, cv_R: 3.5, u0_R: 0.0}
+  - {name: H2S, composition: {H: 2, S: 1}, cv_R: 3.5, u0_R: 0.0}
+  - {name: CH4(s), composition: {C: 1, H: 4}, cv_R: 4.5, u0_R: -980.0}
+  - {name: 'CH4(s,p)', composition: {C: 1, H: 4}, cv_R: 4.5, u0_R: -980.0}
+  - {name: H2S(s), composition: {H: 2, S: 1}, cv_R: 4.5, u0_R: -2250.0}
+  - {name: 'H2S(s,p)', composition: {H: 2, S: 1}, cv_R: 4.5, u0_R: -2250.0}
+reactions:
+  - {equation: 'CH4 => CH4(s)', type: nucleation, rate-constant: {formula: ch4_ideal}}
+  - {equation: 'CH4(s) => CH4(s,p)', type: coagulation, rate-constant: {A: 0.0001, b: 0.0, Ea_R: 0.0}}
+  - {equation: 'CH4(s,p) => CH4', type: evaporation, rate-constant: {formula: ch4_ideal, diff_c: 2.e-5, diff_T: 0.0, diff_P: 0.0, vm: 1.6e-5, diameter: 0.001}}
+  - {equation: 'H2S => H2S(s)', type: nucleation, rate-constant: {formula: h2s_ideal}}
+  - {equation: 'H2S(s) => H2S(s,p)', type: coagulation, rate-constant: {A: 0.0001, b: 0.0, Ea_R: 0.0}}
+  - {equation: 'H2S(s,p) => H2S', type: evaporation, rate-constant: {formula: h2s_ideal, diff_c: 2.e-5, diff_T: 0.0, diff_P: 0.0, vm: 3.4e-5, diameter: 0.001}}
+dynamics:
+  equation-of-state: {max-iter: 30, ftol: 1.e-6}
+)");
+  init_species_from_yaml(config);
+  auto op_thermo = ThermoOptionsImpl::from_yaml(config);
+  ThermoY thermo_y(op_thermo);
+  thermo_y->to(device, dtype);
+
+  auto tensor_options = torch::device(device).dtype(dtype);
+  auto rho = torch::tensor({0.6120118390199387}, tensor_options);
+  auto intEng = torch::tensor({434819.1169266227}, tensor_options);
+  auto yfrac = torch::tensor({{0.1250846769992131},
+                              {1.5203920607688577e-5},
+                              {0.0006193545911286463},
+                              {0.000688122185010699},
+                              {1.884825971316318e-7},
+                              {1.5557173919300405e-7}},
+                             tensor_options);
+  auto initial = yfrac.clone();
+  auto diag = torch::zeros({1, 1}, tensor_options);
+
+  thermo_y->forward(rho, intEng, yfrac, false, diag);
+
+  EXPECT_LE(diag.item<double>(), op_thermo->max_iter());
+  EXPECT_TRUE(torch::all(yfrac >= 0.).item<bool>());
+  EXPECT_DOUBLE_EQ(yfrac[2][0].item<double>(), 0.);
+  EXPECT_NEAR(
+      (yfrac[0] + yfrac[2] + yfrac[3] - initial[0] - initial[2] - initial[3])
+          .item<double>(),
+      0., 1.e-12);
+  EXPECT_NEAR(
+      (yfrac[1] + yfrac[4] + yfrac[5] - initial[1] - initial[4] - initial[5])
+          .item<double>(),
+      0., 1.e-12);
+  auto ivol = thermo_y->compute("DY->V", {rho, yfrac});
+  auto temp = thermo_y->compute("VU->T", {ivol, intEng});
+  auto intEng_after = thermo_y->compute("VT->U", {ivol, temp});
+  EXPECT_TRUE(torch::allclose(intEng, intEng_after, 1.e-12, 1.e-8));
+
+  op_thermo->max_iter(1);
+  auto final_diag = torch::zeros({1, 1}, tensor_options);
+  testing::internal::CaptureStdout();
+  testing::internal::CaptureStderr();
+  thermo_y->forward(rho, intEng, yfrac, false, final_diag);
+  auto output = testing::internal::GetCapturedStdout() +
+                testing::internal::GetCapturedStderr();
+  EXPECT_EQ(output.find("equilibrate_uv did not converge"), std::string::npos);
+  EXPECT_DOUBLE_EQ(final_diag.item<double>(), 1.);
+  init_species_from_yaml("jupiter.yaml");
 }
 
 TEST_P(DeviceTest, equilibrate_uv_large) {
