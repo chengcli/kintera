@@ -174,19 +174,53 @@ inline double co2_antoine_ddT(double T) {
 }
 
 DISPATCH_MACRO
-inline double kcl_lodders(double T) {
-  double logp = 7.611 - 11382. / T;
-  return log(1.E5) + logp;
+inline double kcl_lodders_cond(double T) {
+  // KCl <=> KCl(s)
+  // returns ln(P_KCl) at saturation, where P_KCl is in pascals
+  double logp = 30.39 - 27077. / T;
+  return logp;
 }
 
 DISPATCH_MACRO
-inline double kcl_lodders_ddT(double T) { return 11382. / (T * T); }
+inline double kcl_lodders_cond_ddT(double T) { return 27077. / (T * T); }
+
+DISPATCH_MACRO
+inline double k_hcl_lodders(double T) {
+  // 2K + 2HCl <=> 2KCl(s) + H2
+  // returns ln(P_K^2 P_HCl^2 / P_H2) at saturation, where pressures are in pascals
+  double logp = 65.06 - 81230. / T;
+  return logp;
+}
+
+DISPATCH_MACRO
+inline double k_hcl_lodders_ddT(double T) { return 81230. / (T * T); }
+
+DISPATCH_MACRO
+inline double mn_h2s_visscher(double T) {
+  // Mn + H2S <=> MnS(s) + H2
+  double logp = 27.58 - 54823. / T;
+  return logp;
+}
+
+DISPATCH_MACRO
+inline double mn_h2s_visscher_ddT(double T) { return 54823.* log(10.) / (T * T); }
+
+DISPATCH_MACRO
+inline double zn_h2s_visscher(double T) {
+  // Zn + H2S <=> ZnS(s) + H2
+  // returns ln(P_Zn P_H2S / P_H2) at saturation, where pressures are in pascals
+  double logp = 13.24 - 15873. / T;
+  return logp * log(10.);
+}
+
+DISPATCH_MACRO
+inline double zn_h2s_visscher_ddT(double T) { return 15873.* log(10.) / (T * T); }
 
 DISPATCH_MACRO
 inline double na_h2s_visscher(double T) {
-  // double log10p = 8.55 - 13889. / T - 0.5 * log10(pH2S / 1E5);
-  // return 1.E5 * pow(10., log10p);
-  double a = 8.55;
+  // 2Na + H2S <=> Na2S(s) + H2
+  // returns ln(P_Na^2 P_H2S / P_H2) at saturation, where pressures are in pascals
+  double a = 3.74;
   double b = 13889.;
   return (15. + 2. * a - 2. * b / T) * log(10.);
 }
