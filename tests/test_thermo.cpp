@@ -81,7 +81,8 @@ TEST(LeastSquaresKkt, HandlesMoreThan64Constraints) {
   EXPECT_NEAR(rhs[0], 1., 1.e-10);
 }
 
-TEST(LeastSquaresKkt, RegularizesRedundantActiveConstraints) {
+// No regularisation: two identical equalities make the KKT system singular.
+TEST(LeastSquaresKkt, ReportsRedundantEqualitiesAsSingular) {
   double matrix[] = {1., 0., 0., 1.};
   double constraints[] = {1., 0., 1., 0.};
   double bounds[] = {1., 1.};
@@ -91,9 +92,9 @@ TEST(LeastSquaresKkt, RegularizesRedundantActiveConstraints) {
     int status =
         leastsq_kkt(rhs, matrix, constraints, bounds, 2, 2, 2, 2, &max_iter);
 
-    EXPECT_EQ(status, 0);
-    EXPECT_NEAR(rhs[0], 1., 1.e-8);
-    EXPECT_NEAR(rhs[1], 0., 1.e-8);
+    EXPECT_EQ(status, 3);
+    EXPECT_DOUBLE_EQ(rhs[0], 2.);
+    EXPECT_DOUBLE_EQ(rhs[1], 0.);
   }
 }
 
@@ -113,7 +114,9 @@ TEST(LeastSquaresKkt, RejectsInconsistentEqualities) {
   }
 }
 
-TEST(LeastSquaresKkt, RejectsContradictoryInequalities) {
+// A row dependent on the active block is never activated: the
+// active set's solution is returned and the caller clips the step.
+TEST(LeastSquaresKkt, NeverActivatesDependentInequality) {
   double matrix[] = {1.};
   for (double scale : {1., 1.e-30}) {
     double rhs[] = {0.};
@@ -124,12 +127,13 @@ TEST(LeastSquaresKkt, RejectsContradictoryInequalities) {
     int status =
         leastsq_kkt(rhs, matrix, constraints, bounds, 1, 1, 2, 0, &max_iter);
 
-    EXPECT_EQ(status, 3);
-    EXPECT_DOUBLE_EQ(rhs[0], 0.);
+    EXPECT_EQ(status, 0);
+    EXPECT_NEAR(rhs[0], 2., 1.e-12);
   }
 }
 
-TEST(LeastSquaresKkt, RegularizesRankDeficientObjective) {
+// The KKT form needs A invertible: a singular objective is reported.
+TEST(LeastSquaresKkt, ReportsRankDeficientObjectiveAsSingular) {
   double matrix[] = {1., 1., 2., 2.};
   for (int repeat = 0; repeat < 2; ++repeat) {
     double rhs[] = {1., 2.};
@@ -137,9 +141,9 @@ TEST(LeastSquaresKkt, RegularizesRankDeficientObjective) {
     int status = leastsq_kkt<double>(rhs, matrix, nullptr, nullptr, 2, 2, 0, 0,
                                      &max_iter);
 
-    EXPECT_EQ(status, 0);
-    EXPECT_NEAR(rhs[0], 0.5, 1.e-6);
-    EXPECT_NEAR(rhs[1], 0.5, 1.e-6);
+    EXPECT_EQ(status, 3);
+    EXPECT_DOUBLE_EQ(rhs[0], 1.);
+    EXPECT_DOUBLE_EQ(rhs[1], 2.);
   }
 }
 

@@ -733,7 +733,7 @@ class ThermoY:
             intEng (torch.Tensor): Internal energy tensor [J/m^3]
             yfrac (torch.Tensor): Mass fraction tensor
             warm_start (bool): Whether to use warm start (default: False)
-            diag (torch.Tensor, optional): Iteration count; -1 on forced-partition failure
+            diag (torch.Tensor, optional): Iterations; -(100*status + iterations) on failure, -1 if a forced partition failed
 
         Returns:
             torch.Tensor: Changes in mass fraction

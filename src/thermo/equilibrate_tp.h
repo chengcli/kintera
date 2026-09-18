@@ -87,7 +87,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
 
   T *logsvp, *weight, *rhs;
   T *stoich_active, *stoich_sum, *xfrac0;
-  T* gain_cpy;
+  T *gain_cpy, *theta;
   size_t mark = pool_mark(work);
   logsvp = (T*)pmalloc(work, nreaction * sizeof(T));
   weight = (T*)pmalloc(work, nreaction * nspecies * sizeof(T));
@@ -96,6 +96,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   stoich_sum = (T*)pmalloc(work, nreaction * sizeof(T));
   xfrac0 = (T*)pmalloc(work, nspecies * sizeof(T));
   gain_cpy = (T*)pmalloc(work, nreaction * nreaction * sizeof(T));
+  theta = (T*)pmalloc(work, nspecies * sizeof(T));
 
   memset(weight, 0, nreaction * nspecies * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
@@ -212,7 +213,11 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
     // note that stoich_active is negated
 
     // solve constrained optimization problem (KKT)
-    int max_kkt_iter = *max_iter;
+    // Bound the inner active-set solve by the constraint count, not by the
+    // outer Newton budget: sharing one knob makes a small max_iter abort the
+    // KKT solve, after which equilibrate returns the state unchanged and
+    // silently.
+    int max_kkt_iter = nspecies + 1 > *max_iter ? nspecies + 1 : *max_iter;
     kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, *nactive, *nactive,
                           nspecies, 0, &max_kkt_iter, 0., work);
     if (kkt_err != 0) break;
@@ -228,6 +233,26 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
     // copy xfrac to xfrac0
     memcpy(xfrac0, xfrac, nspecies * sizeof(T));
     T lambda = 1.;  // scale
+    // Per-reaction extent limit, as in equilibrate_uv: leastsq_kkt does not
+    // enforce a row dependent on its active block, so clip each reaction to
+    // the stock of what it consumes (a cloud must not go negative).
+    for (int i = 0; i < nspecies; i++) {
+      T demand = 0.;
+      for (int k = 0; k < (*nactive); k++) {
+        T ck = -stoich_active[i * (*nactive) + k] * rhs[k];
+        if (ck < 0.) demand -= ck;
+      }
+      theta[i] =
+          demand > xfrac0[i] ? (xfrac0[i] > 0. ? xfrac0[i] / demand : 0.) : 1.;
+    }
+    for (int k = 0; k < (*nactive); k++) {
+      T lam = 1.;
+      for (int i = 0; i < nspecies; i++) {
+        T ck = -stoich_active[i * (*nactive) + k] * rhs[k];
+        if (ck < 0. && theta[i] < lam) lam = theta[i];
+      }
+      rhs[k] *= lam;
+    }
     T xsum;
     while (true) {
       bool positive_vapor = true;
@@ -318,6 +343,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   pfree(stoich_sum);
   pfree(xfrac0);
   pfree(gain_cpy);
+  pfree(theta);
   pool_rewind(work, mark);
 
   if (iter >= *max_iter) {
