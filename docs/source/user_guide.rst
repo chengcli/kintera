@@ -74,6 +74,8 @@ with one vapor reactant and one cloud product, and otherwise uses KKT.
 failure rather than switching solvers if its energy root cannot be found.
 ``kkt`` always uses the constrained least-squares solver. The same option can
 be set in YAML as ``dynamics.equation-of-state.uv-solver``.
+See :doc:`equilibrate_uv_partition` for the partition equations and scalar
+energy solve.
 
 Species Configuration
 ~~~~~~~~~~~~~~~~~~~~~
