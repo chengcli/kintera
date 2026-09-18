@@ -5,6 +5,7 @@
 
 // base
 #include <configure.h>
+#include <kintera/utils/alloc.h>
 
 // kintera
 #include "lubksb.h"
@@ -24,15 +25,18 @@ namespace kintera {
  * \param[in] n size of matrix
  */
 template <typename T>
-DISPATCH_MACRO void luminv(T* y, T const* a, int const* indx, int n) {
-  T* col = (T*)malloc(n * sizeof(T));
+DISPATCH_MACRO void luminv(T* y, T const* a, int const* indx, int n,
+                           char* work = nullptr) {
+  size_t mark = pool_mark(work);
+  T* col = (T*)pmalloc(work, n * sizeof(T));
   for (int j = 0; j < n; j++) {
     for (int i = 0; i < n; i++) col[i] = 0.0;
     col[j] = 1.0;
     lubksb(col, a, indx, n);
     for (int i = 0; i < n; i++) y[i * n + j] = col[i];
   }
-  free(col);
+  pfree(col);
+  pool_rewind(work, mark);
 }
 
 }  // namespace kintera

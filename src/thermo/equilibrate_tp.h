@@ -39,8 +39,6 @@ namespace kintera {
  *                              convergence.
  * \param[in,out] reaction_set  active set of reactions, modified in place.
  * \param[in,out] nactive       number of active reactions, modified in place.
- * \param[in] work              workspace if not null, otherwise allocated
- * internally.
  */
 template <typename T>
 DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
@@ -87,48 +85,14 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   T *logsvp, *weight, *rhs;
   T *stoich_active, *stoich_sum, *xfrac0;
   T* gain_cpy;
-
-  if (work == nullptr) {
-    logsvp = (T*)malloc(nreaction * sizeof(T));
-
-    // weight matrix
-    weight = (T*)malloc(nreaction * nspecies * sizeof(T));
-
-    // right-hand-side vector
-    rhs = (T*)malloc(nreaction * sizeof(T));
-
-    // active stoichiometric matrix
-    stoich_active = (T*)malloc(nspecies * nreaction * sizeof(T));
-
-    // sum of reactant stoichiometric coefficients
-    stoich_sum = (T*)malloc(nreaction * sizeof(T));
-
-    // copy of xfrac
-    xfrac0 = (T*)malloc(nspecies * sizeof(T));
-
-    // gain matrix copy
-    gain_cpy = (T*)malloc(nreaction * nreaction * sizeof(T));
-  } else {
-    logsvp = alloc_from<T>(work, nreaction);
-
-    // weight matrix
-    weight = alloc_from<T>(work, nreaction * nspecies);
-
-    // right-hand-side vector
-    rhs = alloc_from<T>(work, nreaction);
-
-    // active stoichiometric matrix
-    stoich_active = alloc_from<T>(work, nspecies * nreaction);
-
-    // sum of reactant stoichiometric coefficients
-    stoich_sum = alloc_from<T>(work, nreaction);
-
-    // copy of xfrac
-    xfrac0 = alloc_from<T>(work, nspecies);
-
-    // gain matrix copy
-    gain_cpy = alloc_from<T>(work, nreaction * nreaction);
-  }
+  size_t mark = pool_mark(work);
+  logsvp = (T*)pmalloc(work, nreaction * sizeof(T));
+  weight = (T*)pmalloc(work, nreaction * nspecies * sizeof(T));
+  rhs = (T*)pmalloc(work, nreaction * sizeof(T));
+  stoich_active = (T*)pmalloc(work, nspecies * nreaction * sizeof(T));
+  stoich_sum = (T*)pmalloc(work, nreaction * sizeof(T));
+  xfrac0 = (T*)pmalloc(work, nspecies * sizeof(T));
+  gain_cpy = (T*)pmalloc(work, nreaction * nreaction * sizeof(T));
 
   memset(weight, 0, nreaction * nspecies * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
@@ -342,15 +306,14 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   // save number of iterations to diag
   diag[0] = iter;
 
-  if (work == nullptr) {
-    free(logsvp);
-    free(rhs);
-    free(weight);
-    free(stoich_active);
-    free(stoich_sum);
-    free(xfrac0);
-    free(gain_cpy);
-  }
+  pfree(logsvp);
+  pfree(rhs);
+  pfree(weight);
+  pfree(stoich_active);
+  pfree(stoich_sum);
+  pfree(xfrac0);
+  pfree(gain_cpy);
+  pool_rewind(work, mark);
 
   if (iter >= *max_iter) {
     printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);

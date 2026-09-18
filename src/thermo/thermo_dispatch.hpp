@@ -19,7 +19,7 @@ using equilibrate_uv_fn =
              at::Tensor const& intEng_offset, at::Tensor const& cv_const,
              std::vector<std::string> const& logsvp_func,
              std::vector<std::string> const& intEng_extra_func,
-             double logsvp_eps, int max_iter);
+             double logsvp_eps, int max_iter, int uv_solver);
 
 DECLARE_DISPATCH(equilibrate_tp_fn, call_equilibrate_tp);
 DECLARE_DISPATCH(equilibrate_uv_fn, call_equilibrate_uv);

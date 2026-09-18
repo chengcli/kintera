@@ -1,8 +1,10 @@
 #pragma once
 
 // C/C++
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 // base
 #include <configure.h>
@@ -10,7 +12,6 @@
 // math
 #include "lubksb.h"
 #include "ludcmp.h"
-#include "psolve.h"
 
 #define A(i, j) a[(i) * n2 + (j)]
 #define ATA(i, j) ata[(i) * n2 + (j)]
@@ -19,64 +20,21 @@
 
 namespace kintera {
 
-// Compute bitmask hash for a set of integers [0..n-1]
-DISPATCH_MACRO inline uint64_t hash_set(const int* arr, int size, int n) {
-  uint64_t mask = 0;
-  for (int i = 0; i < size; i++) {
-    int x = arr[i];
-    if (x >= 0 && x < n) {
-      mask |= (1ULL << x);
-    }
-  }
-  return mask;
+template <typename T>
+DISPATCH_MACRO T kkt_column_scale(T objective_scale, T column_norm) {
+  return column_norm > 0. ? objective_scale / column_norm : 1.;
 }
 
 template <typename T>
-DISPATCH_MACRO void populate_aug(T* aug, T const* ata, T const* c, int n2,
-                                 int nact, int const* ct_indx, float reg = 0.) {
-  // populate A^T.A (upper left block)
-  for (int i = 0; i < n2; ++i) {
-    for (int j = 0; j < n2; ++j) {
-      AUG(i, j) = ATA(i, j);
-    }
+DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d, T const* column_norm,
+                               T objective_scale, int n2, int row) {
+  T scale = fabs(d[row]);
+  for (int j = 0; j < n2; ++j) {
+    T value = fabs(c[row * n2 + j] *
+                   kkt_column_scale(objective_scale, column_norm[j]));
+    if (value > scale) scale = value;
   }
-
-  // populate C (lower left block)
-  for (int i = 0; i < nact; ++i) {
-    for (int j = 0; j < n2; ++j) {
-      AUG(n2 + i, j) = C(ct_indx[i], j);
-    }
-  }
-
-  // populate C^T (upper right block)
-  for (int i = 0; i < n2; ++i) {
-    for (int j = 0; j < nact; ++j) {
-      AUG(i, n2 + j) = C(ct_indx[j], i);
-    }
-  }
-
-  // zero (lower right block)
-  for (int i = 0; i < nact; ++i) {
-    for (int j = 0; j < nact; ++j) {
-      AUG(n2 + i, n2 + j) = 0.0;
-    }
-    // add a small diagonal perturbation to improve numerical stability
-    AUG(n2 + i, n2 + i) = reg;
-  }
-}
-
-template <typename T>
-DISPATCH_MACRO void populate_rhs(T* rhs, T const* atb, T const* d, int n2,
-                                 int nact, int const* ct_indx) {
-  // populate A^T.b (upper part)
-  for (int i = 0; i < n2; ++i) {
-    rhs[i] = atb[i];
-  }
-
-  // populate d (lower part)
-  for (int i = 0; i < nact; ++i) {
-    rhs[n2 + i] = d[ct_indx[i]];
-  }
+  return scale > 0. ? scale : 1.;
 }
 
 /*!
@@ -85,7 +43,8 @@ DISPATCH_MACRO void populate_rhs(T* rhs, T const* atb, T const* d, int n2,
  * This subroutine solves the constrained least square problem using the active
  * set method based on the KKT conditions. The first `neq` rows of the
  * constraint matrix `C` are treated as equality constraints, while the
- * remaining rows are treated as inequality constraints.
+ * remaining rows are treated as inequality constraints. Objective columns and
+ * constraint rows are scaled internally; the returned solution is unscaled.
  *
  * \param[in,out] b[0..n1-1]    right-hand-side vector and output. Input
  *                              dimension is n1, output dimension is n2,
@@ -99,13 +58,14 @@ DISPATCH_MACRO void populate_rhs(T* rhs, T const* atb, T const* d, int n2,
  * \param[in] neq               number of equality constraints, 0 <= neq <= n3
  * \param[in,out] max_iter      in: maximum number of iterations to perform,
  *                              out: number of iterations actually performed
- * \param[in] work              workspace if not null, otherwise allocated
- *                              internally.
+ * \param[in] reg               diagonal perturbation in scaled KKT units;
+ *                              zero uses regularization only if LU fails
  *
  * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
- *         2 on failure (max_iter reached without convergence).
+ *         2 on failure (max_iter reached without convergence), or 3 if the
+ *         KKT system remains singular or its constraints are infeasible.
  */
-template <typename T>
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
                                int n2, int n3, int neq, int* max_iter,
                                float reg = 0., char* work = nullptr) {
@@ -124,35 +84,30 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
 
   // Allocate memory for the augmented matrix and right-hand side vector
   int size = n2 + n3;
-  T *aug, *ata, *atb, *rhs, *eval;
+  T *aug, *ata, *column_norm, *rhs, *eval;
   int *ct_indx, *lu_indx, *skip_row;
+  size_t mark = pool_mark<Backend>(work);
+  aug = (T*)pmalloc<Backend>(work, size * size * sizeof(T));
+  ata = (T*)pmalloc<Backend>(work, n2 * n2 * sizeof(T));
+  column_norm = (T*)pmalloc<Backend>(work, n2 * sizeof(T));
+  rhs = (T*)pmalloc<Backend>(work, size * sizeof(T));
+  eval = (T*)pmalloc<Backend>(work, n3 * sizeof(T));
+  ct_indx = (int*)pmalloc<Backend>(work, n3 * sizeof(int));
+  lu_indx = (int*)pmalloc<Backend>(work, size * sizeof(int));
+  skip_row = (int*)pmalloc<Backend>(work, size * sizeof(int));
 
-  if (work == nullptr) {
-    aug = (T*)malloc(size * size * sizeof(T));
-    ata = (T*)malloc(n2 * n2 * sizeof(T));
-    atb = (T*)malloc(n2 * sizeof(T));
-    rhs = (T*)malloc(size * sizeof(T));
+  T objective_scale = 1.;
+  for (int i = 0; i < n1; ++i) {
+    T value = fabs(b[i]);
+    if (value > objective_scale) objective_scale = value;
+  }
 
-    // evaluation of constraints
-    eval = (T*)malloc(n3 * sizeof(T));
-
-    // index for the active set
-    ct_indx = (int*)malloc(n3 * sizeof(int));
-
-    // index array for the LU decomposition
-    lu_indx = (int*)malloc(size * sizeof(int));
-
-    // row indices to skip
-    skip_row = (int*)malloc(size * sizeof(int));
-  } else {
-    aug = alloc_from<T>(work, size * size);
-    ata = alloc_from<T>(work, n2 * n2);
-    atb = alloc_from<T>(work, n2);
-    rhs = alloc_from<T>(work, size);
-    eval = alloc_from<T>(work, n3);
-    ct_indx = alloc_from<int>(work, n3);
-    lu_indx = alloc_from<int>(work, size);
-    skip_row = alloc_from<int>(work, size);
+  for (int j = 0; j < n2; ++j) {
+    column_norm[j] = 0.;
+    for (int i = 0; i < n1; ++i) {
+      T value = fabs(A(i, j));
+      if (value > column_norm[j]) column_norm[j] = value;
+    }
   }
 
   // populate A^T.A
@@ -160,16 +115,10 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     for (int j = 0; j < n2; ++j) {
       ATA(i, j) = 0.0;
       for (int k = 0; k < n1; ++k) {
-        ATA(i, j) += A(k, i) * A(k, j);
+        T left = column_norm[i] > 0. ? A(k, i) / column_norm[i] : 0.;
+        T right = column_norm[j] > 0. ? A(k, j) / column_norm[j] : 0.;
+        ATA(i, j) += left * right;
       }
-    }
-  }
-
-  // populate A^T.b
-  for (int i = 0; i < n2; ++i) {
-    atb[i] = 0.0;
-    for (int j = 0; j < n1; ++j) {
-      atb[i] += A(j, i) * b[j];
     }
   }
 
@@ -179,74 +128,87 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
 
   int nactive = neq;
   int iter = 0;
+  int status = 0;
+  bool converged = false;
+  bool used_regularization = false;
+  T fallback_reg = sizeof(T) == sizeof(float) ? 1.e-5 : 1.e-10;
+  T pivot_tolerance = 10. * std::numeric_limits<T>::epsilon();
 
-  while (iter++ < *max_iter) {
-    /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
-    printf("ct_indx = ");
-    for (int i = 0; i < neq; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = neq; i < nactive; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = nactive; i < n3; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("\n");*/
-    uint64_t hash0 = hash_set(ct_indx, nactive, n3);
+  while (iter < *max_iter) {
+    ++iter;
+    int nact = nactive;
+    bool solved = false;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      T primal_reg = attempt == 0 ? 0. : fallback_reg;
+      T dual_reg = attempt == 0 ? reg : (reg == 0. ? -fallback_reg : reg);
+      for (int i = 0; i < n2; ++i) {
+        rhs[i] = 0.;
+        for (int k = 0; k < n1; ++k) {
+          T value = column_norm[i] > 0. ? A(k, i) / column_norm[i] : 0.;
+          rhs[i] += value * (b[k] / objective_scale);
+        }
+        for (int j = 0; j < n2; ++j)
+          AUG(i, j) = ATA(i, j) + (i == j ? primal_reg : 0.);
+      }
+      for (int i = 0; i < nactive; ++i) {
+        int row = ct_indx[i];
+        T row_scale =
+            kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+        for (int j = 0; j < n2; ++j) {
+          T value = C(row, j) *
+                    kkt_column_scale(objective_scale, column_norm[j]) /
+                    row_scale;
+          AUG(n2 + i, j) = value;
+          AUG(j, n2 + i) = value;
+        }
+        rhs[n2 + i] = d[row] / row_scale;
+        for (int j = 0; j < nactive; ++j)
+          AUG(n2 + i, n2 + j) = i == j ? dual_reg : 0.;
+      }
 
-    populate_aug(aug, ata, c, n2, nactive, ct_indx, reg);
-    populate_rhs(rhs, atb, d, n2, nactive, ct_indx);
-
-    // solve the KKT system
-    // determine the non-zero rows
-    for (int i = 0; i < n2 + nactive; ++i) {
-      bool all_zero = true;
-      for (int j = 0; j < n2 + nactive; ++j) {
-        if (aug[i * (n2 + nactive) + j] != 0.0) {
-          all_zero = false;
+      for (int i = 0; i < n2 + nactive; ++i) {
+        bool all_zero = true;
+        for (int j = 0; j < n2 + nactive; ++j) {
+          if (aug[i * (n2 + nactive) + j] != 0.0) {
+            all_zero = false;
+            break;
+          }
+        }
+        skip_row[i] = all_zero;
+        if (all_zero && rhs[i] != 0.) {
+          status = 3;
           break;
         }
       }
-      skip_row[i] = all_zero;
-      if (all_zero) rhs[i] = 0.0;
-    }
+      if (status != 0) break;
 
-    /* print aug
-    printf("aug = \n");
-    for (int i = 0; i < n2 + nactive; ++i) {
-      for (int j = 0; j < n2 + nactive; ++j) {
-        printf("%f ", aug[i * (n2 + nactive) + j]);
+      if (ludcmp<T, Backend>(aug, lu_indx, n2 + nactive, skip_row,
+                             pivot_tolerance, work) != 0) {
+        lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
+        used_regularization = primal_reg != 0. || dual_reg != 0.;
+        solved = true;
+        break;
       }
-      printf("| %f", rhs[i]);
-      if (skip_row[i]) printf(" *");
-      printf("\n");
-    }*/
-
-    ludcmp(aug, lu_indx, n2 + nactive, work, skip_row);
-    lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
+    }
+    if (!solved) {
+      status = 3;
+      break;
+    }
 
     // evaluate the inactive constraints
     for (int i = nactive; i < n3; ++i) {
       int k = ct_indx[i];
-      eval[k] = 0.;
+      T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, k);
+      eval[k] = -d[k] / row_scale;
       for (int j = 0; j < n2; ++j) {
-        eval[k] += C(k, j) * rhs[j];
+        eval[k] += C(k, j) * kkt_column_scale(objective_scale, column_norm[j]) /
+                   row_scale * rhs[j];
       }
     }
 
-    /* print solution vector (rhs)
-    printf("rhs = ");
-    for (int i = 0; i < n2; ++i) {
-      printf("%f ", rhs[i]);
-    }
-    printf("| ");
-    for (int i = n2; i < n2 + nactive; ++i) {
-      printf("%f ", rhs[i]);
-    }
-    printf("\n");*/
+    for (int i = 0; i < n3; ++i) skip_row[i] = 0;
+    for (int i = 0; i < nactive; ++i) skip_row[ct_indx[i]] = 1;
+    int previous_active = nactive;
 
     // remove inactive constraints (three-way swap)
     //           mu < 0
@@ -278,21 +240,6 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       }
     }
 
-    /* print ct_indx after removing
-    printf("ct_indx after removing = ");
-    for (int i = 0; i < neq; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = neq; i < nactive; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = nactive; i < n3; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("\n");*/
-
     // add back inactive constraints (two-way swap)
     //                     C.x <= d
     //                     |<----->|
@@ -303,7 +250,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     // |  EQ   |   INEQ  |   INACTIVE    |
     while (first < last) {
       int k = ct_indx[first];
-      if (eval[k] > d[k]) {
+      if (eval[k] > 0.) {
         // add the inactive constraint back to the active set
         ++first;
       } else {
@@ -315,28 +262,53 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     }
 
     nactive = first;
-    uint64_t hash1 = hash_set(ct_indx, nactive, n3);
-    // no change in active set, we are done
-    if (hash0 == hash1) break;
+    converged = nactive == previous_active;
+    for (int i = 0; i < nactive && converged; ++i)
+      converged = skip_row[ct_indx[i]] != 0;
+    if (converged) break;
   }
 
-  // copy to output vector b
-  for (int i = 0; i < n2; ++i) {
-    b[i] = rhs[i];
+  if (status == 0 && converged && used_regularization) {
+    T feasibility_tolerance =
+        64. * std::numeric_limits<T>::epsilon() + 10. * fallback_reg;
+    for (int i = 0; i < n3; ++i) {
+      int row = ct_indx[i];
+      T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+      T residual = -d[row] / row_scale;
+      for (int j = 0; j < n2; ++j) {
+        residual += C(row, j) *
+                    kkt_column_scale(objective_scale, column_norm[j]) /
+                    row_scale * rhs[j];
+      }
+      if (!std::isfinite(residual) ||
+          (i < nactive ? fabs(residual) > feasibility_tolerance
+                       : residual > feasibility_tolerance)) {
+        status = 3;
+        break;
+      }
+    }
   }
 
-  if (work == nullptr) {
-    free(aug);
-    free(ata);
-    free(atb);
-    free(rhs);
-    free(eval);
-    free(ct_indx);
-    free(lu_indx);
-    free(skip_row);
+  if (status == 0)
+    for (int i = 0; i < n2; ++i)
+      b[i] = rhs[i] * kkt_column_scale(objective_scale, column_norm[i]);
+
+  pfree<Backend>(aug);
+  pfree<Backend>(ata);
+  pfree<Backend>(column_norm);
+  pfree<Backend>(rhs);
+  pfree<Backend>(eval);
+  pfree<Backend>(ct_indx);
+  pfree<Backend>(lu_indx);
+  pfree<Backend>(skip_row);
+  pool_rewind<Backend>(work, mark);
+
+  if (status != 0) {
+    *max_iter = iter;
+    return status;
   }
 
-  if (iter >= *max_iter) {
+  if (!converged) {
     *max_iter = iter;
     printf("Warning: leastsq_kkt maximum number of iterations reached (%d).\n",
            *max_iter);

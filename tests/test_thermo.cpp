@@ -1,5 +1,8 @@
 // external
 #include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
+
+#include <cmath>
 
 // torch
 #include <torch/torch.h>
@@ -9,6 +12,7 @@
 #include <kintera/math/constrained_newton.h>
 #include <kintera/math/lubksb.h>
 #include <kintera/math/ludcmp.h>
+#include <kintera/vapors/vapor_functions.h>
 
 #include <kintera/thermo/eval_uhs.hpp>
 #include <kintera/thermo/relative_humidity.hpp>
@@ -20,6 +24,153 @@
 
 using namespace kintera;
 using namespace torch::indexing;
+
+TEST(LeastSquaresKkt, ScalesTraceSpeciesConstraints) {
+  double matrix[] = {-4.369930087445457e19, -4790.297762242115,
+                     -4802.781240192355, -8.048578465493849e35};
+  double constraints[] = {0., 0., 1., 0., 0.,  1., -1.,
+                          0., 0., 0., 0., -1., 0., 0.};
+  double bounds[] = {0.4162445055546258,     2.2883661294100312e-20,
+                     1.2424554277345191e-36, 6.965266854905543e-23,
+                     1.209489121141968e-19,  4.57170555240497e-38,
+                     2.406554145054398e-38};
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    double rhs[] = {14.340180275068828, -0.08596112159418112};
+    int max_iter = 30;
+    int status =
+        leastsq_kkt(rhs, matrix, constraints, bounds, 2, 2, 7, 0, &max_iter);
+
+    EXPECT_EQ(status, 0);
+    EXPECT_LT(max_iter, 30);
+    for (int row = 0; row < 7; ++row) {
+      double projection =
+          constraints[2 * row] * rhs[0] + constraints[2 * row + 1] * rhs[1];
+      EXPECT_LE(projection, bounds[row] * (1. + 1.e-10)) << row;
+    }
+  }
+}
+
+TEST(LeastSquaresKkt, ConvergesOnLastAllowedIteration) {
+  double matrix[] = {1., 0., 0., 1.};
+  double rhs[] = {2., 3.};
+  int max_iter = 1;
+
+  int status =
+      leastsq_kkt<double>(rhs, matrix, nullptr, nullptr, 2, 2, 0, 0, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_EQ(max_iter, 1);
+  EXPECT_DOUBLE_EQ(rhs[0], 2.);
+  EXPECT_DOUBLE_EQ(rhs[1], 3.);
+}
+
+TEST(LeastSquaresKkt, HandlesMoreThan64Constraints) {
+  double matrix[] = {1.};
+  double rhs[] = {2.};
+  double constraints[65] = {};
+  double bounds[65];
+  for (double& bound : bounds) bound = 1.;
+  constraints[64] = 1.;
+  int max_iter = 10;
+
+  int status =
+      leastsq_kkt(rhs, matrix, constraints, bounds, 1, 1, 65, 0, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_LT(max_iter, 10);
+  EXPECT_NEAR(rhs[0], 1., 1.e-10);
+}
+
+TEST(LeastSquaresKkt, RegularizesRedundantActiveConstraints) {
+  double matrix[] = {1., 0., 0., 1.};
+  double constraints[] = {1., 0., 1., 0.};
+  double bounds[] = {1., 1.};
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    double rhs[] = {2., 0.};
+    int max_iter = 10;
+    int status =
+        leastsq_kkt(rhs, matrix, constraints, bounds, 2, 2, 2, 2, &max_iter);
+
+    EXPECT_EQ(status, 0);
+    EXPECT_NEAR(rhs[0], 1., 1.e-8);
+    EXPECT_NEAR(rhs[1], 0., 1.e-8);
+  }
+}
+
+TEST(LeastSquaresKkt, RejectsInconsistentEqualities) {
+  double matrix[] = {1.};
+  for (double scale : {1., 1.e-30}) {
+    double rhs[] = {0.};
+    double constraints[] = {scale, scale};
+    double bounds[] = {scale, 2. * scale};
+    int max_iter = 10;
+
+    int status =
+        leastsq_kkt(rhs, matrix, constraints, bounds, 1, 1, 2, 2, &max_iter);
+
+    EXPECT_EQ(status, 3);
+    EXPECT_DOUBLE_EQ(rhs[0], 0.);
+  }
+}
+
+TEST(LeastSquaresKkt, RejectsContradictoryInequalities) {
+  double matrix[] = {1.};
+  for (double scale : {1., 1.e-30}) {
+    double rhs[] = {0.};
+    double constraints[] = {scale, -scale};
+    double bounds[] = {scale, -2. * scale};
+    int max_iter = 10;
+
+    int status =
+        leastsq_kkt(rhs, matrix, constraints, bounds, 1, 1, 2, 0, &max_iter);
+
+    EXPECT_EQ(status, 3);
+    EXPECT_DOUBLE_EQ(rhs[0], 0.);
+  }
+}
+
+TEST(LeastSquaresKkt, RegularizesRankDeficientObjective) {
+  double matrix[] = {1., 1., 2., 2.};
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    double rhs[] = {1., 2.};
+    int max_iter = 10;
+    int status = leastsq_kkt<double>(rhs, matrix, nullptr, nullptr, 2, 2, 0, 0,
+                                     &max_iter);
+
+    EXPECT_EQ(status, 0);
+    EXPECT_NEAR(rhs[0], 0.5, 1.e-6);
+    EXPECT_NEAR(rhs[1], 0.5, 1.e-6);
+  }
+}
+
+TEST(LeastSquaresKkt, RejectsInconsistentZeroConstraint) {
+  double matrix[] = {1.};
+  double rhs[] = {2.};
+  double constraint[] = {0.};
+  double bound[] = {1.};
+  int max_iter = 10;
+
+  int status =
+      leastsq_kkt(rhs, matrix, constraint, bound, 1, 1, 1, 1, &max_iter);
+
+  EXPECT_EQ(status, 3);
+  EXPECT_EQ(rhs[0], 2.);
+}
+
+TEST(LeastSquaresKkt, PreservesEqualityConstraint) {
+  double matrix[] = {1., 0., 0., 1.};
+  double rhs[] = {2., 0.};
+  double constraint[] = {1., 1.};
+  double bound[] = {1.};
+  int max_iter = 10;
+
+  int status =
+      leastsq_kkt(rhs, matrix, constraint, bound, 2, 2, 1, 1, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_NEAR(rhs[0], 1.5, 1.e-12);
+  EXPECT_NEAR(rhs[1], -0.5, 1.e-12);
+}
 
 TEST(LeastSquaresKkt, DirectlySolvesIllConditionedSquareSystem) {
   double matrix[] = {1., 1., 1., 1. + 1.e-10};
@@ -341,6 +492,176 @@ TEST_P(DeviceTest, equilibrate_uv) {
   EXPECT_EQ(torch::allclose(intEng, intEng2, 1e-4, 1e-4), true);
 }
 
+TEST_P(DeviceTest, equilibrate_uv_depleted_cloud) {
+  if (dtype != torch::kFloat64 || device.type() == torch::kMPS) {
+    GTEST_SKIP();
+  }
+
+  auto config = YAML::Load(R"(
+reference-state: {Tref: 0.0, Pref: 1.e5}
+species:
+  - {name: dry, composition: {H: 1.5, He: 0.15}, cv_R: 2.5}
+  - {name: CH4, composition: {C: 1, H: 4}, cv_R: 3.5, u0_R: 0.0}
+  - {name: H2S, composition: {H: 2, S: 1}, cv_R: 3.5, u0_R: 0.0}
+  - {name: CH4(s), composition: {C: 1, H: 4}, cv_R: 4.5, u0_R: -980.0}
+  - {name: 'CH4(s,p)', composition: {C: 1, H: 4}, cv_R: 4.5, u0_R: -980.0}
+  - {name: H2S(s), composition: {H: 2, S: 1}, cv_R: 4.5, u0_R: -2250.0}
+  - {name: 'H2S(s,p)', composition: {H: 2, S: 1}, cv_R: 4.5, u0_R: -2250.0}
+reactions:
+  - {equation: 'CH4 => CH4(s)', type: nucleation, rate-constant: {formula: ch4_ideal}}
+  - {equation: 'CH4(s) => CH4(s,p)', type: coagulation, rate-constant: {A: 0.0001, b: 0.0, Ea_R: 0.0}}
+  - {equation: 'CH4(s,p) => CH4', type: evaporation, rate-constant: {formula: ch4_ideal, diff_c: 2.e-5, diff_T: 0.0, diff_P: 0.0, vm: 1.6e-5, diameter: 0.001}}
+  - {equation: 'H2S => H2S(s)', type: nucleation, rate-constant: {formula: h2s_ideal}}
+  - {equation: 'H2S(s) => H2S(s,p)', type: coagulation, rate-constant: {A: 0.0001, b: 0.0, Ea_R: 0.0}}
+  - {equation: 'H2S(s,p) => H2S', type: evaporation, rate-constant: {formula: h2s_ideal, diff_c: 2.e-5, diff_T: 0.0, diff_P: 0.0, vm: 3.4e-5, diameter: 0.001}}
+dynamics:
+  equation-of-state: {max-iter: 30, ftol: 1.e-6}
+)");
+  init_species_from_yaml(config);
+  auto op_thermo = ThermoOptionsImpl::from_yaml(config);
+  ThermoY thermo_y(op_thermo);
+  thermo_y->to(device, dtype);
+
+  auto tensor_options = torch::device(device).dtype(dtype);
+  auto rho = torch::tensor({0.6120118390199387}, tensor_options);
+  auto intEng = torch::tensor({434819.1169266227}, tensor_options);
+  auto yfrac = torch::tensor({{0.1250846769992131},
+                              {1.5203920607688577e-5},
+                              {0.0006193545911286463},
+                              {0.000688122185010699},
+                              {1.884825971316318e-7},
+                              {1.5557173919300405e-7}},
+                             tensor_options);
+  auto initial = yfrac.clone();
+  auto diag = torch::zeros({1, 1}, tensor_options);
+
+  thermo_y->forward(rho, intEng, yfrac, false, diag);
+
+  EXPECT_LE(diag.item<double>(), op_thermo->max_iter());
+  EXPECT_TRUE(torch::all(yfrac >= 0.).item<bool>());
+  EXPECT_DOUBLE_EQ(yfrac[2][0].item<double>(), 0.);
+  EXPECT_NEAR(
+      (yfrac[0] + yfrac[2] + yfrac[3] - initial[0] - initial[2] - initial[3])
+          .item<double>(),
+      0., 1.e-12);
+  EXPECT_NEAR(
+      (yfrac[1] + yfrac[4] + yfrac[5] - initial[1] - initial[4] - initial[5])
+          .item<double>(),
+      0., 1.e-12);
+  auto ivol = thermo_y->compute("DY->V", {rho, yfrac});
+  auto temp = thermo_y->compute("VU->T", {ivol, intEng});
+  auto intEng_after = thermo_y->compute("VT->U", {ivol, temp});
+  EXPECT_TRUE(torch::allclose(intEng, intEng_after, 1.e-12, 1.e-8));
+
+  op_thermo->max_iter(1);
+  auto final_diag = torch::zeros({1, 1}, tensor_options);
+  testing::internal::CaptureStdout();
+  testing::internal::CaptureStderr();
+  auto final_gain = thermo_y->forward(rho, intEng, yfrac, false, final_diag);
+  auto output = testing::internal::GetCapturedStdout() +
+                testing::internal::GetCapturedStderr();
+  EXPECT_EQ(output.find("equilibrate_uv did not converge"), std::string::npos);
+  EXPECT_DOUBLE_EQ(final_diag.item<double>(), 1.);
+  EXPECT_TRUE(torch::all(final_gain == 0.).item<bool>());
+
+  op_thermo->max_iter(30);
+  auto trace_conc = torch::tensor(
+      {325.96348426613355, 8.1247303078597515, std::exp(-6.4175548244587679),
+       1.e-20, 6.7784957553955697e-5, 0., 4.1234878195558463e-6},
+      tensor_options);
+  auto trace_mass = trace_conc * torch::tensor(species_weights, tensor_options);
+  auto trace_rho = trace_mass.sum().reshape({1});
+  auto trace_yfrac = (trace_mass.slice(0, 1) / trace_rho).reshape({6, 1});
+  auto trace_ivol = thermo_y->compute("DY->V", {trace_rho, trace_yfrac});
+  auto trace_temp = torch::tensor({86.95274487484208}, tensor_options);
+  auto trace_intEng = thermo_y->compute("VT->U", {trace_ivol, trace_temp});
+  auto trace_diag = torch::zeros({1, 1}, tensor_options);
+
+  thermo_y->forward(trace_rho, trace_intEng, trace_yfrac, false, trace_diag);
+
+  EXPECT_DOUBLE_EQ(trace_diag.item<double>(), 1.);
+  EXPECT_DOUBLE_EQ(trace_yfrac[2][0].item<double>(), 0.);
+
+  op_thermo->uv_solver("partition");
+  EXPECT_TRUE(thermo_y->uv_partitionable);
+  auto cold_conc =
+      torch::tensor({0.2493891969, 6.330521766e-26, 0., 1.9957527307e-16,
+                     1.224047439e-16, 7.291174753e-34, 4.651872658e-34},
+                    tensor_options);
+  auto cold_mass = cold_conc * torch::tensor(species_weights, tensor_options);
+  auto cold_rho = cold_mass.sum().reshape({1});
+  auto cold_yfrac = (cold_mass.slice(0, 1) / cold_rho).reshape({6, 1});
+  auto cold_initial = cold_yfrac.clone();
+  auto cold_ivol = thermo_y->compute("DY->V", {cold_rho, cold_yfrac});
+  auto cold_temp = torch::tensor({12.597949986163009}, tensor_options);
+  auto cold_intEng = thermo_y->compute("VT->U", {cold_ivol, cold_temp});
+  auto cold_diag = torch::zeros({1, 1}, tensor_options);
+
+  thermo_y->forward(cold_rho, cold_intEng, cold_yfrac, false, cold_diag);
+
+  EXPECT_LT(cold_diag.item<double>(), op_thermo->max_iter());
+  EXPECT_GT(cold_yfrac[1][0].item<double>(), 0.);
+  EXPECT_TRUE(torch::all(cold_yfrac >= 0.).item<bool>());
+  auto cold_ivol_after = thermo_y->compute("DY->V", {cold_rho, cold_yfrac});
+  auto cold_conc_after = (cold_ivol_after * thermo_y->inv_mu).flatten();
+  auto cold_temp_after =
+      thermo_y->compute("VU->T", {cold_ivol_after, cold_intEng});
+  auto cold_energy_after =
+      thermo_y->compute("VT->U", {cold_ivol_after, cold_temp_after});
+  EXPECT_TRUE(torch::allclose(cold_intEng, cold_energy_after, 1.e-12, 1.e-8));
+  EXPECT_NEAR(cold_temp_after.item<double>(), cold_temp.item<double>(), 1.e-6);
+  EXPECT_DOUBLE_EQ((cold_conc_after[2] + cold_conc_after[5]).item<double>(),
+                   (cold_conc[2] + cold_conc[5]).item<double>());
+  double adjusted_temperature = cold_temp_after.item<double>();
+  double log_saturation = h2s_ideal(adjusted_temperature) -
+                          std::log(constants::Rgas * adjusted_temperature);
+  EXPECT_NEAR(std::log(cold_conc_after[2].item<double>()), log_saturation,
+              1.e-6);
+
+  op_thermo->max_iter(1);
+  auto failed_yfrac = initial.clone();
+  auto failed_diag = torch::full({1, 1}, 7., tensor_options);
+  thermo_y->nactive.fill_(2);
+  auto failed_gain =
+      thermo_y->forward(rho, intEng, failed_yfrac, true, failed_diag);
+  EXPECT_TRUE(torch::all(failed_gain == 0.).item<bool>());
+  EXPECT_DOUBLE_EQ(failed_diag.item<double>(), -1.);
+  EXPECT_EQ(thermo_y->nactive.item<int>(), 0);
+  EXPECT_TRUE(torch::allclose(failed_yfrac, initial, 1.e-12, 0.));
+  op_thermo->max_iter(30);
+
+  op_thermo->uv_solver("auto");
+  auto cold_auto = cold_initial.clone();
+  auto auto_diag = torch::zeros({1, 1}, tensor_options);
+  thermo_y->forward(cold_rho, cold_intEng, cold_auto, false, auto_diag);
+  EXPECT_LT(auto_diag.item<double>(), op_thermo->max_iter());
+  EXPECT_TRUE(torch::allclose(cold_auto, cold_yfrac, 1.e-12, 0.));
+
+  op_thermo->uv_solver("kkt");
+  auto kkt_diag = torch::zeros({1, 1}, tensor_options);
+  thermo_y->forward(trace_rho, trace_intEng, trace_yfrac, false, kkt_diag);
+  EXPECT_LT(kkt_diag.item<double>(), op_thermo->max_iter());
+
+  init_species_from_yaml("jupiter.yaml");
+}
+
+TEST_P(DeviceTest, equilibrate_uv_partition_rejects_coupled_reactions) {
+  if (device.type() == torch::kMPS) {
+    GTEST_SKIP() << "equilibrate_uv has no MPS backend.";
+  }
+
+  auto options = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  options->uv_solver("partition");
+  ThermoY thermo_y(options);
+  EXPECT_FALSE(thermo_y->uv_partitionable);
+  auto density = torch::ones({1}, torch::device(device).dtype(dtype));
+  auto energy = torch::ones({1}, torch::device(device).dtype(dtype));
+  auto fractions =
+      torch::zeros({static_cast<int>(options->species().size()) - 1, 1},
+                   torch::device(device).dtype(dtype));
+  EXPECT_THROW(thermo_y->forward(density, energy, fractions), c10::Error);
+}
+
 TEST_P(DeviceTest, equilibrate_uv_large) {
   if (device.type() == torch::kMPS) {
     GTEST_SKIP() << "equilibrate_uv has no MPS backend.";
@@ -453,7 +774,7 @@ void test_ludcmp_skip() {
   int indx[3];
   int skip_row[3] = {0, 1, 0};
 
-  ludcmp(array, indx, 3, nullptr, skip_row);
+  ludcmp(array, indx, 3, skip_row);
   lubksb(rhs, array, indx, 3, skip_row);
 
   printf("rhs = \n");

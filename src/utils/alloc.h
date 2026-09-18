@@ -3,9 +3,10 @@
 // C/C++
 #include <cstddef>
 #include <cstdint>
-#include <type_traits>
+#include <cstdlib>
 
 // base
+#include <cdisort213/pmem.h>
 #include <configure.h>
 
 namespace kintera {
@@ -15,20 +16,75 @@ DISPATCH_MACRO inline uintptr_t align_up(uintptr_t p, size_t a) {
   return (p + (a - 1)) & ~(a - 1);
 }
 
-template <typename U>
-DISPATCH_MACRO inline U* alloc_from(char*& cursor, size_t count) {
-  uintptr_t p = reinterpret_cast<uintptr_t>(cursor);
-  p = align_up(p, alignof(U));
-  U* out = reinterpret_cast<U*>(p);
-  cursor = reinterpret_cast<char*>(p + count * sizeof(U));
-  return out;
+enum class PoolBackend { Shared, DisortGlobal, HostBump };
+
+template <PoolBackend Backend = PoolBackend::Shared>
+DISPATCH_MACRO inline size_t pool_mark(char* work) {
+  if constexpr (Backend == PoolBackend::HostBump)
+    return reinterpret_cast<uintptr_t>(work);
+#ifdef __CUDA_ARCH__
+  if constexpr (Backend == PoolBackend::Shared) {
+    return reinterpret_cast<uintptr_t>(work);
+  } else {
+    return pmem::pool_state(pmem::slice_base())->offset;
+  }
+#else
+  return 0;
+#endif
+}
+
+template <PoolBackend Backend = PoolBackend::Shared>
+DISPATCH_MACRO inline void pool_rewind(char*& work, size_t mark) {
+  if constexpr (Backend == PoolBackend::HostBump)
+    work = reinterpret_cast<char*>(mark);
+#ifdef __CUDA_ARCH__
+  if constexpr (Backend == PoolBackend::Shared) {
+    work = reinterpret_cast<char*>(mark);
+  } else {
+    pmem::pool_state(pmem::slice_base())->offset = static_cast<uint32_t>(mark);
+  }
+#endif
+}
+
+template <PoolBackend Backend = PoolBackend::Shared>
+DISPATCH_MACRO inline void* pmalloc(char*& work, size_t bytes) {
+  if constexpr (Backend == PoolBackend::HostBump) {
+    void* result = work;
+    work += align_up(bytes == 0 ? 8 : bytes, 8);
+    return result;
+  }
+#ifdef __CUDA_ARCH__
+  if constexpr (Backend == PoolBackend::Shared) {
+    void* result = work;
+    work += align_up(bytes == 0 ? 8 : bytes, 8);
+    return result;
+  }
+#endif
+  return ::pmalloc(bytes);
+}
+
+template <PoolBackend Backend = PoolBackend::Shared>
+DISPATCH_MACRO inline void pfree(void* ptr) {
+  if constexpr (Backend == PoolBackend::HostBump) return;
+#ifdef __CUDA_ARCH__
+  if constexpr (Backend == PoolBackend::Shared) return;
+#endif
+  ::pfree(ptr);
+}
+
+inline size_t pool_allocation_bytes(size_t bytes) {
+  return static_cast<size_t>(align_up(bytes == 0 ? 8 : bytes, 8));
+}
+
+inline size_t pool_workspace_bytes(size_t bytes) {
+  return pool_allocation_bytes(bytes);
 }
 
 template <typename T>
 size_t ludcmp_space(int n) {
   size_t bytes = 0;
-  auto bump = [&](size_t align, size_t nbytes) {
-    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  auto bump = [&](size_t, size_t nbytes) {
+    bytes += pool_allocation_bytes(nbytes);
   };
   bump(alignof(T), n * sizeof(T));  // vv
   return bytes;
@@ -37,8 +93,8 @@ size_t ludcmp_space(int n) {
 template <typename T>
 size_t psolve_space(int n) {
   size_t bytes = 0;
-  auto bump = [&](size_t align, size_t nbytes) {
-    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  auto bump = [&](size_t, size_t nbytes) {
+    bytes += pool_allocation_bytes(nbytes);
   };
 
   bump(alignof(T), n * n * sizeof(T));  // ATA
@@ -55,12 +111,12 @@ size_t leastsq_kkt_space(int n2, int n3) {
   int size = n2 + n3;
 
   size_t bytes = 0;
-  auto bump = [&](size_t align, size_t nbytes) {
-    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  auto bump = [&](size_t, size_t nbytes) {
+    bytes += pool_allocation_bytes(nbytes);
   };
   bump(alignof(T), size * size * sizeof(T));  // aug
   bump(alignof(T), n2 * n2 * sizeof(T));      // ata
-  bump(alignof(T), n2 * sizeof(T));           // atb
+  bump(alignof(T), n2 * sizeof(T));           // column_norm
   bump(alignof(T), size * sizeof(T));         // rhs
   bump(alignof(T), n3 * sizeof(T));           // eval
   bump(alignof(int), n3 * sizeof(int));       // ct_indx
@@ -72,8 +128,8 @@ size_t leastsq_kkt_space(int n2, int n3) {
 template <typename T>
 size_t equilibrate_tp_space(int nspecies, int nreaction) {
   size_t bytes = 0;
-  auto bump = [&](size_t align, size_t nbytes) {
-    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  auto bump = [&](size_t, size_t nbytes) {
+    bytes += pool_allocation_bytes(nbytes);
   };
   bump(alignof(T), nreaction * sizeof(T));              // logsvp
   bump(alignof(T), nreaction * nspecies * sizeof(T));   // weight
@@ -86,10 +142,16 @@ size_t equilibrate_tp_space(int nspecies, int nreaction) {
 }
 
 template <typename T>
+size_t equilibrate_uv_partition_space(int nspecies, int nreaction) {
+  return 2 * pool_allocation_bytes(nspecies * sizeof(T)) +
+         pool_allocation_bytes(nreaction * sizeof(T));
+}
+
+template <typename T>
 size_t equilibrate_uv_space(int nspecies, int nreaction) {
   size_t bytes = 0;
-  auto bump = [&](size_t align, size_t nbytes) {
-    bytes = static_cast<size_t>(align_up(bytes, align)) + nbytes;
+  auto bump = [&](size_t, size_t nbytes) {
+    bytes += pool_allocation_bytes(nbytes);
   };
   bump(alignof(T), nspecies * sizeof(T));               // intEng
   bump(alignof(T), nspecies * sizeof(T));               // intEng_ddT

@@ -20,6 +20,23 @@
 
 using namespace kintera;
 
+TEST(EvolveImplicit, BatchedCpuWorkspaceAndSingularFallback) {
+  auto options =
+      torch::TensorOptions().dtype(torch::kFloat64).device(torch::kCPU);
+  auto rate = torch::ones({128, 2}, options);
+  auto stoich = torch::eye(2, options);
+  auto jacobian = torch::zeros({128, 2, 2}, options);
+  auto expected = rate.clone();
+
+  for (int index : {0, 17, 127}) {
+    jacobian.select(0, index).select(0, 1).select(0, 1).fill_(1.);
+    expected.select(0, index).select(0, 1).fill_(0.);
+  }
+
+  auto delta = evolve_implicit(rate, stoich, jacobian, 1.);
+  EXPECT_TRUE(torch::allclose(delta, expected, 1.e-12, 1.e-12));
+}
+
 TEST_P(DeviceTest, kinetics) {
   auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_kinet) << std::endl;

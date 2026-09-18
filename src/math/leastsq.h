@@ -23,11 +23,13 @@ namespace kintera {
  * \param[in] n2 number of columns in matrix
  */
 template <typename T>
-DISPATCH_MACRO void leastsq(T* b, T const* a, int n1, int n2) {
-  T* c = (T*)malloc(n1 * sizeof(T));
+DISPATCH_MACRO void leastsq(T* b, T const* a, int n1, int n2,
+                            char* work = nullptr) {
+  size_t mark = pool_mark(work);
+  T* c = (T*)pmalloc(work, n1 * sizeof(T));
   memcpy(c, b, n1 * sizeof(T));
 
-  T* y = (T*)malloc(n2 * n2 * sizeof(T));
+  T* y = (T*)pmalloc(work, n2 * n2 * sizeof(T));
 
   for (int i = 0; i < n2; ++i) {
     // calculate A^T.A
@@ -43,13 +45,14 @@ DISPATCH_MACRO void leastsq(T* b, T const* a, int n1, int n2) {
   }
 
   // calculate (A^T.A)^{-1}.(A^T.b)
-  int* indx = (int*)malloc(n2 * sizeof(int));
-  ludcmp(y, indx, n2);
+  int* indx = (int*)pmalloc(work, n2 * sizeof(int));
+  ludcmp(y, indx, n2, nullptr, T(0), work);
   lubksb(b, y, indx, n2);
 
-  free(c);
-  free(indx);
-  free(y);
+  pfree(c);
+  pfree(indx);
+  pfree(y);
+  pool_rewind(work, mark);
 }
 
 }  // namespace kintera

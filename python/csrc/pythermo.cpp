@@ -54,7 +54,8 @@ void bind_thermo(py::module& m) {
       .ADD_OPTION(kintera::NucleationOptions, kintera::ThermoOptionsImpl,
                   nucleation)
       .ADD_OPTION(int, kintera::ThermoOptionsImpl, max_iter)
-      .ADD_OPTION(double, kintera::ThermoOptionsImpl, ftol);
+      .ADD_OPTION(double, kintera::ThermoOptionsImpl, ftol)
+      .ADD_OPTION(std::string, kintera::ThermoOptionsImpl, uv_solver);
 
   ADD_KINTERA_MODULE(ThermoY, ThermoOptions, &kintera::ThermoYImpl::forward,
                      py::arg("rho"), py::arg("intEng"), py::arg("yfrac"),

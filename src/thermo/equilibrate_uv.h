@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 // base
 #include <configure.h>
@@ -16,6 +17,220 @@
 #include <kintera/utils/user_funcs.hpp>
 
 namespace kintera {
+
+template <typename T>
+DISPATCH_MACRO bool is_depleted_cloud(T amount, T reference) {
+  return reference > 0. && amount >= 0. &&
+         amount <= 8. * std::numeric_limits<T>::epsilon() * reference;
+}
+
+template <typename T>
+DISPATCH_MACRO bool partition_uv_state(
+    T temperature, T* conc, T const* baseline, T const* totals, T* molar_energy,
+    T const* stoich, int nspecies, int nreaction, T const* intEng_offset,
+    T const* cv_const, user_func1 const* logsvp_func,
+    user_func1 const* logsvp_func_ddT, user_func2 const* intEng_R_extra,
+    user_func2 const* cv_R_extra, T* energy, T* derivative) {
+  memcpy(conc, baseline, nspecies * sizeof(T));
+  for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
+    int vapor_index = -1;
+    int cloud_index = -1;
+    T reactant_coefficient = 0.;
+    T product_coefficient = 0.;
+    for (int species_index = 0; species_index < nspecies; ++species_index) {
+      T coefficient = stoich[species_index * nreaction + reaction_index];
+      if (coefficient < 0.) {
+        vapor_index = species_index;
+        reactant_coefficient = -coefficient;
+      } else if (coefficient > 0.) {
+        cloud_index = species_index;
+        product_coefficient = coefficient;
+      }
+    }
+    T total = totals[reaction_index];
+    if (total == 0.) {
+      conc[vapor_index] = 0.;
+      conc[cloud_index] = 0.;
+      continue;
+    }
+    T log_saturation =
+        logsvp_func[reaction_index](temperature) / reactant_coefficient -
+        log(constants::Rgas * temperature);
+    if (!std::isfinite(log_saturation)) return false;
+    T vapor = log_saturation >= log(total) ? total : exp(log_saturation);
+    if (vapor > total) vapor = total;
+    conc[vapor_index] = vapor;
+    conc[cloud_index] =
+        (total - vapor) * product_coefficient / reactant_coefficient;
+  }
+
+  *energy = 0.;
+  *derivative = 0.;
+  for (int species_index = 0; species_index < nspecies; ++species_index) {
+    molar_energy[species_index] =
+        intEng_offset[species_index] + cv_const[species_index] * temperature;
+    T molar_cv = cv_const[species_index];
+    if (intEng_R_extra[species_index]) {
+      molar_energy[species_index] +=
+          intEng_R_extra[species_index](temperature, conc[species_index]) *
+          constants::Rgas;
+    }
+    if (cv_R_extra[species_index]) {
+      molar_cv += cv_R_extra[species_index](temperature, conc[species_index]) *
+                  constants::Rgas;
+    }
+    *energy += molar_energy[species_index] * conc[species_index];
+    *derivative += molar_cv * conc[species_index];
+  }
+
+  for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
+    int vapor_index = -1;
+    int cloud_index = -1;
+    T reactant_coefficient = 0.;
+    T product_coefficient = 0.;
+    for (int species_index = 0; species_index < nspecies; ++species_index) {
+      T coefficient = stoich[species_index * nreaction + reaction_index];
+      if (coefficient < 0.) {
+        vapor_index = species_index;
+        reactant_coefficient = -coefficient;
+      } else if (coefficient > 0.) {
+        cloud_index = species_index;
+        product_coefficient = coefficient;
+      }
+    }
+    if (conc[vapor_index] >= totals[reaction_index]) continue;
+    T vapor_derivative =
+        conc[vapor_index] *
+        (logsvp_func_ddT[reaction_index](temperature) / reactant_coefficient -
+         1. / temperature);
+    *derivative += vapor_derivative *
+                   (molar_energy[vapor_index] - product_coefficient /
+                                                    reactant_coefficient *
+                                                    molar_energy[cloud_index]);
+  }
+  return std::isfinite(*energy) && std::isfinite(*derivative);
+}
+
+template <typename T>
+DISPATCH_MACRO int equilibrate_uv_partition(
+    T* gain, T* diag, T* temp, T* conc, T h0, T const* stoich, int nspecies,
+    int nreaction, T const* intEng_offset, T const* cv_const,
+    user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
+    user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
+    int* max_iter, int* nactive, char* work) {
+  size_t mark = pool_mark(work);
+  T* baseline = (T*)pmalloc(work, nspecies * sizeof(T));
+  T* molar_energy = (T*)pmalloc(work, nspecies * sizeof(T));
+  T* totals = (T*)pmalloc(work, nreaction * sizeof(T));
+  memcpy(baseline, conc, nspecies * sizeof(T));
+  T original_temperature = *temp;
+  bool valid = true;
+
+  for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
+    int vapor_index = -1;
+    int cloud_index = -1;
+    T reactant_coefficient = 0.;
+    T product_coefficient = 0.;
+    for (int species_index = 0; species_index < nspecies; ++species_index) {
+      T coefficient = stoich[species_index * nreaction + reaction_index];
+      if (coefficient < 0.) {
+        vapor_index = species_index;
+        reactant_coefficient = -coefficient;
+      } else if (coefficient > 0.) {
+        cloud_index = species_index;
+        product_coefficient = coefficient;
+      }
+    }
+    totals[reaction_index] = baseline[vapor_index] + reactant_coefficient /
+                                                         product_coefficient *
+                                                         baseline[cloud_index];
+    if (!std::isfinite(totals[reaction_index]) || totals[reaction_index] < 0.)
+      valid = false;
+  }
+
+  T energy = 0.;
+  T derivative = 0.;
+  T residual = 0.;
+  T energy_scale = fabs(h0) > 1. ? fabs(h0) : 1.;
+  T tolerance = 64. * std::numeric_limits<T>::epsilon() * energy_scale;
+  int iterations = 1;
+  if (valid) {
+    valid = partition_uv_state(
+        *temp, conc, baseline, totals, molar_energy, stoich, nspecies,
+        nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
+        intEng_R_extra, cv_R_extra, &energy, &derivative);
+    residual = energy - h0;
+  }
+
+  if (valid && fabs(residual) > tolerance) {
+    T lower = *temp;
+    T upper = *temp;
+    T bracket_energy = energy;
+    T bracket_derivative = derivative;
+    bool bracketed = false;
+    for (int bracket_step = 0; bracket_step < 64; ++bracket_step) {
+      T candidate = residual > 0. ? lower * 0.5 : upper * 2.;
+      if (!(candidate > 0.) || !std::isfinite(candidate)) break;
+      if (!partition_uv_state(
+              candidate, conc, baseline, totals, molar_energy, stoich, nspecies,
+              nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
+              intEng_R_extra, cv_R_extra, &bracket_energy, &bracket_derivative))
+        break;
+      if (residual > 0.) {
+        lower = candidate;
+        bracketed = bracket_energy <= h0;
+      } else {
+        upper = candidate;
+        bracketed = bracket_energy >= h0;
+      }
+      if (bracketed) break;
+    }
+    valid = bracketed;
+
+    T current = original_temperature;
+    while (valid && fabs(residual) > tolerance && iterations < *max_iter) {
+      T candidate = current - residual / derivative;
+      if (!std::isfinite(candidate) || candidate <= lower ||
+          candidate >= upper) {
+        candidate = lower + 0.5 * (upper - lower);
+      }
+      if (candidate == current) candidate = lower + 0.5 * (upper - lower);
+      if (candidate == current) break;
+      valid = partition_uv_state(
+          candidate, conc, baseline, totals, molar_energy, stoich, nspecies,
+          nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
+          intEng_R_extra, cv_R_extra, &energy, &derivative);
+      if (!valid) break;
+      current = candidate;
+      residual = energy - h0;
+      if (residual < 0.)
+        lower = current;
+      else
+        upper = current;
+      ++iterations;
+    }
+    *temp = current;
+  }
+
+  int status = valid && fabs(residual) <= tolerance ? 0 : -1;
+  if (status == 0) {
+    memset(gain, 0, nreaction * nreaction * sizeof(T));
+    diag[0] = iterations;
+    *nactive = 0;
+    *max_iter = iterations;
+  } else {
+    memcpy(conc, baseline, nspecies * sizeof(T));
+    *temp = original_temperature;
+    memset(gain, 0, nreaction * nreaction * sizeof(T));
+    diag[0] = -1.;
+    *nactive = 0;
+  }
+  pfree(baseline);
+  pfree(molar_energy);
+  pfree(totals);
+  pool_rewind(work, mark);
+  return status;
+}
 
 /*!
  * \brief Calculate thermodynamic equilibrium at fixed volume and internal
@@ -61,7 +276,7 @@ DISPATCH_MACRO int equilibrate_uv(
     user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
     user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
     float logsvp_eps, int* max_iter, int* reaction_set, int* nactive,
-    char* work = nullptr) {
+    int uv_solver = 0, char* work = nullptr) {
   // check positive temperature
   if (*temp <= 0) {
     printf("Error: Non-positive temperature = %g.\n", *temp);
@@ -93,41 +308,31 @@ DISPATCH_MACRO int equilibrate_uv(
     }
   }
 
+  if (uv_solver != 0) {
+    int partition_status = equilibrate_uv_partition(
+        gain, diag, temp, conc, h0, stoich, nspecies, nreaction, intEng_offset,
+        cv_const, logsvp_func, logsvp_func_ddT, intEng_R_extra, cv_R_extra,
+        max_iter, nactive, work);
+    if (partition_status == 0) return 0;
+    if (uv_solver == 2) {
+      printf("[Warning] equilibrate_uv partition did not converge.\n");
+      return 2;
+    }
+  }
+
   T *intEng, *intEng_ddT, *logsvp, *logsvp_ddT, *weight, *rhs;
   T *stoich_active, *conc0;
   T* gain_cpy;
-
-  if (work == nullptr) {
-    intEng = (T*)malloc(nspecies * sizeof(T));
-    intEng_ddT = (T*)malloc(nspecies * sizeof(T));
-    logsvp = (T*)malloc(nreaction * sizeof(T));
-    logsvp_ddT = (T*)malloc(nreaction * sizeof(T));
-
-    // weight matrix
-    weight = (T*)malloc(nreaction * nspecies * sizeof(T));
-
-    // right-hand-side vector
-    rhs = (T*)malloc(nreaction * sizeof(T));
-
-    // active stoichiometric matrix
-    stoich_active = (T*)malloc(nspecies * nreaction * sizeof(T));
-
-    // concentration copy
-    conc0 = (T*)malloc(nspecies * sizeof(T));
-
-    // gain matrix copy
-    gain_cpy = (T*)malloc(nreaction * nreaction * sizeof(T));
-  } else {
-    intEng = alloc_from<T>(work, nspecies);
-    intEng_ddT = alloc_from<T>(work, nspecies);
-    logsvp = alloc_from<T>(work, nreaction);
-    logsvp_ddT = alloc_from<T>(work, nreaction);
-    weight = alloc_from<T>(work, nreaction * nspecies);
-    rhs = alloc_from<T>(work, nreaction);
-    stoich_active = alloc_from<T>(work, nspecies * nreaction);
-    conc0 = alloc_from<T>(work, nspecies);
-    gain_cpy = alloc_from<T>(work, nreaction * nreaction);
-  }
+  size_t mark = pool_mark(work);
+  intEng = (T*)pmalloc(work, nspecies * sizeof(T));
+  intEng_ddT = (T*)pmalloc(work, nspecies * sizeof(T));
+  logsvp = (T*)pmalloc(work, nreaction * sizeof(T));
+  logsvp_ddT = (T*)pmalloc(work, nreaction * sizeof(T));
+  weight = (T*)pmalloc(work, nreaction * nspecies * sizeof(T));
+  rhs = (T*)pmalloc(work, nreaction * sizeof(T));
+  stoich_active = (T*)pmalloc(work, nspecies * nreaction * sizeof(T));
+  conc0 = (T*)pmalloc(work, nspecies * sizeof(T));
+  gain_cpy = (T*)pmalloc(work, nreaction * nreaction * sizeof(T));
 
   memset(weight, 0, nreaction * nspecies * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
@@ -146,14 +351,10 @@ DISPATCH_MACRO int equilibrate_uv(
 
   int iter = 0;
   int err_code = 0;
-  while (iter++ < *max_iter) {
-    /*printf("iteration %d: T = %g\n", iter, *temp);
-    // print conc
-    printf("concentrations: ");
-    for (int i = 0; i < nspecies; i++) {
-      printf("%g ", conc[i]);
-    }
-    printf("\n");*/
+  bool converged = false;
+  *nactive = 0;
+  while (iter < *max_iter) {
+    ++iter;
 
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
@@ -180,10 +381,13 @@ DISPATCH_MACRO int equilibrate_uv(
       int j = reaction_set[first];
       T log_conc_sum = 0.0;
       T prod = 1.0;
+      T limiting_reactant = std::numeric_limits<T>::max();
 
       // active set condition variables
       for (int i = 0; i < nspecies; i++) {
         if (stoich[i * nreaction + j] < 0) {  // reactant
+          T available = conc[i] / (-stoich[i * nreaction + j]);
+          if (available < limiting_reactant) limiting_reactant = available;
           if (conc[i] == 0.) {
             log_conc_sum = -99;  // force to be in active set
           } else {
@@ -191,6 +395,18 @@ DISPATCH_MACRO int equilibrate_uv(
           }
         } else if (stoich[i * nreaction + j] > 0) {  // product
           prod *= conc[i];
+        }
+      }
+
+      if (log_conc_sum < logsvp[j] - logsvp_eps && prod > 0. &&
+          limiting_reactant < std::numeric_limits<T>::max()) {
+        for (int i = ngas; i < nspecies; ++i) {
+          T coefficient = stoich[i * nreaction + j];
+          if (coefficient > 0. && conc[i] > 0. &&
+              is_depleted_cloud(conc[i] / coefficient, limiting_reactant)) {
+            conc[i] = 0.;
+            prod = 0.;
+          }
         }
       }
 
@@ -221,11 +437,12 @@ DISPATCH_MACRO int equilibrate_uv(
 
     if (first == 0) {
       // all reactions are in equilibrium, no need to adjust saturation
+      converged = true;
       break;
     }
 
     // form active stoichiometric and constraint matrix
-    (*nactive) = first;
+    *nactive = first;
     for (int i = 0; i < nspecies; i++)
       for (int k = 0; k < (*nactive); k++) {
         int j = reaction_set[k];
@@ -243,7 +460,7 @@ DISPATCH_MACRO int equilibrate_uv(
     // solve constrained optimization problem (KKT)
     int max_kkt_iter = *max_iter;
     err_code = leastsq_kkt(rhs, gain, stoich_active, conc, *nactive, *nactive,
-                           nspecies, 0, &max_kkt_iter, -1.e-10, work);
+                           nspecies, 0, &max_kkt_iter, 0., work);
     if (err_code != 0) break;
 
     // rate -> conc
@@ -262,6 +479,16 @@ DISPATCH_MACRO int equilibrate_uv(
       if (good) break;
       lambda *= 0.99;
       memcpy(conc, conc0, nspecies * sizeof(T));
+    }
+
+    for (int i = ngas; i < nspecies; ++i) {
+      if (!is_depleted_cloud(conc[i], conc0[i])) continue;
+      for (int k = 0; k < (*nactive); ++k) {
+        if (stoich_active[i * (*nactive) + k] < 0.) {
+          conc[i] = 0.;
+          break;
+        }
+      }
     }
 
     // temperature iteration
@@ -296,33 +523,32 @@ DISPATCH_MACRO int equilibrate_uv(
   }
 
   // restore the reaction order of gain
-  memcpy(gain_cpy, gain, nreaction * nreaction * sizeof(T));
+  if (*nactive > 0) memcpy(gain_cpy, gain, (*nactive) * (*nactive) * sizeof(T));
   memset(gain, 0, nreaction * nreaction * sizeof(T));
 
   for (int i = 0; i < (*nactive); i++) {
-    for (int j = 0; j < nreaction; j++) {
+    for (int j = 0; j < (*nactive); j++) {
       int k = reaction_set[i];
       int l = reaction_set[j];
-      gain[k * nreaction + l] = gain_cpy[i * nreaction + j];
+      gain[k * nreaction + l] = gain_cpy[i * (*nactive) + j];
     }
   }
 
   // save number of iterations to diag
   diag[0] = iter;
 
-  if (work == nullptr) {
-    free(intEng);
-    free(intEng_ddT);
-    free(logsvp);
-    free(logsvp_ddT);
-    free(weight);
-    free(rhs);
-    free(stoich_active);
-    free(conc0);
-    free(gain_cpy);
-  }
+  pfree(intEng);
+  pfree(intEng_ddT);
+  pfree(logsvp);
+  pfree(logsvp_ddT);
+  pfree(weight);
+  pfree(rhs);
+  pfree(stoich_active);
+  pfree(conc0);
+  pfree(gain_cpy);
+  pool_rewind(work, mark);
 
-  if (iter >= *max_iter) {
+  if (!converged && iter >= *max_iter) {
     printf("[Warning] equilibrate_uv did not converge after %d iterations.\n",
            *max_iter);
     return 2 * 10 + err_code;  // failure to converge

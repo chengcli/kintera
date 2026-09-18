@@ -31,12 +31,12 @@ void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
 
-    int mem_size = equilibrate_tp_space<scalar_t>(nspecies, nreaction);
-    //std::cout << "mem size (bytes) = " << mem_size << std::endl;
-
+    size_t mem_size =
+        pool_workspace_bytes(equilibrate_tp_space<scalar_t>(nspecies, nreaction));
     native::gpu_mem_kernel<32, 7>(
-        iter, mem_size, [=] GPU_LAMBDA(
-          char* const data[7], unsigned int strides[7], char* work) {
+        iter, mem_size,
+        [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7],
+                       char* work) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto xfrac = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
@@ -60,7 +60,7 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
                              at::Tensor const& cv_const,
                              std::vector<std::string> const &logsvp_func,
                              std::vector<std::string> const &intEng_extra_func,
-                             double logsvp_eps, int max_iter) {
+                             double logsvp_eps, int max_iter, int uv_solver) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
   /////  (1) Get svp functions   /////
@@ -95,12 +95,14 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
     auto intEng_offset_ptr = intEng_offset.data_ptr<scalar_t>();
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
 
-    int mem_size = equilibrate_uv_space<scalar_t>(nspecies, nreaction);
-    //std::cout << "mem size (bytes) = " << mem_size << std::endl;
-
+    size_t mem_size = pool_workspace_bytes(
+        uv_solver == 2
+            ? equilibrate_uv_partition_space<scalar_t>(nspecies, nreaction)
+            : equilibrate_uv_space<scalar_t>(nspecies, nreaction));
     native::gpu_mem_kernel<32, 7>(
-        iter, mem_size, [=] GPU_LAMBDA(
-          char* const data[7], unsigned int strides[7], char* work) {
+        iter, mem_size,
+        [=] GPU_LAMBDA(char* const data[7], unsigned int strides[7],
+                       char* work) {
         auto gain = reinterpret_cast<scalar_t *>(data[0] + strides[0]);
         auto diag = reinterpret_cast<scalar_t *>(data[1] + strides[1]);
         auto conc = reinterpret_cast<scalar_t *>(data[2] + strides[2]);
@@ -115,7 +117,7 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
                        logsvp_ptrs, logsvp_ddT_ptrs,
                        intEng_extra_ptrs, intEng_extra_ddT_ptrs,
                        logsvp_eps, &max_iter_i, reaction_set,
-                       nactive, work);
+                       nactive, uv_solver, work);
       });
   });
 }

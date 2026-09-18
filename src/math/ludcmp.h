@@ -30,23 +30,16 @@ namespace kintera {
  * depending on whether the number of row interchanges was even or odd,
  *                              respectively.
  * \param[in] n                 size of matrix
- * \param[in] work              workspace if not null, otherwise allocated
- * internally
+ * \param[in] pivot_tolerance   minimum pivot relative to its row scale
+ * \return permutation sign, or 0 if the matrix is singular
  */
-template <typename T>
-DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
-                          int* skip_row = nullptr) {
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
+DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, int* skip_row = nullptr,
+                          T pivot_tolerance = 0., char* work = nullptr) {
   int i, imax, j, k, d;
   T big, dum, sum, temp;
-  T* vv;
-
-  if (work == nullptr) {
-    // allocate workspace
-    vv = (T*)malloc(n * sizeof(T));
-  } else {
-    // use user-provided workspace
-    vv = alloc_from<T>(work, n);
-  }
+  size_t mark = pool_mark<Backend>(work);
+  T* vv = (T*)pmalloc<Backend>(work, n * sizeof(T));
 
   for (i = 0; i < n; i++) indx[i] = i;
 
@@ -58,7 +51,8 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
       if ((temp = fabs(X(i, j))) > big) big = temp;
     if (big == 0.0) {
       // printf("Singular matrix in routine ludcmp\n");
-      if (work == nullptr) free(vv);
+      pfree<Backend>(vv);
+      pool_rewind<Backend>(work, mark);
       return 0;
     }
     vv[i] = 1.0 / big;
@@ -73,6 +67,7 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
     big = 0.0;
     imax = j;
     for (i = j; i < n; i++) {
+      if (skip_row && skip_row[i]) continue;
       sum = X(i, j);
       for (k = 0; k < j; k++) sum -= X(i, k) * X(k, j);
       X(i, j) = sum;
@@ -80,6 +75,11 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
         big = dum;
         imax = i;
       }
+    }
+    if (!(big > pivot_tolerance)) {
+      pfree<Backend>(vv);
+      pool_rewind<Backend>(work, mark);
+      return 0;
     }
     if (j != imax) {
       for (k = 0; k < n; k++) {
@@ -96,7 +96,8 @@ DISPATCH_MACRO int ludcmp(T* x, int* indx, int n, char* work = nullptr,
       for (i = j + 1; i < n; i++) X(i, j) *= dum;
     }
   }
-  if (work == nullptr) free(vv);
+  pfree<Backend>(vv);
+  pool_rewind<Backend>(work, mark);
   return d;
 }
 

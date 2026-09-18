@@ -43,7 +43,7 @@ DISPATCH_MACRO T equilibrium_max_error(T const* moles, T pres,
   return max_error;
 }
 
-template <typename T>
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int phase_equilibrate_tp(
     T* gain, T* diag, T* out_moles, T temp, T pres, T const* in_moles,
     T const* log_k, T const* stoich, int const* phase_ids, int nspecies,
@@ -63,26 +63,15 @@ DISPATCH_MACRO int phase_equilibrate_tp(
 
   T *phase_totals, *phase_stoich, *residual, *jac, *constraints;
   T *bounds, *step, *trial;
-  bool own_work = work == nullptr;
-  if (own_work) {
-    phase_totals = (T*)malloc(nphase * sizeof(T));
-    phase_stoich = (T*)malloc(nphase * nreaction * sizeof(T));
-    residual = (T*)malloc(nreaction * sizeof(T));
-    jac = (T*)malloc(nreaction * nreaction * sizeof(T));
-    constraints = (T*)malloc(nspecies * nreaction * sizeof(T));
-    bounds = (T*)malloc(nspecies * sizeof(T));
-    step = (T*)malloc(nreaction * sizeof(T));
-    trial = (T*)malloc(nspecies * sizeof(T));
-  } else {
-    phase_totals = alloc_from<T>(work, nphase);
-    phase_stoich = alloc_from<T>(work, nphase * nreaction);
-    residual = alloc_from<T>(work, nreaction);
-    jac = alloc_from<T>(work, nreaction * nreaction);
-    constraints = alloc_from<T>(work, nspecies * nreaction);
-    bounds = alloc_from<T>(work, nspecies);
-    step = alloc_from<T>(work, nreaction);
-    trial = alloc_from<T>(work, nspecies);
-  }
+  size_t mark = pool_mark<Backend>(work);
+  phase_totals = (T*)pmalloc<Backend>(work, nphase * sizeof(T));
+  phase_stoich = (T*)pmalloc<Backend>(work, nphase * nreaction * sizeof(T));
+  residual = (T*)pmalloc<Backend>(work, nreaction * sizeof(T));
+  jac = (T*)pmalloc<Backend>(work, nreaction * nreaction * sizeof(T));
+  constraints = (T*)pmalloc<Backend>(work, nspecies * nreaction * sizeof(T));
+  bounds = (T*)pmalloc<Backend>(work, nspecies * sizeof(T));
+  step = (T*)pmalloc<Backend>(work, nreaction * sizeof(T));
+  trial = (T*)pmalloc<Backend>(work, nspecies * sizeof(T));
 
   memcpy(out_moles, in_moles, nspecies * sizeof(T));
   memset(jac, 0, nreaction * nreaction * sizeof(T));
@@ -132,8 +121,9 @@ DISPATCH_MACRO int phase_equilibrate_tp(
     // Use the original square Jacobian whenever its direction can be made
     // feasible by line search.  KKT remains the active-bound fallback.
     int kkt_iter = max_iter;
-    int err = constrained_newton_step(step, jac, constraints, bounds, nreaction,
-                                      nspecies, &kkt_iter, 1.e-12, work);
+    int err = constrained_newton_step<T, Backend>(step, jac, constraints,
+                                                  bounds, nreaction, nspecies,
+                                                  &kkt_iter, 1.e-12, work);
     if (err != 0) {
       status = 3;
       break;
@@ -172,16 +162,15 @@ DISPATCH_MACRO int phase_equilibrate_tp(
   diag[1] = static_cast<T>(iter);
   diag[2] = exp(max_error) - 1.;
 
-  if (own_work) {
-    free(phase_totals);
-    free(phase_stoich);
-    free(residual);
-    free(jac);
-    free(constraints);
-    free(bounds);
-    free(step);
-    free(trial);
-  }
+  pfree<Backend>(phase_totals);
+  pfree<Backend>(phase_stoich);
+  pfree<Backend>(residual);
+  pfree<Backend>(jac);
+  pfree<Backend>(constraints);
+  pfree<Backend>(bounds);
+  pfree<Backend>(step);
+  pfree<Backend>(trial);
+  pool_rewind<Backend>(work, mark);
   return status;
 }
 

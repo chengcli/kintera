@@ -12,6 +12,7 @@ KINTERA is a high-performance library for atmospheric chemistry and thermodynami
    installation
    quickstart
    user_guide
+   equilibrate_uv_partition
    api_reference
    examples
 
