@@ -16,10 +16,12 @@ DISPATCH_MACRO inline uintptr_t align_up(uintptr_t p, size_t a) {
   return (p + (a - 1)) & ~(a - 1);
 }
 
-enum class PoolBackend { Shared, DisortGlobal };
+enum class PoolBackend { Shared, DisortGlobal, HostBump };
 
 template <PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO inline size_t pool_mark(char* work) {
+  if constexpr (Backend == PoolBackend::HostBump)
+    return reinterpret_cast<uintptr_t>(work);
 #ifdef __CUDA_ARCH__
   if constexpr (Backend == PoolBackend::Shared) {
     return reinterpret_cast<uintptr_t>(work);
@@ -33,6 +35,8 @@ DISPATCH_MACRO inline size_t pool_mark(char* work) {
 
 template <PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO inline void pool_rewind(char*& work, size_t mark) {
+  if constexpr (Backend == PoolBackend::HostBump)
+    work = reinterpret_cast<char*>(mark);
 #ifdef __CUDA_ARCH__
   if constexpr (Backend == PoolBackend::Shared) {
     work = reinterpret_cast<char*>(mark);
@@ -44,6 +48,11 @@ DISPATCH_MACRO inline void pool_rewind(char*& work, size_t mark) {
 
 template <PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO inline void* pmalloc(char*& work, size_t bytes) {
+  if constexpr (Backend == PoolBackend::HostBump) {
+    void* result = work;
+    work += align_up(bytes == 0 ? 8 : bytes, 8);
+    return result;
+  }
 #ifdef __CUDA_ARCH__
   if constexpr (Backend == PoolBackend::Shared) {
     void* result = work;
@@ -56,6 +65,7 @@ DISPATCH_MACRO inline void* pmalloc(char*& work, size_t bytes) {
 
 template <PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO inline void pfree(void* ptr) {
+  if constexpr (Backend == PoolBackend::HostBump) return;
 #ifdef __CUDA_ARCH__
   if constexpr (Backend == PoolBackend::Shared) return;
 #endif

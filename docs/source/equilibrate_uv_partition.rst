@@ -110,7 +110,9 @@ with at most ``max_iter`` iterations counting the initial evaluation. The
 If the partition solve fails, it restores the pre-partition temperature and
 concentrations (after nonnegative clamping). ``uv_solver: auto`` then tries
 the KKT solver, whereas ``uv_solver: partition`` reports a convergence
-warning without a fallback.
+warning without a fallback. On this forced-partition failure, the gain matrix
+is zero and the optional diagnostic is ``-1``; nonnegative diagnostics count
+iterations on successful partition solves.
 
 For the Uranus CH4 and H2S reactions, :math:`a_j=b_j=1` and the two
 vapor-cloud pairs are disjoint, so this direct partition branch applies.

@@ -111,15 +111,15 @@ DISPATCH_MACRO void sort_eigenpairs_desc(T* evals, T* V, int n) {
 /* Solve x = A^+ b using SVD via eigen-decomp of A^T A.
    A: n x n, b: n, output x: n
 */
-template <typename T>
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
-  size_t mark = pool_mark(work);
-  T* ATA = (T*)pmalloc(work, n * n * sizeof(T));
-  T* V = (T*)pmalloc(work, n * n * sizeof(T));
-  T* eval = (T*)pmalloc(work, n * sizeof(T));
-  T* vi = (T*)pmalloc(work, n * sizeof(T));
-  T* Avi = (T*)pmalloc(work, n * sizeof(T));
-  T* b0 = (T*)pmalloc(work, n * sizeof(T));
+  size_t mark = pool_mark<Backend>(work);
+  T* ATA = (T*)pmalloc<Backend>(work, n * n * sizeof(T));
+  T* V = (T*)pmalloc<Backend>(work, n * n * sizeof(T));
+  T* eval = (T*)pmalloc<Backend>(work, n * sizeof(T));
+  T* vi = (T*)pmalloc<Backend>(work, n * sizeof(T));
+  T* Avi = (T*)pmalloc<Backend>(work, n * sizeof(T));
+  T* b0 = (T*)pmalloc<Backend>(work, n * sizeof(T));
 
   matmul_ATA(ATA, A, n);
   memcpy(b0, b, n * sizeof(T));
@@ -158,13 +158,13 @@ DISPATCH_MACRO void psolve(T* b, const T* A, int n, char* work = nullptr) {
     for (int k = 0; k < n; ++k) b[k] += coeff * vi[k];
   }
 
-  pfree(ATA);
-  pfree(V);
-  pfree(eval);
-  pfree(vi);
-  pfree(Avi);
-  pfree(b0);
-  pool_rewind(work, mark);
+  pfree<Backend>(ATA);
+  pfree<Backend>(V);
+  pfree<Backend>(eval);
+  pfree<Backend>(vi);
+  pfree<Backend>(Avi);
+  pfree<Backend>(b0);
+  pool_rewind<Backend>(work, mark);
 }
 
 }  // namespace kintera

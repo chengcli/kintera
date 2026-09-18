@@ -51,16 +51,16 @@ size_t evolve_implicit_space(int nspecies, int nreaction) {
  * \param[in]  nspecies, nreaction    system dimensions.
  * \param[in]  inv_dt                 1 / dt.
  */
-template <typename T>
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO void evolve_implicit_cell(T* delta, const T* rate, const T* jac,
                                          const T* stoich, int nspecies,
                                          int nreaction, T inv_dt,
                                          char* work = nullptr) {
-  size_t mark = pool_mark(work);
-  T* A = (T*)pmalloc(work, nspecies * nspecies * sizeof(T));
-  T* Alu = (T*)pmalloc(work, nspecies * nspecies * sizeof(T));
-  T* sr = (T*)pmalloc(work, nspecies * sizeof(T));
-  T* x = (T*)pmalloc(work, nspecies * sizeof(T));
+  size_t mark = pool_mark<Backend>(work);
+  T* A = (T*)pmalloc<Backend>(work, nspecies * nspecies * sizeof(T));
+  T* Alu = (T*)pmalloc<Backend>(work, nspecies * nspecies * sizeof(T));
+  T* sr = (T*)pmalloc<Backend>(work, nspecies * sizeof(T));
+  T* x = (T*)pmalloc<Backend>(work, nspecies * sizeof(T));
 
   // A = S * J  (then turned into I/dt - S*J below);  sr = S * rate
   mmdot(A, stoich, jac, nspecies, nreaction, nspecies);
@@ -78,16 +78,16 @@ DISPATCH_MACRO void evolve_implicit_cell(T* delta, const T* rate, const T* jac,
     // singular cell: minimum-norm least-squares via pseudo-inverse, matching
     // the linalg_lstsq fallback in the original torch implementation.
     for (int t = 0; t < nspecies; ++t) x[t] = sr[t];
-    psolve(x, A, nspecies, work);
+    psolve<T, Backend>(x, A, nspecies, work);
   }
 
   for (int t = 0; t < nspecies; ++t) delta[t] = x[t];
 
-  pfree(A);
-  pfree(Alu);
-  pfree(sr);
-  pfree(x);
-  pool_rewind(work, mark);
+  pfree<Backend>(A);
+  pfree<Backend>(Alu);
+  pfree<Backend>(sr);
+  pfree<Backend>(x);
+  pool_rewind<Backend>(work, mark);
 }
 
 }  // namespace kintera

@@ -221,6 +221,9 @@ DISPATCH_MACRO int equilibrate_uv_partition(
   } else {
     memcpy(conc, baseline, nspecies * sizeof(T));
     *temp = original_temperature;
+    memset(gain, 0, nreaction * nreaction * sizeof(T));
+    diag[0] = -1.;
+    *nactive = 0;
   }
   pfree(baseline);
   pfree(molar_energy);

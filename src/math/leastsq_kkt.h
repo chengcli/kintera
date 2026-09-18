@@ -63,7 +63,7 @@ DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d, T const* column_norm,
  *
  * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
  *         2 on failure (max_iter reached without convergence), or 3 if the
- *         KKT system remains singular or has an inconsistent zero row.
+ *         KKT system remains singular or its constraints are infeasible.
  */
 template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
@@ -130,6 +130,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
   int iter = 0;
   int status = 0;
   bool converged = false;
+  bool used_regularization = false;
   T fallback_reg = sizeof(T) == sizeof(float) ? 1.e-5 : 1.e-10;
   T pivot_tolerance = 10. * std::numeric_limits<T>::epsilon();
 
@@ -184,6 +185,7 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       if (ludcmp<T, Backend>(aug, lu_indx, n2 + nactive, skip_row,
                              pivot_tolerance, work) != 0) {
         lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
+        used_regularization = primal_reg != 0. || dual_reg != 0.;
         solved = true;
         break;
       }
@@ -264,6 +266,27 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
     for (int i = 0; i < nactive && converged; ++i)
       converged = skip_row[ct_indx[i]] != 0;
     if (converged) break;
+  }
+
+  if (status == 0 && converged && used_regularization) {
+    T feasibility_tolerance =
+        64. * std::numeric_limits<T>::epsilon() + 10. * fallback_reg;
+    for (int i = 0; i < n3; ++i) {
+      int row = ct_indx[i];
+      T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+      T residual = -d[row] / row_scale;
+      for (int j = 0; j < n2; ++j) {
+        residual += C(row, j) *
+                    kkt_column_scale(objective_scale, column_norm[j]) /
+                    row_scale * rhs[j];
+      }
+      if (!std::isfinite(residual) ||
+          (i < nactive ? fabs(residual) > feasibility_tolerance
+                       : residual > feasibility_tolerance)) {
+        status = 3;
+        break;
+      }
+    }
   }
 
   if (status == 0)
