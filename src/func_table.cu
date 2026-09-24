@@ -35,7 +35,9 @@ __device__ user_func1 func1_table_cuda[] = {
     zn_h2s_visscher,
     zn_h2s_visscher_ddT,
     na_h2s_visscher,
-    na_h2s_visscher_ddT
+    na_h2s_visscher_ddT,
+    mg_sih4_visscher,
+    mg_sih4_visscher_ddT
 };
 
 __device__ __constant__ user_func1* func1_table_device_ptr = func1_table_cuda;

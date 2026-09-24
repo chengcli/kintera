@@ -231,4 +231,15 @@ inline double na_h2s_visscher_ddT(double T) {
   return 2. * b * log(10.) / (T * T);
 }
 
+DISPATCH_MACRO
+inline double mg_sih4_visscher(double T) {
+  // Mg + SiH4 + 3H2O <=> MgSiO3(s) + 5H2
+  // returns ln(P_Mg P_SiH4 P_H2O^3 / P_H2^5) at saturation, where pressures are in pascals
+  double logp = 9.63 - 50971. / T;
+  return logp * log(10.);
+}
+
+DISPATCH_MACRO
+inline double mg_sih4_visscher_ddT(double T) { return 50971.* log(10.) / (T * T); }
+
 }  // namespace kintera
