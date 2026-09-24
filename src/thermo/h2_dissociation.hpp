@@ -172,8 +172,13 @@ inline torch::Tensor entropy_R(torch::Tensor const& temp,
   auto hot = (temp >= 1000.).unsqueeze(-1);
   auto term = [&](int sp, torch::Tensor const& n) {
     auto a = torch::where(hot, ab[1][sp], ab[0][sp]);
-    auto p = (n * constants::Rgas * temp / kP0).clamp_min(1e-300);
-    return n * (s_R_of(a, temp) - p.log());
+    // n = 0 (legal He: 0) must contribute 0. 1e-300 underflows to 0
+    // in float32, and 0 * log(0) is NaN.
+    auto positive = n > 0;
+    auto nsafe = torch::where(positive, n, torch::ones_like(n));
+    auto p = nsafe * constants::Rgas * temp / kP0;
+    auto contrib = n * (s_R_of(a, temp) - p.log());
+    return torch::where(positive, contrib, torch::zeros_like(contrib));
   };
   return (term(0, s.H2) + term(1, s.H) + term(2, s.He)) / cc;
 }

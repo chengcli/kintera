@@ -149,6 +149,22 @@ def test_entropy_mixture_identity(tmp_path):
     assert float(out.stdout.split()[-1]) < 1e-6, out.stdout
 
 
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_zero_helium_entropy_is_finite(tmp_path, dtype):
+    """`He: 0` is legal: its n = 0 term adds 0 to S, not 0 * log(0) = NaN (float32 underflow)."""
+    card = tmp_path / "he0.yaml"
+    card.write_text("reference-state: {Tref: 300.0, Pref: 1.0e5, use-h2-dissociation: true}\n"
+                    "species:\n- {name: H2, composition: {H: 2.0, He: 0}, cv_R: 2.5}\n")
+    th = ThermoY(ThermoOptions.from_yaml(str(card)))
+    th.to(dtype)
+    T = torch.tensor(TS, dtype=dtype)
+    rho = torch.full((3,), CS[0] * kintera.species_weights()[0], dtype=dtype)
+    V = th.compute("DY->V", (rho, torch.zeros(0, 3, dtype=dtype)))
+    S = th.compute("PVT->S", (th.compute("VT->P", (V, T)), V, T))
+    assert torch.isfinite(S).all(), S
+    if dtype == torch.float64:
+        assert identity_residual(card, T, rho, torch.zeros(0, 3)) < 1e-6
+
 def test_bad_inputs_rejected(tmp_path):
     for species, why in [("{name: H2, composition: {H: 1.6, He: -0.1}}", "He >= 0"),
                          ("{name: H2, composition: {H: 1.6, C: 0.1}}", "only H and He"),
