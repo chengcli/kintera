@@ -33,6 +33,9 @@ namespace h2diss_scalar {
 
 constexpr double kP0 = 1.0e5;   // NASA-9 standard state [Pa]  (== h2diss::kP0)
 constexpr double kTref = 300.;  // energy reference [K]  (== h2diss::kTref)
+//! top of the NASA-9 fits; above ~3e4 K the extrapolated H enthalpy turns
+//! over and U(T) stops being monotone, so cold Newton guesses start below this
+constexpr double kTmax = 6000.;
 
 //! One species' NASA-9 coefficient row (9 doubles). The lnT overloads take a
 //! precomputed std::log(T) -- speciate() would otherwise evaluate the SAME
@@ -95,10 +98,10 @@ inline State speciate(double temp, double cc, double nH, double nHe,
   s.Kc = Kp * kP0 / (constants::Rgas * temp);  // mol/m^3
 
   double nHc = nH * cc;
-  // cancellation-free root of 2[H]^2 + Kc[H] - Kc*nHc = 0:
-  //   H = 2*Kc*nHc / (Kc + sqrt(Kc^2 + 8*Kc*nHc))
-  double disc = std::max(0., s.Kc * s.Kc + 8.0 * s.Kc * nHc);
-  double H = 2.0 * s.Kc * nHc / std::max(1e-300, s.Kc + std::sqrt(disc));
+  // cancellation-free root of 2[H]^2 + Kc[H] - Kc*nHc = 0, divided through by
+  // Kc so that Kc^2 cannot overflow (Kc > 1.3e154 above ~44 kK):
+  //   H = 2*nHc / (1 + sqrt(1 + 8*nHc/Kc))
+  double H = 2.0 * nHc / (1.0 + std::sqrt(1.0 + 8.0 * nHc / s.Kc));
   s.H = std::min(nHc, std::max(0., H));
   s.H2 = (nHc - s.H) / 2.0;
   s.He = nHe * cc;
@@ -175,6 +178,38 @@ inline Result eval(double temp, double c, double nH, double nHe,
   // reference the internal energy to kTref at the SAME c (continuity)
   State s0 = speciate(kTref, cc, nH, nHe, ab);
   return eval(temp, c, nH, nHe, ab, s0.U);
+}
+
+//! Bracket state of one safeguarded Newton solve (see bracketed_step).
+struct Bracket {
+  double lo = 0., hi = INFINITY;           // T bounds learnt from sign(g)
+  double dx = INFINITY, dxold = INFINITY;  // last two step lengths
+};
+
+//! Safeguarded Newton step (rtsafe-style) for a residual g(T) that DECREASES
+//! with T (g > 0: T is too low). The Newton step `T + g/dgdT` is taken only
+//! when it stays inside the bracket learnt so far and, once the bracket is
+//! closed, is at most half the step before last; otherwise the step bisects
+//! (or doubles T while hi is still open).
+//! WHY: from the cold constant-cv guess, Newton on the S-shaped U(T) of a
+//! dissociating gas jumps from the flat hot tail (cv ~ 2.75 R) across the
+//! latent peak to T < 0 and returns NaN, or cycles across the peak. A
+//! non-finite g (e.g. c == 0) is propagated, not bisected.
+inline double bracketed_step(double T, double g, double dgdT, Bracket& b) {
+  if (!std::isfinite(g) || g == 0.) return T + g / dgdT;
+  if (g > 0.)
+    b.lo = T;
+  else
+    b.hi = T;
+  double Tn = T + g / dgdT;
+  bool closed = std::isfinite(b.hi);
+  if (!(Tn >= b.lo && Tn <= b.hi) ||  // false for NaN
+      (closed && 2. * std::fabs(Tn - T) > b.dxold)) {
+    Tn = closed ? 0.5 * (b.lo + b.hi) : 2. * T;
+  }
+  b.dxold = b.dx;
+  b.dx = std::fabs(Tn - T);
+  return Tn;
 }
 
 }  // namespace h2diss_scalar

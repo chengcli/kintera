@@ -103,9 +103,10 @@ inline State speciate(torch::Tensor const& temp, torch::Tensor const& cc,
   // root of 2[H]^2 + Kc[H] - Kc*nHc = 0 in the cancellation-free form
   // H = 2*Kc*nHc / (Kc + sqrt(Kc^2 + 8*Kc*nHc)): exact -> nHc as Kc -> inf
   // (full dissociation), whereas (-Kc + sqrt(...))/4 loses all precision there
-  // (large-Kc cancellation).
-  auto disc = (s.Kc * s.Kc + 8.0 * s.Kc * nHc).clamp_min(0.);
-  s.H = (2.0 * s.Kc * nHc / (s.Kc + disc.sqrt()).clamp_min(1e-300))
+  // (large-Kc cancellation). Divided through by Kc so that Kc^2 cannot
+  // overflow (Kc > 1.3e154 above ~44 kK): H = 2*nHc / (1 + sqrt(1 +
+  // 8*nHc/Kc)).
+  s.H = (2.0 * nHc / (1.0 + (1.0 + 8.0 * nHc / s.Kc).sqrt()))
             .clamp_min(0.)
             .minimum(nHc);
   s.H2 = (nHc - s.H) / 2.0;
