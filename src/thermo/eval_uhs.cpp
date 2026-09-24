@@ -1,8 +1,14 @@
 // kintera
 #include "eval_uhs.hpp"
 
-#include <kintera/utils/utils_dispatch.hpp>
+#include <ATen/Parallel.h>  // at::parallel_for (fused h2diss fast path)
 
+#include <kintera/utils/utils_dispatch.hpp>
+#include <map>
+#include <mutex>
+
+#include "h2_dissociation.hpp"
+#include "h2_dissociation_scalar.hpp"  // fused per-cell fast path
 #include "log_svp.hpp"
 #include "thermo.hpp"
 
@@ -148,10 +154,128 @@ inline H2Thermo eval_h2cp(torch::Tensor temp, SpeciesThermo const& op,
 }
 
 inline bool h2_on(SpeciesThermo const& op) { return op->use_h2_cp(); }
+
+// ---- H2 <-> 2H equilibrium on ONE lumped H/He species (opt-in:
+// use_h2_dissociation) ---- Resolves the equilibrium internally at (T, c): no
+// advected H, no chemistry operator, no stiff solve. Supplies cz / e / cv / cp
+// all from the SAME speciation (see thermo/h2_dissociation.hpp).
+inline bool h2diss_on(SpeciesThermo const& op) {
+  return op->use_h2_dissociation() && op->h2_diss_nH() > 0.;
+}
+
+inline torch::Tensor h2diss_coeffs_for(torch::Tensor const& temp) {
+  return h2diss_coeffs_cached(temp);
+}
+
+}  // namespace
+
+// The H2/H/He NASA-9 coefficients are universal constants; fetching them
+// rebuilds tensors and (on CUDA) copies host->device. This sits inside the
+// P->T / U->T Newton loops, so cache one CONTIGUOUS tensor per device+dtype.
+// Shared by the torch path (eval_h2diss), the fused hook fast paths, and the
+// fused Newton kernels in thermo_y.cpp (hence public).
+torch::Tensor h2diss_coeffs_cached(torch::Tensor const& temp) {
+  static std::mutex h2diss_mtx;
+  static std::map<std::string, torch::Tensor> h2diss_coeffs;
+  std::lock_guard<std::mutex> lock(h2diss_mtx);
+  auto key = temp.device().str() + "/" +
+             std::string(c10::toString(temp.scalar_type()));
+  auto it = h2diss_coeffs.find(key);
+  if (it == h2diss_coeffs.end()) {
+    it = h2diss_coeffs
+             .emplace(key,
+                      nasa9_coeffs_by_name({"H2", "H", "He"}, temp.options())
+                          .contiguous())
+             .first;
+  }
+  return it->second;
+}
+
+namespace {  // re-enter file-local scope for the remaining helpers
+
+//! (...) -> the lumped species' concentration column, and a (nsp,) bool mask
+//! selecting it.
+inline std::pair<h2diss::Result, torch::Tensor> eval_h2diss(
+    torch::Tensor temp, torch::Tensor conc, SpeciesThermo const& op, int nsp) {
+  int id = op->h2_diss_id();
+  TORCH_CHECK(id >= 0 && id < nsp, "h2_diss_id out of range: ", id);
+  auto ab = h2diss_coeffs_for(temp);
+  auto c = conc.select(-1, id);
+  auto r = h2diss::eval(temp, c, op->h2_diss_nH(), op->h2_diss_nHe(), ab);
+  auto mask = torch::zeros({nsp}, temp.options().dtype(torch::kBool));
+  mask[id] = true;
+  return {r, mask};
+}
+
+// ---- Fused scalar fast path for the five h2diss eval_* hooks ----
+// Each torch branch below is a ~100-op chain that re-evaluates the FULL
+// dissociation state to keep one field, and a host code calls these hooks
+// on every face of every step. The fast path runs the whole evaluation as ONE
+// at::parallel_for launch over cells via the oracle-gated scalar transcription
+// (h2_dissociation_scalar.hpp) and returns the requested field. Preconditions
+// are shared with ThermoYImpl's fused Newton kernels through this predicate:
+// single lumped gas species at id 0, no clouds, CPU, fp64, flag ON (default OFF
+// -> torch chains stay the oracle).
+}  // namespace
+
+bool h2diss_fused_ok(SpeciesThermo const& op, torch::Tensor const& temp,
+                     torch::Tensor const& conc) {
+  // A registered czh() user function would compose a non-ideal Z with the
+  // chemical Z (see eval_czh); the fast path assumes Z_nonideal == 1, so
+  // REQUIRE czh unregistered rather than assume it.
+  for (auto const& f : op->czh()) {
+    if (!f.empty()) return false;
+  }
+  return h2diss_on(op) && op->fused_h2diss() && op->h2_diss_id() == 0 &&
+         op->vapor_ids().size() == 1 && op->cloud_ids().size() == 0 &&
+         conc.size(-1) == 1 && temp.is_cpu() &&
+         temp.scalar_type() == torch::kFloat64;
+}
+
+namespace {
+
+//! One launch -> (..., 5) = [e_R, cv_R, cp_R, cz, cz_ddC] per cell.
+torch::Tensor h2diss_pack_fused(torch::Tensor const& temp,
+                                torch::Tensor const& conc,
+                                SpeciesThermo const& op) {
+  auto ab_t = h2diss_coeffs_for(temp);
+  const double* ab = ab_t.data_ptr<double>();
+  const double nH = op->h2_diss_nH();
+  const double nHe = op->h2_diss_nHe();
+
+  auto T = temp.contiguous();
+  auto c = conc.select(-1, 0).contiguous();
+  auto vec = temp.sizes().vec();
+  vec.push_back(5);
+  auto out = torch::empty(vec, temp.options());
+
+  const double* Tp = T.data_ptr<double>();
+  const double* cp = c.data_ptr<double>();
+  double* o = out.data_ptr<double>();
+  const int64_t n = T.numel();
+  // T0-reference hoist (model constant; see h2_dissociation_scalar.hpp)
+  const double e0 = h2diss_scalar::e0_ref(nH, nHe, ab);
+
+  at::parallel_for(0, n, /*grain_size=*/512, [&](int64_t lo, int64_t hi) {
+    for (int64_t i = lo; i < hi; ++i) {
+      auto r = h2diss_scalar::eval(Tp[i], cp[i], nH, nHe, ab, e0);
+      o[5 * i + 0] = r.e_R;
+      o[5 * i + 1] = r.cv_R;
+      o[5 * i + 2] = r.cp_R;
+      o[5 * i + 3] = r.cz;
+      o[5 * i + 4] = r.cz_ddC;
+    }
+  });
+  return out;
+}
+
 }  // namespace
 
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
                         SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {  // reacting cv, one launch
+    return h2diss_pack_fused(temp, conc, op).select(-1, 1).unsqueeze(-1);
+  }
   auto cv_R_extra = torch::zeros_like(conc);
 
   // bundle iterator
@@ -184,11 +308,19 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
     auto h2 = eval_h2cp(temp, op, conc.size(-1));
     cv_R = torch::where(h2.mask, h2.cp_R - 1.0, cv_R);
   }
+  if (h2diss_on(
+          op)) {  // reacting cv: NOT cp - R (the composition shifts with T)
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    cv_R = torch::where(mask, r.cv_R.unsqueeze(-1).expand_as(cv_R), cv_R);
+  }
   return cv_R;
 }
 
 torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
                         SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {  // reacting-gas Mayer cp, one launch
+    return h2diss_pack_fused(temp, conc, op).select(-1, 2).unsqueeze(-1);
+  }
   auto cp_R_extra = torch::zeros_like(conc);
 
   // bundle iterator
@@ -217,11 +349,20 @@ torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
     auto h2 = eval_h2cp(temp, op, conc.size(-1));
     cp_R = torch::where(h2.mask, h2.cp_R, cp_R);
   }
+  if (h2diss_on(op)) {  // exact reacting-gas Mayer relation, not cv + R
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    cp_R = torch::where(mask, r.cp_R.unsqueeze(-1).expand_as(cp_R), cp_R);
+  }
   return cp_R;
 }
 
 torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
                        SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {
+    // Z_total = Z_chem * Z_nonideal; czh() is unregistered on this fast path
+    // (h2diss_fused_ok requires it unregistered) => Z_nonideal == 1.
+    return h2diss_pack_fused(temp, conc, op).select(-1, 3).unsqueeze(-1);
+  }
   auto cz = torch::zeros_like(conc);
   cz.narrow(-1, 0, op->vapor_ids().size()) = 1.;
 
@@ -239,11 +380,28 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
   // call the evaluation function
   at::native::call_func2(cz.device().type(), iter, op->czh());
 
+  if (h2diss_on(op)) {
+    // Dissociation MAKES particles, so its contribution to the compressibility
+    // factor is Z_chem = n_tot/c > 1 (this is the delta term that carries ~12%
+    // of grad_ad). COMPOSE with whatever czh() returned (a real-gas / non-ideal
+    // Z) rather than overwrite it:
+    //     Z_total = Z_chem * Z_nonideal
+    // Today czh() is unregistered => Z_nonideal == 1 and this is a no-op, but
+    // it means a future non-ideal Z and this chemical Z stack correctly instead
+    // of one silently clobbering the other.
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    cz = torch::where(mask, r.cz.unsqueeze(-1) * cz, cz);
+  }
   return cz;
 }
 
 torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
                            SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {
+    // product rule collapses: Z_nonideal == 1 (czh unregistered, checked) and
+    // its ddC == 0, so d(Z_total)/dc = dcz_dc.
+    return h2diss_pack_fused(temp, conc, op).select(-1, 4).unsqueeze(-1);
+  }
   auto cz_ddC = torch::zeros_like(conc);
 
   // bundle iterator
@@ -260,11 +418,40 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
   // call the evaluation function
   at::native::call_func2(cz_ddC.device().type(), iter, op->czh_ddC());
 
+  if (h2diss_on(op)) {
+    // product rule for Z_total = Z_chem * Z_nonideal (see eval_czh)
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    // Z_nonideal ALONE (not eval_czh, which now already carries Z_chem -> would
+    // double-count). It is exactly what eval_czh initialises before the h2diss
+    // factor: 1 for gas, 0 for clouds, as modified by any registered czh()
+    // function.
+    auto zni = torch::zeros_like(conc);
+    zni.narrow(-1, 0, op->vapor_ids().size()) = 1.;
+    auto it2 =
+        at::TensorIteratorConfig()
+            .resize_outputs(false)
+            .check_all_same_dtype(true)
+            .declare_static_shape(zni.sizes(), /*squash_dim=*/{conc.dim() - 1})
+            .add_output(zni)
+            .add_owned_input(temp.unsqueeze(-1))
+            .add_input(conc)
+            .build();
+    at::native::call_func2(zni.device().type(), it2, op->czh());
+    auto d = r.cz_ddC.unsqueeze(-1) * zni + r.cz.unsqueeze(-1) * cz_ddC;
+    cz_ddC = torch::where(mask, d, cz_ddC);
+  }
   return cz_ddC;
 }
 
 torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
                             SpeciesThermo const& op) {
+  if (h2diss_fused_ok(op, temp, conc)) {
+    // matches the torch h2diss branch below: uref + T0*cref + e_R (e_R == 0 at
+    // T0 = kNasa9Tref; uref_R already offset to T=0 by ThermoY::reset).
+    const double u0c = op->uref_R()[0] + kNasa9Tref * op->cref_R()[0];
+    return (h2diss_pack_fused(temp, conc, op).select(-1, 0) + u0c)
+        .unsqueeze(-1);
+  }
   auto intEng_R_extra = torch::zeros_like(conc);
 
   // bundle iterator
@@ -297,6 +484,12 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
     auto h2 = eval_h2cp(temp, op, conc.size(-1));
     auto intEng_h2 = uref_R + kNasa9Tref * cref_R + h2.e_R;
     result = torch::where(h2.mask, intEng_h2, result);
+  }
+  if (h2diss_on(op)) {  // e_R carries the 436 kJ/mol dissociation energy
+                        // (NASA-9 h is absolute)
+    auto [r, mask] = eval_h2diss(temp, conc, op, conc.size(-1));
+    auto intEng_d = uref_R + kNasa9Tref * cref_R + r.e_R.unsqueeze(-1);
+    result = torch::where(mask, intEng_d.expand_as(result), result);
   }
   return result;
 }

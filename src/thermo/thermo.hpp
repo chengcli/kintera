@@ -85,6 +85,9 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(bool, verbose) = false;
   ADD_ARG(bool, offset_zero) = false;
 
+  // NOTE: fused_h2diss lives on SpeciesThermoImpl (species.hpp) so
+  // the eval_* hooks can see it; inherited here.
+
   ADD_ARG(NucleationOptions, nucleation) = nullptr;
   ADD_ARG(std::string, uv_solver) = "auto";
 };
@@ -143,6 +146,18 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! options with which this `ThermoY` was constructed
   ThermoOptions options;
   bool uv_partitionable = false;
+
+  //! fused-kernel warm-start seeds: the previous solve's converged T, flat,
+  //! per instance (never static: two ThermoY objects must not share seeds).
+  //! Pure seeds: any content is corrected by the per-cell Newton to ftol, so
+  //! stale/mismatched values only cost iterations.
+  //!
+  //! ABI-NEUTRAL BY CONSTRUCTION: these live ONLY in the torch Module buffer
+  //! dict (register_buffer in reset()), never as data members, so
+  //! sizeof(ThermoYImpl) and the member layout are unchanged and code compiled
+  //! against the previous headers keeps working. Fetch them with
+  //! named_buffers()["warm_vu"|"warm_pv"] -- once per solve launch, OUTSIDE
+  //! the per-cell loop, so the lookup is fully amortized.
 
   ThermoYImpl() : options(ThermoOptionsImpl::create()) {}
   explicit ThermoYImpl(const ThermoOptions& options_);
@@ -236,6 +251,18 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
    */
   void _intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
                        torch::Tensor& out) const;
+
+  //! \brief Fused per-cell scalar Newton for VU->T (same math as
+  //! _intEng_to_temp; one launch per solve, per-cell early exit). CPU only.
+  //! Preconditions per h2diss_fused_ok().
+  void _intEng_to_temp_fused(torch::Tensor ivol, torch::Tensor intEng,
+                             torch::Tensor& out) const;
+
+  //! \brief Fused per-cell scalar Newton for PV->T (same math as _pres_to_temp,
+  //! including the damped/subtracted Newton step). CPU only. Preconditions per
+  //! h2diss_fused_ok().
+  void _pres_to_temp_fused(torch::Tensor pres, torch::Tensor ivol,
+                           torch::Tensor& out) const;
 
   //! \brief calculate pressure (Pa)
   /*!

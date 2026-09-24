@@ -30,6 +30,17 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
 torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
                               SpeciesThermo const& op);
 
+//! Per-device+dtype cached CONTIGUOUS (2,3,9) H2/H/He NASA-9 coefficient block
+//! (universal constants). Shared by the h2diss torch path and the fused scalar
+//! kernels (thermo_y.cpp), which would otherwise rebuild it per solve.
+torch::Tensor h2diss_coeffs_cached(torch::Tensor const& like);
+
+//! True when the fused per-cell h2diss path may replace the torch chains: flag
+//! on, h2diss on species 0 as the only gas, no clouds, czh() unregistered, CPU,
+//! float64.  One predicate for the eval_* hooks and ThermoY's Newton kernels.
+bool h2diss_fused_ok(SpeciesThermo const& op, torch::Tensor const& temp,
+                     torch::Tensor const& conc);
+
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                              torch::Tensor conc, torch::Tensor stoich,
                              SpeciesThermo const& op);

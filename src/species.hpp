@@ -38,6 +38,13 @@ void ensure_species_initialized(YAML::Node const& config);
 at::Tensor nasa9_gibbs_rt(at::Tensor temp,
                           std::vector<std::string> const& species);
 
+//! Fetch NASA-9 coefficients from the bundled database BY NAME, independent of
+//! the species registry. Returns (2, nsp, 9) = [low|high][species][coeff]. Used
+//! by the H2<->2H dissociation thermo, whose H/H2/He are internal to the model
+//! and need not be registry species.
+at::Tensor nasa9_coeffs_by_name(std::vector<std::string> const& species,
+                                at::TensorOptions const& options);
+
 struct SpeciesThermoImpl {
   static std::shared_ptr<SpeciesThermoImpl> create() {
     return std::make_shared<SpeciesThermoImpl>();
@@ -110,6 +117,26 @@ struct SpeciesThermoImpl {
   //! H2 ortho-para mode: "equilibrium" (ortho<->para equilibrates -> conversion
   //! peak; default) or "normal" (fixed 1:3 para:ortho, no peak).
   ADD_ARG(std::string, h2_cp_mode) = "equilibrium";
+
+  //! Opt-in: fold H2 <-> 2H equilibrium into ONE lumped H/He species (no
+  //! advected H). Supplies cz (particle count), internal energy and cv/cp from
+  //! one closed-form speciation, so grad_ad emerges correctly. See
+  //! thermo/h2_dissociation.hpp.
+  ADD_ARG(bool, use_h2_dissociation) = false;
+  //! index of the lumped H/He species, and its H / He atoms per mole (from its
+  //! `composition`)
+  ADD_ARG(int, h2_diss_id) = 0;
+  ADD_ARG(double, h2_diss_nH) = 0.;
+  ADD_ARG(double, h2_diss_nHe) = 0.;
+  //! Opt-in: run the h2diss thermo through fused
+  //! per-cell scalar kernels -- the two Newton inversions in thermo_y.cpp AND
+  //! the five eval_* hooks in eval_uhs.cpp -- instead of the torch tensor-op
+  //! chains. Same math (h2_dissociation_scalar.hpp, oracle-gated); one launch
+  //! per call instead of ~100. Only engages on the single-lumped-gas-species
+  //! CPU fast path; default OFF keeps the torch path as the oracle. Lives here
+  //! (not ThermoOptions) so the eval_* hooks, which receive SpeciesThermo, can
+  //! see it. YAML: reference-state.fused-h2diss.
+  ADD_ARG(bool, fused_h2diss) = false;
 };
 using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
