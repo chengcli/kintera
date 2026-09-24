@@ -82,6 +82,7 @@ void EvaporationImpl::reset() {
   // the rate law needs one reactant and one or two products, all coefficient 1
   std::vector<int64_t> two;
   std::set<std::string> condensates;
+  std::map<std::string, std::string> gases;  // product -> its equation
   auto const& rxns = options->reactions();
   for (size_t j = 0; j < rxns.size(); ++j) {
     auto const& r = rxns[j];
@@ -94,6 +95,8 @@ void EvaporationImpl::reset() {
                 "' must be irreversible with one reactant and one or two "
                 "products, each with stoichiometric coefficient 1");
     condensates.insert(r.reactants().begin()->first);
+    for (auto const& [name, _] : r.products())
+      gases.emplace(name, r.equation());
     if (r.products().size() == 2) two.push_back(static_cast<int64_t>(j));
   }
   for (auto j : two)
@@ -101,6 +104,15 @@ void EvaporationImpl::reset() {
       TORCH_CHECK(!condensates.count(name), "Evaporation reaction '",
                   rxns[j].equation(), "' has the condensate '", name,
                   "' as a product");
+
+  // a species evaporated by one reaction is a gas, not a condensate
+  for (auto const& r : rxns) {
+    auto const& name = r.reactants().begin()->first;
+    auto it = gases.find(name);
+    TORCH_CHECK(it == gases.end(), "Evaporation reaction '", r.equation(),
+                "' has the gas '", name, "' (a product of '", it->second,
+                "') as its reactant, which must be a condensate");
+  }
   two_product_rxns_ = torch::tensor(two, torch::kInt64);
 }
 
@@ -140,7 +152,13 @@ torch::Tensor EvaporationImpl::forward(
   auto logsvp = LogSVPFunc::apply(temp);
 
   auto ksat = torch::exp(logsvp - sp.sum(0) * (constants::Rgas * temp).log());
-  auto eta = ksat - conc.pow(sp).prod(-2);
+
+  // two-product columns are replaced below; leave their c1 c2 out of eta so an
+  // overflowing product cannot send inf * 0 = nan into the gradient
+  auto sp1 = sp;
+  if (two_product_rxns_.numel() > 0)
+    sp1 = sp.index_fill(1, two_product_rxns_.to(sp.device()), 0.);
+  auto eta = ksat - conc.pow(sp1).prod(-2);
 
   eta.clamp_min_(0);
 
@@ -152,15 +170,24 @@ torch::Tensor EvaporationImpl::forward(
     // an expanded conc carries one column per reaction
     if (c.size(-1) != 1) c = c.index_select(-1, idx);
     auto is_product = sp.index_select(1, idx).gt(0.);
-    auto prod = c.pow(is_product.to(c.dtype())).prod(-2);
+    auto nu = is_product.to(c.dtype());
+    // supersaturated columns, including c1 c2 = inf, do not evaporate; zero
+    // their concentrations so no inf reaches the extent or its gradient
+    auto sub = c.pow(nu).prod(-2).le(k2);
+    c = torch::where(sub.unsqueeze(-2), c, torch::zeros_like(c));
+    auto prod = c.pow(nu).prod(-2);
     auto sum = torch::where(is_product, c, torch::zeros_like(c)).sum(-2);
+    // c1 - c2: +1 on the first product, -1 on the second
+    auto sign =
+        2. * (is_product & is_product.cumsum(0).eq(1)).to(c.dtype()) - nu;
+    auto diff = (c * sign).sum(-2);
     double tiny = c.dtype() == torch::kFloat32
                       ? std::numeric_limits<float>::min()
                       : std::numeric_limits<double>::min();
-    auto root = ((sum * sum - 4. * prod).clamp_min(0.) + 4. * k2)
-                    .clamp_min(tiny)
-                    .sqrt();
+    // s^2 - 4 c1 c2 = (c1 - c2)^2, without inf - inf
+    auto root = (diff * diff + 4. * k2).clamp_min(tiny).sqrt();
     auto x = 2. * (k2 - prod) / (sum + root).clamp_min(tiny);
+    x = torch::where(sub, x, torch::zeros_like(x));
     eta = eta.index_copy(-1, idx, x.clamp_min(0.));
   }
 

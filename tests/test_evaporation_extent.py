@@ -164,6 +164,37 @@ def test_negative_products_evaporate_as_into_empty_air():
     assert k[0, 1].item() / KAPPA == pytest.approx(math.sqrt(_K(T0)), rel=1e-12)
 
 
+@pytest.mark.parametrize("dtype,c1,c2", [
+    (torch.float32, 1.0e20, 1.0e20),
+    (torch.float32, 1.0e20, 1.0e17),
+    (torch.float32, 1.0e20, 1.0e-3),
+    (torch.float64, 1.0e160, 1.0e160),
+    (torch.float64, 1.0e160, 1.0e157),
+    (torch.float64, 1.0e300, 1.0e300),
+    (torch.float64, 1.0e300, 1.0e-3),
+])
+def test_overflowing_product_is_supersaturated(dtype, c1, c2):
+    # c1 c2 overflows or exceeds K: no evaporation, as with the old law
+    mod = _both()
+    mod.to(dtype)
+    k, conc = _rate(mod, _conc(c1, c2), 2, grad=True, dtype=dtype)
+    k[0, 1].backward()
+    assert k[0, 1].item() == 0.0
+    assert torch.isfinite(conc.grad).all()
+
+
+@pytest.mark.parametrize("dtype,c", [(torch.float32, 1.0e20), (torch.float64, 1.0e300)])
+def test_huge_product_into_empty_air_is_finite(dtype, c):
+    # (c1 - c2)^2 overflows; the extent, about K / c1, may round to zero
+    mod = _both()
+    mod.to(dtype)
+    k, conc = _rate(mod, _conc(c, 0.0), 2, grad=True, dtype=dtype)
+    k[0, 1].backward()
+    x = k[0, 1].item() / KAPPA
+    assert 0.0 <= x <= _K(T0) / c * (1.0 + 1.0e-6)
+    assert torch.isfinite(conc.grad).all()
+
+
 @pytest.mark.parametrize("equation", [
     "NH4SH(s,p) => 2 NH3",
     "2 NH4SH(s,p) => NH3 + H2S",
@@ -252,3 +283,18 @@ def test_kinetics_implicit_step_does_not_pass_equilibrium(tmp_path):
     got = _kinetics(tmp_path, 0.00669, 0.000209, 1.0, 1.0e6)
     assert got["prod_after"] <= _K(T0) * (1.0 + 1.0e-9)
     assert got["cp_after"] >= 0.0
+
+
+LOAD = """
+import sys
+import kintera as kt
+kt.Kinetics(kt.KineticsOptions.from_yaml(sys.argv[1]))
+"""
+
+
+def test_gas_reactant_is_rejected(tmp_path):
+    card = tmp_path / "gas.yaml"
+    card.write_text(textwrap.dedent(CARD).replace("NH4SH(s,p) => NH3 + H2S", "H2O => NH3 + H2S"))
+    res = subprocess.run([sys.executable, "-c", LOAD, str(card)], capture_output=True, text=True)
+    assert res.returncode != 0
+    assert "has the gas 'H2O' (a product of 'H2O(l,p) => H2O') as its reactant" in res.stderr

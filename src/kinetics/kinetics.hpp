@@ -182,11 +182,6 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
                              torch::Tensor cvol, torch::Tensor rate,
                              torch::optional<torch::Tensor> logrc_ddT,
                              int begin, int end, torch::Tensor& out) const;
-
-  void _jacobian_evaporation(torch::Tensor temp, torch::Tensor conc,
-                             torch::Tensor cvol, torch::Tensor rate,
-                             torch::optional<torch::Tensor> logrc_ddT,
-                             int begin, int end, torch::Tensor& out) const;
 };
 
 TORCH_MODULE(Kinetics);
