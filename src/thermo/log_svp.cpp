@@ -6,6 +6,7 @@
 
 #include "log_svp.hpp"
 #include "svp_eval.h"
+#include "thermo_dispatch.hpp"
 
 namespace kintera {
 
@@ -44,55 +45,35 @@ std::vector<std::string> LogSVPFunc::_logsvp_ddT = {};
 std::vector<int> LogSVPFunc::_formula_kind = {};
 std::vector<std::vector<double>> LogSVPFunc::_svp_params = {};
 
-void LogSVPFunc::apply_inline(torch::Tensor& out, torch::Tensor const& temp,
-                              bool expanded, bool deriv) {
+void LogSVPFunc::apply_inline(at::TensorIterator& iter, bool deriv) {
+  auto& out = iter.output();
   int64_t ncol = out.size(-1);
+  std::vector<int> kind(ncol, 0);
+  std::vector<double> flat(static_cast<size_t>(ncol) * KSVP_NPARAM, 0.0);
+  bool any = false;
   for (int64_t j = 0; j < ncol; ++j) {
     if (j >= static_cast<int64_t>(_formula_kind.size())) break;
-    int kind = _formula_kind[j];
-    if (kind == 0) continue;  // named func-table formula, leave as computed
+    if (_formula_kind[j] == 0) continue;  // named func-table formula
     if (j >= static_cast<int64_t>(_svp_params.size()) || _svp_params[j].empty())
       continue;
+    kind[j] = _formula_kind[j];
     auto const& p = _svp_params[j];
-
-    // Temperature for this column; the func-table dispatch broadcasts the same
-    // temperature across every column, so we reproduce that here. In the
-    // expanded path the temperature already carries the column dimension.
-    auto t = expanded ? temp.select(-1, j) : temp;
-
-    torch::Tensor val;
-    if (kind == 1) {  // 'ideal': {T3, P3, beta, gamma, betas, gammas}
-      double T3 = p[0], P3 = p[1], betal = p[2], gammal = p[3], betas = p[4],
-             gammas = p[5];
-      auto liquid = t > T3;  // matches 'T > tr' in the named func-table forms
-      // Mirror logsvp_ideal(T/T3, beta, gamma) + log(P3) in the exact same
-      // floating-point operation order as the named forms (e.g. h2o_ideal), so
-      // a parametrized curve is bit-for-bit identical to its hardcoded twin.
-      auto tn = t / T3;
-      if (!deriv) {
-        auto logtn = torch::log(tn);
-        auto vl = (1.0 - 1.0 / tn) * betal - gammal * logtn + std::log(P3);
-        auto vs = (1.0 - 1.0 / tn) * betas - gammas * logtn + std::log(P3);
-        val = torch::where(liquid, vl, vs);
-      } else {
-        // logsvp_ideal_ddT(tn, beta, gamma) / T3 = (beta/tn^2 - gamma/tn) / T3
-        auto tn2 = tn * tn;
-        auto dl = (betal / tn2 - gammal / tn) / T3;
-        auto ds = (betas / tn2 - gammas / tn) / T3;
-        val = torch::where(liquid, dl, ds);
-      }
-    } else {  // kind == 2, 'antoine': {A, B, C}
-      double A = p[0], B = p[1], C = p[2];
-      if (!deriv) {
-        val = std::log(1.0e5) + (A - B / (t + C)) * std::log(10.0);
-      } else {
-        auto tc = t + C;
-        val = B * std::log(10.0) / (tc * tc);
-      }
-    }
-
-    out.select(-1, j).copy_(val);
+    int m = std::min(static_cast<int>(p.size()), KSVP_NPARAM);
+    for (int k = 0; k < m; ++k) flat[j * KSVP_NPARAM + k] = p[k];
+    any = true;
   }
+  if (!any) return;
+
+  // Evaluate through the same scalar eval_logsvp / eval_logsvp_ddT as the
+  // equilibrate kernels, element by element like the func-table dispatch, so
+  // an inline curve with built-in constants is bit-for-bit its named twin
+  // regardless of the compiler's floating-point contraction.
+  auto kind_t =
+      torch::tensor(kind, torch::dtype(torch::kInt32)).to(out.device());
+  auto par_t =
+      torch::tensor(flat, torch::dtype(torch::kFloat64)).to(out.device());
+  at::native::call_logsvp_inline(out.device().type(), iter, kind_t, par_t,
+                                 deriv);
 }
 
 torch::Tensor LogSVPFunc::grad(torch::Tensor const& temp, bool expanded) {
@@ -119,7 +100,7 @@ torch::Tensor LogSVPFunc::grad(torch::Tensor const& temp, bool expanded) {
   auto iter = iter_config.build();
   at::native::call_func1(logsvp_ddT.device().type(), iter, _logsvp_ddT);
 
-  apply_inline(logsvp_ddT, temp, expanded, /*deriv=*/true);
+  apply_inline(iter, /*deriv=*/true);
 
   return logsvp_ddT;
 }
@@ -148,7 +129,7 @@ torch::Tensor LogSVPFunc::call(torch::Tensor const& temp, bool expanded) {
   auto iter = iter_config.build();
   at::native::call_func1(logsvp.device().type(), iter, _logsvp);
 
-  apply_inline(logsvp, temp, expanded, /*deriv=*/false);
+  apply_inline(iter, /*deriv=*/false);
 
   return logsvp;
 }

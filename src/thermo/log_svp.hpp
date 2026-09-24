@@ -1,6 +1,7 @@
 #pragma once
 
 // torch
+#include <ATen/TensorIterator.h>
 #include <torch/torch.h>
 
 // kintera
@@ -19,7 +20,7 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
     // Classify each column: 0 = named func-table formula, 1 = inline 'ideal',
     // 2 = inline 'antoine'. For inline columns, swap in a valid sentinel name
     // so the func-table dispatch does not fail; the column is overwritten with
-    // the analytic torch-op result afterwards.
+    // the eval_logsvp result afterwards.
     _formula_kind.assign(_logsvp.size(), 0);
     for (size_t i = 0; i < _logsvp.size(); ++i) {
       if (_logsvp[i] == "ideal") {
@@ -110,11 +111,10 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
         "must be defined in YAML");
   }
 
-  //! Overwrite the inline-parametrized columns of \p out (and its temperature
-  //! derivative when \p deriv is true) with the analytic 'ideal'/'antoine' form
-  //! evaluated from _svp_params. Named columns are left untouched.
-  static void apply_inline(torch::Tensor& out, torch::Tensor const& temp,
-                           bool expanded, bool deriv);
+  //! Overwrite the inline-parametrized columns of the output of \p iter with
+  //! eval_logsvp (or eval_logsvp_ddT when \p deriv is true) evaluated from
+  //! _svp_params. Named columns are left untouched.
+  static void apply_inline(at::TensorIterator& iter, bool deriv);
 
   static std::vector<std::string> _logsvp;
   static std::vector<std::string> _logsvp_ddT;

@@ -142,6 +142,33 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
   });
 }
 
+void call_logsvp_inline_cuda(at::TensorIterator &iter,
+                             at::Tensor const& svp_kind,
+                             at::Tensor const& svp_params, bool deriv) {
+  at::cuda::CUDAGuard device_guard(iter.device());
+
+  auto svp_kind_ptr = svp_kind.data_ptr<int>();
+  auto svp_params_ptr = svp_params.data_ptr<double>();
+
+  AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_logsvp_inline_cuda", [&] {
+    int nout = at::native::ensure_nonempty_size(iter.output(), -1);
+
+    native::gpu_kernel<2>(
+        iter, [=] GPU_LAMBDA (char* const data[2], unsigned int strides[2]) {
+          auto out = reinterpret_cast<scalar_t*>(data[0] + strides[0]);
+          // temp
+          auto arg1 = reinterpret_cast<scalar_t*>(data[1] + strides[1]);
+
+          for (int j = 0; j < nout; ++j) {
+            if (svp_kind_ptr[j] == 0) continue;
+            double const* p = svp_params_ptr + j * KSVP_NPARAM;
+            out[j] = deriv ? eval_logsvp_ddT(svp_kind_ptr[j], p, nullptr, *arg1)
+                           : eval_logsvp(svp_kind_ptr[j], p, nullptr, *arg1);
+          }
+        });
+  });
+}
+
 }  // namespace kintera
 
 namespace at::native {
@@ -151,5 +178,8 @@ REGISTER_CUDA_DISPATCH(call_equilibrate_tp,
 
 REGISTER_CUDA_DISPATCH(call_equilibrate_uv,
                        &kintera::call_equilibrate_uv_cuda);
+
+REGISTER_CUDA_DISPATCH(call_logsvp_inline,
+                       &kintera::call_logsvp_inline_cuda);
 
 }  // namespace at::native
