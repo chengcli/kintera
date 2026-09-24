@@ -66,7 +66,7 @@ TYPED_TEST(AllocSpaceTest, leastsq_kkt_stays_in_budget) {
   }
 }
 
-// same budget as leastsq_kkt: the two share one driver. Bounds are
+// leastsq_kkt's budget plus the direct-solve hook buffers. Bounds are
 // non-negative (x = 0 feasible) and rows repeat, so dependent rows come up.
 TYPED_TEST(AllocSpaceTest, leastsq_kkt_feasible_origin_stays_in_budget) {
   using T = TypeParam;
@@ -81,7 +81,7 @@ TYPED_TEST(AllocSpaceTest, leastsq_kkt_feasible_origin_stays_in_budget) {
         for (int j = 0; j < n2; ++j) c[k * n2 + j] = ((k + j) % 2 ? -1. : 1.);
         d[k] = 0.1;
       }
-      GuardedPool pool(leastsq_kkt_space<T>(n2, n3));
+      GuardedPool pool(leastsq_kkt_feasible_origin_space<T>(n2, n3));
       int max_iter = n3 + 1;
       leastsq_kkt_feasible_origin<T, PoolBackend::HostBump>(
           b.data(), a.data(), c.data(), d.data(), n2, n2, n3, 0, &max_iter, 0.,

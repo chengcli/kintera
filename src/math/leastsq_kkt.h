@@ -74,6 +74,58 @@ DISPATCH_MACRO T kkt_orthogonalize(T* v, T const* q, int nq, int n2) {
   return sqrt(norm);
 }
 
+// Feasible-origin policy hook: solve the KKT system for a square A in the
+// direct form [[A_s, A_s^-T C_s^T], [C_s, reg I]] [y; mu] = [b_s; d_s], the
+// scaled normal equations premultiplied by A_s^-T. Same scaling, unknowns and
+// multipliers as the normal-equation block, but its conditioning follows
+// cond(A) instead of cond(A)^2. Pivot criterion, as in dsolve_lu (the direct
+// Newton solve of constrained_newton_step): an LU (of A_s^T, then of the
+// block) fails only on an exactly zero pivot, and the solution must be
+// finite. The active rows are independent to sqrt(eps) by construction.
+// Returns false if either fails; the caller then rebuilds aug and rhs on the
+// normal-equation path.
+template <typename T, PoolBackend Backend>
+DISPATCH_MACRO bool kkt_solve_direct(T* aug, T* rhs, int* lu_indx, T* at_lu,
+                                     T* at_col, int* at_indx, T const* a,
+                                     T const* b, T const* c, T const* d,
+                                     T const* column_norm, T objective_scale,
+                                     int n2, int nact, int const* ct_indx,
+                                     T reg, char* work) {
+  int n = n2 + nact;
+  for (int i = 0; i < n2; ++i)
+    for (int j = 0; j < n2; ++j)
+      at_lu[i * n2 + j] =
+          column_norm[i] > 0. ? a[j * n2 + i] / column_norm[i] : 0.;
+  if (ludcmp<T, Backend>(at_lu, at_indx, n2, nullptr, T(0), work) == 0)
+    return false;
+
+  for (int i = 0; i < n2; ++i) {
+    rhs[i] = b[i] / objective_scale;
+    for (int j = 0; j < n2; ++j)
+      aug[i * n + j] =
+          column_norm[j] > 0. ? a[i * n2 + j] / column_norm[j] : 0.;
+  }
+  for (int k = 0; k < nact; ++k) {
+    int row = ct_indx[k];
+    kkt_scaled_row(aug + (n2 + k) * n, c, d, column_norm, objective_scale, n2,
+                   row);
+    rhs[n2 + k] =
+        d[row] / kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+    for (int j = 0; j < n2; ++j) at_col[j] = aug[(n2 + k) * n + j];
+    lubksb(at_col, at_lu, at_indx, n2);
+    for (int j = 0; j < n2; ++j) aug[j * n + n2 + k] = at_col[j];
+    for (int j = 0; j < nact; ++j)
+      aug[(n2 + k) * n + n2 + j] = j == k ? reg : 0.;
+  }
+
+  if (ludcmp<T, Backend>(aug, lu_indx, n, nullptr, T(0), work) == 0)
+    return false;
+  lubksb(rhs, aug, lu_indx, n);
+  for (int i = 0; i < n; ++i)
+    if (!std::isfinite(rhs[i])) return false;
+  return true;
+}
+
 namespace detail {
 
 template <typename T, PoolBackend Backend, KktActivePolicy Policy>
@@ -106,6 +158,14 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
   ct_indx = (int*)pmalloc<Backend>(work, n3 * sizeof(int));
   lu_indx = (int*)pmalloc<Backend>(work, size * sizeof(int));
   skip_row = (int*)pmalloc<Backend>(work, size * sizeof(int));
+  // direct-solve hook buffers, feasible-origin policy only
+  T *at_lu = nullptr, *at_col = nullptr;
+  int* at_indx = nullptr;
+  if (Policy == KktActivePolicy::AddOneIndependent) {
+    at_lu = (T*)pmalloc<Backend>(work, n2 * n2 * sizeof(T));
+    at_col = (T*)pmalloc<Backend>(work, n2 * sizeof(T));
+    at_indx = (int*)pmalloc<Backend>(work, n2 * sizeof(int));
+  }
 
   T objective_scale = 1.;
   for (int i = 0; i < n1; ++i) {
@@ -176,7 +236,13 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
     ++iter;
     int nact = nactive;
     bool solved = false;
-    for (int attempt = 0; attempt < 2; ++attempt) {
+    // feasible-origin policy hook: a square A is solved in the direct form
+    // first; the normal-equation attempts below are its fallback
+    if (Policy == KktActivePolicy::AddOneIndependent && n1 == n2)
+      solved = kkt_solve_direct<T, Backend>(
+          aug, rhs, lu_indx, at_lu, at_col, at_indx, a, b, c, d, column_norm,
+          objective_scale, n2, nactive, ct_indx, T(reg), work);
+    for (int attempt = 0; attempt < 2 && !solved; ++attempt) {
       T primal_reg = attempt == 0 ? 0. : fallback_reg;
       T dual_reg = attempt == 0 ? reg : (reg == 0. ? -fallback_reg : reg);
       for (int i = 0; i < n2; ++i) {
@@ -383,6 +449,11 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
   pfree<Backend>(ct_indx);
   pfree<Backend>(lu_indx);
   pfree<Backend>(skip_row);
+  if (Policy == KktActivePolicy::AddOneIndependent) {
+    pfree<Backend>(at_lu);
+    pfree<Backend>(at_col);
+    pfree<Backend>(at_indx);
+  }
   pool_rewind<Backend>(work, mark);
 
   if (status != 0) {
@@ -443,7 +514,10 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
  * \brief leastsq_kkt for problems where x = 0 is feasible (C.0 <= d)
  *
  * Same problem, arguments, scaling, KKT assembly and factorization as
- * leastsq_kkt; only the active-set policy differs. Each iteration adds back
+ * leastsq_kkt; only the active-set policy differs. The policy also tries,
+ * for a square A, the direct KKT form first (kkt_solve_direct), which avoids
+ * squaring cond(A); if it hits a zero pivot or a non-finite solution the
+ * shared normal-equation path runs as in leastsq_kkt. Each iteration adds back
  * the single most violated inequality that is linearly independent of the
  * active block, so the active block never goes rank-deficient when several
  * rows share a direction (e.g. two condensates drawing on one vapour).

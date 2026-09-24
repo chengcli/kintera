@@ -279,6 +279,24 @@ TEST(LeastSquaresKktFeasibleOrigin, SkipsNearlyDependentRow) {
   }
 }
 
+// The direct-solve hook: A^T.A of this A fails the pivot test (cond(A)^2 ~
+// 1e21), so the normal-equation path could only regularise; the direct form
+// needs cond(A) ~ 4e10 and returns the exact Newton step.
+TEST(LeastSquaresKktFeasibleOrigin, DirectlySolvesIllConditionedSquareSystem) {
+  double matrix[] = {1., 1., 1., 1. + 1.e-10};
+  double constraints[] = {1., 0., 0., -1.};
+  double bounds[] = {2., 2.};  // x0 <= 2, x1 >= -2: inactive at the solution
+  double rhs[] = {0., -1.e-10};
+  int max_iter = 5;
+  int status = leastsq_kkt_feasible_origin(rhs, matrix, constraints, bounds, 2,
+                                           2, 2, 0, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_NEAR(rhs[0], 1., 1.e-5);
+  EXPECT_NEAR(rhs[1], -1., 1.e-5);
+  EXPECT_EQ(max_iter, 1);
+}
+
 TEST(LeastSquaresKktFeasibleOrigin, RejectsInfeasibleOrigin) {
   double matrix[] = {1.};
   double constraints[] = {1., -1.};
