@@ -16,6 +16,8 @@
 
 #include <kintera/utils/user_funcs.hpp>
 
+#include "svp_eval.h"
+
 namespace kintera {
 
 template <typename T>
@@ -29,7 +31,8 @@ DISPATCH_MACRO bool partition_uv_state(
     T temperature, T* conc, T const* baseline, T const* totals, T* molar_energy,
     T const* stoich, int nspecies, int nreaction, T const* intEng_offset,
     T const* cv_const, user_func1 const* logsvp_func,
-    user_func1 const* logsvp_func_ddT, user_func2 const* intEng_R_extra,
+    user_func1 const* logsvp_func_ddT, int const* svp_kind,
+    double const* svp_params, user_func2 const* intEng_R_extra,
     user_func2 const* cv_R_extra, T* energy, T* derivative) {
   memcpy(conc, baseline, nspecies * sizeof(T));
   for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
@@ -53,9 +56,11 @@ DISPATCH_MACRO bool partition_uv_state(
       conc[cloud_index] = 0.;
       continue;
     }
-    T log_saturation =
-        logsvp_func[reaction_index](temperature) / reactant_coefficient -
-        log(constants::Rgas * temperature);
+    T log_saturation = eval_logsvp(svp_kind[reaction_index],
+                                   svp_params + reaction_index * KSVP_NPARAM,
+                                   logsvp_func[reaction_index], temperature) /
+                           reactant_coefficient -
+                       log(constants::Rgas * temperature);
     if (!std::isfinite(log_saturation)) return false;
     T vapor = log_saturation >= log(total) ? total : exp(log_saturation);
     if (vapor > total) vapor = total;
@@ -101,7 +106,10 @@ DISPATCH_MACRO bool partition_uv_state(
     if (conc[vapor_index] >= totals[reaction_index]) continue;
     T vapor_derivative =
         conc[vapor_index] *
-        (logsvp_func_ddT[reaction_index](temperature) / reactant_coefficient -
+        (eval_logsvp_ddT(svp_kind[reaction_index],
+                         svp_params + reaction_index * KSVP_NPARAM,
+                         logsvp_func_ddT[reaction_index], temperature) /
+             reactant_coefficient -
          1. / temperature);
     *derivative += vapor_derivative *
                    (molar_energy[vapor_index] - product_coefficient /
@@ -116,6 +124,7 @@ DISPATCH_MACRO int equilibrate_uv_partition(
     T* gain, T* diag, T* temp, T* conc, T h0, T const* stoich, int nspecies,
     int nreaction, T const* intEng_offset, T const* cv_const,
     user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
+    int const* svp_kind, double const* svp_params,
     user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
     int* max_iter, int* nactive, char* work) {
   size_t mark = pool_mark(work);
@@ -158,7 +167,7 @@ DISPATCH_MACRO int equilibrate_uv_partition(
     valid = partition_uv_state(
         *temp, conc, baseline, totals, molar_energy, stoich, nspecies,
         nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
-        intEng_R_extra, cv_R_extra, &energy, &derivative);
+        svp_kind, svp_params, intEng_R_extra, cv_R_extra, &energy, &derivative);
     residual = energy - h0;
   }
 
@@ -171,10 +180,11 @@ DISPATCH_MACRO int equilibrate_uv_partition(
     for (int bracket_step = 0; bracket_step < 64; ++bracket_step) {
       T candidate = residual > 0. ? lower * 0.5 : upper * 2.;
       if (!(candidate > 0.) || !std::isfinite(candidate)) break;
-      if (!partition_uv_state(
-              candidate, conc, baseline, totals, molar_energy, stoich, nspecies,
-              nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
-              intEng_R_extra, cv_R_extra, &bracket_energy, &bracket_derivative))
+      if (!partition_uv_state(candidate, conc, baseline, totals, molar_energy,
+                              stoich, nspecies, nreaction, intEng_offset,
+                              cv_const, logsvp_func, logsvp_func_ddT, svp_kind,
+                              svp_params, intEng_R_extra, cv_R_extra,
+                              &bracket_energy, &bracket_derivative))
         break;
       if (residual > 0.) {
         lower = candidate;
@@ -199,7 +209,8 @@ DISPATCH_MACRO int equilibrate_uv_partition(
       valid = partition_uv_state(
           candidate, conc, baseline, totals, molar_energy, stoich, nspecies,
           nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
-          intEng_R_extra, cv_R_extra, &energy, &derivative);
+          svp_kind, svp_params, intEng_R_extra, cv_R_extra, &energy,
+          &derivative);
       if (!valid) break;
       current = candidate;
       residual = energy - h0;
@@ -274,6 +285,7 @@ DISPATCH_MACRO int equilibrate_uv(
     T* gain, T* diag, T* temp, T* conc, T h0, T const* stoich, int nspecies,
     int nreaction, int ngas, T const* intEng_offset, T const* cv_const,
     user_func1 const* logsvp_func, user_func1 const* logsvp_func_ddT,
+    int const* svp_kind, double const* svp_params,
     user_func2 const* intEng_R_extra, user_func2 const* cv_R_extra,
     float logsvp_eps, int* max_iter, int* reaction_set, int* nactive,
     int uv_solver = 0, char* work = nullptr) {
@@ -311,8 +323,8 @@ DISPATCH_MACRO int equilibrate_uv(
   if (uv_solver != 0) {
     int partition_status = equilibrate_uv_partition(
         gain, diag, temp, conc, h0, stoich, nspecies, nreaction, intEng_offset,
-        cv_const, logsvp_func, logsvp_func_ddT, intEng_R_extra, cv_R_extra,
-        max_iter, nactive, work);
+        cv_const, logsvp_func, logsvp_func_ddT, svp_kind, svp_params,
+        intEng_R_extra, cv_R_extra, max_iter, nactive, work);
     if (partition_status == 0) return 0;
     if (uv_solver == 2) {
       printf("[Warning] equilibrate_uv partition did not converge.\n");
@@ -363,9 +375,12 @@ DISPATCH_MACRO int equilibrate_uv(
         if (stoich[i * nreaction + j] < 0) {  // reactant
           stoich_sum += (-stoich[i * nreaction + j]);
         }
-      logsvp[j] =
-          logsvp_func[j](*temp) - stoich_sum * log(constants::Rgas * (*temp));
-      logsvp_ddT[j] = logsvp_func_ddT[j](*temp) - stoich_sum / (*temp);
+      double const* p = svp_params + j * KSVP_NPARAM;
+      logsvp[j] = eval_logsvp(svp_kind[j], p, logsvp_func[j], *temp) -
+                  stoich_sum * log(constants::Rgas * (*temp));
+      logsvp_ddT[j] =
+          eval_logsvp_ddT(svp_kind[j], p, logsvp_func_ddT[j], *temp) -
+          stoich_sum / (*temp);
     }
 
     // calculate heat capacity

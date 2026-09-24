@@ -1,6 +1,7 @@
 #pragma once
 
 // torch
+#include <ATen/TensorIterator.h>
 #include <torch/torch.h>
 
 // kintera
@@ -14,6 +15,24 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
 
   static void init(NucleationOptions const& op) {
     _logsvp = op->logsvp();
+    _svp_params = op->svp_params();
+
+    // Classify each column: 0 = named func-table formula, 1 = inline 'ideal',
+    // 2 = inline 'antoine'. For inline columns, swap in a valid sentinel name
+    // so the func-table dispatch does not fail; the column is overwritten with
+    // the eval_logsvp result afterwards.
+    _formula_kind.assign(_logsvp.size(), 0);
+    for (size_t i = 0; i < _logsvp.size(); ++i) {
+      if (_logsvp[i] == "ideal") {
+        _formula_kind[i] = 1;
+        _logsvp[i] = "h2o_ideal";
+      } else if (_logsvp[i] == "antoine") {
+        _formula_kind[i] = 2;
+        _logsvp[i] = "h2o_ideal";
+      }
+      if (_formula_kind[i] != 0) check_inline(op, i, _formula_kind[i]);
+    }
+
     _logsvp_ddT = _logsvp;
     for (auto& name : _logsvp_ddT) name += "_ddT";
   }
@@ -71,9 +90,38 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
       torch::autograd::AutogradContext* ctx,
       std::vector<torch::Tensor> grad_outputs);
 
+ public:
+  //! \brief Build inline-SVP spec tensors {kind, params} for the equilibrate
+  //! kernels from a nucleation option set, on the given device.
+  //!
+  //! kind   is int32   [nreaction]   (0 named, 1 'ideal', 2 'antoine');
+  //! params is float64 [nreaction, KSVP_NPARAM] (zero-padded; named ⇒ zeros).
+  static std::pair<torch::Tensor, torch::Tensor> make_svp_spec(
+      NucleationOptions const& op, torch::Device device);
+
  private:
+  //! Inline formulas need their YAML parameters: 6 for 'ideal', 3 for 'antoine'
+  static void check_inline(NucleationOptions const& op, size_t j, int kind) {
+    size_t need = kind == 1 ? 6 : 3;
+    TORCH_CHECK(
+        j < op->svp_params().size() && op->svp_params()[j].size() == need,
+        "inline svp formula '", op->logsvp()[j], "' (reaction ", j,
+        ") lacks its ", need,
+        " parameters; inline 'ideal'/'antoine' formulas "
+        "must be defined in YAML");
+  }
+
+  //! Overwrite the inline-parametrized columns of the output of \p iter with
+  //! eval_logsvp (or eval_logsvp_ddT when \p deriv is true) evaluated from
+  //! _svp_params. Named columns are left untouched.
+  static void apply_inline(at::TensorIterator& iter, bool deriv);
+
   static std::vector<std::string> _logsvp;
   static std::vector<std::string> _logsvp_ddT;
+  //! per-column formula kind: 0 named, 1 'ideal', 2 'antoine'
+  static std::vector<int> _formula_kind;
+  //! per-column inline parameters (empty for named columns)
+  static std::vector<std::vector<double>> _svp_params;
 };
 
 }  // namespace kintera
