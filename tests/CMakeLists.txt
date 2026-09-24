@@ -21,6 +21,7 @@ setup_test(test_falloff)
 setup_test(test_diffusion)
 setup_test(test_equilibrium)
 setup_test(test_kinetics_base)
+setup_test(test_alloc_space)
 
 file(GLOB inputs *.inp *.dat *.yaml)
 foreach(input ${inputs})

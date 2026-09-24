@@ -125,6 +125,19 @@ size_t leastsq_kkt_space(int n2, int n3) {
   return bytes + ludcmp_space<T>(n2 + n3);
 }
 
+// leastsq_kkt plus the direct-solve hook of the feasible-origin policy
+template <typename T>
+size_t leastsq_kkt_feasible_origin_space(int n2, int n3) {
+  size_t bytes = 0;
+  auto bump = [&](size_t, size_t nbytes) {
+    bytes += pool_allocation_bytes(nbytes);
+  };
+  bump(alignof(T), n2 * n2 * sizeof(T));  // at_lu
+  bump(alignof(T), n2 * sizeof(T));       // at_col
+  bump(alignof(int), n2 * sizeof(int));   // at_indx
+  return bytes + leastsq_kkt_space<T>(n2, n3);
+}
+
 template <typename T>
 size_t equilibrate_tp_space(int nspecies, int nreaction) {
   size_t bytes = 0;
@@ -138,7 +151,8 @@ size_t equilibrate_tp_space(int nspecies, int nreaction) {
   bump(alignof(T), nreaction * sizeof(T));              // stoich_sum
   bump(alignof(T), nspecies * sizeof(T));               // xfrac0
   bump(alignof(T), nreaction * nreaction * sizeof(T));  // gain_cpy
-  return bytes + leastsq_kkt_space<T>(nreaction, nspecies);
+  bump(alignof(T), nspecies * sizeof(T));               // theta
+  return bytes + leastsq_kkt_feasible_origin_space<T>(nreaction, nspecies);
 }
 
 template <typename T>
@@ -162,7 +176,8 @@ size_t equilibrate_uv_space(int nspecies, int nreaction) {
   bump(alignof(T), nspecies * nreaction * sizeof(T));   // stoich_active
   bump(alignof(T), nspecies * sizeof(T));               // conc0
   bump(alignof(T), nreaction * nreaction * sizeof(T));  // gain_cpy
-  return bytes + leastsq_kkt_space<T>(nreaction, nspecies);
+  bump(alignof(T), nspecies * sizeof(T));               // theta
+  return bytes + leastsq_kkt_feasible_origin_space<T>(nreaction, nspecies);
 }
 
 }  // namespace kintera
