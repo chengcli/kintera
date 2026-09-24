@@ -1,3 +1,6 @@
+// C/C++
+#include <limits>
+
 // yaml
 #include <yaml-cpp/yaml.h>
 
@@ -75,6 +78,30 @@ void EvaporationImpl::reset() {
 
   diameter = register_buffer(
       "diameter", torch::tensor(options->diameter(), torch::kFloat64));
+
+  // the rate law needs one reactant and one or two products, all coefficient 1
+  std::vector<int64_t> two;
+  std::set<std::string> condensates;
+  auto const& rxns = options->reactions();
+  for (size_t j = 0; j < rxns.size(); ++j) {
+    auto const& r = rxns[j];
+    bool unit_reactant = r.reactants().size() == 1 &&
+                         r.reactants().begin()->second == 1. && !r.reversible();
+    bool unit_products = r.products().size() == 1 || r.products().size() == 2;
+    for (auto const& [name, nu] : r.products()) unit_products &= (nu == 1.);
+    TORCH_CHECK(unit_reactant && unit_products, "Evaporation reaction '",
+                r.equation(),
+                "' must be irreversible with one reactant and one or two "
+                "products, each with stoichiometric coefficient 1");
+    condensates.insert(r.reactants().begin()->first);
+    if (r.products().size() == 2) two.push_back(static_cast<int64_t>(j));
+  }
+  for (auto j : two)
+    for (auto const& [name, _] : rxns[j].products())
+      TORCH_CHECK(!condensates.count(name), "Evaporation reaction '",
+                  rxns[j].equation(), "' has the condensate '", name,
+                  "' as a product");
+  two_product_rxns_ = torch::tensor(two, torch::kInt64);
 }
 
 void EvaporationImpl::pretty_print(std::ostream& os) const {
@@ -112,10 +139,30 @@ torch::Tensor EvaporationImpl::forward(
   LogSVPFunc::init(options);
   auto logsvp = LogSVPFunc::apply(temp);
 
-  auto eta = torch::exp(logsvp - sp.sum(0) * (constants::Rgas * temp).log()) -
-             conc.pow(sp).prod(-2);
+  auto ksat = torch::exp(logsvp - sp.sum(0) * (constants::Rgas * temp).log());
+  auto eta = ksat - conc.pow(sp).prod(-2);
 
   eta.clamp_min_(0);
+
+  // two products: rate uses the extent x to equilibrium, (c1+x)(c2+x) = ksat
+  if (two_product_rxns_.numel() > 0) {
+    auto idx = two_product_rxns_.to(ksat.device(), torch::kLong);
+    auto k2 = ksat.index_select(-1, idx);
+    auto c = conc.clamp_min(0.);
+    // an expanded conc carries one column per reaction
+    if (c.size(-1) != 1) c = c.index_select(-1, idx);
+    auto is_product = sp.index_select(1, idx).gt(0.);
+    auto prod = c.pow(is_product.to(c.dtype())).prod(-2);
+    auto sum = torch::where(is_product, c, torch::zeros_like(c)).sum(-2);
+    double tiny = c.dtype() == torch::kFloat32
+                      ? std::numeric_limits<float>::min()
+                      : std::numeric_limits<double>::min();
+    auto root = ((sum * sum - 4. * prod).clamp_min(0.) + 4. * k2)
+                    .clamp_min(tiny)
+                    .sqrt();
+    auto x = 2. * (k2 - prod) / (sum + root).clamp_min(tiny);
+    eta = eta.index_copy(-1, idx, x.clamp_min(0.));
+  }
 
   return kappa * eta;
 }
