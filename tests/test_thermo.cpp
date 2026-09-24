@@ -297,6 +297,26 @@ TEST(LeastSquaresKktFeasibleOrigin, DirectlySolvesIllConditionedSquareSystem) {
   EXPECT_EQ(max_iter, 1);
 }
 
+// NH3 -> NH3(s), NH3 + H2S -> NH4SH(s) with no NH3(s) yet: the NH3 and
+// NH3(s) rows are both active, so x0 = 0 and x1 = [NH3] at the vertex. The
+// solve alone left x0 = 1.1e-18, which would seed an NH3(s) cloud.
+TEST(LeastSquaresKktFeasibleOrigin, HoldsActiveBoundExactly) {
+  double matrix[] = {-132.44505818852238, -132.61837573952397,
+                     -132.79169329052556, -158.11526811088663};
+  // NH3, H2S, NH3(s), NH4SH(s): consumed stock <= concentration
+  double constraints[] = {1., 1., 0., 1., -1., 0., 0., -1.};
+  double bounds[] = {0.0086870932652533712, 0.039761024680184796, 0., 1.e-3};
+  double rhs[] = {-0.12636816063699183, -5.41243635612771};
+  int max_iter = 10;
+  int status = leastsq_kkt_feasible_origin(rhs, matrix, constraints, bounds, 2,
+                                           2, 4, 0, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_EQ(rhs[0], 0.);
+  EXPECT_DOUBLE_EQ(rhs[1], bounds[0]);
+  EXPECT_EQ(max_iter, 3);
+}
+
 TEST(LeastSquaresKktFeasibleOrigin, RejectsInfeasibleOrigin) {
   double matrix[] = {1.};
   double constraints[] = {1., -1.};

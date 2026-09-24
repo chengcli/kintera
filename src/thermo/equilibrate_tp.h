@@ -263,11 +263,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
         for (int k = 0; k < (*nactive); k++) {
           xfrac[i] -= stoich_active[i * (*nactive) + k] * rhs[k] * lambda;
         }
-        // as in equilibrate_uv, a vapour keeps at least 1% of its amount per
-        // step: the log-space Newton recovers only ~e^|rhs| per iteration
-        // from a vapour depleted to round-off
-        if (i < ngas && (xfrac[i] <= 0. || xfrac[i] < 0.01 * xfrac0[i]))
-          positive_vapor = false;
+        if (i < ngas && xfrac[i] <= 0.) positive_vapor = false;
         xsum += xfrac[i];
       }
       if (positive_vapor) break;

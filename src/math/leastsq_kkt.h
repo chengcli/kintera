@@ -441,6 +441,21 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
     for (int i = 0; i < n2; ++i)
       b[i] = rhs[i] * kkt_column_scale(objective_scale, column_norm[i]);
 
+  // Feasible-origin policy: an active row on a single unknown is a bound on
+  // it, and the unknown is held there exactly rather than to the round-off of
+  // the solve. A zero stock (an absent cloud) then gives exactly zero extent;
+  // a round-off extent of 1e-20 would seed a cloud that shares its vapour.
+  if (Policy == KktActivePolicy::AddOneIndependent && status == 0 && converged)
+    for (int i = 0; i < nactive; ++i) {
+      int row = ct_indx[i], col = -1, count = 0;
+      for (int j = 0; j < n2; ++j)
+        if (C(row, j) != 0.) {
+          col = j;
+          ++count;
+        }
+      if (count == 1) b[col] = d[row] / C(row, col);
+    }
+
   pfree<Backend>(aug);
   pfree<Backend>(ata);
   pfree<Backend>(column_norm);
@@ -525,6 +540,10 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
  * A row counts as independent when the part of its scaled form orthogonal to
  * the active rows keeps more than sqrt(eps) of its 2-norm (relative, so it
  * does not depend on the magnitude of C or d).
+ *
+ * An active row with a single nonzero coefficient is a bound on that unknown,
+ * which is returned exactly on it (d_k / C_kj), not to the round-off of the
+ * solve.
  *
  * A violated row that is dependent on the active block is never activated,
  * so the returned x may violate it; the caller must limit the step (the
