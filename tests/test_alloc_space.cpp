@@ -66,6 +66,31 @@ TYPED_TEST(AllocSpaceTest, leastsq_kkt_stays_in_budget) {
   }
 }
 
+// same budget as leastsq_kkt: the two share one driver. Bounds are
+// non-negative (x = 0 feasible) and rows repeat, so dependent rows come up.
+TYPED_TEST(AllocSpaceTest, leastsq_kkt_feasible_origin_stays_in_budget) {
+  using T = TypeParam;
+  for (int n2 = 1; n2 <= 5; ++n2) {
+    for (int n3 = 2; n3 <= 11; ++n3) {
+      std::vector<T> a(n2 * n2, 0.), b(n2), c(n3 * n2), d(n3);
+      for (int i = 0; i < n2; ++i) {
+        a[i * n2 + i] = 2. + i;
+        b[i] = 1. + 0.5 * i;
+      }
+      for (int k = 0; k < n3; ++k) {
+        for (int j = 0; j < n2; ++j) c[k * n2 + j] = ((k + j) % 2 ? -1. : 1.);
+        d[k] = 0.1;
+      }
+      GuardedPool pool(leastsq_kkt_space<T>(n2, n3));
+      int max_iter = n3 + 1;
+      leastsq_kkt_feasible_origin<T, PoolBackend::HostBump>(
+          b.data(), a.data(), c.data(), d.data(), n2, n2, n3, 0, &max_iter, 0.,
+          pool.work());
+      EXPECT_TRUE(pool.guard_intact()) << "n2=" << n2 << " n3=" << n3;
+    }
+  }
+}
+
 // dry + nr vapours + nr clouds, every vapour supersaturated, so the KKT path
 // (the one that uses the pool) runs and forms cloud.
 TYPED_TEST(AllocSpaceTest, equilibrate_uv_stays_in_budget) {

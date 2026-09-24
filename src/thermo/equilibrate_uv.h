@@ -487,9 +487,10 @@ DISPATCH_MACRO int equilibrate_uv(
     // The inner active-set solve needs its own bound: sharing max_iter with
     // the outer Newton lets a small budget abort it and return state unchanged.
     int max_kkt_iter = nspecies + 1 > *max_iter ? nspecies + 1 : *max_iter;
-    err_code =
-        leastsq_kkt<T, Backend>(rhs, gain, stoich_active, conc, *nactive,
-                                *nactive, nspecies, 0, &max_kkt_iter, 0., work);
+    // x = 0 (no extent) is feasible: the bounds are the current concentrations
+    err_code = leastsq_kkt_feasible_origin<T, Backend>(
+        rhs, gain, stoich_active, conc, *nactive, *nactive, nspecies, 0,
+        &max_kkt_iter, 0., work);
     if (err_code != 0) break;
 
     // rate -> conc

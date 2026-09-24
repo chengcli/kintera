@@ -81,8 +81,7 @@ TEST(LeastSquaresKkt, HandlesMoreThan64Constraints) {
   EXPECT_NEAR(rhs[0], 1., 1.e-10);
 }
 
-// No regularisation: two identical equalities make the KKT system singular.
-TEST(LeastSquaresKkt, ReportsRedundantEqualitiesAsSingular) {
+TEST(LeastSquaresKkt, RegularizesRedundantActiveConstraints) {
   double matrix[] = {1., 0., 0., 1.};
   double constraints[] = {1., 0., 1., 0.};
   double bounds[] = {1., 1.};
@@ -92,9 +91,9 @@ TEST(LeastSquaresKkt, ReportsRedundantEqualitiesAsSingular) {
     int status =
         leastsq_kkt(rhs, matrix, constraints, bounds, 2, 2, 2, 2, &max_iter);
 
-    EXPECT_EQ(status, 3);
-    EXPECT_DOUBLE_EQ(rhs[0], 2.);
-    EXPECT_DOUBLE_EQ(rhs[1], 0.);
+    EXPECT_EQ(status, 0);
+    EXPECT_NEAR(rhs[0], 1., 1.e-8);
+    EXPECT_NEAR(rhs[1], 0., 1.e-8);
   }
 }
 
@@ -114,9 +113,7 @@ TEST(LeastSquaresKkt, RejectsInconsistentEqualities) {
   }
 }
 
-// A row dependent on the active block is never activated: the
-// active set's solution is returned and the caller clips the step.
-TEST(LeastSquaresKkt, NeverActivatesDependentInequality) {
+TEST(LeastSquaresKkt, RejectsContradictoryInequalities) {
   double matrix[] = {1.};
   for (double scale : {1., 1.e-30}) {
     double rhs[] = {0.};
@@ -127,13 +124,12 @@ TEST(LeastSquaresKkt, NeverActivatesDependentInequality) {
     int status =
         leastsq_kkt(rhs, matrix, constraints, bounds, 1, 1, 2, 0, &max_iter);
 
-    EXPECT_EQ(status, 0);
-    EXPECT_NEAR(rhs[0], 2., 1.e-12);
+    EXPECT_EQ(status, 3);
+    EXPECT_DOUBLE_EQ(rhs[0], 0.);
   }
 }
 
-// The KKT form needs A invertible: a singular objective is reported.
-TEST(LeastSquaresKkt, ReportsRankDeficientObjectiveAsSingular) {
+TEST(LeastSquaresKkt, RegularizesRankDeficientObjective) {
   double matrix[] = {1., 1., 2., 2.};
   for (int repeat = 0; repeat < 2; ++repeat) {
     double rhs[] = {1., 2.};
@@ -141,9 +137,9 @@ TEST(LeastSquaresKkt, ReportsRankDeficientObjectiveAsSingular) {
     int status = leastsq_kkt<double>(rhs, matrix, nullptr, nullptr, 2, 2, 0, 0,
                                      &max_iter);
 
-    EXPECT_EQ(status, 3);
-    EXPECT_DOUBLE_EQ(rhs[0], 1.);
-    EXPECT_DOUBLE_EQ(rhs[1], 2.);
+    EXPECT_EQ(status, 0);
+    EXPECT_NEAR(rhs[0], 0.5, 1.e-6);
+    EXPECT_NEAR(rhs[1], 0.5, 1.e-6);
   }
 }
 
@@ -212,6 +208,115 @@ TEST(LeastSquaresKkt, LineSearchCanScaleNewtonDirectionToBound) {
   EXPECT_TRUE(constrained_newton_trial(trial, state, constraint, rhs, 1, 1, 1,
                                        0, 0.25));
   EXPECT_DOUBLE_EQ(trial[0], 0.5);
+}
+
+// #110 contract, stated directly: x <= 1 and x >= 2 must not come back as x = 2
+TEST(LeastSquaresKkt, ContradictoryBoundsFailClosed) {
+  double matrix[] = {1.};
+  double rhs[] = {3.};
+  double constraints[] = {1., -1.};
+  double bounds[] = {1., -2.};
+  int max_iter = 10;
+
+  int status =
+      leastsq_kkt(rhs, matrix, constraints, bounds, 1, 1, 2, 0, &max_iter);
+
+  EXPECT_NE(status, 0);
+  EXPECT_NE(rhs[0], 2.);
+  EXPECT_DOUBLE_EQ(rhs[0], 3.);
+}
+
+// Two extents sharing one reactant (NH3 -> NH3(s), NH3 + H2S -> NH4SH(s)):
+// four rows in 2-D, three of them violated by the unconstrained step.
+TEST(LeastSquaresKktFeasibleOrigin, SolvesSharedReactantStep) {
+  double matrix[] = {1., 0., 0., 1.};
+  // NH3, H2S, NH3(s), NH4SH(s): consumed stock <= concentration
+  double constraints[] = {1., 1., 0., 1., -1., 0., 0., -1.};
+  double bounds[] = {1., 0.5, 0., 0.};
+  for (int repeat = 0; repeat < 2; ++repeat) {
+    double rhs[] = {-1., 5.};
+    int max_iter = 5;
+    int status = leastsq_kkt_feasible_origin(rhs, matrix, constraints, bounds,
+                                             2, 2, 4, 0, &max_iter);
+
+    EXPECT_EQ(status, 0);
+    EXPECT_NEAR(rhs[0], 0., 1.e-12);
+    EXPECT_NEAR(rhs[1], 0.5, 1.e-12);
+  }
+}
+
+// A row within sqrt(eps) of the active block is not activated; one well
+// clear of it is, whatever the magnitude of C and d. Once x0 <= 0.5 is
+// active, x0 + delta x1 <= 0.5 + delta / 2 is violated by 0.75 delta.
+TEST(LeastSquaresKktFeasibleOrigin, SkipsNearlyDependentRow) {
+  double matrix[] = {1., 1., 0., 1.};
+  for (double scale : {1., 1.e-30, 1.e30}) {
+    for (double delta : {1.e-3, 1.e-12}) {
+      double constraints[] = {scale, 0., scale, scale * delta};
+      double bounds[] = {scale * 0.5, scale * (0.5 + 0.5 * delta)};
+      double rhs[] = {3., 0.};
+      int max_iter = 5;
+      int status = leastsq_kkt_feasible_origin(rhs, matrix, constraints, bounds,
+                                               2, 2, 2, 0, &max_iter);
+
+      EXPECT_EQ(status, 0) << delta << " " << scale;
+      if (delta > 1.e-6) {
+        // activated, then x0 <= 0.5 drops out (negative multiplier): the
+        // exact optimum has only the second row active
+        EXPECT_EQ(max_iter, 4) << scale;
+        double c = 0.5 + 0.5 * delta;
+        double x1 =
+            (1. - delta) * (3. - c) / ((1. - delta) * (1. - delta) + 1.);
+        EXPECT_NEAR(rhs[1], x1, 1.e-12) << scale;
+        EXPECT_NEAR(rhs[0], c - delta * x1, 1.e-12) << scale;
+      } else {
+        // never activated: x0 <= 0.5 alone, the other row off by 0.75 delta
+        EXPECT_EQ(max_iter, 2) << scale;
+        EXPECT_NEAR(rhs[0], 0.5, 1.e-12) << scale;
+        EXPECT_NEAR(rhs[1], 1.25, 1.e-12) << scale;
+      }
+    }
+  }
+}
+
+TEST(LeastSquaresKktFeasibleOrigin, RejectsInfeasibleOrigin) {
+  double matrix[] = {1.};
+  double constraints[] = {1., -1.};
+  for (double lower : {2., 1.e-6}) {
+    double rhs[] = {3.};
+    double bounds[] = {1., -lower};  // x <= 1 and x >= lower
+    int max_iter = 10;
+    int status = leastsq_kkt_feasible_origin(rhs, matrix, constraints, bounds,
+                                             1, 1, 2, 0, &max_iter);
+
+    EXPECT_EQ(status, 1) << lower;
+    EXPECT_DOUBLE_EQ(rhs[0], 3.) << lower;
+  }
+
+  // an equality x = 1 excludes x = 0 as well
+  double rhs[] = {3.};
+  double equality[] = {1.};
+  double target[] = {1.};
+  int max_iter = 10;
+  EXPECT_EQ(leastsq_kkt_feasible_origin(rhs, matrix, equality, target, 1, 1, 1,
+                                        1, &max_iter),
+            1);
+  EXPECT_DOUBLE_EQ(rhs[0], 3.);
+}
+
+TEST(LeastSquaresKktFeasibleOrigin, AcceptsRoundOffNegativeBound) {
+  double matrix[] = {1., 0., 0., 1.};
+  // x0 >= 1e-19: a used-up stock of 1e-3 after round-off; x1 <= 1e-3
+  double constraints[] = {-1., 0., 0., 1.};
+  double bounds[] = {-1.e-19, 1.e-3};
+  double rhs[] = {-3., 3.};
+  int max_iter = 10;
+  int status = leastsq_kkt_feasible_origin(rhs, matrix, constraints, bounds, 2,
+                                           2, 2, 0, &max_iter);
+
+  EXPECT_EQ(status, 0);
+  EXPECT_NEAR(rhs[0], 0., 1.e-18);
+  EXPECT_NEAR(rhs[1], 1.e-3, 1.e-18);
 }
 
 TEST_P(DeviceTest, thermo_y) {

@@ -106,6 +106,7 @@ size_t psolve_space(int n) {
   return bytes;
 }
 
+// also the budget of leastsq_kkt_feasible_origin (same driver)
 template <typename T>
 size_t leastsq_kkt_space(int n2, int n3) {
   int size = n2 + n3;

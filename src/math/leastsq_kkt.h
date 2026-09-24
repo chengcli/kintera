@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 
 // base
 #include <configure.h>
@@ -11,7 +12,6 @@
 // math
 #include "lubksb.h"
 #include "ludcmp.h"
-#include "psolve.h"
 
 #define A(i, j) a[(i) * n2 + (j)]
 #define ATA(i, j) ata[(i) * n2 + (j)]
@@ -20,132 +20,70 @@
 
 namespace kintera {
 
-// aug = [[A, A^-T.C^T], [C, reg I]], the normal-equation KKT system times
-// A^-T. ata receives LU(A^T), col is scratch; returns 0 if A is singular.
-template <typename T, PoolBackend Backend = PoolBackend::Shared>
-DISPATCH_MACRO int populate_aug(T* aug, T const* a, T* ata, T* col, int* indx,
-                                T const* c, int n2, int nact,
-                                int const* ct_indx, float reg = 0.,
-                                char* work = nullptr) {
-  // populate A (upper left block) and factorize A^T
-  for (int i = 0; i < n2; ++i) {
-    for (int j = 0; j < n2; ++j) {
-      AUG(i, j) = A(i, j);
-      ATA(i, j) = A(j, i);
-    }
-  }
-  int ok = ludcmp<T, Backend>(ata, indx, n2, nullptr, T(0), work);
-
-  // populate C (lower left block)
-  for (int i = 0; i < nact; ++i) {
-    for (int j = 0; j < n2; ++j) {
-      AUG(n2 + i, j) = C(ct_indx[i], j);
-    }
-  }
-
-  // populate A^-T.C^T (upper right block), one active column at a time
-  for (int j = 0; j < nact; ++j) {
-    for (int i = 0; i < n2; ++i) col[i] = C(ct_indx[j], i);
-    lubksb(col, ata, indx, n2);
-    for (int i = 0; i < n2; ++i) AUG(i, n2 + j) = col[i];
-  }
-
-  // zero (lower right block)
-  for (int i = 0; i < nact; ++i) {
-    for (int j = 0; j < nact; ++j) {
-      AUG(n2 + i, n2 + j) = 0.0;
-    }
-    // add a small diagonal perturbation to improve numerical stability
-    AUG(n2 + i, n2 + i) = reg;
-  }
-  return ok;
+template <typename T>
+DISPATCH_MACRO T kkt_column_scale(T objective_scale, T column_norm) {
+  return column_norm > 0. ? objective_scale / column_norm : 1.;
 }
 
 template <typename T>
-DISPATCH_MACRO void populate_rhs(T* rhs, T const* b, T const* d, int n2,
-                                 int nact, int const* ct_indx) {
-  // populate b (upper part)
-  for (int i = 0; i < n2; ++i) {
-    rhs[i] = b[i];
+DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d, T const* column_norm,
+                               T objective_scale, int n2, int row) {
+  T scale = fabs(d[row]);
+  for (int j = 0; j < n2; ++j) {
+    T value = fabs(c[row * n2 + j] *
+                   kkt_column_scale(objective_scale, column_norm[j]));
+    if (value > scale) scale = value;
   }
-
-  // populate d (lower part)
-  for (int i = 0; i < nact; ++i) {
-    rhs[n2 + i] = d[ct_indx[i]];
-  }
+  return scale > 0. ? scale : 1.;
 }
 
-// true if row k of C is independent of the nact active rows; m is scratch
+// Active-set policies of the KKT driver below. Only the step that grows the
+// active set differs; assembly, factorization and multiplier drops are shared.
+enum class KktActivePolicy {
+  // add every violated inequality at once (#110 contract of leastsq_kkt)
+  AddAllViolated,
+  // add the single most violated inequality that is linearly independent of
+  // the active block; requires x = 0 to be feasible
+  AddOneIndependent,
+};
+
+// Constraint row `row` in scaled KKT units, as assembled into the KKT block.
 template <typename T>
-DISPATCH_MACRO bool independent_row(T* m, T const* c, int const* ct_indx,
-                                    int nact, int k, int n2) {
-  int nr = nact + 1;
-  T scale = 0.;
-  for (int i = 0; i < nr; ++i)
-    for (int j = 0; j < n2; ++j) {
-      m[i * n2 + j] = C(i < nact ? ct_indx[i] : k, j);
-      if (fabs(m[i * n2 + j]) > scale) scale = fabs(m[i * n2 + j]);
-    }
-  int rank = 0;
-  for (int j = 0; j < n2 && rank < nr; ++j) {
-    int p = rank;
-    for (int i = rank + 1; i < nr; ++i)
-      if (fabs(m[i * n2 + j]) > fabs(m[p * n2 + j])) p = i;
-    if (fabs(m[p * n2 + j]) <= 1.e-12 * scale) continue;
-    for (int jj = 0; jj < n2; ++jj) {
-      T t = m[p * n2 + jj];
-      m[p * n2 + jj] = m[rank * n2 + jj];
-      m[rank * n2 + jj] = t;
-    }
-    for (int i = rank + 1; i < nr; ++i) {
-      T f = m[i * n2 + j] / m[rank * n2 + j];
-      for (int jj = j; jj < n2; ++jj) m[i * n2 + jj] -= f * m[rank * n2 + jj];
-    }
-    ++rank;
-  }
-  return rank == nr;
+DISPATCH_MACRO void kkt_scaled_row(T* out, T const* c, T const* d,
+                                   T const* column_norm, T objective_scale,
+                                   int n2, int row) {
+  T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+  for (int j = 0; j < n2; ++j)
+    out[j] = c[row * n2 + j] *
+             kkt_column_scale(objective_scale, column_norm[j]) / row_scale;
 }
 
-/*!
- * \brief solve constrained least square problem: min ||A.x - b||, s.t. C.x <= d
- *
- * This subroutine solves the constrained least square problem using the active
- * set method based on the KKT conditions. The first `neq` rows of the
- * constraint matrix `C` are treated as equality constraints, while the
- * remaining rows are treated as inequality constraints.
- *
- * \param[in,out] b[0..n1-1]    right-hand-side vector and output. Input
- *                              dimension is n1, output dimension is n2,
- * requiring n1 == n2
- * \param[in] a[0..n1*n2-1]     row-major input matrix, A, square
- * \param[in] c[0..n3*n2-1]     row-major constraint matrix, C
- * \param[in] d[0..n3-1]        right-hand-side constraint vector, d
- * \param[in] n1                number of rows in matrix A
- * \param[in] n2                number of columns in matrix A
- * \param[in] n3                number of rows in matrix C
- * \param[in] neq               number of equality constraints, 0 <= neq <= n3
- * \param[in,out] max_iter      in: maximum number of iterations to perform,
- *                              out: number of iterations actually performed
- * \param[in] work              workspace if not null, otherwise allocated
- *                              internally.
- *
- * A constraint whose row is linearly dependent on the active block is never
- * activated, so a returned solution may violate it; the caller is responsible
- * for the state (equilibrate_uv clips the step per reaction).
- *
- * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
- *         2 on failure (max_iter reached without convergence),
- *         3 on a singular Jacobian (non-finite solution) or an all-zero
- *         active row with a nonzero bound; b is left unchanged.
- */
-template <typename T, PoolBackend Backend = PoolBackend::Shared>
-DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
-                               int n2, int n3, int neq, int* max_iter,
-                               float reg = 0., char* work = nullptr) {
+// Remove from v its components along the nq orthonormal rows of q
+// (modified Gram-Schmidt, applied twice); returns the 2-norm of what remains.
+template <typename T>
+DISPATCH_MACRO T kkt_orthogonalize(T* v, T const* q, int nq, int n2) {
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int r = 0; r < nq; ++r) {
+      T dot = 0.;
+      for (int j = 0; j < n2; ++j) dot += q[r * n2 + j] * v[j];
+      for (int j = 0; j < n2; ++j) v[j] -= dot * q[r * n2 + j];
+    }
+  }
+  T norm = 0.;
+  for (int j = 0; j < n2; ++j) norm += v[j] * v[j];
+  return sqrt(norm);
+}
+
+namespace detail {
+
+template <typename T, PoolBackend Backend, KktActivePolicy Policy>
+DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
+                                    int n1, int n2, int n3, int neq,
+                                    int* max_iter, float reg, char* work) {
   // check if n1 > 0, n2 > 0, n3 >= 0
-  if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 != n2) {
+  if (n1 <= 0 || n2 <= 0 || n3 < 0 || n1 < n2) {
     printf(
-        "Error: n1 and n2 must be positive integers and n3 >= 0, n1 == n2.\n");
+        "Error: n1 and n2 must be positive integers and n3 >= 0, n1 >= n2.\n");
     return 1;  // invalid input
   }
 
@@ -157,18 +95,43 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
 
   // Allocate memory for the augmented matrix and right-hand side vector
   int size = n2 + n3;
-  T *aug, *ata, *atb, *rhs, *eval;
+  T *aug, *ata, *column_norm, *rhs, *eval;
   int *ct_indx, *lu_indx, *skip_row;
-
   size_t mark = pool_mark<Backend>(work);
   aug = (T*)pmalloc<Backend>(work, size * size * sizeof(T));
   ata = (T*)pmalloc<Backend>(work, n2 * n2 * sizeof(T));
-  atb = (T*)pmalloc<Backend>(work, n2 * sizeof(T));
+  column_norm = (T*)pmalloc<Backend>(work, n2 * sizeof(T));
   rhs = (T*)pmalloc<Backend>(work, size * sizeof(T));
   eval = (T*)pmalloc<Backend>(work, n3 * sizeof(T));
   ct_indx = (int*)pmalloc<Backend>(work, n3 * sizeof(int));
   lu_indx = (int*)pmalloc<Backend>(work, size * sizeof(int));
   skip_row = (int*)pmalloc<Backend>(work, size * sizeof(int));
+
+  T objective_scale = 1.;
+  for (int i = 0; i < n1; ++i) {
+    T value = fabs(b[i]);
+    if (value > objective_scale) objective_scale = value;
+  }
+
+  for (int j = 0; j < n2; ++j) {
+    column_norm[j] = 0.;
+    for (int i = 0; i < n1; ++i) {
+      T value = fabs(A(i, j));
+      if (value > column_norm[j]) column_norm[j] = value;
+    }
+  }
+
+  // populate A^T.A
+  for (int i = 0; i < n2; ++i) {
+    for (int j = 0; j < n2; ++j) {
+      ATA(i, j) = 0.0;
+      for (int k = 0; k < n1; ++k) {
+        T left = column_norm[i] > 0. ? A(k, i) / column_norm[i] : 0.;
+        T right = column_norm[j] > 0. ? A(k, j) / column_norm[j] : 0.;
+        ATA(i, j) += left * right;
+      }
+    }
+  }
 
   for (int i = 0; i < n3; ++i) {
     ct_indx[i] = i;
@@ -176,92 +139,111 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
 
   int nactive = neq;
   int iter = 0;
-  int err = 0;
+  int status = 0;
   bool converged = false;
+  bool used_regularization = false;
+  T fallback_reg = sizeof(T) == sizeof(float) ? 1.e-5 : 1.e-10;
+  T pivot_tolerance = 10. * std::numeric_limits<T>::epsilon();
+  // A candidate row is independent of the active block if, in scaled KKT
+  // units, the part of it orthogonal to the active rows keeps at least this
+  // fraction of its 2-norm. The normal-equation KKT block's condition number
+  // grows like 1 / sigma_min(C_active)^2, so rows closer to dependence than
+  // sqrt(eps) would leave no significant digits in the multipliers.
+  T independence_tolerance = sqrt(std::numeric_limits<T>::epsilon());
 
-  while (iter++ < *max_iter) {
-    /*printf("kkt iter = %d, nactive = %d\n", iter, nactive);
-    printf("ct_indx = ");
-    for (int i = 0; i < neq; ++i) {
-      printf("%d ", ct_indx[i]);
+  if (Policy == KktActivePolicy::AddOneIndependent) {
+    // The policy never activates a dependent row, which is only safe if x = 0
+    // satisfies every row: d >= 0 on inequalities and d = 0 on equalities.
+    // Bounds are compared with the largest |d|, not row by row: a bound that
+    // is the round-off residue of a depleted stock (-1e-19 after using up
+    // 1e-3) is feasible, even when that row's own scale is as small.
+    T bound_scale = 0.;
+    for (int row = 0; row < n3; ++row)
+      if (fabs(d[row]) > bound_scale) bound_scale = fabs(d[row]);
+    T origin_tolerance = 64. * std::numeric_limits<T>::epsilon() * bound_scale;
+    for (int row = 0; row < n3; ++row) {
+      if (!(row < neq ? fabs(d[row]) <= origin_tolerance
+                      : d[row] >= -origin_tolerance)) {
+        printf("Error: x = 0 violates constraint %d (d = %g, max |d| = %g).\n",
+               row, (double)d[row], (double)bound_scale);
+        status = 1;  // invalid input
+        break;
+      }
     }
-    printf("| ");
-    for (int i = neq; i < nactive; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = nactive; i < n3; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("\n");*/
+  }
 
-    if (populate_aug<T, Backend>(aug, a, ata, atb, lu_indx, c, n2, nactive,
-                                 ct_indx, reg, work) == 0) {
-      err = 3;
-      break;
-    }
-    populate_rhs(rhs, b, d, n2, nactive, ct_indx);
+  while (status == 0 && iter < *max_iter) {
+    ++iter;
+    int nact = nactive;
+    bool solved = false;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+      T primal_reg = attempt == 0 ? 0. : fallback_reg;
+      T dual_reg = attempt == 0 ? reg : (reg == 0. ? -fallback_reg : reg);
+      for (int i = 0; i < n2; ++i) {
+        rhs[i] = 0.;
+        for (int k = 0; k < n1; ++k) {
+          T value = column_norm[i] > 0. ? A(k, i) / column_norm[i] : 0.;
+          rhs[i] += value * (b[k] / objective_scale);
+        }
+        for (int j = 0; j < n2; ++j)
+          AUG(i, j) = ATA(i, j) + (i == j ? primal_reg : 0.);
+      }
+      for (int i = 0; i < nactive; ++i) {
+        int row = ct_indx[i];
+        T row_scale =
+            kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+        for (int j = 0; j < n2; ++j) {
+          T value = C(row, j) *
+                    kkt_column_scale(objective_scale, column_norm[j]) /
+                    row_scale;
+          AUG(n2 + i, j) = value;
+          AUG(j, n2 + i) = value;
+        }
+        rhs[n2 + i] = d[row] / row_scale;
+        for (int j = 0; j < nactive; ++j)
+          AUG(n2 + i, n2 + j) = i == j ? dual_reg : 0.;
+      }
 
-    // solve the KKT system
-    // determine the non-zero rows (of A, since the upper-left block is A)
-    for (int i = 0; i < n2 + nactive; ++i) {
-      bool all_zero = true;
-      for (int j = 0; j < n2 + nactive; ++j) {
-        if (aug[i * (n2 + nactive) + j] != 0.0) {
-          all_zero = false;
+      for (int i = 0; i < n2 + nactive; ++i) {
+        bool all_zero = true;
+        for (int j = 0; j < n2 + nactive; ++j) {
+          if (aug[i * (n2 + nactive) + j] != 0.0) {
+            all_zero = false;
+            break;
+          }
+        }
+        skip_row[i] = all_zero;
+        if (all_zero && rhs[i] != 0.) {
+          status = 3;
           break;
         }
       }
-      skip_row[i] = all_zero;
-      // an all-zero active row can only hold if its bound is zero
-      if (all_zero && rhs[i] != 0.0) err = 3;
-    }
-    if (err) break;
+      if (status != 0) break;
 
-    /* print aug
-    printf("aug = \n");
-    for (int i = 0; i < n2 + nactive; ++i) {
-      for (int j = 0; j < n2 + nactive; ++j) {
-        printf("%f ", aug[i * (n2 + nactive) + j]);
+      if (ludcmp<T, Backend>(aug, lu_indx, n2 + nactive, skip_row,
+                             pivot_tolerance, work) != 0) {
+        lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
+        used_regularization = primal_reg != 0. || dual_reg != 0.;
+        solved = true;
+        break;
       }
-      printf("| %f", rhs[i]);
-      if (skip_row[i]) printf(" *");
-      printf("\n");
-    }*/
-
-    if (ludcmp<T, Backend>(aug, lu_indx, n2 + nactive, skip_row, T(0), work) ==
-        0) {
-      err = 3;
+    }
+    if (!solved) {
+      status = 3;
       break;
     }
-    lubksb(rhs, aug, lu_indx, n2 + nactive, skip_row);
-    for (int i = 0; i < n2 + nactive; ++i) {
-      if (!std::isfinite(rhs[i])) err = 3;
-    }
-    if (err) break;
 
     // evaluate the inactive constraints
     for (int i = nactive; i < n3; ++i) {
       int k = ct_indx[i];
-      eval[k] = 0.;
+      T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, k);
+      eval[k] = -d[k] / row_scale;
       for (int j = 0; j < n2; ++j) {
-        eval[k] += C(k, j) * rhs[j];
+        eval[k] += C(k, j) * kkt_column_scale(objective_scale, column_norm[j]) /
+                   row_scale * rhs[j];
       }
     }
 
-    /* print solution vector (rhs)
-    printf("rhs = ");
-    for (int i = 0; i < n2; ++i) {
-      printf("%f ", rhs[i]);
-    }
-    printf("| ");
-    for (int i = n2; i < n2 + nactive; ++i) {
-      printf("%f ", rhs[i]);
-    }
-    printf("\n");*/
-
-    // mark the active set before it changes (skip_row is free until the next
-    // factorisation); compared below instead of a 64-bit mask (UB beyond 64)
     for (int i = 0; i < n3; ++i) skip_row[i] = 0;
     for (int i = 0; i < nactive; ++i) skip_row[ct_indx[i]] = 1;
     int previous_active = nactive;
@@ -296,60 +278,106 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
       }
     }
 
-    /* print ct_indx after removing
-    printf("ct_indx after removing = ");
-    for (int i = 0; i < neq; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = neq; i < nactive; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("| ");
-    for (int i = nactive; i < n3; ++i) {
-      printf("%d ", ct_indx[i]);
-    }
-    printf("\n");*/
-
-    // add back ONE constraint: the most violated that is independent of the
-    // active block (a dependent row cannot be enforced)
-    int best = -1;
-    T worst = 0.;
-    for (int i = first; i < last; ++i) {
-      int k = ct_indx[i];
-      if (eval[k] - d[k] > worst &&
-          independent_row(aug, c, ct_indx, first, k, n2)) {
-        worst = eval[k] - d[k];
-        best = i;
+    if (Policy == KktActivePolicy::AddAllViolated) {
+      // add back inactive constraints (two-way swap)
+      //                     C.x <= d
+      //                     |<----->|
+      //                     f       : l
+      //                     |       : |
+      // | * * * | * * * * | * * * * * x * |
+      // |-------|---------|---------------|
+      // |  EQ   |   INEQ  |   INACTIVE    |
+      while (first < last) {
+        int k = ct_indx[first];
+        if (eval[k] > 0.) {
+          // add the inactive constraint back to the active set
+          ++first;
+        } else {
+          int tmp = ct_indx[first];
+          ct_indx[first] = ct_indx[last - 1];
+          ct_indx[last - 1] = tmp;
+          --last;
+        }
       }
-    }
-    if (best >= 0) {
-      int tmp = ct_indx[first];
-      ct_indx[first] = ct_indx[best];
-      ct_indx[best] = tmp;
-      ++first;
+    } else {
+      // add back ONE constraint: the most violated row that is independent of
+      // the active block. aug is free until the next factorization: q holds an
+      // orthonormal basis of the scaled active rows, v the candidate row.
+      T* q = aug;
+      T* v = aug + n3 * n2;
+      int nq = 0;
+      for (int i = 0; i < first; ++i) {
+        T* row = q + nq * n2;
+        kkt_scaled_row(row, c, d, column_norm, objective_scale, n2, ct_indx[i]);
+        T norm = 0.;
+        for (int j = 0; j < n2; ++j) norm += row[j] * row[j];
+        norm = sqrt(norm);
+        T remain = kkt_orthogonalize(row, q, nq, n2);
+        if (remain > independence_tolerance * norm) {
+          for (int j = 0; j < n2; ++j) row[j] /= remain;
+          ++nq;
+        }
+      }
+
+      int best = -1;
+      T worst = 0.;
+      for (int i = first; i < last; ++i) {
+        int k = ct_indx[i];
+        if (!(eval[k] > worst)) continue;
+        kkt_scaled_row(v, c, d, column_norm, objective_scale, n2, k);
+        T norm = 0.;
+        for (int j = 0; j < n2; ++j) norm += v[j] * v[j];
+        norm = sqrt(norm);
+        if (kkt_orthogonalize(v, q, nq, n2) > independence_tolerance * norm) {
+          worst = eval[k];
+          best = i;
+        }
+      }
+      if (best >= 0) {
+        int tmp = ct_indx[first];
+        ct_indx[first] = ct_indx[best];
+        ct_indx[best] = tmp;
+        ++first;
+      }
     }
 
     nactive = first;
-    bool same = nactive == previous_active;
-    for (int i = 0; i < nactive && same; ++i) same = skip_row[ct_indx[i]] != 0;
-    // no change in active set, we are done
-    if (same) {
-      converged = true;
-      break;
+    converged = nactive == previous_active;
+    for (int i = 0; i < nactive && converged; ++i)
+      converged = skip_row[ct_indx[i]] != 0;
+    if (converged) break;
+  }
+
+  if (status == 0 && converged && used_regularization) {
+    T feasibility_tolerance =
+        64. * std::numeric_limits<T>::epsilon() + 10. * fallback_reg;
+    // a dependent row left violated is part of the AddOneIndependent contract
+    int ncheck = Policy == KktActivePolicy::AddAllViolated ? n3 : nactive;
+    for (int i = 0; i < ncheck; ++i) {
+      int row = ct_indx[i];
+      T row_scale = kkt_row_scale(c, d, column_norm, objective_scale, n2, row);
+      T residual = -d[row] / row_scale;
+      for (int j = 0; j < n2; ++j) {
+        residual += C(row, j) *
+                    kkt_column_scale(objective_scale, column_norm[j]) /
+                    row_scale * rhs[j];
+      }
+      if (!std::isfinite(residual) ||
+          (i < nactive ? fabs(residual) > feasibility_tolerance
+                       : residual > feasibility_tolerance)) {
+        status = 3;
+        break;
+      }
     }
   }
 
-  // copy to output vector b; a failed solve leaves the caller's state alone
-  if (!err) {
-    for (int i = 0; i < n2; ++i) {
-      b[i] = rhs[i];
-    }
-  }
+  if (status == 0)
+    for (int i = 0; i < n2; ++i)
+      b[i] = rhs[i] * kkt_column_scale(objective_scale, column_norm[i]);
 
   pfree<Backend>(aug);
   pfree<Backend>(ata);
-  pfree<Backend>(atb);
+  pfree<Backend>(column_norm);
   pfree<Backend>(rhs);
   pfree<Backend>(eval);
   pfree<Backend>(ct_indx);
@@ -357,11 +385,9 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
   pfree<Backend>(skip_row);
   pool_rewind<Backend>(work, mark);
 
-  if (err) {
+  if (status != 0) {
     *max_iter = iter;
-    printf("Warning: leastsq_kkt singular or inconsistent at iteration %d.\n",
-           iter);
-    return err;
+    return status;
   }
 
   if (!converged) {
@@ -373,6 +399,82 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
 
   *max_iter = iter;
   return 0;  // success
+}
+
+}  // namespace detail
+
+/*!
+ * \brief solve constrained least square problem: min ||A.x - b||, s.t. C.x <= d
+ *
+ * This subroutine solves the constrained least square problem using the active
+ * set method based on the KKT conditions. The first `neq` rows of the
+ * constraint matrix `C` are treated as equality constraints, while the
+ * remaining rows are treated as inequality constraints. Objective columns and
+ * constraint rows are scaled internally; the returned solution is unscaled.
+ *
+ * \param[in,out] b[0..n1-1]    right-hand-side vector and output. Input
+ *                              dimension is n1, output dimension is n2,
+ * requiring n1 >= n2
+ * \param[in] a[0..n1*n2-1]     row-major input matrix, A
+ * \param[in] c[0..n3*n2-1]     row-major constraint matrix, C
+ * \param[in] d[0..n3-1]        right-hand-side constraint vector, d
+ * \param[in] n1                number of rows in matrix A
+ * \param[in] n2                number of columns in matrix A
+ * \param[in] n3                number of rows in matrix C
+ * \param[in] neq               number of equality constraints, 0 <= neq <= n3
+ * \param[in,out] max_iter      in: maximum number of iterations to perform,
+ *                              out: number of iterations actually performed
+ * \param[in] reg               diagonal perturbation in scaled KKT units;
+ *                              zero uses regularization only if LU fails
+ *
+ * \return 0 on success, 1 on invalid input (e.g., neq < 0 or neq > n3),
+ *         2 on failure (max_iter reached without convergence), or 3 if the
+ *         KKT system remains singular or its constraints are infeasible.
+ */
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
+DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
+                               int n2, int n3, int neq, int* max_iter,
+                               float reg = 0., char* work = nullptr) {
+  return detail::leastsq_kkt_impl<T, Backend, KktActivePolicy::AddAllViolated>(
+      b, a, c, d, n1, n2, n3, neq, max_iter, reg, work);
+}
+
+/*!
+ * \brief leastsq_kkt for problems where x = 0 is feasible (C.0 <= d)
+ *
+ * Same problem, arguments, scaling, KKT assembly and factorization as
+ * leastsq_kkt; only the active-set policy differs. Each iteration adds back
+ * the single most violated inequality that is linearly independent of the
+ * active block, so the active block never goes rank-deficient when several
+ * rows share a direction (e.g. two condensates drawing on one vapour).
+ *
+ * A row counts as independent when the part of its scaled form orthogonal to
+ * the active rows keeps more than sqrt(eps) of its 2-norm (relative, so it
+ * does not depend on the magnitude of C or d).
+ *
+ * A violated row that is dependent on the active block is never activated,
+ * so the returned x may violate it; the caller must limit the step (the
+ * saturation adjustment clips each reaction extent to its reactant stock).
+ * This is only meaningful when x = 0 is feasible, which is checked on entry:
+ * d >= -64 eps max|d| and, for the first neq rows, |d| <= 64 eps max|d|, so
+ * the bounds should share units (the callers pass concentrations).
+ *
+ * Callers: equilibrate_uv and equilibrate_tp, whose bounds are the current
+ * concentrations. A general QP must use leastsq_kkt, which fails closed.
+ *
+ * \return 0 on success, 1 on invalid input or if x = 0 is infeasible (b is
+ *         left unchanged), 2 if max_iter is reached without convergence, or
+ *         3 if the KKT system remains singular.
+ */
+template <typename T, PoolBackend Backend = PoolBackend::Shared>
+DISPATCH_MACRO int leastsq_kkt_feasible_origin(T* b, T const* a, T const* c,
+                                               T const* d, int n1, int n2,
+                                               int n3, int neq, int* max_iter,
+                                               float reg = 0.,
+                                               char* work = nullptr) {
+  return detail::leastsq_kkt_impl<T, Backend,
+                                  KktActivePolicy::AddOneIndependent>(
+      b, a, c, d, n1, n2, n3, neq, max_iter, reg, work);
 }
 
 }  // namespace kintera

@@ -218,8 +218,10 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
     // KKT solve, after which equilibrate returns the state unchanged and
     // silently.
     int max_kkt_iter = nspecies + 1 > *max_iter ? nspecies + 1 : *max_iter;
-    kkt_err = leastsq_kkt(rhs, gain, stoich_active, xfrac, *nactive, *nactive,
-                          nspecies, 0, &max_kkt_iter, 0., work);
+    // x = 0 (no extent) is feasible: the bounds are the current mole fractions
+    kkt_err = leastsq_kkt_feasible_origin(rhs, gain, stoich_active, xfrac,
+                                          *nactive, *nactive, nspecies, 0,
+                                          &max_kkt_iter, 0., work);
     if (kkt_err != 0) break;
 
     /* print rate
@@ -233,7 +235,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
     // copy xfrac to xfrac0
     memcpy(xfrac0, xfrac, nspecies * sizeof(T));
     T lambda = 1.;  // scale
-    // Per-reaction extent limit, as in equilibrate_uv: leastsq_kkt does not
+    // Per-reaction extent limit, as in equilibrate_uv: the KKT solve does not
     // enforce a row dependent on its active block, so clip each reaction to
     // the stock of what it consumes (a cloud must not go negative).
     for (int i = 0; i < nspecies; i++) {
