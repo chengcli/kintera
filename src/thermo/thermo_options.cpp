@@ -1,4 +1,5 @@
 // C/C++
+#include <algorithm>
 #include <set>
 
 // yaml
@@ -9,6 +10,7 @@
 
 #include <kintera/kinetics/coagulation.hpp>
 #include <kintera/kinetics/evaporation.hpp>
+#include <kintera/utils/suggest.hpp>
 
 #include "thermo.hpp"
 
@@ -36,6 +38,23 @@ ThermoOptions ThermoOptionsImpl::from_yaml(std::string const& filename,
 ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                                            bool verbose) {
   if (!config["reference-state"]) return nullptr;
+
+  // `reference-state` is read by presence checks alone, so an unrecognized key
+  // -- a typo -- is silently ignored and the option keeps its default. Reject
+  // it instead. The list is the union of what reads this block: thermo (all of
+  // it) and kinetics (Tref, Pref); photochem reads no sub-key. The sibling
+  // `dynamics/equation-of-state` block is deliberately NOT checked -- the
+  // host dynamical core owns most of its keys and kintera must not reject them.
+  static const std::vector<std::string> ref_state_keys = {
+      "Tref", "Pref", "use-nasa9-cp", "use-h2-cp", "h2-cp-mode"};
+  for (auto const& item : config["reference-state"]) {
+    auto key = item.first.as<std::string>();
+    TORCH_CHECK(std::find(ref_state_keys.begin(), ref_state_keys.end(), key) !=
+                    ref_state_keys.end(),
+                "unknown key 'reference-state/", key, "'; did you mean '",
+                suggest(key, ref_state_keys), "'?");
+  }
+
   ensure_species_initialized(config);
 
   auto thermo = ThermoOptionsImpl::create();
@@ -125,6 +144,35 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                        "[ThermoOptions] registered {} Nucleation reactions",
                        thermo->nucleation()->reactions().size())
                 << std::endl;
+    }
+
+    // Condensation must RELEASE energy. u0_R is u/R at Tref, so the latent
+    // heat there is the stoichiometric sum of u0_R.
+    for (auto const& rxn : thermo->nucleation()->reactions()) {
+      double latent = 0.;
+      bool known = true;
+      auto accumulate = [&](Composition const& side, double sign) {
+        for (auto const& sp : side) {
+          auto it =
+              std::find(species_names.begin(), species_names.end(), sp.first);
+          if (it == species_names.end()) {
+            known = false;
+            return;
+          }
+          latent +=
+              sign * sp.second * species_uref_R[it - species_names.begin()];
+        }
+      };
+      accumulate(rxn.reactants(), 1.);
+      accumulate(rxn.products(), -1.);
+      if (known && !(latent > 0.)) {
+        std::cout << fmt::format(
+                         "[ThermoOptions] WARNING: reaction '{}' has latent "
+                         "heat {} K <= 0 at Tref, i.e. condensation ABSORBS "
+                         "energy. Set `u0_R` (u/R at Tref) on the condensate.",
+                         rxn.equation(), latent)
+                  << std::endl;
+      }
     }
 
     // create temporary coagulation and evaporation options to add species
