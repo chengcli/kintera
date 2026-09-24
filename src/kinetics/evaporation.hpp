@@ -94,6 +94,9 @@ class EvaporationImpl : public torch::nn::Cloneable<EvaporationImpl> {
   //! options with which this `EvaporationImpl` was constructed
   EvaporationOptions options;
 
+  //! reactions with two gaseous products; not a buffer, so dtype casts skip it
+  torch::Tensor two_product_rxns_;
+
   //! Constructor to initialize the layer
   EvaporationImpl() : options(EvaporationOptionsImpl::create()) {}
   explicit EvaporationImpl(EvaporationOptions const& options_);
