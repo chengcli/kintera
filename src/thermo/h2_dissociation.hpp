@@ -161,5 +161,21 @@ inline Result eval(torch::Tensor const& temp, torch::Tensor const& c, double nH,
   return {cz, dcz_dc, cp_R, cv_R, e_R};
 }
 
+//! S/R per mole of the lumped species: the ideal H2/H/He mixture at the
+//! equilibrium speciation, sum_i n_i (s_i/R - ln(n_i R T / P0)) / c.
+inline torch::Tensor entropy_R(torch::Tensor const& temp,
+                               torch::Tensor const& c, double nH, double nHe,
+                               torch::Tensor const& ab) {
+  auto cc = c.clamp_min(1e-30);
+  auto s = speciate(temp, cc, nH, nHe, ab);
+  auto hot = (temp >= 1000.).unsqueeze(-1);
+  auto term = [&](int sp, torch::Tensor const& n) {
+    auto a = torch::where(hot, ab[1][sp], ab[0][sp]);
+    auto p = (n * constants::Rgas * temp / kP0).clamp_min(1e-300);
+    return n * (s_R_of(a, temp) - p.log());
+  };
+  return (term(0, s.H2) + term(1, s.H) + term(2, s.He)) / cc;
+}
+
 }  // namespace h2diss
 }  // namespace kintera

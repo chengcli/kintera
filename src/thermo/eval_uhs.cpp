@@ -269,6 +269,22 @@ torch::Tensor h2diss_pack_fused(torch::Tensor const& temp,
   return out;
 }
 
+// With H2 dissociation a gas partial pressure is c_j R T, not P x_j, and the
+// lumped species carries the entropy of its H2/H/He mixture.
+void h2diss_entropy(torch::Tensor& entropy_R, torch::Tensor const& temp,
+                    torch::Tensor const& pres, torch::Tensor const& conc_gas,
+                    SpeciesThermo const& op) {
+  if (!h2diss_on(op)) return;
+  auto x = (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).clamp_min(1e-300);
+  auto p = (conc_gas * constants::Rgas * temp.unsqueeze(-1)).clamp_min(1e-300);
+  entropy_R.narrow(-1, 0, conc_gas.size(-1)) +=
+      (pres.unsqueeze(-1) * x).log() - p.log();
+  int id = op->h2_diss_id();
+  entropy_R.select(-1, id) =
+      h2diss::entropy_R(temp, conc_gas.select(-1, id), op->h2_diss_nH(),
+                        op->h2_diss_nHe(), h2diss_coeffs_for(temp));
+}
+
 }  // namespace
 
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
@@ -551,6 +567,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
       temp.log().unsqueeze(-1) * cp_gas_R - pres.log().unsqueeze(-1) -
       (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).clamp_min(1e-300).log();
 
+  h2diss_entropy(entropy_R, temp, pres, conc_gas, op);
+
   // std::cout << "entropy_R = " << entropy_R << std::endl;
 
   return entropy_R;
@@ -610,6 +628,7 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
       sref_R.narrow(0, 0, ngas) + entropy_R_extra +
       temp.log().unsqueeze(-1) * cp_gas_R - pres.log().unsqueeze(-1) -
       (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).clamp_min(1e-300).log();
+  h2diss_entropy(entropy_R, temp, pres, conc_gas, op);
 
   //////////// Evaluate condensate entropy ////////////
 

@@ -2,7 +2,8 @@
 
 The reference is rebuilt here from data/nasa9.dat with the textbook NASA-9 forms and a
 partial-pressure equilibrium solved by bisection, and compared with the EOS: the H fraction and
-the particle factor (both through P = cz c R T), U(T) - U(300 K), and cv against dU/dT.
+the particle factor (both through P = cz c R T), U(T) - U(300 K), cv against dU/dT, and the
+entropy: T ds = du + P dv, S against the oracle's mixture entropy, and ThermoX's adiabat.
 Every card here names species 0 `H2` (the species registry is process-global), so the
 use-nasa9-cp / use-h2-cp cases also exercise their overlap with the lumped species.
 """
@@ -15,7 +16,7 @@ import numpy as np
 import pytest
 import torch
 import kintera
-from kintera import ThermoOptions, ThermoY
+from kintera import ThermoOptions, ThermoX, ThermoY
 
 torch.set_default_dtype(torch.float64)
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -59,6 +60,29 @@ def oracle(T, c):
     return x / sum(n), sum(n) / c, U
 
 
+def s_oracle(T, c):
+    """S [J/(mol K)] per mole of lumped species: ideal H2/H/He mixture, s_i - R ln(p_i/P0)."""
+    xH, cz, _ = oracle(T, c)
+    n = [xH * cz * c, (NH * c - xH * cz * c) / 2, np.full_like(T, NHE * c)]
+    return sum(ni * R * (h_s(sp, T)[1] - np.log(ni * R * T / P0))
+               for ni, sp in zip(n, ["H", "H2", "He"])) / c
+
+
+def identity_residual(card, T, rho, y):
+    """max |T ds - du - P dv| / |du + P dv| per unit mass, by centred differences in T and in rho."""
+    th, h = ThermoY(ThermoOptions.from_yaml(str(card))), 1e-5
+    def sup(T, rho):
+        V = th.compute("DY->V", (rho, y))
+        P = th.compute("VT->P", (V, T))
+        return th.compute("PVT->S", (P, V, T)) / rho, th.compute("VT->U", (V, T)) / rho, P
+    (s1, u1, _), (s2, u2, _) = sup(T * (1 + h), rho), sup(T * (1 - h), rho)
+    rT = (T * (s1 - s2) - (u1 - u2)) / (u1 - u2)
+    (s1, u1, _), (s2, u2, _), (_, _, P) = sup(T, rho * (1 + h)), sup(T, rho * (1 - h)), sup(T, rho)
+    dv = 1 / (rho * (1 + h)) - 1 / (rho * (1 - h))
+    rv = (T * (s1 - s2) - (u1 - u2) - P * dv) / (u1 - u2 + P * dv)
+    return float(torch.cat([rT, rv]).abs().max())
+
+
 def thermo(tmp_path, extra):
     card = tmp_path / "h2diss.yaml"
     card.write_text("reference-state: {Tref: 300.0, Pref: 1.0e5, use-h2-dissociation: true%s}\n"
@@ -89,6 +113,42 @@ def test_matches_nasa9_oracle(tmp_path, extra, c):
     np.testing.assert_allclose(cv, dUdT, rtol=1e-7)
 
 
+def test_entropy_is_consistent(tmp_path):
+    """T ds = du + P dv, S equals the oracle mixture entropy, and ThermoX's adiabat keeps the oracle S."""
+    th, T = thermo(tmp_path, ""), torch.tensor(np.repeat(np.linspace(2500.0, 4500.0, 5), 2))
+    c = torch.tensor(np.tile(CS, 5))
+    rho = c * kintera.species_weights()[0]
+    assert identity_residual(tmp_path / "h2diss.yaml", T, rho, torch.zeros(0, 10)) < 1e-6
+    V = th.compute("DY->V", (rho, torch.zeros(0, 10)))
+    S = th.compute("PVT->S", (th.compute("VT->P", (V, T)), V, T)).numpy() / c.numpy()
+    np.testing.assert_allclose(S, s_oracle(T.numpy(), c.numpy()), rtol=1e-9)
+    thx = ThermoX(ThermoOptions.from_yaml(str(tmp_path / "h2diss.yaml")))
+    for T0, P0, dlnp in [(3000.0, 1e4, -0.1), (3500.0, 1e5, 0.1), (4000.0, 1e6, -0.1)]:
+        Tt, Pt, X = torch.tensor([T0]), torch.tensor([P0]), torch.ones(1, 1)
+        c0 = thx.compute("TPX->V", (Tt, Pt, X))[0, 0].item()
+        thx.extrapolate_dlnp(Tt, Pt, X, dlnp)
+        c1 = thx.compute("TPX->V", (Tt, Pt, X))[0, 0].item()
+        dS = s_oracle(Tt.numpy(), np.array([c1])) - s_oracle(np.array([T0]), np.array([c0]))
+        print("adiabat T0=%g dlnp=%g: T1=%.4f grad_ad=%.5f oracle dS=%.2e" % (T0, dlnp, Tt.item(), np.log(Tt.item() / T0) / dlnp, dS[0]))
+        assert abs(dS[0]) < 1e-4, dS
+
+
+def test_entropy_mixture_identity(tmp_path):
+    """Lumped gas plus a second vapour: gas partial pressures are c_j R T (fresh interpreter)."""
+    card = tmp_path / "mix.yaml"
+    card.write_text("reference-state: {Tref: 300.0, Pref: 1.0e5, use-h2-dissociation: true}\nspecies:\n"
+                    "- {name: H2, composition: {H: %r, He: %r}, cv_R: 2.5}\n"
+                    "- {name: H2O, composition: {H: 2, O: 1}, cv_R: 3.0}\n"
+                    "- {name: H2O(l), composition: {H: 2, O: 1}, cv_R: 9.0, u0_R: -3430.}\n"
+                    "reactions:\n- {equation: H2O => H2O(l), type: nucleation, rate-constant: {formula: "
+                    "h2o_ideal, T3: 273.16, P3: 611.7, beta: 24.845, delta: 4.986}}\n" % (NH, NHE))
+    code = ("import sys, torch; sys.path.insert(0, %r); import test_h2diss_oracle as t; "
+            "print(t.identity_residual(sys.argv[1], torch.tensor([2500., 3500., 4500.]), "
+            "torch.tensor([0.003, 0.3, 3.0]), torch.tensor([[0.1] * 3, [0.0] * 3])))" % str(ROOT / "tests"))
+    out = subprocess.run([sys.executable, "-c", code, str(card)], capture_output=True, text=True, check=True)
+    assert float(out.stdout.split()[-1]) < 1e-6, out.stdout
+
+
 def test_bad_inputs_rejected(tmp_path):
     for species, why in [("{name: H2, composition: {H: 1.6, He: -0.1}}", "He >= 0"),
                          ("{name: H2, composition: {H: 1.6, C: 0.1}}", "only H and He"),
@@ -111,7 +171,7 @@ th, ny = ThermoY(op), len(op.species()) - 1
 rho, T = torch.tensor([0.1, 1.0, 10.0]), torch.tensor([150.0, 800.0, 3000.0])
 V = th.compute("DY->V", (rho, torch.full((ny, 3), 1e-3)))
 P, U, cv = (th.compute(k, (V, T)) for k in ("VT->P", "VT->U", "VT->cv"))
-out = [P, U, cv, th.compute("VU->T", (V, U)), th.compute("PV->T", (P, V))]
+out = [P, U, cv, th.compute("VU->T", (V, U)), th.compute("PV->T", (P, V)), th.compute("PVT->S", (P, V, T))]
 print(" ".join(float(x).hex() for t in out for x in t.flatten()))
 """
 
