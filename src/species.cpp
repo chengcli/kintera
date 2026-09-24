@@ -210,7 +210,13 @@ void ensure_species_initialized(YAML::Node const& config) {
 void check_reference_state(YAML::Node const& config) {
   static const std::vector<std::string> keys = {"Tref", "Pref", "use-nasa9-cp",
                                                 "use-h2-cp", "h2-cp-mode"};
-  for (auto const& item : config["reference-state"]) {
+  auto node = config["reference-state"];
+  if (!node || node.IsNull()) return;  // an empty block keeps the defaults
+  TORCH_CHECK(node.IsMap(),
+              "'reference-state' must be a map of key: value pairs, e.g. "
+              "{Tref: 300., Pref: 1.e5}; got a ",
+              node.IsSequence() ? "list" : "scalar");
+  for (auto const& item : node) {
     auto key = item.first.as<std::string>();
     TORCH_CHECK(std::find(keys.begin(), keys.end(), key) != keys.end(),
                 "unknown key 'reference-state/", key, "'; did you mean '",
