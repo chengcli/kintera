@@ -10,7 +10,6 @@
 
 #include <kintera/kinetics/coagulation.hpp>
 #include <kintera/kinetics/evaporation.hpp>
-#include <kintera/utils/suggest.hpp>
 
 #include "thermo.hpp"
 
@@ -39,18 +38,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                                            bool verbose) {
   if (!config["reference-state"]) return nullptr;
 
-  // A typo'd key would be ignored and keep its default, so reject unknown keys
-  // (thermo and kinetics read this block; dynamics/ is left to the host code).
-  static const std::vector<std::string> ref_state_keys = {
-      "Tref", "Pref", "use-nasa9-cp", "use-h2-cp", "h2-cp-mode"};
-  for (auto const& item : config["reference-state"]) {
-    auto key = item.first.as<std::string>();
-    TORCH_CHECK(std::find(ref_state_keys.begin(), ref_state_keys.end(), key) !=
-                    ref_state_keys.end(),
-                "unknown key 'reference-state/", key, "'; did you mean '",
-                suggest(key, ref_state_keys), "'?");
-  }
-
+  check_reference_state(config);  // dynamics/ is left to the host code
   ensure_species_initialized(config);
 
   auto thermo = ThermoOptionsImpl::create();

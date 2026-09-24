@@ -1,4 +1,5 @@
 // C/C++
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <fstream>
@@ -21,6 +22,7 @@
 #include <kintera/thermo/nasa9.hpp>
 #include <kintera/utils/find_resource.hpp>
 #include <kintera/utils/molar_mass.hpp>
+#include <kintera/utils/suggest.hpp>
 #include <kintera/utils/vectors.hpp>
 
 #include "species.hpp"
@@ -202,6 +204,17 @@ void ensure_species_initialized(std::string const& filename) {
 void ensure_species_initialized(YAML::Node const& config) {
   if (!species_initialized) {
     init_species_from_yaml(config);
+  }
+}
+
+void check_reference_state(YAML::Node const& config) {
+  static const std::vector<std::string> keys = {"Tref", "Pref", "use-nasa9-cp",
+                                                "use-h2-cp", "h2-cp-mode"};
+  for (auto const& item : config["reference-state"]) {
+    auto key = item.first.as<std::string>();
+    TORCH_CHECK(std::find(keys.begin(), keys.end(), key) != keys.end(),
+                "unknown key 'reference-state/", key, "'; did you mean '",
+                suggest(key, keys), "'?");
   }
 }
 

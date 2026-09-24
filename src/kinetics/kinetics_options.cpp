@@ -31,6 +31,7 @@ KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename,
 KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
                                                bool verbose) {
   if (!config["reference-state"]) return nullptr;
+  check_reference_state(config);
   ensure_species_initialized(config);
 
   auto kinet = KineticsOptionsImpl::create();
