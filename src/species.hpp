@@ -33,6 +33,8 @@ void init_species_from_yaml(YAML::Node const& config);
 void init_species_from_kinetics_base(std::string const& master_input_path);
 void ensure_species_initialized(std::string const& filename);
 void ensure_species_initialized(YAML::Node const& config);
+//! Reject unknown keys in the `reference-state` block, suggesting the closest.
+void check_reference_state(YAML::Node const& config);
 
 //! Evaluate standard-state Gibbs energy g/RT from the bundled NASA-9 database.
 at::Tensor nasa9_gibbs_rt(at::Tensor temp,
