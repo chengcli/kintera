@@ -1,9 +1,9 @@
 """Saturation adjustment must converge when an absent reactant sits on a degenerate bound.
 
-Card-40 thermo (NH3 ice, NH4SH, water). In each state below NH3 vapour is zero and both
+An NH3 ice + NH4SH + water card. In each state below NH3 vapour is zero and both
 NH3-consuming reactions are active; the NH3 >= 0 row is then met to within one ulp of the
 extents, and the KKT active set used to cycle on that round-off violation until its iteration
-limit, returning the cell unadjusted with diag < 0 (ISSUES K13). Rows are
+limit, returning the cell unadjusted with diag < 0. Rows are
 (T [K], concentrations [mol/m^3] in species order).
 """
 import math
