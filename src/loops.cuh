@@ -94,16 +94,24 @@ void gpu_mem_kernel(at::TensorIterator &iter, int work_size, const func_t &f) {
   auto offset_calc = ::make_offset_calculator<Arity>(iter);
   int64_t numel = iter.numel();
 
-  dim3 block(Threads);
-  dim3 grid((numel + block.x - 1) / block.x);
-  auto stream = at::cuda::getCurrentCUDAStream();
-  size_t shared = block.x * work_size;
-
   int device = -1;
   C10_CUDA_CHECK(cudaGetDevice(&device));
   auto *prop = at::cuda::getDeviceProperties(device);
   size_t max_dynamic_smem = get_max_dynamic_shared_memory(device);
   // printf("max_dynamic_smem = %zu\n", max_dynamic_smem);
+
+  // Each thread owns work_size bytes of shared memory; shrink the block until
+  // the whole block's workspace fits the device limit (64 KiB on Turing).
+  int threads = Threads;
+  if (work_size > 0) {
+    threads = static_cast<int>(std::min<size_t>(
+        Threads, std::max<size_t>(1, max_dynamic_smem / work_size)));
+  }
+
+  dim3 block(threads);
+  dim3 grid((numel + block.x - 1) / block.x);
+  auto stream = at::cuda::getCurrentCUDAStream();
+  size_t shared = block.x * work_size;
 
   auto device_lambda = [=] __device__(int idx, char *smem) {
     auto offsets = offset_calc.get(idx);
