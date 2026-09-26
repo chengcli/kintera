@@ -1075,7 +1075,7 @@ void init_species_from_kinetics_base(std::string const& master_input_path) {
 
   for (auto const& sp : data.species) {
     species_names.push_back(sp.name);
-    species_weights.push_back(sp.molecular_weight);
+    species_weights.push_back(sp.molecular_weight * 1.e-3);  // g -> kg
     species_cref_R.push_back(2.5);
     species_uref_R.push_back(0.0);
     species_sref_R.push_back(0.0);
@@ -1261,7 +1261,7 @@ static void init_species_from_kinetics_base_pun(KBPunNetwork const& net) {
 
   for (auto const* sp : ordered) {
     species_names.push_back(sp->name);
-    species_weights.push_back(sp->molecular_weight);
+    species_weights.push_back(sp->molecular_weight * 1.e-3);  // g -> kg
     // Placeholder thermo: reactions are built irreversible, so NASA-9 / Kc is
     // never evaluated. cref_R = 5/2 (ideal monatomic) is a harmless default.
     species_cref_R.push_back(2.5);
