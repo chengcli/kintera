@@ -69,6 +69,11 @@ struct SpeciesThermoImpl {
   ADD_ARG(std::vector<double>, uref_R);
   ADD_ARG(std::vector<double>, sref_R);
 
+  //! species names and molar masses [kg/mol], copied from the registry when
+  //! the object is built, so that a card loaded later cannot change them
+  ADD_ARG(std::vector<std::string>, names);
+  ADD_ARG(std::vector<double>, mu);
+
   ADD_ARG(std::vector<std::string>, intEng_R_extra);
   ADD_ARG(std::vector<std::string>, cp_R_extra);
 

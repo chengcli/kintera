@@ -1247,6 +1247,8 @@ KineticsOptions kinetics_options_from_kinetics_base(
     kinet->nasa9_low().push_back(species_nasa9_low[id]);
     kinet->nasa9_high().push_back(species_nasa9_high[id]);
     kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    kinet->names().push_back(species_names[id]);
+    kinet->mu().push_back(species_weights[id]);
   }
 
   return kinet;
@@ -1387,6 +1389,8 @@ KineticsOptions kinetics_options_from_kinetics_base_pun(
     kinet->nasa9_low().push_back(species_nasa9_low[id]);
     kinet->nasa9_high().push_back(species_nasa9_high[id]);
     kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    kinet->names().push_back(species_names[id]);
+    kinet->mu().push_back(species_weights[id]);
   }
 
   if (verbose) {
@@ -1703,6 +1707,8 @@ PhotoChemOptions photochem_options_from_kinetics_base(
     photo_chem->nasa9_low().push_back(species_nasa9_low[id]);
     photo_chem->nasa9_high().push_back(species_nasa9_high[id]);
     photo_chem->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    photo_chem->names().push_back(species_names[id]);
+    photo_chem->mu().push_back(species_weights[id]);
   }
 
   return photo_chem;
