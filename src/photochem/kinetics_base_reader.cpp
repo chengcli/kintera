@@ -1071,14 +1071,7 @@ KBTitanReactionReport classify_kinetics_base_titan_reactions(
 void init_species_from_kinetics_base(std::string const& master_input_path) {
   auto data = parse_kinetics_base_master(master_input_path);
 
-  species_names.clear();
-  species_weights.clear();
-  species_cref_R.clear();
-  species_uref_R.clear();
-  species_sref_R.clear();
-  species_nasa9_low.clear();
-  species_nasa9_high.clear();
-  species_nasa9_Tmid.clear();
+  clear_species_registry();
 
   for (auto const& sp : data.species) {
     species_names.push_back(sp.name);
@@ -1255,14 +1248,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
 }
 
 static void init_species_from_kinetics_base_pun(KBPunNetwork const& net) {
-  species_names.clear();
-  species_weights.clear();
-  species_cref_R.clear();
-  species_uref_R.clear();
-  species_sref_R.clear();
-  species_nasa9_low.clear();
-  species_nasa9_high.clear();
-  species_nasa9_Tmid.clear();
+  clear_species_registry();
 
   // Register species in ascending .pun id order so reaction ids map cleanly.
   std::vector<KBPunSpecies const*> ordered;

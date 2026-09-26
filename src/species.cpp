@@ -48,8 +48,10 @@ struct Nasa9Entry {
 namespace {
 //! 'species' block of the card that filled the registry
 std::string loaded_species;
+}  // namespace
 
 void clear_species_registry() {
+  loaded_species.clear();
   species_names.clear();
   species_weights.clear();
   species_cref_R.clear();
@@ -59,8 +61,6 @@ void clear_species_registry() {
   species_nasa9_high.clear();
   species_nasa9_Tmid.clear();
 }
-
-}  // namespace
 
 static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
   static std::unordered_map<std::string, Nasa9Entry> db;
