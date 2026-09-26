@@ -47,7 +47,11 @@ torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
   torch::Tensor rate_ddT;
 
   if (gain.device().is_cpu()) {
-    rate_ddT = std::get<0>(torch::linalg_lstsq(gain_eq, rhs_eq));
+    // gelsd, not the default gelsy: torch before pytorch#187436 hands gelsy an
+    // uninitialised JPVT, so its pivoting (and the last bits here) follow
+    // leftover heap bytes and the IC walk differs run to run (pytorch#187411).
+    rate_ddT = std::get<0>(
+        torch::linalg_lstsq(gain_eq, rhs_eq, c10::nullopt, "gelsd"));
   } else {
     auto pinv = torch::linalg_pinv(gain_eq, /*atol=*/1e-6);
     rate_ddT = pinv.matmul(rhs_eq.unsqueeze(-1)).squeeze(-1);
