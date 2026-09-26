@@ -38,9 +38,7 @@ inline std::vector<T> insert_first(T value, std::vector<T> const& input) {
 
 struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   static std::shared_ptr<ThermoOptionsImpl> create() {
-    auto op = std::make_shared<ThermoOptionsImpl>();
-    op->nucleation() = NucleationOptionsImpl::create();
-    return op;
+    return std::make_shared<ThermoOptionsImpl>();
   }
 
   //! \brief Create a `ThermoOptions` object from a YAML file
@@ -85,7 +83,7 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(bool, verbose) = false;
   ADD_ARG(bool, offset_zero) = false;
 
-  ADD_ARG(NucleationOptions, nucleation) = nullptr;
+  ADD_ARG(NucleationOptions, nucleation) = NucleationOptionsImpl::create();
   ADD_ARG(std::string, uv_solver) = "auto";
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;

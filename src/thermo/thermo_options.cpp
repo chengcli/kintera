@@ -229,6 +229,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
 
 std::vector<Reaction> ThermoOptionsImpl::reactions() const {
   std::vector<Reaction> reactions;
+  if (nucleation() == nullptr) return reactions;
   reactions.reserve(nucleation()->reactions().size());
 
   for (const auto& reaction : nucleation()->reactions()) {
