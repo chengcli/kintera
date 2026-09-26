@@ -166,6 +166,8 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
     kinet->nasa9_low().push_back(species_nasa9_low[id]);
     kinet->nasa9_high().push_back(species_nasa9_high[id]);
     kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    kinet->names().push_back(species_names[id]);
+    kinet->mu().push_back(species_weights[id]);
   }
 
   // register clouds
@@ -190,6 +192,8 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
     kinet->nasa9_low().push_back(species_nasa9_low[id]);
     kinet->nasa9_high().push_back(species_nasa9_high[id]);
     kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    kinet->names().push_back(species_names[id]);
+    kinet->mu().push_back(species_weights[id]);
   }
 
   return kinet;

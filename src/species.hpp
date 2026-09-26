@@ -31,6 +31,8 @@ void init_species_from_yaml(std::string filename);
 void init_species_from_yaml(YAML::Node const& config);
 //! Initialize species and thermo data from a KINETICS-base master input file.
 void init_species_from_kinetics_base(std::string const& master_input_path);
+//! Empty the registry; the next card loaded refills it.
+void clear_species_registry();
 void ensure_species_initialized(std::string const& filename);
 void ensure_species_initialized(YAML::Node const& config);
 //! Reject unknown keys in the `reference-state` block, suggesting the closest.
@@ -68,6 +70,11 @@ struct SpeciesThermoImpl {
   ADD_ARG(std::vector<double>, cref_R);
   ADD_ARG(std::vector<double>, uref_R);
   ADD_ARG(std::vector<double>, sref_R);
+
+  //! species names and molar masses [kg/mol], copied from the registry when
+  //! the object is built, so that a card loaded later cannot change them
+  ADD_ARG(std::vector<std::string>, names);
+  ADD_ARG(std::vector<double>, mu);
 
   ADD_ARG(std::vector<std::string>, intEng_R_extra);
   ADD_ARG(std::vector<std::string>, cp_R_extra);

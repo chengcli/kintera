@@ -1071,18 +1071,11 @@ KBTitanReactionReport classify_kinetics_base_titan_reactions(
 void init_species_from_kinetics_base(std::string const& master_input_path) {
   auto data = parse_kinetics_base_master(master_input_path);
 
-  species_names.clear();
-  species_weights.clear();
-  species_cref_R.clear();
-  species_uref_R.clear();
-  species_sref_R.clear();
-  species_nasa9_low.clear();
-  species_nasa9_high.clear();
-  species_nasa9_Tmid.clear();
+  clear_species_registry();
 
   for (auto const& sp : data.species) {
     species_names.push_back(sp.name);
-    species_weights.push_back(sp.molecular_weight);
+    species_weights.push_back(sp.molecular_weight * 1.e-3);  // g -> kg
     species_cref_R.push_back(2.5);
     species_uref_R.push_back(0.0);
     species_sref_R.push_back(0.0);
@@ -1247,20 +1240,15 @@ KineticsOptions kinetics_options_from_kinetics_base(
     kinet->nasa9_low().push_back(species_nasa9_low[id]);
     kinet->nasa9_high().push_back(species_nasa9_high[id]);
     kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    kinet->names().push_back(species_names[id]);
+    kinet->mu().push_back(species_weights[id]);
   }
 
   return kinet;
 }
 
 static void init_species_from_kinetics_base_pun(KBPunNetwork const& net) {
-  species_names.clear();
-  species_weights.clear();
-  species_cref_R.clear();
-  species_uref_R.clear();
-  species_sref_R.clear();
-  species_nasa9_low.clear();
-  species_nasa9_high.clear();
-  species_nasa9_Tmid.clear();
+  clear_species_registry();
 
   // Register species in ascending .pun id order so reaction ids map cleanly.
   std::vector<KBPunSpecies const*> ordered;
@@ -1273,7 +1261,7 @@ static void init_species_from_kinetics_base_pun(KBPunNetwork const& net) {
 
   for (auto const* sp : ordered) {
     species_names.push_back(sp->name);
-    species_weights.push_back(sp->molecular_weight);
+    species_weights.push_back(sp->molecular_weight * 1.e-3);  // g -> kg
     // Placeholder thermo: reactions are built irreversible, so NASA-9 / Kc is
     // never evaluated. cref_R = 5/2 (ideal monatomic) is a harmless default.
     species_cref_R.push_back(2.5);
@@ -1387,6 +1375,8 @@ KineticsOptions kinetics_options_from_kinetics_base_pun(
     kinet->nasa9_low().push_back(species_nasa9_low[id]);
     kinet->nasa9_high().push_back(species_nasa9_high[id]);
     kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    kinet->names().push_back(species_names[id]);
+    kinet->mu().push_back(species_weights[id]);
   }
 
   if (verbose) {
@@ -1703,6 +1693,8 @@ PhotoChemOptions photochem_options_from_kinetics_base(
     photo_chem->nasa9_low().push_back(species_nasa9_low[id]);
     photo_chem->nasa9_high().push_back(species_nasa9_high[id]);
     photo_chem->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    photo_chem->names().push_back(species_names[id]);
+    photo_chem->mu().push_back(species_weights[id]);
   }
 
   return photo_chem;

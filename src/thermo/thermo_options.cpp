@@ -198,6 +198,8 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
     thermo->nasa9_low().push_back(species_nasa9_low[id]);
     thermo->nasa9_high().push_back(species_nasa9_high[id]);
     thermo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    thermo->names().push_back(species_names[id]);
+    thermo->mu().push_back(species_weights[id]);
   }
 
   // register clouds
@@ -222,6 +224,8 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
     thermo->nasa9_low().push_back(species_nasa9_low[id]);
     thermo->nasa9_high().push_back(species_nasa9_high[id]);
     thermo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    thermo->names().push_back(species_names[id]);
+    thermo->mu().push_back(species_weights[id]);
   }
 
   return thermo;

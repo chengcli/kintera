@@ -9,6 +9,7 @@
 namespace kintera {
 
 extern std::vector<std::string> species_names;
+extern std::vector<double> species_weights;
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
@@ -57,6 +58,8 @@ PhotoChemOptions PhotoChemOptionsImpl::from_yaml(YAML::Node const& config,
     photo->nasa9_low().push_back(species_nasa9_low[id]);
     photo->nasa9_high().push_back(species_nasa9_high[id]);
     photo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+    photo->names().push_back(species_names[id]);
+    photo->mu().push_back(species_weights[id]);
   }
 
   return photo;

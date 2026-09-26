@@ -2,7 +2,9 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <fstream>
+#include <map>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -44,7 +46,12 @@ struct Nasa9Entry {
 };
 
 namespace {
+//! 'species' block of the card that filled the registry
+std::string loaded_species;
+}  // namespace
+
 void clear_species_registry() {
+  loaded_species.clear();
   species_names.clear();
   species_weights.clear();
   species_cref_R.clear();
@@ -54,8 +61,6 @@ void clear_species_registry() {
   species_nasa9_high.clear();
   species_nasa9_Tmid.clear();
 }
-
-}  // namespace
 
 static std::unordered_map<std::string, Nasa9Entry>& get_nasa9_db() {
   static std::unordered_map<std::string, Nasa9Entry> db;
@@ -142,6 +147,7 @@ void init_species_from_yaml(YAML::Node const& config) {
               "'species' is not defined in the kintera configuration file");
 
   clear_species_registry();
+  loaded_species = YAML::Dump(config["species"]);
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -196,13 +202,13 @@ void init_species_from_yaml(YAML::Node const& config) {
 }
 
 void ensure_species_initialized(std::string const& filename) {
-  if (!species_initialized) {
-    init_species_from_yaml(filename);
-  }
+  ensure_species_initialized(YAML::LoadFile(filename));
 }
 
+//! refill the registry when a card with a different species list is loaded
 void ensure_species_initialized(YAML::Node const& config) {
-  if (!species_initialized) {
+  if (!species_initialized ||
+      (config["species"] && YAML::Dump(config["species"]) != loaded_species)) {
     init_species_from_yaml(config);
   }
 }
@@ -225,6 +231,10 @@ void check_reference_state(YAML::Node const& config) {
 }
 
 std::vector<std::string> SpeciesThermoImpl::species() const {
+  if (names().size() == vapor_ids().size() + cloud_ids().size()) {
+    return names();
+  }
+
   std::vector<std::string> species_list;
 
   // add vapors
@@ -370,6 +380,21 @@ void populate_thermo(SpeciesThermo thermo) {
   while (thermo->nasa9_Tmid().size() < nspecies) {
     thermo->nasa9_Tmid().push_back(1000.0);
   }
+
+  // objects not built from a card take names and molar masses from the
+  // registry as it is now
+  auto ids = merge_vectors(thermo->vapor_ids(), thermo->cloud_ids());
+  while (thermo->names().size() < nspecies) {
+    int id = ids[thermo->names().size()];
+    thermo->names().push_back(id < species_names.size() ? species_names[id]
+                                                        : "");
+  }
+
+  while (thermo->mu().size() < nspecies) {
+    int id = ids[thermo->mu().size()];
+    thermo->mu().push_back(id < species_weights.size() ? species_weights[id]
+                                                       : NAN);
+  }
 }
 
 void check_dimensions(SpeciesThermo const& thermo) {
@@ -421,6 +446,13 @@ void check_dimensions(SpeciesThermo const& thermo) {
   TORCH_CHECK(thermo->nasa9_Tmid().size() == nspecies,
               "nasa9_Tmid size = ", thermo->nasa9_Tmid().size(),
               ". Expected = ", nspecies);
+
+  TORCH_CHECK(thermo->names().size() == nspecies,
+              "names size = ", thermo->names().size(),
+              ". Expected = ", nspecies);
+
+  TORCH_CHECK(thermo->mu().size() == nspecies,
+              "mu size = ", thermo->mu().size(), ". Expected = ", nspecies);
 }
 
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
@@ -446,6 +478,8 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   auto& nasa9_low = merged->nasa9_low();
   auto& nasa9_high = merged->nasa9_high();
   auto& nasa9_Tmid = merged->nasa9_Tmid();
+  auto& names = merged->names();
+  auto& mu = merged->mu();
 
   // concatenate fields
   int nvapor1 = thermo1->vapor_ids().size();
@@ -481,6 +515,19 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
                              nvapor1, nvapor2);
   nasa9_Tmid = merge_vectors(thermo1->nasa9_Tmid(), thermo2->nasa9_Tmid(),
                              nvapor1, nvapor2);
+  names = merge_vectors(thermo1->names(), thermo2->names(), nvapor1, nvapor2);
+  mu = merge_vectors(thermo1->mu(), thermo2->mu(), nvapor1, nvapor2);
+
+  // the same id must name the same species in both objects
+  std::map<int, std::string> id_names;
+  auto ids = merge_vectors(vapor_ids, cloud_ids);
+  for (int i = 0; i < ids.size(); ++i) {
+    auto found = id_names.emplace(ids[i], names[i]).first;
+    TORCH_CHECK(found->second == names[i], "species id ", ids[i], " is '",
+                found->second, "' in one object and '", names[i],
+                "' in the other; they were built from different species "
+                "lists");
+  }
 
   // identify duplicated vapor ids and remove them from all vectors
   int first = 0;
@@ -501,6 +548,8 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
       nasa9_low.erase(nasa9_low.begin() + first);
       nasa9_high.erase(nasa9_high.begin() + first);
       nasa9_Tmid.erase(nasa9_Tmid.begin() + first);
+      names.erase(names.begin() + first);
+      mu.erase(mu.begin() + first);
     } else {
       seen_vapor_ids.insert(vapor_id);
       ++first;
@@ -535,6 +584,8 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
       nasa9_low.erase(nasa9_low.begin() + nvapor + first);
       nasa9_high.erase(nasa9_high.begin() + nvapor + first);
       nasa9_Tmid.erase(nasa9_Tmid.begin() + nvapor + first);
+      names.erase(names.begin() + nvapor + first);
+      mu.erase(mu.begin() + nvapor + first);
     } else {
       seen_cloud_ids.insert(cloud_id);
       ++first;
@@ -570,6 +621,8 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
   nasa9_low = sort_vectors(nasa9_low, sorted);
   nasa9_high = sort_vectors(nasa9_high, sorted);
   nasa9_Tmid = sort_vectors(nasa9_Tmid, sorted);
+  names = sort_vectors(names, sorted);
+  mu = sort_vectors(mu, sorted);
 
   return merged;
 }

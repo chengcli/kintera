@@ -973,10 +973,10 @@ def test_kinetics_species_consistency(master_path):
     assert all(w > 0 for w in weights)
 
     idx_o = species.index("O")
-    assert abs(weights[idx_o] - 16.0) < 0.1
+    assert abs(weights[idx_o] - 16.0e-3) < 0.1e-3  # kg/mol
 
     idx_o2 = species.index("O2")
-    assert abs(weights[idx_o2] - 32.0) < 0.1
+    assert abs(weights[idx_o2] - 32.0e-3) < 0.1e-3
 
 
 if __name__ == "__main__":

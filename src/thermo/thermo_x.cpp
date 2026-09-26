@@ -12,8 +12,6 @@
 
 namespace kintera {
 
-extern std::vector<double> species_weights;
-
 std::shared_ptr<ThermoXImpl> ThermoXImpl::create(ThermoOptions const& opts,
                                                  torch::nn::Module* p,
                                                  std::string const& name) {
@@ -48,14 +46,7 @@ void ThermoXImpl::reset() {
 
   check_dimensions(options);
 
-  std::vector<double> mu_vec(nspecies);
-  for (int i = 0; i < options->vapor_ids().size(); ++i) {
-    mu_vec[i] = species_weights[options->vapor_ids()[i]];
-  }
-  for (int i = 0; i < options->cloud_ids().size(); ++i) {
-    mu_vec[i + options->vapor_ids().size()] =
-        species_weights[options->cloud_ids()[i]];
-  }
+  auto const& mu_vec = options->mu();
   mu = register_buffer("mu", torch::tensor(mu_vec, torch::kFloat64));
 
   if (options->verbose()) {

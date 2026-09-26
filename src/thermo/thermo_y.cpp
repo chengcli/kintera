@@ -12,8 +12,6 @@
 
 namespace kintera {
 
-extern std::vector<double> species_weights;
-
 std::shared_ptr<ThermoYImpl> ThermoYImpl::create(ThermoOptions const& opts,
                                                  torch::nn::Module* p,
                                                  std::string const& name) {
@@ -48,14 +46,7 @@ void ThermoYImpl::reset() {
 
   check_dimensions(options);
 
-  std::vector<double> mu_vec(nspecies);
-  for (int i = 0; i < options->vapor_ids().size(); ++i) {
-    mu_vec[i] = species_weights[options->vapor_ids()[i]];
-  }
-  for (int i = 0; i < options->cloud_ids().size(); ++i) {
-    mu_vec[i + options->vapor_ids().size()] =
-        species_weights[options->cloud_ids()[i]];
-  }
+  auto const& mu_vec = options->mu();
   inv_mu =
       register_buffer("inv_mu", 1. / torch::tensor(mu_vec, torch::kFloat64));
 
@@ -369,7 +360,7 @@ void ThermoYImpl::_yfrac_to_xfrac(torch::Tensor yfrac,
   }
   vec[ndim - 1] = 0;
 
-  auto mud = species_weights[options->vapor_ids()[0]];
+  auto mud = options->mu()[0];
   out.narrow(-1, 1, ny) = yfrac.permute(vec) * inv_mu.narrow(0, 1, ny) * mud;
 
   auto sum = 1. + yfrac.permute(vec).matmul(mud * inv_mu.narrow(0, 1, ny) - 1.);

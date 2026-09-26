@@ -17,7 +17,7 @@ using PhotoChemOptions = std::shared_ptr<PhotoChemOptionsImpl>;
 struct KBSpecies {
   std::string name;
   std::map<std::string, int> composition;
-  double molecular_weight = 0.0;
+  double molecular_weight = 0.0;  // g/mol, as in the input file
   double hf_kcal = 0.0;
 
   int n_nasa9_ranges = 0;
@@ -69,7 +69,7 @@ struct KBPunSpecies {
   std::string name;
   int first_reaction = 0;
   int n_reactions = 0;
-  double molecular_weight = 0.0;
+  double molecular_weight = 0.0;  // g/mol, as in the input file
   std::vector<int> composition;
 };
 
