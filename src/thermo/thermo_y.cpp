@@ -44,6 +44,11 @@ void ThermoYImpl::reset() {
               << fmt::format("{}", species) << std::endl;
   }
 
+  // an explicit nucleation(None) means no nucleation reactions
+  if (options->nucleation() == nullptr) {
+    options->nucleation() = NucleationOptionsImpl::create();
+  }
+
   check_dimensions(options);
 
   auto const& mu_vec = options->mu();
