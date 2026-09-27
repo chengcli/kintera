@@ -11,7 +11,9 @@
 namespace kintera {
 
 std::pair<torch::Tensor, torch::Tensor> LogSVPFunc::make_svp_spec(
-    NucleationOptions const& op, torch::Device device) {
+    NucleationOptions const& op_, torch::Device device) {
+  // a null NucleationOptions (e.g. nucleation(None)) is the empty default
+  auto const& op = op_ ? op_ : NucleationOptionsImpl::create();
   auto const& names = op->logsvp();
   auto const& params = op->svp_params();
   int n = static_cast<int>(names.size());

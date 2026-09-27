@@ -233,11 +233,14 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
                   .build();
 
   // call the equilibrium solver
-  auto svp_spec =
-      LogSVPFunc::make_svp_spec(options->nucleation(), xfrac.device());
+  // a null nucleation (set to None after reset()) is the empty default
+  auto const& nucleation = options->nucleation()
+                               ? options->nucleation()
+                               : NucleationOptionsImpl::create();
+  auto svp_spec = LogSVPFunc::make_svp_spec(nucleation, xfrac.device());
   at::native::call_equilibrate_tp(
       xfrac.device().type(), iter, options->vapor_ids().size(), stoich,
-      svp_spec.first, svp_spec.second, options->nucleation()->logsvp(),
+      svp_spec.first, svp_spec.second, nucleation->logsvp(),
       options->ftol(), options->max_iter());
 
   vec[xfrac.dim() - 1] = reactions.size();

@@ -316,13 +316,16 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   if (!uv_partitionable) uv_solver = 0;
 
   // call the equilibrium solver
-  auto svp_spec =
-      LogSVPFunc::make_svp_spec(options->nucleation(), conc.device());
+  // a null nucleation (set to None after reset()) is the empty default
+  auto const& nucleation = options->nucleation()
+                               ? options->nucleation()
+                               : NucleationOptionsImpl::create();
+  auto svp_spec = LogSVPFunc::make_svp_spec(nucleation, conc.device());
   at::native::call_equilibrate_uv(
       conc.device().type(), iter, options->vapor_ids().size(), stoich,
       u0 / inv_mu,   // J/kg -> J/mol
       cv0 / inv_mu,  // J/(kg K) -> J/(mol K)
-      svp_spec.first, svp_spec.second, options->nucleation()->logsvp(),
+      svp_spec.first, svp_spec.second, nucleation->logsvp(),
       options->intEng_R_extra(), options->ftol(), options->max_iter(),
       uv_solver);
 

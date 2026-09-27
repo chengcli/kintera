@@ -19,7 +19,8 @@ struct fmt::formatter<kintera::NucleationOptions> {
   auto format(const kintera::NucleationOptions& p, FormatContext& ctx) const {
     std::stringstream ss;
     ss << "Nucleation options:\n";
-    p->report(ss);
+    // a null NucleationOptions (e.g. nucleation(None)) is the empty default
+    (p ? p : kintera::NucleationOptionsImpl::create())->report(ss);
 
     return fmt::format_to(ctx.out(), "{}", ss.str());
   }
