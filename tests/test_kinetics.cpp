@@ -37,6 +37,17 @@ TEST(EvolveImplicit, BatchedCpuWorkspaceAndSingularFallback) {
   EXPECT_TRUE(torch::allclose(delta, expected, 1.e-12, 1.e-12));
 }
 
+TEST(KineticsFormatter, NoneSubOptionsPrintAsEmpty) {
+  auto op = KineticsOptionsImpl::create();
+  op->arrhenius(ArrheniusOptions());
+  op->coagulation(CoagulationOptions());
+  op->evaporation(EvaporationOptions());
+  auto s = fmt::format("{}", op);
+  EXPECT_NE(s.find("Arrhenius Reactions:\n--\n"), std::string::npos) << s;
+  EXPECT_NE(s.find("Coagulation Reactions:\n--\n"), std::string::npos) << s;
+  EXPECT_NE(s.find("Evaporation Reactions:\n--\n"), std::string::npos) << s;
+}
+
 TEST_P(DeviceTest, kinetics) {
   auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
   std::cout << fmt::format("{}", op_kinet) << std::endl;

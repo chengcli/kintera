@@ -17,12 +17,13 @@ struct fmt::formatter<kintera::ArrheniusOptions> {
 
   template <typename FormatContext>
   auto format(const kintera::ArrheniusOptions& p, FormatContext& ctx) const {
-    std::stringstream ss;
-    auto r = p->reactions();
-
-    if (r.size() == 0) {
+    // a sub-option set to None has no reactions
+    if (!p || p->reactions().empty()) {
       return fmt::format_to(ctx.out(), "--\n");
     }
+
+    std::stringstream ss;
+    auto r = p->reactions();
 
     for (size_t i = 0; i < r.size(); ++i) {
       ss << fmt::format("R{}: {}, ", i + 1, r[i]);
@@ -41,12 +42,13 @@ struct fmt::formatter<kintera::EvaporationOptions> {
 
   template <typename FormatContext>
   auto format(const kintera::EvaporationOptions& p, FormatContext& ctx) const {
-    std::stringstream ss;
-    auto r = p->reactions();
-
-    if (r.size() == 0) {
+    // a sub-option set to None has no reactions
+    if (!p || p->reactions().empty()) {
       return fmt::format_to(ctx.out(), "--\n");
     }
+
+    std::stringstream ss;
+    auto r = p->reactions();
 
     for (size_t i = 0; i < r.size(); ++i) {
       ss << fmt::format("R{}: {}, ", i + 1, r[i]);

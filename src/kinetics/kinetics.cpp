@@ -44,6 +44,8 @@ void KineticsImpl::reset() {
     options->troe_falloff(TroeFalloffOptionsImpl::create());
   if (!options->sri_falloff())
     options->sri_falloff(SRIFalloffOptionsImpl::create());
+  if (!options->kb_falloff())
+    options->kb_falloff(KBFalloffOptionsImpl::create());
 
   auto species = options->species();
   auto nspecies = species.size();
