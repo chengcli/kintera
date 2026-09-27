@@ -47,6 +47,9 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          # tests/test_version_fallback.py needs a reachable release tag
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -57,7 +60,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install wheel numpy pytest
+          pip install wheel numpy pytest setuptools-scm
           pip install 'torch==2.10.0'
           pip install 'pyharp>=2.2.0'
 
