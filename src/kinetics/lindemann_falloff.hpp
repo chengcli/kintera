@@ -40,6 +40,10 @@ struct LindemannFalloffOptionsImpl {
   virtual std::string name() const { return "falloff"; }
   virtual ~LindemannFalloffOptionsImpl() = default;
 
+  std::shared_ptr<LindemannFalloffOptionsImpl> clone() const {
+    return std::make_shared<LindemannFalloffOptionsImpl>(*this);
+  }
+
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* Tref = " << Tref() << " K\n"

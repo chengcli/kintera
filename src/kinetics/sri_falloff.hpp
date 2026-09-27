@@ -40,6 +40,10 @@ struct SRIFalloffOptionsImpl {
   virtual std::string name() const { return "falloff"; }
   virtual ~SRIFalloffOptionsImpl() = default;
 
+  std::shared_ptr<SRIFalloffOptionsImpl> clone() const {
+    return std::make_shared<SRIFalloffOptionsImpl>(*this);
+  }
+
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* Tref = " << Tref() << " K\n"

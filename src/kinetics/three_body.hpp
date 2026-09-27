@@ -40,6 +40,10 @@ struct ThreeBodyOptionsImpl {
   virtual std::string name() const { return "three-body"; }
   virtual ~ThreeBodyOptionsImpl() = default;
 
+  std::shared_ptr<ThreeBodyOptionsImpl> clone() const {
+    return std::make_shared<ThreeBodyOptionsImpl>(*this);
+  }
+
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* Tref = " << Tref() << " K\n"

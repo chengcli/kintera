@@ -39,6 +39,12 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
     if (arrhenius()) op->arrhenius() = arrhenius()->clone();
     if (coagulation()) op->coagulation() = coagulation()->clone();
     if (evaporation()) op->evaporation() = evaporation()->clone();
+    if (three_body()) op->three_body() = three_body()->clone();
+    if (lindemann_falloff())
+      op->lindemann_falloff() = lindemann_falloff()->clone();
+    if (troe_falloff()) op->troe_falloff() = troe_falloff()->clone();
+    if (sri_falloff()) op->sri_falloff() = sri_falloff()->clone();
+    if (kb_falloff()) op->kb_falloff() = kb_falloff()->clone();
     return op;
   }
 

@@ -40,6 +40,10 @@ struct TroeFalloffOptionsImpl {
   virtual std::string name() const { return "falloff"; }
   virtual ~TroeFalloffOptionsImpl() = default;
 
+  std::shared_ptr<TroeFalloffOptionsImpl> clone() const {
+    return std::make_shared<TroeFalloffOptionsImpl>(*this);
+  }
+
   void report(std::ostream& os) const {
     os << "* reactions = " << fmt::format("{}", reactions()) << "\n"
        << "* Tref = " << Tref() << " K\n"
