@@ -23,14 +23,16 @@ def test_archive_version_is_not_older_than_the_newest_release(tmp_path):
     pytest.importorskip("setuptools_scm")
     from packaging.version import Version
 
+    # cwd rather than `git -C`, which needs git 1.8.5: the case must run, not
+    # skip, with the old git of #125.
     tag = subprocess.run(
-        ["git", "-C", str(ROOT), "describe", "--tags", "--abbrev=0",
-         "--match", "v[0-9]*"], capture_output=True, text=True)
+        ["git", "describe", "--tags", "--abbrev=0", "--match", "v[0-9]*"],
+        cwd=ROOT, capture_output=True, text=True)
     if tag.returncode != 0:
         pytest.skip("no release tag reachable (shallow clone without tags)")
     newest = Version(tag.stdout.strip().lstrip("v"))
 
-    archive = subprocess.run(["git", "-C", str(ROOT), "archive", "HEAD"],
+    archive = subprocess.run(["git", "archive", "HEAD"], cwd=ROOT,
                              capture_output=True, check=True)
     subprocess.run(["tar", "-x", "-C", str(tmp_path)], input=archive.stdout,
                    check=True)
