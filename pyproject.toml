@@ -73,4 +73,8 @@ include-package-data = false
 ]
 
 [tool.setuptools_scm]
-fallback_version = "0.0.0"
+# A `git archive` tree (release tarballs) gets its exact version from
+# .git_archival.txt. The fallback is only used when neither git nor archival
+# data is readable (a copied tree, a git too old for setuptools_scm); it is the
+# release this line was last updated at, so it is a floor, never 0.0.0.
+fallback_version = "2.5.9"
