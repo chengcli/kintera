@@ -82,5 +82,5 @@ include-package-data = false
 # setuptools_scm alone would report as 0.0 (#125).
 # fallback_version is the newest release reachable when this line was last
 # updated; tests/test_version_floor.py checks it is never ahead of the tags.
-fallback_version = "2.5.9"
+fallback_version = "2.5.10"
 version_scheme = "scm_version_scheme:floored_guess_next_dev"
