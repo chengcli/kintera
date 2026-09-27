@@ -1,3 +1,6 @@
+// C/C++
+#include <functional>
+
 // external
 #include <gtest/gtest.h>
 
@@ -47,6 +50,81 @@ TEST(KineticsFormatter, NoneSubOptionsPrintAsEmpty) {
   EXPECT_NE(s.find("Coagulation Reactions:\n--\n"), std::string::npos) << s;
   EXPECT_NE(s.find("Evaporation Reactions:\n--\n"), std::string::npos) << s;
 }
+
+// KineticsOptionsImpl::clone() must deep-copy every sub-option: the clone
+// and the original must not share a sub-option object, and mutating one
+// must not change the other.
+struct SubOptionAccess {
+  std::string name;
+  std::function<void const*(KineticsOptions const&)> ptr;
+  std::function<double&(KineticsOptions const&)> Tref;
+};
+
+template <typename T>
+SubOptionAccess sub_option(std::string name, T& (KineticsOptionsImpl::*get)()) {
+  return {name,
+          [get](KineticsOptions const& op) {
+            return static_cast<void const*>(((*op).*get)().get());
+          },
+          [get](KineticsOptions const& op) -> double& {
+            return ((*op).*get)()->Tref();
+          }};
+}
+
+std::vector<SubOptionAccess> all_sub_options() {
+  return {
+      sub_option("arrhenius", &KineticsOptionsImpl::arrhenius),
+      sub_option("coagulation", &KineticsOptionsImpl::coagulation),
+      sub_option("evaporation", &KineticsOptionsImpl::evaporation),
+      sub_option("three_body", &KineticsOptionsImpl::three_body),
+      sub_option("lindemann_falloff", &KineticsOptionsImpl::lindemann_falloff),
+      sub_option("troe_falloff", &KineticsOptionsImpl::troe_falloff),
+      sub_option("sri_falloff", &KineticsOptionsImpl::sri_falloff),
+      sub_option("kb_falloff", &KineticsOptionsImpl::kb_falloff),
+  };
+}
+
+class KineticsOptionsClone : public testing::TestWithParam<int> {};
+
+TEST_P(KineticsOptionsClone, DeepCopiesSubOption) {
+  auto sub = all_sub_options()[GetParam()];
+  auto op = KineticsOptionsImpl::create();
+  sub.Tref(op) = 123.;
+
+  auto cl = op->clone();
+  ASSERT_NE(sub.ptr(cl), nullptr);
+  EXPECT_NE(sub.ptr(cl), sub.ptr(op)) << sub.name << " is shared";
+  EXPECT_EQ(sub.Tref(cl), 123.);
+
+  sub.Tref(cl) = 456.;
+  EXPECT_EQ(sub.Tref(op), 123.) << "mutating the clone's " << sub.name
+                                << " changed the original";
+  sub.Tref(op) = 789.;
+  EXPECT_EQ(sub.Tref(cl), 456.) << "mutating the original's " << sub.name
+                                << " changed the clone";
+}
+
+TEST(KineticsOptionsClone, NullSubOptionStaysNull) {
+  auto op = KineticsOptionsImpl::create();
+  op->arrhenius(ArrheniusOptions());
+  op->coagulation(CoagulationOptions());
+  op->evaporation(EvaporationOptions());
+  op->three_body(ThreeBodyOptions());
+  op->lindemann_falloff(LindemannFalloffOptions());
+  op->troe_falloff(TroeFalloffOptions());
+  op->sri_falloff(SRIFalloffOptions());
+  op->kb_falloff(KBFalloffOptions());
+  auto cl = op->clone();
+  for (auto const& sub : all_sub_options()) {
+    EXPECT_EQ(sub.ptr(cl), nullptr) << sub.name;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    AllSubOptions, KineticsOptionsClone, testing::Range(0, 8),
+    [](testing::TestParamInfo<int> const& info) {
+      return all_sub_options()[info.param].name;
+    });
 
 TEST_P(DeviceTest, kinetics) {
   auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
