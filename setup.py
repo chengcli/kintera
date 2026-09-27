@@ -8,6 +8,10 @@ from setuptools import setup
 from torch.utils import cpp_extension
 import sysconfig
 
+# pyproject.toml refers to scm_version_scheme.py, next to this file, by object
+# reference; make sure it is importable however the build backend was invoked.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 
 def parse_library_names(libdir):
     library_names = []
