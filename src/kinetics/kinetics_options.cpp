@@ -201,47 +201,19 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
 
 std::vector<Reaction> KineticsOptionsImpl::reactions() const {
   std::vector<Reaction> reactions;
-  reactions.reserve(
-      arrhenius()->reactions().size() + coagulation()->reactions().size() +
-      evaporation()->reactions().size() + three_body()->reactions().size() +
-      lindemann_falloff()->reactions().size() +
-      troe_falloff()->reactions().size() + sri_falloff()->reactions().size() +
-      (kb_falloff() ? kb_falloff()->reactions().size() : 0));
-
-  for (const auto& reaction : arrhenius()->reactions()) {
-    reactions.push_back(reaction);
-  }
-
-  for (const auto& reaction : coagulation()->reactions()) {
-    reactions.push_back(reaction);
-  }
-
-  for (const auto& reaction : evaporation()->reactions()) {
-    reactions.push_back(reaction);
-  }
-
-  for (const auto& reaction : three_body()->reactions()) {
-    reactions.push_back(reaction);
-  }
-
-  for (const auto& reaction : lindemann_falloff()->reactions()) {
-    reactions.push_back(reaction);
-  }
-
-  for (const auto& reaction : troe_falloff()->reactions()) {
-    reactions.push_back(reaction);
-  }
-
-  for (const auto& reaction : sri_falloff()->reactions()) {
-    reactions.push_back(reaction);
-  }
-
-  if (kb_falloff()) {
-    for (const auto& reaction : kb_falloff()->reactions()) {
-      reactions.push_back(reaction);
-    }
-  }
-
+  auto add = [&reactions](auto const& op) {
+    if (!op) return;  // a sub-option set to None has no reactions
+    auto const& r = op->reactions();
+    reactions.insert(reactions.end(), r.begin(), r.end());
+  };
+  add(arrhenius());
+  add(coagulation());
+  add(evaporation());
+  add(three_body());
+  add(lindemann_falloff());
+  add(troe_falloff());
+  add(sri_falloff());
+  add(kb_falloff());
   return reactions;
 }
 

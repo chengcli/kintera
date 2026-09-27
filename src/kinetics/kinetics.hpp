@@ -26,16 +26,7 @@ namespace kintera {
 
 struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   static std::shared_ptr<KineticsOptionsImpl> create() {
-    auto op = std::make_shared<KineticsOptionsImpl>();
-    op->arrhenius() = ArrheniusOptionsImpl::create();
-    op->coagulation() = CoagulationOptionsImpl::create();
-    op->evaporation() = EvaporationOptionsImpl::create();
-    op->three_body() = ThreeBodyOptionsImpl::create();
-    op->lindemann_falloff() = LindemannFalloffOptionsImpl::create();
-    op->troe_falloff() = TroeFalloffOptionsImpl::create();
-    op->sri_falloff() = SRIFalloffOptionsImpl::create();
-    op->kb_falloff() = KBFalloffOptionsImpl::create();
-    return op;
+    return std::make_shared<KineticsOptionsImpl>();
   }
 
   static std::shared_ptr<KineticsOptionsImpl> from_yaml(
@@ -70,14 +61,15 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(double, Tref) = 298.15;
   ADD_ARG(double, Pref) = 101325.0;
 
-  ADD_ARG(ArrheniusOptions, arrhenius);
-  ADD_ARG(CoagulationOptions, coagulation);
-  ADD_ARG(EvaporationOptions, evaporation);
-  ADD_ARG(ThreeBodyOptions, three_body);
-  ADD_ARG(LindemannFalloffOptions, lindemann_falloff);
-  ADD_ARG(TroeFalloffOptions, troe_falloff);
-  ADD_ARG(SRIFalloffOptions, sri_falloff);
-  ADD_ARG(KBFalloffOptions, kb_falloff);
+  ADD_ARG(ArrheniusOptions, arrhenius) = ArrheniusOptionsImpl::create();
+  ADD_ARG(CoagulationOptions, coagulation) = CoagulationOptionsImpl::create();
+  ADD_ARG(EvaporationOptions, evaporation) = EvaporationOptionsImpl::create();
+  ADD_ARG(ThreeBodyOptions, three_body) = ThreeBodyOptionsImpl::create();
+  ADD_ARG(LindemannFalloffOptions,
+          lindemann_falloff) = LindemannFalloffOptionsImpl::create();
+  ADD_ARG(TroeFalloffOptions, troe_falloff) = TroeFalloffOptionsImpl::create();
+  ADD_ARG(SRIFalloffOptions, sri_falloff) = SRIFalloffOptionsImpl::create();
+  ADD_ARG(KBFalloffOptions, kb_falloff) = KBFalloffOptionsImpl::create();
   ADD_ARG(bool, evolve_temperature) = false;
   ADD_ARG(bool, verbose) = false;
   ADD_ARG(bool, offset_zero) = false;

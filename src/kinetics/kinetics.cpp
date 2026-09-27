@@ -24,11 +24,27 @@ std::shared_ptr<KineticsImpl> KineticsImpl::create(KineticsOptions const& opts,
 
 KineticsImpl::KineticsImpl(const KineticsOptions& options_)
     : options(options_) {
+  TORCH_CHECK(options, "[Kinetics] Options pointer is null");
   populate_thermo(options);
   reset();
 }
 
 void KineticsImpl::reset() {
+  // a sub-option set to None means no reactions of that type
+  if (!options->arrhenius()) options->arrhenius(ArrheniusOptionsImpl::create());
+  if (!options->coagulation())
+    options->coagulation(CoagulationOptionsImpl::create());
+  if (!options->evaporation())
+    options->evaporation(EvaporationOptionsImpl::create());
+  if (!options->three_body())
+    options->three_body(ThreeBodyOptionsImpl::create());
+  if (!options->lindemann_falloff())
+    options->lindemann_falloff(LindemannFalloffOptionsImpl::create());
+  if (!options->troe_falloff())
+    options->troe_falloff(TroeFalloffOptionsImpl::create());
+  if (!options->sri_falloff())
+    options->sri_falloff(SRIFalloffOptionsImpl::create());
+
   auto species = options->species();
   auto nspecies = species.size();
 
