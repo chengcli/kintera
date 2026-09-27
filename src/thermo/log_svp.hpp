@@ -13,7 +13,9 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
  public:
   static constexpr bool is_traceable = true;
 
-  static void init(NucleationOptions const& op) {
+  static void init(NucleationOptions const& op_) {
+    // a null NucleationOptions (e.g. nucleation(None)) is the empty default
+    auto const& op = op_ ? op_ : NucleationOptionsImpl::create();
     _logsvp = op->logsvp();
     _svp_params = op->svp_params();
 
