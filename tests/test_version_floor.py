@@ -107,3 +107,43 @@ def test_tree_without_git_metadata_reports_the_floor(exported):
     tree, _ = exported
     (tree / ".git_archival.txt").unlink()
     assert scm_version(tree) == floor()
+
+
+OLDER_RELEASE = "0.1.0"
+
+
+def git_in(tree, *args):
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t",
+               GIT_CEILING_DIRECTORIES=str(tree.parent))
+    subprocess.run(["git", *args], cwd=tree, check=True, capture_output=True, env=env)
+
+
+def test_clone_descended_from_an_older_release_reports_its_own_version(exported):
+    """A clone whose newest reachable tag is below the floor (a branch cut
+    before that release) is versioned from its own tag, not labelled as the
+    floor release: the floor is only for a tree with no usable tag."""
+    tree, _ = exported
+    git_in(tree, "init", "-q")
+    git_in(tree, "add", "-A")
+    git_in(tree, "commit", "-qm", "an older release")
+    git_in(tree, "tag", f"v{OLDER_RELEASE}")
+    assert scm_version(tree) == Version(OLDER_RELEASE)
+    for message in ("one", "two"):
+        git_in(tree, "commit", "-q", "--allow-empty", "-m", message)
+    version = scm_version(tree)
+    assert version.public == "0.1.1.dev2", version
+    assert version < floor()
+
+
+def test_this_checkout_is_versioned_from_its_own_tags():
+    """The floor never replaces the version of a checkout with a usable tag."""
+    describe = git("describe", "--tags", "--long", "--match", "v[0-9]*").decode().strip()
+    tag, distance, _ = describe.rsplit("-", 2)
+    tag, distance = Version(tag.lstrip("v")), int(distance)
+    version = scm_version(ROOT)
+    if distance == 0 and version.dev is None:
+        assert version.public == str(tag)
+    else:
+        assert version.release == (tag.major, tag.minor, tag.micro + 1), version
+        assert version.dev == distance, version
