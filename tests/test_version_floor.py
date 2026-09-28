@@ -147,3 +147,17 @@ def test_this_checkout_is_versioned_from_its_own_tags():
     else:
         assert version.release == (tag.major, tag.minor, tag.micro + 1), version
         assert version.dev == distance, version
+
+
+def test_clone_tagged_v0_0_0_reports_its_own_version(exported):
+    """A real v0.0.0 tag is not setuptools_scm's no-tag version, the literal
+    0.0: the two compare equal, but only the second takes the floor."""
+    tree, _ = exported
+    git_in(tree, "init", "-q")
+    git_in(tree, "add", "-A")
+    git_in(tree, "commit", "-qm", "a release 0.0.0")
+    git_in(tree, "tag", "v0.0.0")
+    assert str(scm_version(tree)) == "0.0.0"
+    for message in ("one", "two"):
+        git_in(tree, "commit", "-q", "--allow-empty", "-m", message)
+    assert scm_version(tree).public == "0.0.1.dev2"
