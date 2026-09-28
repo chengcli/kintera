@@ -28,8 +28,11 @@ using logsvp_inline_fn = void (*)(at::TensorIterator& iter,
                                   at::Tensor const& svp_kind,
                                   at::Tensor const& svp_params, bool deriv);
 
+using report_uv_failures_fn = void (*)(at::Tensor const& diag);
+
 DECLARE_DISPATCH(equilibrate_tp_fn, call_equilibrate_tp);
 DECLARE_DISPATCH(equilibrate_uv_fn, call_equilibrate_uv);
 DECLARE_DISPATCH(logsvp_inline_fn, call_logsvp_inline);
+DECLARE_DISPATCH(report_uv_failures_fn, call_report_uv_failures);
 
 }  // namespace at::native

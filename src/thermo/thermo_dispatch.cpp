@@ -175,6 +175,14 @@ void call_logsvp_inline_cpu(at::TensorIterator& iter,
   });
 }
 
+void call_report_uv_failures_cpu(at::Tensor const& diag) {
+  int64_t nfail = diag.lt(0).sum().item<int64_t>();
+  if (nfail > 0) {
+    TORCH_WARN("ThermoYImpl::forward: saturation adjustment failed in ", nfail,
+               " cell(s); diag = -(100 * status + iterations)");
+  }
+}
+
 }  // namespace kintera
 
 namespace at::native {
@@ -182,11 +190,14 @@ namespace at::native {
 DEFINE_DISPATCH(call_equilibrate_tp);
 DEFINE_DISPATCH(call_equilibrate_uv);
 DEFINE_DISPATCH(call_logsvp_inline);
+DEFINE_DISPATCH(call_report_uv_failures);
 
 REGISTER_ALL_CPU_DISPATCH(call_equilibrate_tp,
                           &kintera::call_equilibrate_tp_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_equilibrate_uv,
                           &kintera::call_equilibrate_uv_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_logsvp_inline, &kintera::call_logsvp_inline_cpu);
+REGISTER_ALL_CPU_DISPATCH(call_report_uv_failures,
+                          &kintera::call_report_uv_failures_cpu);
 
 }  // namespace at::native

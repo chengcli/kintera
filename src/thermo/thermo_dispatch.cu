@@ -1,7 +1,13 @@
+// C/C++
+#include <mutex>
+#include <vector>
+
 // torch
 #include <ATen/Dispatch.h>
+#include <ATen/cuda/CUDAContext.h>
 #include <ATen/TensorIterator.h>
 #include <ATen/native/ReduceOpsUtils.h>
+#include <c10/cuda/CUDAException.h>
 #include <c10/cuda/CUDAGuard.h>
 
 // kintera
@@ -169,6 +175,48 @@ void call_logsvp_inline_cuda(at::TensorIterator &iter,
   });
 }
 
+// Pinned host slots for the failure count. A slot is in flight from the copy
+// until its host function has read it; slots are reused, never freed.
+static std::mutex nfail_slot_mutex;
+static std::vector<int64_t *> *nfail_slots = new std::vector<int64_t *>;
+
+static int64_t *acquire_nfail_slot() {
+  std::lock_guard<std::mutex> lock(nfail_slot_mutex);
+  if (nfail_slots->empty()) {
+    int64_t *slot;
+    C10_CUDA_CHECK(cudaMallocHost(&slot, sizeof(int64_t)));
+    return slot;
+  }
+  auto slot = nfail_slots->back();
+  nfail_slots->pop_back();
+  return slot;
+}
+
+// runs on a CUDA driver thread once the stream reaches it; no CUDA calls here
+static void CUDART_CB report_uv_failures_host(void *data) {
+  auto slot = static_cast<int64_t *>(data);
+  if (*slot > 0) {
+    TORCH_WARN("ThermoYImpl::forward: saturation adjustment failed in ",
+               *slot, " cell(s); diag = -(100 * status + iterations)");
+  }
+  std::lock_guard<std::mutex> lock(nfail_slot_mutex);
+  nfail_slots->push_back(slot);
+}
+
+// Count cells with diag < 0 on the device and warn from a host function
+// queued on the same stream, so the caller's stream is never synchronized.
+void call_report_uv_failures_cuda(at::Tensor const& diag) {
+  at::cuda::CUDAGuard device_guard(diag.device());
+  auto stream = at::cuda::getCurrentCUDAStream();
+
+  auto nfail = diag.lt(0).sum();  // int64, stays on the device
+  auto slot = acquire_nfail_slot();
+  C10_CUDA_CHECK(cudaMemcpyAsync(slot, nfail.data_ptr<int64_t>(),
+                                 sizeof(int64_t), cudaMemcpyDeviceToHost,
+                                 stream));
+  C10_CUDA_CHECK(cudaLaunchHostFunc(stream, report_uv_failures_host, slot));
+}
+
 }  // namespace kintera
 
 namespace at::native {
@@ -181,5 +229,8 @@ REGISTER_CUDA_DISPATCH(call_equilibrate_uv,
 
 REGISTER_CUDA_DISPATCH(call_logsvp_inline,
                        &kintera::call_logsvp_inline_cuda);
+
+REGISTER_CUDA_DISPATCH(call_report_uv_failures,
+                       &kintera::call_report_uv_failures_cuda);
 
 }  // namespace at::native
