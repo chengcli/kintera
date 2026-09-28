@@ -9,8 +9,10 @@ reachable release tag) is reported as ``0.0`` and the fallback is never
 consulted (#125). A consumer's version floor then refuses the package.
 
 This scheme is ``guess-next-dev`` with ``fallback_version`` applied as a
-floor: no tree reports a version below the release recorded in its own
-pyproject.toml. A tree that only knows its commit reports
+floor for a tree with no usable tag (setuptools_scm's 0.0): it never reports
+a version below the release recorded in its own pyproject.toml. A tree with
+a real tag keeps guess-next-dev from that tag, even one below the floor. A
+tree that only knows its commit reports
 ``<fallback_version>+<node>``, which is at least the floor and still
 distinguishable from the release itself.
 
@@ -26,7 +28,7 @@ from setuptools_scm.version import ScmVersion, guess_next_dev_version
 
 
 def floored_guess_next_dev(version: ScmVersion) -> str:
-    """``guess-next-dev``, unless the tag is below ``fallback_version``.
+    """``guess-next-dev``, unless there is no usable tag (0.0).
 
     Below the floor the result is the floor itself, with the commit as a
     local segment when the tree knows it and the local scheme would add
@@ -36,7 +38,7 @@ def floored_guess_next_dev(version: ScmVersion) -> str:
     if not floor:
         return guess_next_dev_version(version)
     floor_version = version.config.version_cls(floor)
-    if version.tag >= floor_version:
+    if version.tag != version.config.version_cls("0.0") or version.tag >= floor_version:
         return guess_next_dev_version(version)
     if version.exact and version.node:
         node = version.format_with("{node}")
