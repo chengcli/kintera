@@ -38,7 +38,8 @@ def floored_guess_next_dev(version: ScmVersion) -> str:
     if not floor:
         return guess_next_dev_version(version)
     floor_version = version.config.version_cls(floor)
-    if version.tag != version.config.version_cls("0.0") or version.tag >= floor_version:
+    # the no-tag version is the literal 0.0; a real v0.0.0 tag is (0, 0, 0)
+    if version.tag.release != (0, 0) or version.tag >= floor_version:
         return guess_next_dev_version(version)
     if version.exact and version.node:
         node = version.format_with("{node}")
