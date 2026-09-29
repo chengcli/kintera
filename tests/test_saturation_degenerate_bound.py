@@ -55,6 +55,7 @@ species:
   composition: {N: 1, H: 5, S: 1}
   cv_R: 7.0
   u0_R: -10833.618
+# diff_T = diff_P = 0 and NH3's vm = water's are test settings, not physical ones (#135).
 reactions:
 - equation: H2O => H2O(l)
   type: nucleation

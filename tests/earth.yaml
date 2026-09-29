@@ -94,7 +94,7 @@ reactions:
 
   - equation: H2O(l,p) => H2O
     type: evaporation
-    rate-constant: {formula: h2o_ideal, diff_c: 0.2e-4, diff_T: 0., diff_P: 0., vm: 18.e-6, diameter: 1.0e-4}
+    rate-constant: {formula: h2o_ideal, diff_c: 0.2e-4, diff_T: 1.75, diff_P: -1., vm: 18.e-6, diameter: 1.0e-4}
 
 problem:
   Ps: 1.e5

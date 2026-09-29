@@ -42,6 +42,7 @@ def _module(equations, formulas):
     op.reactions([kt.Reaction(eq) for eq in equations])
     op.logsvp(formulas)
     n = len(equations)
+    # diff_T = diff_P = 0 holds D at DIFF_C: a test setting, not a physical one (#135).
     op.diff_c([DIFF_C] * n).diff_T([0.0] * n).diff_P([0.0] * n)
     op.vm([VM] * n).diameter([DIAM] * n)
     op.minT([0.0] * n).maxT([1.0e4] * n)
@@ -225,6 +226,7 @@ species:
   - {name: NH3, composition: {N: 1, H: 3}, cv_R: 2.5, u0_R: 0.}
   - {name: H2S, composition: {H: 2, S: 1}, cv_R: 2.5, u0_R: 0.}
   - {name: "NH4SH(s,p)", composition: {N: 1, H: 5, S: 1}, cv_R: 9.0, u0_R: -11000.}
+# diff_T = diff_P = 0 holds D at diff_c: a test setting, not a physical one (#135).
 reactions:
   - equation: H2O(l,p) => H2O
     type: evaporation
