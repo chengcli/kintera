@@ -272,7 +272,17 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   vec[ivol.dim() - 1] = reactions.size() * reactions.size();
   auto gain = torch::empty(vec, ivol.options());
 
-  if (!warm_start || !reaction_set.defined()) {
+  // A warm start is the active set of the last call. It is only valid for
+  // that shape and device. Another shape (one cell, a column) must get a
+  // cold start, not those buffers.
+  auto active_shape = rho.sizes().vec();
+  active_shape.push_back(static_cast<int64_t>(reactions.size()));
+  bool reuse = warm_start && reaction_set.defined() && nactive.defined() &&
+               reaction_set.device() == rho.device() &&
+               nactive.device() == rho.device() &&
+               nactive.sizes().equals(rho.sizes()) &&
+               reaction_set.sizes().equals(active_shape);
+  if (!reuse) {
     auto vec2 = rho.sizes().vec();
     vec2.push_back(reactions.size());
     reaction_set = torch::arange(0, (int)reactions.size(),
