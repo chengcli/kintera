@@ -48,7 +48,7 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
         with:
-          # tests/test_version_fallback.py needs a reachable release tag
+          # tests/test_version_fallback.py and test_version_floor.py need a reachable release tag
           fetch-depth: 0
 
       - name: Set up Python
