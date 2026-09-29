@@ -1,10 +1,10 @@
-"""A warm-started ThermoY.forward on a new shape must not reuse the previous call's active set.
+"""A warm-started ThermoY.forward must not reuse an active set from another shape or device.
 
 forward keeps each cell's active reactions (reaction_set, nactive) for the next warm_start call.
-A caller that adjusts one shape (a column, a single cell from Python) and then warm-starts on
-another (a dynamical core's block) must get the cold-start answer on the new shape, or a clean
-error; not a crash, an out-of-bounds read or another answer. The sequence runs in a child
-process so that a crash fails the test instead of ending the run.
+Those tensors are not registered buffers, so they stay behind when the module moves device.
+A later warm start on another shape, or on the same shape after .to(), must match a cold start
+on that call. An exception fails the test. The sequence runs in a child process so that a
+crash fails the test instead of ending the run.
 """
 import os
 import subprocess
@@ -50,8 +50,23 @@ def _state(th, shape, device):
     return rho, intEng, yfrac
 
 
+def _matches_cold(th, card, rho, intEng, yfrac, device):
+    """1 when a warm start on this state differs from a fresh cold start."""
+    warm = yfrac.clone()
+    th.forward(rho, intEng, warm, True)
+    cold = yfrac.clone()
+    cold_th = ThermoY(ThermoOptions.from_yaml(card))
+    cold_th.to(torch.device(device))
+    cold_th.forward(rho, intEng, cold, False)
+    if torch.equal(warm, cold):
+        return 0
+    print("warm start on %s: max |warm - cold| = %g"
+          % (device, (warm - cold).abs().max().item()))
+    return 1
+
+
 def child(card, device):
-    """1: warm start gave another answer than a cold start; 0: same answer, or a clean error."""
+    """1: warm start gave another answer than a cold start; 0: same answer."""
     new = (8, 8, 8)
     th = ThermoY(ThermoOptions.from_yaml(card))
     th.to(torch.device(device))
@@ -59,33 +74,48 @@ def child(card, device):
     th.forward(rho, intEng, yfrac, False)  # leaves a one-cell active set
 
     rho, intEng, yfrac = _state(th, new, device)
-    warm = yfrac.clone()
-    try:
-        th.forward(rho, intEng, warm, True)
-    except RuntimeError as err:
-        print("warm start on %s refused: %s" % (new, err))
-        return 0
+    return _matches_cold(th, card, rho, intEng, yfrac, device)
 
-    cold = yfrac.clone()
-    fresh = ThermoY(ThermoOptions.from_yaml(card))
-    fresh.to(torch.device(device))
-    fresh.forward(rho, intEng, cold, False)
-    if not torch.equal(warm, cold):
-        print("warm start on %s after %s: max |warm - cold| = %g"
-              % (new, (1,), (warm - cold).abs().max().item()))
-        return 1
+
+def migrate(card):
+    """Warm start after .to() rebuilds the active set. Same shape, other device."""
+    if not torch.cuda.is_available():
+        print("no cuda")
+        return 0
+    th = ThermoY(ThermoOptions.from_yaml(card))
+    th.to(torch.device("cpu"))
+    rho, intEng, yfrac = _state(th, (1,), "cpu")
+    th.forward(rho, intEng, yfrac, False)
+
+    for dest in ("cuda", "cpu"):
+        th.to(torch.device(dest))
+        rho, intEng, yfrac = _state(th, (1,), dest)
+        if _matches_cold(th, card, rho, intEng, yfrac, dest):
+            print("failed after move to %s" % dest)
+            return 1
     return 0
+
+
+def _run_child(card, which):
+    run = subprocess.run([sys.executable, os.path.abspath(__file__), str(card), which],
+                         capture_output=True, text=True, timeout=300)
+    assert run.returncode == 0, (
+        "%s: rc %d (negative = killed by that signal)\n%s%s"
+        % (which, run.returncode, run.stdout[-2000:], run.stderr[-2000:]))
 
 
 @pytest.mark.parametrize("device", DEVICES)
 def test_warm_start_on_a_new_shape(tmp_path, device):
     (card := tmp_path / "nh4sh.yaml").write_text(CARD)
-    run = subprocess.run([sys.executable, os.path.abspath(__file__), str(card), device],
-                         capture_output=True, text=True, timeout=300)
-    assert run.returncode == 0, (
-        "%s: rc %d (negative = killed by that signal)\n%s%s"
-        % (device, run.returncode, run.stdout[-2000:], run.stderr[-2000:]))
+    _run_child(card, device)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no cuda")
+def test_warm_start_after_device_move(tmp_path):
+    (card := tmp_path / "nh4sh.yaml").write_text(CARD)
+    _run_child(card, "migrate")
 
 
 if __name__ == "__main__":
-    sys.exit(child(sys.argv[1], sys.argv[2]))
+    card, which = sys.argv[1], sys.argv[2]
+    sys.exit(migrate(card) if which == "migrate" else child(card, which))
