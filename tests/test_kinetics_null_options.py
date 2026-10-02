@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+from functools import cache
 
 import pytest
 import torch
@@ -73,22 +74,27 @@ def _no_crash(out, what):
     return True
 
 
-def _sub_option_none(card, device, name):
+@cache
+def _reference_rate(card, device):
     ref = _run("default", card, device)
     assert ref.returncode == 0, ref.stderr
+    return json.loads(ref.stdout.strip().splitlines()[-1])["rate"]
+
+
+def _sub_option_none(card, device, name):
+    reference = _reference_rate(card, device)
     out = _run(f"{name}_none", card, device)
     if _no_crash(out, f"Kinetics after {name}(None) on {device}"):
         got = json.loads(out.stdout.strip().splitlines()[-1])
         # the card's one reaction is Arrhenius: dropping it leaves no rates
-        want = [[]] if name == "arrhenius" else \
-            json.loads(ref.stdout.strip().splitlines()[-1])["rate"]
+        want = [[]] if name == "arrhenius" else reference
         assert got["rate"] == want
         assert not got["none_after"], f"{name} still None after Kinetics(op)"
 
 
-@pytest.fixture
-def card(tmp_path):
-    path = tmp_path / "ox.yaml"
+@pytest.fixture(scope="module")
+def card(tmp_path_factory):
+    path = tmp_path_factory.mktemp("kinetics-null") / "ox.yaml"
     path.write_text(CARD)
     return str(path)
 

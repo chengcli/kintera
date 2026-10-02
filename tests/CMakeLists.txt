@@ -50,7 +50,25 @@ file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/kinetics_base/data/cross
 
 # Python tests
 
+# Native calls in these files already run in child processes. Share only pytest
+# startup; keep the crash probes and process-global species registries isolated.
+set(subprocess_tests
+  test_kinetics_null_options.py
+  test_effective_cp_heap_state.py
+  test_thermo_default_nucleation.py
+  test_thermo_none_nucleation.py
+  test_thermo_none_nucleation_after_reset.py
+  test_thermo_y_none_nucleation.py
+  test_latent_heat_sign.py
+  test_evaporation_inputs.py)
+list(TRANSFORM subprocess_tests PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
+add_test(NAME test_python_subprocess
+         COMMAND ${Python3_EXECUTABLE} -m pytest ${subprocess_tests})
+set_tests_properties(test_python_subprocess PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+
 file(GLOB pyfiles test*.py)
+list(REMOVE_ITEM pyfiles ${subprocess_tests})
 foreach(pyfile ${pyfiles})
   get_filename_component(name ${pyfile} NAME)
   add_test(NAME ${name} COMMAND pytest ${pyfile})
