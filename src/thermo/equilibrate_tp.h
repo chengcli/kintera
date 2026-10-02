@@ -115,6 +115,9 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
 
   int iter = 0;
   int kkt_err = 0;
+  // Set when the active set is empty, including on the last allowed iteration.
+  // The cap test below would otherwise report that solve as a failure.
+  bool at_equilibrium = false;
   T lambda = 0.;  // rate scale factor
   while (iter++ < *max_iter) {
     /*printf("iter = %d\n ", iter);
@@ -171,6 +174,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
 
     if (first == 0) {
       // all reactions are in equilibrium, no need to adjust saturation
+      at_equilibrium = true;
       break;
     }
 
@@ -348,13 +352,12 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   pfree(theta);
   pool_rewind(work, mark);
 
-  if (iter >= *max_iter) {
-    printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);
-    return 2 * 10 + kkt_err;  // failure to converge
-  } else {
+  if (at_equilibrium || iter < *max_iter) {
     *max_iter = iter;
     return kkt_err;  // success or KKT error
   }
+  printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);
+  return 2 * 10 + kkt_err;  // failure to converge
 }
 
 }  // namespace kintera

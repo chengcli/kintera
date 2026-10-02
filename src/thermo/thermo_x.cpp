@@ -263,6 +263,7 @@ void ThermoXImpl::_xfrac_to_yfrac(torch::Tensor xfrac,
 void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
                                    torch::Tensor entropy, torch::Tensor& out) {
   int iter = 0;
+  bool converged = false;
   while (iter++ < options->max_iter()) {
     auto conc = compute("TPX->V", {out, pres, xfrac});
     auto cp_vol = compute("TV->cp", {out, conc});
@@ -271,11 +272,12 @@ void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
     out *= 1. + (entropy - entropy_vol) / cp_vol;
     forward(out, pres, xfrac);
     if ((1. - temp_pre / out).abs().max().item<double>() < options->ftol()) {
+      converged = true;
       break;
     }
   }
 
-  if (iter >= options->max_iter()) {
+  if (!converged && iter >= options->max_iter()) {
     TORCH_WARN("ThermoX:_entropy_to_temp: max iteration reached");
     // get a time stamp (string) to dump diagnostic data
     auto time_stamp = std::to_string(std::time(nullptr));
@@ -305,6 +307,7 @@ void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
   auto conc_gas = ideal_gas_conc.clone();
 
   int iter = 0;
+  bool converged = false;
   while (iter++ < options->max_iter()) {
     auto cz = eval_czh(temp, conc_gas, options);
     auto cz_ddC = eval_czh_ddC(temp, conc_gas, options);
@@ -312,11 +315,12 @@ void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
     conc_gas += (ideal_gas_conc - cz * conc_gas) / (cz_ddC * conc_gas + cz);
     if ((1. - conc_gas_pre / conc_gas).abs().max().item<double>() <
         options->ftol()) {
+      converged = true;
       break;
     }
   }
 
-  if (iter >= options->max_iter()) {
+  if (!converged && iter >= options->max_iter()) {
     TORCH_WARN("ThermoX:_xfrac_to_conc: max iteration reached");
 
     // get a time stamp (string) to dump diagnostic data

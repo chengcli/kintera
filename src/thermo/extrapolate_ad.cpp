@@ -106,6 +106,7 @@ void ThermoXImpl::extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
   }
 
   int iter = 0;
+  bool converged = false;
   pres *= exp(dlnp);
   auto xfrac0 = xfrac.clone();
 
@@ -161,13 +162,14 @@ void ThermoXImpl::extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
 
     if ((entropy_step - entropy_mole).abs().max().item<double>() <
         10 * options->ftol()) {
+      converged = true;
       break;
     }
 
     temp *= 1. + (entropy_step - entropy_mole) / cp_mole;
   }
 
-  if (iter >= options->max_iter()) {
+  if (!converged && iter >= options->max_iter()) {
     TORCH_WARN("extrapolate_dlnp does not converge after ", options->max_iter(),
                " iterations.");
   }
@@ -221,6 +223,7 @@ void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
   pres.set_(pres0 * exp(-grav * mmw * dz / (constants::Rgas * temp)));
 
   int iter = 0;
+  bool converged = false;
   while (iter++ < options->max_iter()) {
     xfrac.copy_(xfrac0);
     auto gain = forward(temp, pres, xfrac);
@@ -268,6 +271,7 @@ void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
 
     if ((entropy_step - entropy_mole).abs().max().item<double>() <
         10 * options->ftol()) {
+      converged = true;
       break;
     }
 
@@ -293,7 +297,7 @@ void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
     }
   }
 
-  if (iter >= options->max_iter()) {
+  if (!converged && iter >= options->max_iter()) {
     TORCH_WARN("extrapolate_ad does not converge after ", options->max_iter(),
                " iterations.");
   }

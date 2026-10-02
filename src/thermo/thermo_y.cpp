@@ -430,6 +430,7 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
 
   out.set_(pres / (conc_gas.sum(-1) * constants::Rgas));
   int iter = 0;
+  bool converged = false;
   while (iter++ < options->max_iter()) {
     auto cz = eval_czh(out, conc_gas, options);
     auto func = out * (cz * conc_gas).sum(-1) - pres / constants::Rgas;
@@ -446,11 +447,12 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
     // (3900 -> 17000 K).
     out -= func / ((cp_R - cv_R) * conc_gas).sum(-1);
     if ((1. - temp_pre / out).abs().max().item<double>() < options->ftol()) {
+      converged = true;
       break;
     }
   }
 
-  if (iter >= options->max_iter()) {
+  if (!converged && iter >= options->max_iter()) {
     TORCH_WARN("ThermoYImpl::_pres_to_temp: max iterations reached");
 
     // get a time stamp (string) to dump diagnostic data
@@ -483,17 +485,19 @@ void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
 
   out.set_((intEng - u0_sum) / cv0_sum);
   int iter = 0;
+  bool converged = false;
   while (iter++ < options->max_iter()) {
     auto u = eval_intEng_R(out, conc, options) * constants::Rgas;
     auto cv = eval_cv_R(out, conc, options) * constants::Rgas;
     auto temp_pre = out.clone();
     out += (intEng - (u * conc).sum(-1)) / (cv * conc).sum(-1);
     if ((1. - temp_pre / out).abs().max().item<double>() < options->ftol()) {
+      converged = true;
       break;
     }
   }
 
-  if (iter >= options->max_iter()) {
+  if (!converged && iter >= options->max_iter()) {
     TORCH_WARN("ThermoYImpl::_intEng_to_temp: max iterations reached");
 
     // get a time stamp (string) to dump diagnostic data
