@@ -250,18 +250,22 @@ torch::Tensor ArrheniusImpl::forward(
   // broadcasts against the (nreaction, nrange) parameter tables.
   auto tempr = temp.unsqueeze(-1);
 
-  // candidate rate per (reaction, range): (..., nreaction, nrange)
-  auto rate_rr =
-      Amr * (tempr / options->Tref()).pow(bmr) * torch::exp(-Ea_Rmr / tempr);
-
   // single-range fast path: bit-identical to the legacy single-range result
   if (nrange == 1) {
+    auto rate_rr =
+        Amr * (tempr / options->Tref()).pow(bmr) * torch::exp(-Ea_Rmr / tempr);
     return rate_rr.squeeze(-1);
   }
 
-  // select the range whose [Tlo, Thi) window contains the local temperature
-  auto mask = (tempr >= Tlo).logical_and(tempr < Thi).to(rate_rr.dtype());
-  return (rate_rr * mask).sum(-1);
+  // Select parameters before evaluating the rate. An inactive range can be far
+  // outside its validity domain, where evaluating its exponential may overflow.
+  auto mask = (tempr >= Tlo).logical_and(tempr < Thi);
+  auto selected_A = torch::where(mask, Amr, torch::zeros_like(Amr)).sum(-1);
+  auto selected_b = torch::where(mask, bmr, torch::zeros_like(bmr)).sum(-1);
+  auto selected_Ea_R =
+      torch::where(mask, Ea_Rmr, torch::zeros_like(Ea_Rmr)).sum(-1);
+  return selected_A * (temp / options->Tref()).pow(selected_b) *
+         torch::exp(-selected_Ea_R / temp);
 }
 
 }  // namespace kintera

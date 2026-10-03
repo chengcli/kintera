@@ -13,7 +13,7 @@ import sys
 import pytest
 import torch
 import kintera
-from kintera import Kinetics, KineticsOptions, ThermoOptions, ThermoY
+from kintera import Kinetics, KineticsOptions, SpeciesThermo, ThermoOptions, ThermoY
 
 torch.set_default_dtype(torch.float64)
 
@@ -67,6 +67,48 @@ def _second_card(tmp_path, device):
 
 def test_second_card_uses_its_own_molar_masses(tmp_path):
     _second_card(tmp_path, "cpu")
+
+
+def test_cross_card_species_id_collision_is_rejected():
+    wanted = KineticsOptions.from_yaml("tests/earth.yaml")
+    source = ThermoOptions.from_yaml("tests/jupiter.yaml")
+    data = torch.arange(len(source.species())).unsqueeze(0)
+
+    with pytest.raises(RuntimeError, match=r"species id 2.*H2O\(l\).*NH3"):
+        wanted.narrow_copy(data, source)
+
+    target = torch.zeros((1, len(source.species())))
+    contribution = torch.tensor([[10., 20., 30.]])
+    with pytest.raises(RuntimeError, match=r"species id 2.*H2O\(l\).*NH3"):
+        wanted.accumulate(target, contribution, source)
+
+
+def test_same_card_species_bridge_keeps_exact_mapping():
+    wanted = KineticsOptions.from_yaml("tests/earth.yaml")
+    source = ThermoOptions.from_yaml("tests/earth.yaml")
+    data = torch.arange(len(source.species())).unsqueeze(0)
+    indices = [source.species().index(name) for name in wanted.species()]
+
+    assert torch.equal(wanted.narrow_copy(data, source), data[..., indices])
+
+    target = torch.zeros_like(data, dtype=torch.float64)
+    contribution = torch.tensor([[10., 20., 30.]])
+    wanted.accumulate(target, contribution, source)
+    expected = torch.zeros_like(target)
+    expected[..., indices] = contribution
+    assert torch.equal(target, expected)
+
+
+def test_species_bridge_preserves_programmatic_id_fallback_without_names():
+    wanted = SpeciesThermo().vapor_ids([3])
+    source = SpeciesThermo().vapor_ids([1, 3])
+    data = torch.tensor([[10., 30.]])
+
+    assert torch.equal(wanted.narrow_copy(data, source), torch.tensor([[30.]]))
+
+    target = torch.zeros_like(data)
+    wanted.accumulate(target, torch.tensor([[7.]]), source)
+    assert torch.equal(target, torch.tensor([[0., 7.]]))
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")

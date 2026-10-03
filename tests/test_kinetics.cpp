@@ -70,6 +70,46 @@ TEST_P(DeviceTest, merge) {
   std::cout << fmt::format("{}", op_all) << std::endl;
 }
 
+TEST(ThermoMerge, PrimaryHeatCapacityPolicySurvivesMerge) {
+  auto primary = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  auto secondary = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+  primary->use_nasa9_cp(true);
+  primary->use_h2_cp(true);
+  primary->h2_cp_mode("normal");
+  populate_thermo(primary);
+  populate_thermo(secondary);
+
+  auto merged = merge_thermo(primary, secondary);
+
+  EXPECT_TRUE(merged->use_nasa9_cp());
+  EXPECT_TRUE(merged->use_h2_cp());
+  EXPECT_EQ(merged->h2_cp_mode(), "normal");
+}
+
+TEST(ThermoMerge, PrimaryHeatCapacityPolicySurvivesTwoOptionConstructors) {
+  auto check = [](const ThermoOptions& primary) {
+    EXPECT_TRUE(primary->use_nasa9_cp());
+    EXPECT_TRUE(primary->use_h2_cp());
+    EXPECT_EQ(primary->h2_cp_mode(), "normal");
+  };
+
+  auto primary_x = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  auto secondary_x = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+  primary_x->use_nasa9_cp(true);
+  primary_x->use_h2_cp(true);
+  primary_x->h2_cp_mode("normal");
+  ThermoX thermo_x(primary_x, secondary_x);
+  check(primary_x);
+
+  auto primary_y = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  auto secondary_y = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+  primary_y->use_nasa9_cp(true);
+  primary_y->use_h2_cp(true);
+  primary_y->h2_cp_mode("normal");
+  ThermoY thermo_y(primary_y, secondary_y);
+  check(primary_y);
+}
+
 TEST_P(DeviceTest, forward) {
   auto op_kinet = KineticsOptionsImpl::from_yaml("jupiter.yaml");
   Kinetics kinet(op_kinet);
