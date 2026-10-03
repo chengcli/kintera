@@ -254,8 +254,12 @@ static std::vector<int64_t> matched_species_indices(
     SpeciesThermoImpl const& source, SpeciesThermo const& other) {
   auto source_ids = merge_vectors(source.vapor_ids(), source.cloud_ids());
   auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
-  bool check_names = source.names().size() == source_ids.size() &&
-                     other->names().size() == other_ids.size();
+  bool source_has_names = source.names().size() == source_ids.size();
+  bool other_has_names = other->names().size() == other_ids.size();
+  TORCH_CHECK(source_has_names == other_has_names,
+              "one object has complete species names and the other does not");
+  // Preserve legacy numeric matching when neither object has complete names.
+  bool check_names = source_has_names;
   std::vector<int64_t> indices;
   indices.reserve(source_ids.size());
 

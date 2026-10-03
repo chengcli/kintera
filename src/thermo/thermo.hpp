@@ -148,6 +148,8 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 
   ThermoYImpl() : options(ThermoOptionsImpl::create()) {}
   explicit ThermoYImpl(const ThermoOptions& options_);
+  //! options1 owns heat-capacity policy; options2 contributes species records.
+  //! Merged species records update the shared options1 object in place.
   ThermoYImpl(const ThermoOptions& options1, const SpeciesThermo& options2);
   void reset() override;
   void pretty_print(std::ostream& os) const override;
@@ -300,6 +302,8 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
 
   ThermoXImpl() : options(ThermoOptionsImpl::create()) {}
   explicit ThermoXImpl(const ThermoOptions& options_);
+  //! options1 owns heat-capacity policy; options2 contributes species records.
+  //! Merged species records update the shared options1 object in place.
   ThermoXImpl(const ThermoOptions& options1, const SpeciesThermo& options2);
   void reset() override;
   void pretty_print(std::ostream& os) const override;

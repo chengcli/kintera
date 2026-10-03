@@ -99,6 +99,29 @@ def test_same_card_species_bridge_keeps_exact_mapping():
     assert torch.equal(target, expected)
 
 
+@pytest.mark.parametrize("named_first", [True, False], ids=["named-to-unnamed",
+                                                           "unnamed-to-named"])
+def test_species_bridge_rejects_one_complete_name_set(named_first):
+    named = KineticsOptions.from_yaml("tests/earth.yaml")
+    unnamed = (SpeciesThermo()
+               .vapor_ids(named.vapor_ids())
+               .cloud_ids(named.cloud_ids()))
+    wanted, source = (named, unnamed) if named_first else (unnamed, named)
+    nsource = len(source.vapor_ids()) + len(source.cloud_ids())
+    nwanted = len(wanted.vapor_ids()) + len(wanted.cloud_ids())
+    msg = "one object has complete species names and the other does not"
+
+    with pytest.raises(RuntimeError, match=msg):
+        wanted.narrow_copy(torch.arange(nsource).unsqueeze(0), source)
+
+    target = torch.arange(nsource, dtype=torch.float64).unsqueeze(0)
+    unchanged = target.clone()
+    contribution = torch.arange(nwanted, dtype=torch.float64).unsqueeze(0)
+    with pytest.raises(RuntimeError, match=msg):
+        wanted.accumulate(target, contribution, source)
+    assert torch.equal(target, unchanged)
+
+
 def test_species_bridge_preserves_programmatic_id_fallback_without_names():
     wanted = SpeciesThermo().vapor_ids([3])
     source = SpeciesThermo().vapor_ids([1, 3])
