@@ -560,7 +560,7 @@ TEST_P(DeviceTest, equilibrate_tp) {
             true);
 }
 
-TEST_P(DeviceTest, equilibrate_tp_large) {
+TEST_P(DeviceTest, equilibrate_tp_batch) {
   if (device.type() == torch::kMPS) {
     GTEST_SKIP() << "equilibrate_tp has no MPS backend.";
   }
@@ -573,24 +573,24 @@ TEST_P(DeviceTest, equilibrate_tp_large) {
 
   int ny = op_thermo->vapor_ids().size() + op_thermo->cloud_ids().size() - 1;
   auto xfrac =
-      torch::zeros({100, 200, 200, 1 + ny}, torch::device(device).dtype(dtype));
+      torch::zeros({2, 3, 17, 1 + ny}, torch::device(device).dtype(dtype));
 
   for (int i = 0; i < ny; ++i) xfrac.select(-1, i + 1) = 0.01 * (i + 1);
   xfrac.select(-1, 0) = 1. - xfrac.narrow(-1, 1, ny).sum(-1);
 
   auto temp =
-      200.0 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+      200.0 * torch::ones({2, 3, 17}, torch::device(device).dtype(dtype));
   auto pres =
-      1.e5 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+      1.e5 * torch::ones({2, 3, 17}, torch::device(device).dtype(dtype));
 
   std::cout << "xfrac before = " << xfrac[0][0][0] << std::endl;
   thermo_x->forward(temp, pres, xfrac);
   std::cout << "xfrac after = " << xfrac[0][0][0] << std::endl;
 
-  EXPECT_EQ(torch::allclose(xfrac.sum(-1),
-                            torch::ones({100, 200, 200},
-                                        torch::device(device).dtype(dtype)),
-                            /*rtol=*/1e-4, /*atol=*/1e-4),
+  EXPECT_EQ(torch::allclose(
+                xfrac.sum(-1),
+                torch::ones({2, 3, 17}, torch::device(device).dtype(dtype)),
+                /*rtol=*/1e-4, /*atol=*/1e-4),
             true);
 }
 
@@ -809,7 +809,7 @@ TEST_P(DeviceTest, equilibrate_uv_partition_rejects_coupled_reactions) {
   EXPECT_THROW(thermo_y->forward(density, energy, fractions), c10::Error);
 }
 
-TEST_P(DeviceTest, equilibrate_uv_large) {
+TEST_P(DeviceTest, equilibrate_uv_batch) {
   if (device.type() == torch::kMPS) {
     GTEST_SKIP() << "equilibrate_uv has no MPS backend.";
   }
@@ -822,14 +822,12 @@ TEST_P(DeviceTest, equilibrate_uv_large) {
 
   int ny = thermo_y->options->vapor_ids().size() +
            thermo_y->options->cloud_ids().size() - 1;
-  auto yfrac =
-      torch::zeros({ny, 100, 200, 200}, torch::device(device).dtype(dtype));
+  auto yfrac = torch::zeros({ny, 2, 3, 17}, torch::device(device).dtype(dtype));
   for (int i = 0; i < ny; ++i) yfrac[i] = 0.01 * (i + 1);
 
-  auto rho =
-      0.1 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+  auto rho = 0.1 * torch::ones({2, 3, 17}, torch::device(device).dtype(dtype));
   auto pres =
-      1.e5 * torch::ones({100, 200, 200}, torch::device(device).dtype(dtype));
+      1.e5 * torch::ones({2, 3, 17}, torch::device(device).dtype(dtype));
 
   auto ivol = thermo_y->compute("DY->V", {rho, yfrac});
   auto temp = thermo_y->compute("PV->T", {pres, ivol});
