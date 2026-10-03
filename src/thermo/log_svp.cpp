@@ -123,8 +123,9 @@ torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext* ctx,
   torch::Tensor svp_kind;
   torch::Tensor svp_params;
   if (has_inline) {
-    svp_kind = _svp_kind.to(temp.device()).clone();
-    svp_params = _svp_params.to(temp.device()).clone();
+    // init replaces metadata; saved handles keep the old storage alive.
+    svp_kind = _svp_kind.to(temp.device());
+    svp_params = _svp_params.to(temp.device());
     ctx->save_for_backward({temp, svp_kind, svp_params});
   } else {
     ctx->save_for_backward({temp});
