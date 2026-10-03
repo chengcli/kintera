@@ -200,7 +200,15 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
   vec[xfrac.dim() - 1] = reactions.size() * reactions.size();
   auto gain = torch::zeros(vec, xfrac.options());
 
-  if (!warm_start || !reaction_set.defined()) {
+  // A warm start is valid only for the shape and device that produced it.
+  auto active_shape = temp.sizes().vec();
+  active_shape.push_back(static_cast<int64_t>(reactions.size()));
+  bool reuse = warm_start && reaction_set.defined() && nactive.defined() &&
+               reaction_set.device() == temp.device() &&
+               nactive.device() == temp.device() &&
+               nactive.sizes().equals(temp.sizes()) &&
+               reaction_set.sizes().equals(active_shape);
+  if (!reuse) {
     auto vec2 = temp.sizes().vec();
     vec2.push_back(reactions.size());
     reaction_set = torch::arange(0, (int)reactions.size(),
