@@ -250,20 +250,41 @@ std::vector<std::string> SpeciesThermoImpl::species() const {
   return species_list;
 }
 
-at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
-                                          SpeciesThermo const& other) const {
-  auto source_ids = merge_vectors(vapor_ids(), cloud_ids());
+static std::vector<int64_t> matched_species_indices(
+    SpeciesThermoImpl const& source, SpeciesThermo const& other) {
+  auto source_ids = merge_vectors(source.vapor_ids(), source.cloud_ids());
   auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
+  bool source_has_names = source.names().size() == source_ids.size();
+  bool other_has_names = other->names().size() == other_ids.size();
+  TORCH_CHECK(source_has_names == other_has_names,
+              "one object has complete species names and the other does not");
+  // Preserve legacy numeric matching when neither object has complete names.
+  bool check_names = source_has_names;
   std::vector<int64_t> indices;
   indices.reserve(source_ids.size());
 
-  for (auto species_id : source_ids) {
+  for (size_t i = 0; i < source_ids.size(); ++i) {
+    auto species_id = source_ids[i];
     auto it = std::find(other_ids.begin(), other_ids.end(), species_id);
     TORCH_CHECK(it != other_ids.end(),
                 "Missing indices for some species in other's thermo data.");
-    indices.push_back(std::distance(other_ids.begin(), it));
+    auto j = std::distance(other_ids.begin(), it);
+    if (check_names) {
+      TORCH_CHECK(source.names()[i] == other->names()[j], "species id ",
+                  species_id, " is '", source.names()[i],
+                  "' in one object and '", other->names()[j],
+                  "' in the other; they were built from different species "
+                  "lists");
+    }
+    indices.push_back(j);
   }
 
+  return indices;
+}
+
+at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
+                                          SpeciesThermo const& other) const {
+  auto indices = matched_species_indices(*this, other);
   auto id =
       torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
 
@@ -273,18 +294,7 @@ at::Tensor SpeciesThermoImpl::narrow_copy(at::Tensor data,
 void SpeciesThermoImpl::accumulate(at::Tensor& data,
                                    at::Tensor const& other_data,
                                    SpeciesThermo const& other) const {
-  auto source_ids = merge_vectors(vapor_ids(), cloud_ids());
-  auto other_ids = merge_vectors(other->vapor_ids(), other->cloud_ids());
-  std::vector<int64_t> indices;
-  indices.reserve(source_ids.size());
-
-  for (auto species_id : source_ids) {
-    auto it = std::find(other_ids.begin(), other_ids.end(), species_id);
-    TORCH_CHECK(it != other_ids.end(),
-                "Missing indices for some species in other's thermo data.");
-    indices.push_back(std::distance(other_ids.begin(), it));
-  }
-
+  auto indices = matched_species_indices(*this, other);
   auto id =
       torch::tensor(indices, torch::dtype(torch::kInt64).device(data.device()));
   data.index_add_(-1, id, other_data);
@@ -463,6 +473,9 @@ SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
 
   // return a new SpeciesThermo object with merged data
   auto merged = SpeciesThermoImpl::create();
+  merged->use_nasa9_cp(thermo1->use_nasa9_cp());
+  merged->use_h2_cp(thermo1->use_h2_cp());
+  merged->h2_cp_mode(thermo1->h2_cp_mode());
 
   auto& vapor_ids = merged->vapor_ids();
   auto& cloud_ids = merged->cloud_ids();

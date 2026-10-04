@@ -69,6 +69,34 @@ def test_ranged_A_converted_like_A(tmp_path):
     assert torch.equal(rate[:, 0], rate[:, 1])
 
 
+def test_inactive_overflow_does_not_contaminate_rate_or_gradient(tmp_path):
+    ranged = ("A_ranges: [1.0, 1.0e-26], b_ranges: [1.0, 0.0], "
+              "Ea_R_ranges: [0.0, -30000.0], T_ranges: [500.0, 1.0e30]")
+    module = _load(tmp_path, RXN.format("H2 => 2 H", ranged))[1]
+    module.to(torch.float32)
+    temp = torch.tensor([300.0, 500.0], dtype=torch.float32, requires_grad=True)
+
+    rate = _rate(module, temp)[:, 0]
+    torch.testing.assert_close(rate, torch.tensor([1.0, 1.14200735], dtype=temp.dtype),
+                               rtol=2e-6, atol=0.0)
+    rate.sum().backward()
+    assert torch.isfinite(temp.grad).all()
+    torch.testing.assert_close(temp.grad[0], torch.tensor(1.0 / 300.0, dtype=temp.dtype),
+                               rtol=2e-6, atol=0.0)
+
+
+def test_inactive_nonfinite_coefficient_is_isolated():
+    op = (kt.ArrheniusOptions()
+          .A_ranges([[1.0, float("nan")]])
+          .b_ranges([[0.0, 0.0]])
+          .Ea_R_ranges([[0.0, 0.0]])
+          .T_ranges([[500.0, 1.0e30]]))
+    rate = _rate(kt.Arrhenius(op), torch.tensor([300.0, 500.0]))[:, 0]
+
+    assert rate[0].item() == 1.0
+    assert torch.isnan(rate[1])
+
+
 BAD = [("T_ranges: [1.e30]", "equal length"), ("b_ranges: [0.5, 0.5]", "must also define"),
        ("T_ranges: [200., 1.e30], b_ranges: [0.5]", "must match"),
        ("T_ranges: [200., 1.e30], Ea_R_ranges: [1., 2., 3.]", "must match")]

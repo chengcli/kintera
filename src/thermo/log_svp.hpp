@@ -17,22 +17,20 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
     // a null NucleationOptions (e.g. nucleation(None)) is the empty default
     auto const& op = op_ ? op_ : NucleationOptionsImpl::create();
     _logsvp = op->logsvp();
-    _svp_params = op->svp_params();
 
-    // Classify each column: 0 = named func-table formula, 1 = inline 'ideal',
-    // 2 = inline 'antoine'. For inline columns, swap in a valid sentinel name
-    // so the func-table dispatch does not fail; the column is overwritten with
-    // the eval_logsvp result afterwards.
-    _formula_kind.assign(_logsvp.size(), 0);
+    auto spec = make_svp_spec(op, torch::kCPU);
+    _svp_kind = spec.first;
+    _svp_params = spec.second;
+
+    // Inline columns use eval_logsvp below. Give func-table dispatch a valid
+    // sentinel name; apply_inline overwrites those columns afterwards.
+    _has_inline = false;
+    auto kind = _svp_kind.accessor<int, 1>();
     for (size_t i = 0; i < _logsvp.size(); ++i) {
-      if (_logsvp[i] == "ideal") {
-        _formula_kind[i] = 1;
-        _logsvp[i] = "h2o_ideal";
-      } else if (_logsvp[i] == "antoine") {
-        _formula_kind[i] = 2;
+      if (kind[i] != 0) {
+        _has_inline = true;
         _logsvp[i] = "h2o_ideal";
       }
-      if (_formula_kind[i] != 0) check_inline(op, i, _formula_kind[i]);
     }
 
     _logsvp_ddT = _logsvp;
@@ -97,7 +95,8 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
   //! kernels from a nucleation option set, on the given device.
   //!
   //! kind   is int32   [nreaction]   (0 named, 1 'ideal', 2 'antoine');
-  //! params is float64 [nreaction, KSVP_NPARAM] (zero-padded; named ⇒ zeros).
+  //! params is float64 [nreaction, KSVP_NPARAM] (zero-padded; parameters are
+  //! unused for named rows).
   static std::pair<torch::Tensor, torch::Tensor> make_svp_spec(
       NucleationOptions const& op, torch::Device device);
 
@@ -113,17 +112,24 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
         "must be defined in YAML");
   }
 
-  //! Overwrite the inline-parametrized columns of the output of \p iter with
-  //! eval_logsvp (or eval_logsvp_ddT when \p deriv is true) evaluated from
-  //! _svp_params. Named columns are left untouched.
-  static void apply_inline(at::TensorIterator& iter, bool deriv);
+  static torch::Tensor evaluate(torch::Tensor const& temp, bool expanded,
+                                std::vector<std::string> const& names,
+                                torch::Tensor const& svp_kind,
+                                torch::Tensor const& svp_params,
+                                bool has_inline, bool deriv);
+
+  //! Overwrite inline-parametrized columns in iter with eval_logsvp (or
+  //! eval_logsvp_ddT when deriv is true). Named columns are left untouched.
+  static void apply_inline(at::TensorIterator& iter,
+                           torch::Tensor const& svp_kind,
+                           torch::Tensor const& svp_params, bool has_inline,
+                           bool deriv);
 
   static std::vector<std::string> _logsvp;
   static std::vector<std::string> _logsvp_ddT;
-  //! per-column formula kind: 0 named, 1 'ideal', 2 'antoine'
-  static std::vector<int> _formula_kind;
-  //! per-column inline parameters (empty for named columns)
-  static std::vector<std::vector<double>> _svp_params;
+  static torch::Tensor _svp_kind;
+  static torch::Tensor _svp_params;
+  static bool _has_inline;
 };
 
 }  // namespace kintera

@@ -126,6 +126,8 @@ void populate_thermo(SpeciesThermo thermo);
 
 void check_dimensions(SpeciesThermo const& thermo);
 
+//! Merge species records; global heat-capacity policy is owned by thermo1 and
+//! copied unchanged. thermo2 contributes species records only.
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
                            SpeciesThermo const& thermo2);
 

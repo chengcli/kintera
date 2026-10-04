@@ -1,3 +1,5 @@
+#include <utility>
+
 // external
 #include <gtest/gtest.h>
 
@@ -68,6 +70,82 @@ TEST_P(DeviceTest, merge) {
   populate_thermo(op_kinet);
   auto op_all = merge_thermo(op_thermo, op_kinet);
   std::cout << fmt::format("{}", op_all) << std::endl;
+}
+
+TEST(ThermoMerge, PrimaryHeatCapacityPolicySurvivesMerge) {
+  auto primary = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  auto secondary = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+  primary->use_nasa9_cp(true);
+  primary->use_h2_cp(true);
+  primary->h2_cp_mode("normal");
+  populate_thermo(primary);
+  populate_thermo(secondary);
+
+  auto merged = merge_thermo(primary, secondary);
+
+  EXPECT_TRUE(merged->use_nasa9_cp());
+  EXPECT_TRUE(merged->use_h2_cp());
+  EXPECT_EQ(merged->h2_cp_mode(), "normal");
+}
+
+TEST(ThermoMerge, PrimaryHeatCapacityPolicySurvivesTwoOptionConstructors) {
+  auto check = [](const ThermoOptions& primary) {
+    EXPECT_TRUE(primary->use_nasa9_cp());
+    EXPECT_TRUE(primary->use_h2_cp());
+    EXPECT_EQ(primary->h2_cp_mode(), "normal");
+  };
+
+  auto primary_x = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  auto secondary_x = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+  primary_x->use_nasa9_cp(true);
+  primary_x->use_h2_cp(true);
+  primary_x->h2_cp_mode("normal");
+  ThermoX thermo_x(primary_x, secondary_x);
+  check(primary_x);
+
+  auto primary_y = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  auto secondary_y = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+  primary_y->use_nasa9_cp(true);
+  primary_y->use_h2_cp(true);
+  primary_y->h2_cp_mode("normal");
+  ThermoY thermo_y(primary_y, secondary_y);
+  check(primary_y);
+}
+
+TEST(ThermoMerge, SecondaryHeatCapacityPolicyDoesNotOverridePrimary) {
+  auto make_options = []() {
+    auto primary = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+    auto secondary = KineticsOptionsImpl::from_yaml("jupiter.yaml");
+    secondary->use_nasa9_cp(true);
+    secondary->use_h2_cp(true);
+    secondary->h2_cp_mode("normal");
+    return std::make_pair(primary, secondary);
+  };
+  auto check_primary = [](const ThermoOptions& primary) {
+    EXPECT_FALSE(primary->use_nasa9_cp());
+    EXPECT_FALSE(primary->use_h2_cp());
+    EXPECT_EQ(primary->h2_cp_mode(), "equilibrium");
+  };
+
+  {
+    auto [primary, secondary] = make_options();
+    ThermoX thermo(primary, secondary);
+    check_primary(thermo->options);
+    check_primary(primary);
+    EXPECT_TRUE(secondary->use_nasa9_cp());
+    EXPECT_TRUE(secondary->use_h2_cp());
+    EXPECT_EQ(secondary->h2_cp_mode(), "normal");
+  }
+
+  {
+    auto [primary, secondary] = make_options();
+    ThermoY thermo(primary, secondary);
+    check_primary(thermo->options);
+    check_primary(primary);
+    EXPECT_TRUE(secondary->use_nasa9_cp());
+    EXPECT_TRUE(secondary->use_h2_cp());
+    EXPECT_EQ(secondary->h2_cp_mode(), "normal");
+  }
 }
 
 TEST_P(DeviceTest, forward) {
