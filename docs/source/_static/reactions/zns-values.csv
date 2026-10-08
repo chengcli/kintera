@@ -1,0 +1,7 @@
+formula,temperature_K,ln_Q_Pa
+PR108 (unverified),800,-15.19993985
+PR108 (unverified),1100,-2.740076261
+PR108 (unverified),1400,4.379845788
+conditional solar reconstruction,800,-14.99795544
+conditional solar reconstruction,1100,-2.538091852
+conditional solar reconstruction,1400,4.581830196

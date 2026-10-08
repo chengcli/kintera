@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 // base
 #include <configure.h>
@@ -43,13 +44,14 @@ namespace kintera {
  * \param[in,out] nactive       number of active reactions, modified in place.
  */
 template <typename T>
-DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
-                                  T const* stoich, int nspecies, int nreaction,
-                                  int ngas, user_func1 const* logsvp_func,
-                                  int const* svp_kind, double const* svp_params,
-                                  float logsvp_eps, int* max_iter,
-                                  int* reaction_set, int* nactive,
-                                  char* work = nullptr) {
+DISPATCH_MACRO int equilibrate_tp(T *gain, T *diag, T *xfrac, T temp, T pres,
+                                  T const *stoich, int nspecies, int nreaction,
+                                  int ngas, user_func1 const *logsvp_func,
+                                  int const *svp_kind, double const *svp_params,
+                                  float logsvp_eps, int *max_iter,
+                                  int *reaction_set, int *nactive,
+                                  char *work = nullptr) {
+  diag[0] = -100.;  // invalid input unless overwritten below
   // check positive temperature and pressure
   if (temp <= 0 || pres <= 0) {
     printf("Error: Non-positive temperature or pressure.\n");
@@ -58,8 +60,8 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
 
   // check positive gas fractions
   for (int i = 0; i < ngas; i++) {
-    if (xfrac[i] <= 0) {
-      printf("Error: Non-positive gas fraction for species %d.\n", i);
+    if (xfrac[i] < 0) {
+      printf("Error: Negative gas fraction for species %d.\n", i);
       return 1;  // error: negative gas fraction
     }
   }
@@ -85,18 +87,22 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
     return 1;  // error: invalid dimensions
   }
 
+  T initial_gas = 0.;
+  for (int i = 0; i < ngas; ++i) initial_gas += xfrac[i];
+  if (!(initial_gas > 0.)) return 1;
+
   T *logsvp, *weight, *rhs;
   T *stoich_active, *stoich_sum, *xfrac0;
   T *gain_cpy, *theta;
   size_t mark = pool_mark(work);
-  logsvp = (T*)pmalloc(work, nreaction * sizeof(T));
-  weight = (T*)pmalloc(work, nreaction * nspecies * sizeof(T));
-  rhs = (T*)pmalloc(work, nreaction * sizeof(T));
-  stoich_active = (T*)pmalloc(work, nspecies * nreaction * sizeof(T));
-  stoich_sum = (T*)pmalloc(work, nreaction * sizeof(T));
-  xfrac0 = (T*)pmalloc(work, nspecies * sizeof(T));
-  gain_cpy = (T*)pmalloc(work, nreaction * nreaction * sizeof(T));
-  theta = (T*)pmalloc(work, nspecies * sizeof(T));
+  logsvp = (T *)pmalloc(work, nreaction * sizeof(T));
+  weight = (T *)pmalloc(work, nreaction * nspecies * sizeof(T));
+  rhs = (T *)pmalloc(work, nreaction * sizeof(T));
+  stoich_active = (T *)pmalloc(work, nspecies * nreaction * sizeof(T));
+  stoich_sum = (T *)pmalloc(work, nreaction * sizeof(T));
+  xfrac0 = (T *)pmalloc(work, nspecies * sizeof(T));
+  gain_cpy = (T *)pmalloc(work, nreaction * nreaction * sizeof(T));
+  theta = (T *)pmalloc(work, nspecies * sizeof(T));
 
   memset(weight, 0, nreaction * nspecies * sizeof(T));
   memset(rhs, 0, nreaction * sizeof(T));
@@ -104,10 +110,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   // evaluate log vapor saturation pressure and its derivative
   for (int j = 0; j < nreaction; j++) {
     stoich_sum[j] = 0.0;
-    for (int i = 0; i < nspecies; i++)
-      if (stoich[i * nreaction + j] < 0) {  // reactant
-        stoich_sum[j] += (-stoich[i * nreaction + j]);
-      }
+    for (int i = 0; i < ngas; i++) stoich_sum[j] -= stoich[i * nreaction + j];
     logsvp[j] = eval_logsvp(svp_kind[j], svp_params + j * KSVP_NPARAM,
                             logsvp_func[j], temp) -
                 stoich_sum[j] * log(pres);
@@ -140,13 +143,42 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
       T log_frac_sum = 0.0;
       T prod = 1.0;
 
-      // active set condition variables
+      // Signed gas quotient; condensed phases have unit activity.
+      bool absent_reactant = false, absent_product = false;
+      T nu_absent = 0., log_nu = 0.;
       for (int i = 0; i < nspecies; i++) {
-        if ((stoich[i * nreaction + j] < 0) && (xfrac[i] > 0.)) {  // reactant
-          log_frac_sum += (-stoich[i * nreaction + j]) * log(xfrac[i] / xg);
-        } else if (stoich[i * nreaction + j] > 0) {  // product
+        T nu = -stoich[i * nreaction + j];
+        if (i < ngas && nu != 0.) {
+          if (xfrac[i] == 0.) {
+            absent_reactant |= nu > 0.;
+            absent_product |= nu < 0.;
+            nu_absent += nu;
+            log_nu += nu * log(fabs(nu) / xg);
+          } else {
+            log_frac_sum += nu * log(xfrac[i] / xg);
+          }
+        } else if (i >= ngas && nu < 0.) {
           prod *= xfrac[i];
         }
+      }
+      // Boundary derivative along a feasible reaction extent, without seeding
+      // gas amounts. This also handles an initially absent gaseous product.
+      T log_r = 0.;
+      if (nu_absent != 0.) {
+        log_r = (logsvp[j] - log_frac_sum - log_nu) / nu_absent;
+        T bound = 0.5 * log(std::numeric_limits<T>::max());
+        log_r = fmax(-bound, fmin(bound, log_r));
+        log_frac_sum = logsvp[j] - nu_absent;
+      }
+
+      // Neither direction is feasible when both sides lack a required gas.
+      // Other reactions may supply it on a later outer iteration.
+      if (absent_reactant && absent_product) {
+        int tmp = reaction_set[first];
+        reaction_set[first] = reaction_set[last - 1];
+        reaction_set[last - 1] = tmp;
+        --last;
+        continue;
       }
 
       // active set, weight matrix and rhs vector
@@ -154,9 +186,11 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
           (log_frac_sum > (logsvp[j] + logsvp_eps))) {
         for (int i = 0; i < ngas; i++) {
           weight[first * nspecies + i] = -stoich_sum[j] / xg;
-          if ((stoich[i * nreaction + j] < 0) && (xfrac[i] > 0.)) {
-            weight[first * nspecies + i] -=
-                stoich[i * nreaction + j] / xfrac[i];
+          T nu = -stoich[i * nreaction + j];
+          if (nu != 0.) {
+            weight[first * nspecies + i] +=
+                xfrac[i] > 0. ? nu / xfrac[i]
+                              : (nu > 0. ? 1. : -1.) * exp(-log_r);
           }
         }
         for (int i = ngas; i < nspecies; i++) {
@@ -172,6 +206,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
       }
     }
 
+    *nactive = first;
     if (first == 0) {
       // all reactions are in equilibrium, no need to adjust saturation
       at_equilibrium = true;
@@ -267,13 +302,20 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
         for (int k = 0; k < (*nactive); k++) {
           xfrac[i] -= stoich_active[i * (*nactive) + k] * rhs[k] * lambda;
         }
-        if (i < ngas && xfrac[i] <= 0.) positive_vapor = false;
+        if (i < ngas && (xfrac[i] < 0. || (xfrac0[i] > 0. && xfrac[i] == 0.)))
+          positive_vapor = false;
         xsum += xfrac[i];
       }
       if (positive_vapor) break;
-      lambda *= 0.99;
+      lambda *= 0.5;
       memcpy(xfrac, xfrac0, nspecies * sizeof(T));
+      if (lambda < std::numeric_limits<T>::min()) {
+        kkt_err = 4;
+        break;
+      }
     }
+
+    if (kkt_err) break;
 
     // re-normalize mole fractions
     for (int i = 0; i < nspecies; i++) xfrac[i] /= xsum;
@@ -292,9 +334,10 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
 
     // active set condition variables
     for (int i = 0; i < nspecies; i++) {
-      if (stoich[i * nreaction + j] < 0) {  // reactant
-        log_frac_sum += (-stoich[i * nreaction + j]) * log(xfrac[i] / xg);
-      } else if (stoich[i * nreaction + j] > 0) {  // product
+      if (i < ngas && stoich[i * nreaction + j] != 0.) {
+        log_frac_sum += (-stoich[i * nreaction + j]) *
+                        log(fmax(xfrac[i] / xg, std::numeric_limits<T>::min()));
+      } else if (i >= ngas && stoich[i * nreaction + j] > 0) {  // cloud
         prod *= xfrac[i];
       }
     }
@@ -304,7 +347,7 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
          (log_frac_sum <= (logsvp[j] + logsvp_eps)))) {
       for (int i = 0; i < ngas; i++) {
         weight[first * nspecies + i] = -stoich_sum[j] / xg;
-        if (stoich[i * nreaction + j] < 0) {
+        if (stoich[i * nreaction + j] != 0. && xfrac[i] > 0.) {
           weight[first * nspecies + i] -= stoich[i * nreaction + j] / xfrac[i];
         }
       }
@@ -339,8 +382,9 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
     }
   }
 
-  // save number of iterations to diag
-  diag[0] = iter;
+  int n_iter = iter > *max_iter ? *max_iter : iter;
+  int status = kkt_err ? kkt_err : (at_equilibrium ? 0 : 20);
+  diag[0] = status ? -(100. * status + n_iter) : n_iter;
 
   pfree(logsvp);
   pfree(rhs);
@@ -352,12 +396,12 @@ DISPATCH_MACRO int equilibrate_tp(T* gain, T* diag, T* xfrac, T temp, T pres,
   pfree(theta);
   pool_rewind(work, mark);
 
-  if (at_equilibrium || iter < *max_iter) {
-    *max_iter = iter;
-    return kkt_err;  // success or KKT error
+  if (status == 20) {
+    printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);
+  } else {
+    *max_iter = n_iter;
   }
-  printf("equilibrate_tp did not converge after %d iterations.\n", *max_iter);
-  return 2 * 10 + kkt_err;  // failure to converge
+  return status;
 }
 
 }  // namespace kintera

@@ -1,0 +1,7 @@
+formula,temperature_K,ln_Q_Pa
+so2_antoine,177.7,4.947910643
+so2_antoine,220.35,9.1500447
+so2_antoine,263,11.4730396
+NIST high T (comparison only),263,11.51967643
+NIST high T (comparison only),338.95,14.0968687
+NIST high T (comparison only),414.9,15.62404741

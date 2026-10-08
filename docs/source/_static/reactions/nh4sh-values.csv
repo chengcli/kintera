@@ -1,0 +1,7 @@
+formula,temperature_K,ln_Q_Pa
+nh3_h2s_lewis (legacy atm),180,-3.010527922
+nh3_h2s_lewis (legacy atm),240,12.03622605
+nh3_h2s_lewis (legacy atm),300,21.06427844
+NASA TM bar convention,180,-3.036853895
+NASA TM bar convention,240,12.00990008
+NASA TM bar convention,300,21.03795247

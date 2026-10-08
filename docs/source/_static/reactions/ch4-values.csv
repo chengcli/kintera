@@ -1,0 +1,7 @@
+formula,temperature_K,ln_Q_Pa
+ch4_ideal,70,6.525422938
+ch4_ideal,129.995,11.68041631
+ch4_ideal,189.99,13.11908298
+NIST liquid,90.99,9.427158654
+NIST liquid,140.49,13.41259106
+NIST liquid,189.99,15.31592422

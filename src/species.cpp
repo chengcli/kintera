@@ -32,6 +32,8 @@
 namespace kintera {
 
 std::vector<std::string> species_names;
+// Empty means legacy reaction-based phase inference.
+std::vector<std::string> species_phases;
 std::vector<double> species_weights;
 std::vector<double> species_cref_R;
 std::vector<double> species_uref_R;
@@ -53,6 +55,7 @@ std::string loaded_species;
 void clear_species_registry() {
   loaded_species.clear();
   species_names.clear();
+  species_phases.clear();
   species_weights.clear();
   species_cref_R.clear();
   species_uref_R.clear();
@@ -151,6 +154,12 @@ void init_species_from_yaml(YAML::Node const& config) {
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
+    auto phase = sp["phase"].as<std::string>("");
+    TORCH_CHECK(phase.empty() || phase == "gas" || phase == "liquid" ||
+                    phase == "solid",
+                "Invalid phase for ", species_names.back(), ": ", phase,
+                "; expected gas, liquid, or solid");
+    species_phases.push_back(phase);
     std::map<std::string, double> comp;
 
     for (const auto& it : sp["composition"]) {

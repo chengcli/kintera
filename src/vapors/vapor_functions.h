@@ -109,18 +109,18 @@ inline double h2s_ideal_ddT(double T) {
 DISPATCH_MACRO
 inline double h2s_antoine(double T) {
   if (T < 212.8) {
-    return logsvp_antoine(T, 4.43681, 829.439, 25.412);
+    return logsvp_antoine(T, 4.43681, 829.439, -25.412);
   } else {
-    return logsvp_antoine(T, 4.52887, 958.587, 0.539);
+    return logsvp_antoine(T, 4.52887, 958.587, -0.539);
   }
 }
 
 DISPATCH_MACRO
 inline double h2s_antoine_ddT(double T) {
   if (T < 212.8) {
-    return logsvp_antoine_ddT(T, 829.439, 25.412);
+    return logsvp_antoine_ddT(T, 829.439, -25.412);
   } else {
-    return logsvp_antoine_ddT(T, 958.587, 0.539);
+    return logsvp_antoine_ddT(T, 958.587, -0.539);
   }
 }
 
@@ -162,14 +162,14 @@ DISPATCH_MACRO
 inline double co2_antoine(double T) {
   double A = 6.81228;
   double B = 1301.679;
-  double C = -34.94;
+  double C = -3.494;
   return logsvp_antoine(T, A, B, C);
 }
 
 DISPATCH_MACRO
 inline double co2_antoine_ddT(double T) {
   double B = 1301.679;
-  double C = -34.94;
+  double C = -3.494;
   return logsvp_antoine_ddT(T, B, C);
 }
 
@@ -185,8 +185,11 @@ inline double kcl_lodders_ddT(double T) { return 11382. * log(10.) / (T * T); }
 
 DISPATCH_MACRO
 inline double na_h2s_visscher(double T) {
-  // double log10p = 8.55 - 13889. / T - 0.5 * log10(pH2S / 1E5);
-  // return 1.E5 * pow(10., log10p);
+  // 2Na + H2S <=> Na2S(s) + H2
+  // returns ln(P_Na^2 P_H2S / P_H2) at saturation, where pressures are in
+  // pascals
+  // Legacy approximation; coefficient provenance is unresolved. See
+  // reactions/na2s.
   double a = 8.55;
   double b = 13889.;
   return (15. + 2. * a - 2. * b / T) * log(10.);

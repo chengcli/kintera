@@ -1,5 +1,6 @@
 # builds
 build*/
+docs/_build/
 
 # cache
 .cache

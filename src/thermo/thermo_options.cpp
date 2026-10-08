@@ -16,6 +16,7 @@
 namespace kintera {
 
 extern std::vector<std::string> species_names;
+extern std::vector<std::string> species_phases;
 extern std::vector<double> species_weights;
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
@@ -175,6 +176,25 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
                 << std::endl;
     }
   }
+
+  // Include explicitly declared inert gases, and reject contradictory phase
+  // use.
+  for (size_t i = 0; i < species_names.size(); ++i) {
+    const auto& name = species_names[i];
+    if (species_phases[i] == "gas") {
+      TORCH_CHECK(!cloud_set.count(name),
+                  "Gas species classified as cloud: ", name);
+      vapor_set.insert(name);
+    } else if (!species_phases[i].empty()) {
+      TORCH_CHECK(!vapor_set.count(name),
+                  "Condensed species classified as gas: ", name);
+      cloud_set.insert(name);
+    }
+  }
+  for (const auto& name : vapor_set)
+    TORCH_CHECK(!cloud_set.count(name),
+                "Conflicting gas/cloud classification: ", name,
+                "; declare gaseous products with phase: gas");
 
   // register vapors
   for (const auto& sp : vapor_set) {

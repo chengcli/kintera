@@ -1,0 +1,10 @@
+formula,temperature_K,ln_Q_Pa
+h2s_ideal,138.8,7.392539901
+h2s_ideal,244.15,11.48162164
+h2s_ideal,349.5,12.42799129
+h2s_antoine low T,138.8,4.885530701
+h2s_antoine low T,175.8,9.02954825
+h2s_antoine low T,212.8,11.53708268
+h2s_antoine high T,212.8,11.54238265
+h2s_antoine high T,281.15,14.07524067
+h2s_antoine high T,349.5,15.61589127

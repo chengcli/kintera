@@ -2096,7 +2096,8 @@ def relative_humidity(
     temp: torch.Tensor,
     conc: torch.Tensor,
     stoich: torch.Tensor,
-    op: NucleationOptions
+    op: NucleationOptions,
+    ngas: int = -1,
 ) -> torch.Tensor:
     """
     Calculate the relative humidity.
@@ -2106,6 +2107,8 @@ def relative_humidity(
         conc (torch.Tensor): Concentration tensor [mol/m^3]
         stoich (torch.Tensor): Stoichiometric coefficients tensor
         op (NucleationOptions): Nucleation options
+        ngas (int): Number of leading gas species; required for gas products.
+            The default -1 preserves the legacy reactant-only quotient.
 
     Returns:
         torch.Tensor: Relative humidity tensor

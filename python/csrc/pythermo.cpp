@@ -105,5 +105,6 @@ void bind_thermo(py::module& m) {
           py::arg("verbose") = false);
 
   m.def("relative_humidity", &kintera::relative_humidity, py::arg("temp"),
-        py::arg("conc"), py::arg("stoich"), py::arg("op"));
+        py::arg("conc"), py::arg("stoich"), py::arg("op"),
+        py::arg("ngas") = -1);
 }
