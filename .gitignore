@@ -85,3 +85,13 @@ python/kinetics_base/titan/ARCHITECTURE.md
 
 # pdfs
 *.pdf
+
+# Generated atmosphere example outputs
+examples/output/
+
+# output
+*.png
+*.pdf
+*.csv
+*.json
+*.svg
