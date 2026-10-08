@@ -175,12 +175,13 @@ inline double co2_antoine_ddT(double T) {
 
 DISPATCH_MACRO
 inline double kcl_lodders(double T) {
-  double logp = 7.611 - 11382. / T;
-  return log(1.E5) + logp;
+  // The fit gives log10(P / bar); return ln(P / Pa).
+  double log10p = 7.611 - 11382. / T;
+  return log(1.E5) + log10p * log(10.);
 }
 
 DISPATCH_MACRO
-inline double kcl_lodders_ddT(double T) { return 11382. / (T * T); }
+inline double kcl_lodders_ddT(double T) { return 11382. * log(10.) / (T * T); }
 
 DISPATCH_MACRO
 inline double na_h2s_visscher(double T) {
