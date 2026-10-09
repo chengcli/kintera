@@ -188,11 +188,10 @@ inline double na_h2s_visscher(double T) {
   // 2Na + H2S <=> Na2S(s) + H2
   // returns ln(P_Na^2 P_H2S / P_H2) at saturation, where pressures are in
   // pascals
-  // Legacy approximation; coefficient provenance is unresolved. See
-  // reactions/na2s.
-  double a = 8.55;
-  double b = 13889.;
-  return (15. + 2. * a - 2. * b / T) * log(10.);
+  // Adopt PR108's approximate reaction-quotient fit. The conditional solar
+  // reconstruction gives an intercept of 22.61572; see reactions/na2s for
+  // assumptions and provenance. 22.48 already includes the Pa conversion.
+  return (22.48 - 27778. / T) * log(10.);
 }
 
 DISPATCH_MACRO

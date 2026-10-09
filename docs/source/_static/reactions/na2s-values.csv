@@ -1,10 +1,10 @@
 formula,temperature_K,ln_Q_Pa
-na_h2s_visscher (legacy),800,-6.038529406
-na_h2s_visscher (legacy),1100,15.76642811
-na_h2s_visscher (legacy),1400,28.22640383
-PR108 (unverified),800,-28.189398
-PR108 (unverified),1100,-6.384440485
-PR108 (unverified),1400,6.075535238
+na_h2s_visscher,800,-28.189398
+na_h2s_visscher,1100,-6.384440485
+na_h2s_visscher,1400,6.075535238
 conditional solar reconstruction,800,-27.87688951
 conditional solar reconstruction,1100,-6.071931992
 conditional solar reconstruction,1400,6.388043731
+superseded legacy fit,800,-6.038529406
+superseded legacy fit,1100,15.76642811
+superseded legacy fit,1400,28.22640383

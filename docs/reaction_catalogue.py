@@ -110,11 +110,13 @@ for key, metal, cloud, a, b, pr_a, pr_b, base in [
     curves = [linear('PR108 (unverified)',pr_a,pr_b,[800,1400],'comparison only; not registered',base=base),
               linear('conditional solar reconstruction',n*(a+5)+r,n*b,[800,1400],'derived under fixed solar H2S/H2; not a published Q fit')]
     if key == 'na2s':
-        curves.insert(0,linear('na_h2s_visscher (legacy)',32.1,27778,[800,1400],'legacy public formula; unverified'))
+        curves[0] = linear('na_h2s_visscher',22.48,27778,[800,1400],'adopted PR108 approximation; exact coefficient provenance unresolved')
+        curves.append(linear('superseded legacy fit',32.1,27778,[800,1400],'historical comparison only; not registered'))
     add(key, cloud+' formation', {metal:n,'H2S':1}, cloud, curves,
         [('Morley et al. (2012), Eqs. 9, 12, 15 (metal partial pressures)',MORLEY),
          ('Visscher et al. (2006), Eqs. 16, 25–30 (solar sulfur chemistry)',VISSCHER)],
         'Metal saturation partial pressure is not the full reaction quotient. The comparison reconstructs Q using log10 X_H2S = -4.56 and X_H2 = 0.84 at solar metallicity, giving log10(X_H2S/X_H2) = '+f'{r:.9f}'+'. Its 800–1400 K plotting interval is not a verified validity range. No unconditional coefficient correction follows from this assumption. '+
+        ('For Na2S, production now adopts the PR108 intercept 22.48 instead of the legacy 32.1. The conditional reconstruction gives 22.61572: a factor of 1.367 in Q, or 1.169 in sodium saturation pressure at fixed H2S/H2. This supports the approximate correction but does not establish exact coefficient provenance or a validity interval. The Pa quotient has net pressure exponent two: log10 Q(Pa) = log10 Q(bar) + 10; no additional conversion is applied to 22.48. ' if key=='na2s' else '')+
         ('For the PR natural-log Mn fit, the derivative is 54823/T²; multiplying by ln(10) again was an error. This derivative correction does not verify the fitted coefficients.' if key=='mns' else ''),h2=1)
 add('mgsio3', 'Magnesium silicate', {'Mg':1,'SiH4':1,'H2O':3}, 'MgSiO3', [
     linear('PR108 (unverified)',9.63,50971,[800,2500],'comparison only; not registered'),

@@ -10,7 +10,7 @@ All plotted functions return natural log Q, with each partial pressure expressed
 Data, provenance and limitations
 --------------------------------
 
-Metal saturation partial pressure is not the full reaction quotient. The comparison reconstructs Q using log10 X_H2S = -4.56 and X_H2 = 0.84 at solar metallicity, giving log10(X_H2S/X_H2) = -4.484279286. Its 800–1400 K plotting interval is not a verified validity range. No unconditional coefficient correction follows from this assumption.
+Metal saturation partial pressure is not the full reaction quotient. The comparison reconstructs Q using log10 X_H2S = -4.56 and X_H2 = 0.84 at solar metallicity, giving log10(X_H2S/X_H2) = -4.484279286. Its 800–1400 K plotting interval is not a verified validity range. No unconditional coefficient correction follows from this assumption. For Na2S, production now adopts the PR108 intercept 22.48 instead of the legacy 32.1. The conditional reconstruction gives 22.61572: a factor of 1.367 in Q, or 1.169 in sodium saturation pressure at fixed H2S/H2. This supports the approximate correction but does not establish exact coefficient provenance or a validity interval. The Pa quotient has net pressure exponent two: log10 Q(Pa) = log10 Q(bar) + 10; no additional conversion is applied to 22.48.
 
 The coefficient audit was performed on 2026-10-07. Primary data links:
 
@@ -32,26 +32,26 @@ Coefficient conventions
      - Parameters
      - Plot interval (K)
      - Status
-   * - na_h2s_visscher (legacy)
-     - linear
-     - [32.1, 27778, 10]
-     - 800–1400
-     - legacy public formula; unverified
-   * - PR108 (unverified)
+   * - na_h2s_visscher
      - linear
      - [22.48, 27778, 10]
      - 800–1400
-     - comparison only; not registered
+     - adopted PR108 approximation; exact coefficient provenance unresolved
    * - conditional solar reconstruction
      - linear
      - [22.61572071393812, 27778, 10]
      - 800–1400
      - derived under fixed solar H2S/H2; not a published Q fit
+   * - superseded legacy fit
+     - linear
+     - [32.1, 27778, 10]
+     - 800–1400
+     - historical comparison only; not registered
 
 .. figure:: ../_static/reactions/na2s-comparison.svg
    :alt: Coefficient curves and their log pressure-quotient ratios
 
-   The ratio reference is na_h2s_visscher (legacy). Curves are compared only where their displayed intervals overlap; disagreement is not an uncertainty estimate.
+   The ratio reference is na_h2s_visscher. Curves are compared only where their displayed intervals overlap; disagreement is not an uncertainty estimate.
 
 .. list-table::
    :header-rows: 1
@@ -59,22 +59,13 @@ Coefficient conventions
    * - Formula
      - T (K)
      - ln Q (Pa convention)
-   * - na_h2s_visscher (legacy)
-     - 800
-     - -6.038529406
-   * - na_h2s_visscher (legacy)
-     - 1100
-     - 15.76642811
-   * - na_h2s_visscher (legacy)
-     - 1400
-     - 28.22640383
-   * - PR108 (unverified)
+   * - na_h2s_visscher
      - 800
      - -28.189398
-   * - PR108 (unverified)
+   * - na_h2s_visscher
      - 1100
      - -6.384440485
-   * - PR108 (unverified)
+   * - na_h2s_visscher
      - 1400
      - 6.075535238
    * - conditional solar reconstruction
@@ -86,6 +77,15 @@ Coefficient conventions
    * - conditional solar reconstruction
      - 1400
      - 6.388043731
+   * - superseded legacy fit
+     - 800
+     - -6.038529406
+   * - superseded legacy fit
+     - 1100
+     - 15.76642811
+   * - superseded legacy fit
+     - 1400
+     - 28.22640383
 
 :download:`Numerical comparison CSV <../_static/reactions/na2s-values.csv>`
 
@@ -97,10 +97,10 @@ Native formula evaluation agrees with the offline coefficient record as follows 
    * - Formula
      - Device
      - Maximum absolute ln Q difference
-   * - na_h2s_visscher (legacy)
+   * - na_h2s_visscher
      - cpu
      - 3.553e-15
-   * - na_h2s_visscher (legacy)
+   * - na_h2s_visscher
      - cuda
      - 3.553e-15
 

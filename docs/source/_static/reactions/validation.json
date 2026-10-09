@@ -174,7 +174,7 @@
     },
     {
       "reaction": "na2s",
-      "formula": "na_h2s_visscher (legacy)",
+      "formula": "na_h2s_visscher",
       "device": "cpu",
       "max_log_error": 3.552713678800501e-15
     },
@@ -246,7 +246,7 @@
     },
     {
       "reaction": "na2s",
-      "formula": "na_h2s_visscher (legacy)",
+      "formula": "na_h2s_visscher",
       "device": "cuda",
       "max_log_error": 3.552713678800501e-15
     }
@@ -262,8 +262,8 @@
       "cuda"
     ],
     "gpu": "NVIDIA GeForce RTX 5090",
-    "revision": "1596e70be446dc0ab3d9a2b09a8b3830873b9a25",
-    "source_sha256": "7a9831096400bd0c0b5ee5ee899f26f27254e19d2cad7c85a8771e8983085c4f"
+    "revision": "43421fc6619edb7f7a26ed9a82137dde26a1e66d",
+    "source_sha256": "1f5c96aca02f3d629516fb9da6dd4e491a90677737406c49d6c902b2f66110c2"
   },
   "cases": [
     {

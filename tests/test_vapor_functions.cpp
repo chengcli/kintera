@@ -109,6 +109,17 @@ TEST(VaporFunctions, kcl_lodders_converts_bar_fit_to_pascals) {
   }
 }
 
+TEST(VaporFunctions, na2s_quotient_converts_bar_squared_to_pascals) {
+  for (double temp : {800.0, 1100.0, 1400.0}) {
+    // PR108: log10 Q(bar) = 12.48 - 27778/T. The signed gas
+    // exponents sum to two, so converting to Pa multiplies Q by 1e10.
+    double q_bar = std::pow(10., 12.48 - 27778. / temp);
+    EXPECT_NEAR(std::exp(na_h2s_visscher(temp)) / (1.e10 * q_bar), 1., 1.e-12);
+    EXPECT_NEAR(na_h2s_visscher_ddT(temp),
+                27778. * std::log(10.) / (temp * temp), 1.e-12);
+  }
+}
+
 TEST(VaporFunctions, kcl_lodders_derivative_matches_finite_difference) {
   constexpr double step = 1.e-3;
   for (double temp : {150.0, 180.0, 250.0, 500.0, 800.0, 1000.0, 1500.0}) {
