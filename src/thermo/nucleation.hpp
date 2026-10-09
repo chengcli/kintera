@@ -41,6 +41,9 @@ struct NucleationOptionsImpl {
        << "* logsvp = " << fmt::format("{}", logsvp()) << "\n";
   }
 
+  // Set by phase-aware option builders; prevents legacy RH misinterpretation.
+  bool has_gas_products = false;
+
   ADD_ARG(std::vector<Reaction>, reactions) = {};
   ADD_ARG(std::vector<double>, minT) = {};
   ADD_ARG(std::vector<double>, maxT) = {};

@@ -14,6 +14,7 @@ double log_psat(double) { return std::log(0.2 * 1.e5); }
 struct Call {
   int rc;
   int iter;
+  double diag;
   double x[3];
 };
 
@@ -34,6 +35,7 @@ Call solve(int cap) {
       &max_iter, reaction_set, &nactive, nullptr);
   Call out;
   out.rc = rc;
+  out.diag = diag[0];
   out.iter = max_iter;
   std::memcpy(out.x, x, sizeof x);
   return out;
@@ -62,5 +64,6 @@ TEST(equilibrate_tp, returns_failure_when_it_does_not_converge) {
 
   auto stopped = solve(1);
   EXPECT_GE(stopped.rc, 20);
+  EXPECT_LT(stopped.diag, 0.);
   EXPECT_GT(std::fabs(stopped.x[1] - wide.x[1]), 1e-3);
 }

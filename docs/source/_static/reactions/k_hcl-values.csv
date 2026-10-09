@@ -1,0 +1,7 @@
+formula,temperature_K,ln_Q_Pa
+PR108 (unverified),500,-97.4
+PR108 (unverified),750,-43.24666667
+PR108 (unverified),1000,-16.17
+JANAF reconstruction,500,-126.4671836
+JANAF reconstruction,750,-58.51559497
+JANAF reconstruction,1000,-24.07122456

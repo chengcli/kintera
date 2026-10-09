@@ -470,6 +470,18 @@ Loading and using external atmospheric data.
               header="Pressure(Pa),Temperature(K),H2,He",
               comments='')
 
+Deep-Jupiter condensation adiabat
+---------------------------------
+
+A complete YAML and Python example uses TP equilibrium inside a reversible
+entropy-conserving column, including KCl and MgSiO3 clouds and explicit H2.
+The page includes source assumptions, code, diagnostics, and the generated plot.
+
+.. toctree::
+   :maxdepth: 1
+
+   jupiter_tp_adiabat
+
 Running the Examples
 --------------------
 

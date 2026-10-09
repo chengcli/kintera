@@ -1,0 +1,14 @@
+{
+  "python": "3.11.13",
+  "torch": "2.10.0+cu128",
+  "numpy": "2.4.4",
+  "matplotlib": "3.10.8",
+  "cuda": "12.8",
+  "devices": [
+    "cpu",
+    "cuda"
+  ],
+  "gpu": "NVIDIA GeForce RTX 5090",
+  "revision": "43421fc6619edb7f7a26ed9a82137dde26a1e66d",
+  "source_sha256": "1f5c96aca02f3d629516fb9da6dd4e491a90677737406c49d6c902b2f66110c2"
+}

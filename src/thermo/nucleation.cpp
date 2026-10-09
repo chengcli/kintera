@@ -7,6 +7,7 @@
 namespace kintera {
 
 extern std::vector<std::string> species_names;
+extern std::vector<std::string> species_phases;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,
@@ -17,6 +18,9 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
       auto it = std::find(species_names.begin(), species_names.end(), name);
       TORCH_CHECK(it != species_names.end(), "Species ", name,
                   " not found in species list");
+      auto id = it - species_names.begin();
+      TORCH_CHECK(species_phases[id].empty() || species_phases[id] == "gas",
+                  "Nucleation reactant must be a gas: ", name);
       vapor_set.insert(name);
     }
 
@@ -25,7 +29,13 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
       auto it = std::find(species_names.begin(), species_names.end(), name);
       TORCH_CHECK(it != species_names.end(), "Species ", name,
                   " not found in species list");
-      cloud_set.insert(name);
+      auto id = it - species_names.begin();
+      if (species_phases[id] == "gas") {
+        vapor_set.insert(name);
+        op->has_gas_products = true;
+      } else {
+        cloud_set.insert(name);
+      }
     }
   }
 }

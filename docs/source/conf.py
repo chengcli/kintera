@@ -51,6 +51,10 @@ intersphinx_mapping = {
     'torch': ('https://pytorch.org/docs/stable/', None),
 }
 
+# Disable external inventory downloads for reproducible offline builds.
+if os.environ.get("KINTERA_DOCS_OFFLINE"):
+    intersphinx_mapping = {}
+
 # Autosummary settings
 autosummary_generate = True
 

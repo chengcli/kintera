@@ -1,0 +1,52 @@
+# Reduced, ideal-gas deep-Jupiter example, not a calibrated atmosphere.
+# Reversible ascent: both condensates remain suspended in the parcel.
+# Constant heat capacities below are an idealized closure, not measured data.
+# They satisfy delta(cp/R)=0 for each constant-A-B/T equilibrium curve.
+reference-state: {Tref: 0., Pref: 1.e5}
+dynamics:
+  equation-of-state: {max-iter: 200, ftol: 1.e-8}
+
+species:
+  - {name: He, phase: gas, composition: {He: 1}, cv_R: 1.5}
+  - {name: H2, phase: gas, composition: {H: 2}, cv_R: 2.5}
+  - {name: KCl, phase: gas, composition: {K: 1, Cl: 1}, cv_R: 2.5}
+  - {name: Mg, phase: gas, composition: {Mg: 1}, cv_R: 1.5}
+  - {name: SiH4, phase: gas, composition: {Si: 1, H: 4}, cv_R: 8.0}
+  - {name: H2O, phase: gas, composition: {H: 2, O: 1}, cv_R: 3.0}
+  # u0/R = -B*ln(10); with delta cp=0 this gives delta h/R=-B*ln(10).
+  - {name: KCl(s), phase: solid, composition: {K: 1, Cl: 1}, cv_R: 3.5, u0_R: -26208.02352845823}
+  - {name: MgSiO3(s), phase: solid, composition: {Mg: 1, Si: 1, O: 3}, cv_R: 6.0, u0_R: -114887.48321493792}
+
+reactions:
+  # Morley et al. (2012), Eq. 18: log10(p_KCl/bar)=7.611-11382/T.
+  # https://arxiv.org/abs/1206.4313
+  - equation: KCl <=> KCl(s)
+    type: nucleation
+    rate-constant: {formula: kcl_lodders}
+  # CONDITIONAL reconstruction from Visscher et al. (2010), Tables 2 and 3:
+  # https://arxiv.org/html/1001.3639
+  # log10 Q = 5.86 - 5*log10(0.84) - 49895/T, Q=pMg*pSiH4*pH2O^3/pH2^5.
+  # This is NOT a directly published general reaction fit. See docs/reactions/mgsio3.
+  # The generic Antoine evaluator adds log10(1e5), hence A=6.238603569690592-5.
+  # Net pressure exponent is zero, so Q is dimensionless and no Pa/bar shift applies.
+  - equation: Mg + SiH4 + 3 H2O <=> MgSiO3(s) + 5 H2
+    type: nucleation
+    rate-constant: {formula: antoine, A: 1.238603569690592, B: 49895., C: 0.}
+
+# Consumed by example_jupiter_adiabat.py; ignored by the native options reader.
+column:
+  bottom_pressure_bar: 6000.
+  bottom_temperature_K: 2300.
+  top_pressure_bar: 200.
+  levels: 121
+  gravity_m_s2: 24.79  # Assumed constant gravity; ideal-gas hydrostatic column.
+  entropy_tolerance_J_kg_K: 1.e-5
+  temperature_bounds_K: [800., 2500.]
+  # Illustrative inventory with Mg/Si=1.2; not a fit to measured abundances.
+  mole_fractions:
+    He: 0.14
+    H2O: 0.001
+    Mg: 0.00006
+    SiH4: 0.00005
+    KCl: 0.0000002
+    H2: balance

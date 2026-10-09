@@ -383,10 +383,7 @@ DISPATCH_MACRO int equilibrate_uv(
     // evaluate log vapor saturation pressure and its derivative
     for (int j = 0; j < nreaction; j++) {
       T stoich_sum = 0.0;
-      for (int i = 0; i < nspecies; i++)
-        if (stoich[i * nreaction + j] < 0) {  // reactant
-          stoich_sum += (-stoich[i * nreaction + j]);
-        }
+      for (int i = 0; i < ngas; i++) stoich_sum -= stoich[i * nreaction + j];
       double const* p = svp_params + j * KSVP_NPARAM;
       logsvp[j] = eval_logsvp(svp_kind[j], p, logsvp_func[j], *temp) -
                   stoich_sum * log(constants::Rgas * (*temp));
@@ -408,20 +405,23 @@ DISPATCH_MACRO int equilibrate_uv(
       int j = reaction_set[first];
       T log_conc_sum = 0.0;
       T prod = 1.0;
+      bool absent_reactant = false, absent_product = false;
       T nu_absent = 0.;  // stoichiometry of the reactants that are absent
       T log_nu = 0.;
 
       // active set condition variables
       for (int i = 0; i < nspecies; i++) {
         T nu = -stoich[i * nreaction + j];
-        if (nu > 0) {  // reactant
+        if (i < ngas && nu != 0.) {
           if (conc[i] == 0.) {
+            absent_reactant |= nu > 0.;
+            absent_product |= nu < 0.;
             nu_absent += nu;
-            log_nu += nu * log(nu);
+            log_nu += nu * log(fabs(nu));
           } else {
             log_conc_sum += nu * log(conc[i]);
           }
-        } else if (nu < 0) {  // product
+        } else if (i >= ngas && nu < 0) {  // condensed product
           prod *= conc[i];
         }
       }
@@ -429,12 +429,22 @@ DISPATCH_MACRO int equilibrate_uv(
       // Absent reactants are linearized at their saturation value nu*r*,
       // restored from the product; rhs = nu_absent lands the step there.
       T log_r = 0.;
-      if (nu_absent > 0.) {
+      if (nu_absent != 0.) {
         log_r = (logsvp[j] - log_conc_sum - log_nu) / nu_absent;
         // keep the weight 1/r* finite: it overflows float for a cold enough svp
         T log_r_min = -0.5 * log(std::numeric_limits<T>::max());
-        if (log_r < log_r_min) log_r = log_r_min;
+        log_r = fmax(log_r_min, fmin(-log_r_min, log_r));
         log_conc_sum = logsvp[j] - nu_absent;
+      }
+
+      // Neither direction is feasible when both sides lack a required gas.
+      // Other reactions may supply it on a later outer iteration.
+      if (absent_reactant && absent_product) {
+        int tmp = reaction_set[first];
+        reaction_set[first] = reaction_set[last - 1];
+        reaction_set[last - 1] = tmp;
+        --last;
+        continue;
       }
 
       // active set, weight matrix and rhs vector
@@ -444,9 +454,10 @@ DISPATCH_MACRO int equilibrate_uv(
           weight[first * nspecies + i] =
               logsvp_ddT[j] * intEng[i] / heat_capacity;
           T nu = -stoich[i * nreaction + j];
-          if (nu > 0) {
+          if (i < ngas && nu != 0.) {
             weight[first * nspecies + i] +=
-                conc[i] == 0. ? exp(-log_r) : nu / conc[i];
+                conc[i] == 0. ? (nu > 0. ? 1. : -1.) * exp(-log_r)
+                              : nu / conc[i];
           }
         }
         rhs[first] = logsvp[j] - log_conc_sum;
@@ -534,11 +545,25 @@ DISPATCH_MACRO int equilibrate_uv(
       if (good) break;
       lambda *= 0.99;
       memcpy(conc, conc0, nspecies * sizeof(T));
+      if (lambda < std::numeric_limits<T>::min()) {
+        err_code = 4;
+        break;
+      }
     }
 
-    // temperature iteration
+    if (err_code) break;
+
+    // Float32 summation can oscillate above a fixed absolute tolerance.
+    // Respect its precision and bound the caloric inversion independently.
     T temp0 = 0.;
-    while (fabs(*temp - temp0) > 1e-4) {
+    int temperature_iter = 0;
+    while (fabs(*temp - temp0) >
+           fmax(T(1.e-4),
+                T(8.) * std::numeric_limits<T>::epsilon() * fabs(*temp))) {
+      if (++temperature_iter > 100) {
+        err_code = 4;
+        break;
+      }
       T zh = 0.;
       T zc = 0.;
 
@@ -560,7 +585,7 @@ DISPATCH_MACRO int equilibrate_uv(
       (*temp) += (h0 - zh) / zc;
     }
 
-    if (*temp <= 0.) {
+    if (err_code || !(*temp > 0.) || !std::isfinite(*temp)) {
       printf("Error: Non-positive temperature after adjustment.\n");
       err_code = 4;  // error: non-positive temperature after adjustment
       break;
