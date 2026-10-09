@@ -21,7 +21,7 @@ using namespace kintera;
 namespace {
 
 double h2o_bryan_expected(double T) {
-  double beta = 24.845;
+  double beta = 24.815845;
   double delta = 4.986009;
   double tr = 273.16;
   double pr = 611.7;
@@ -29,7 +29,7 @@ double h2o_bryan_expected(double T) {
 }
 
 double h2o_bryan_ddT_expected(double T) {
-  double beta = 24.845;
+  double beta = 24.815845;
   double delta = 4.986009;
   double tr = 273.16;
   double t = T / tr;

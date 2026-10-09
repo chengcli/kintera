@@ -51,7 +51,7 @@ def add(key, title, reactants, cloud, curves, sources, note='', h2=0, cloud_nu=1
 
 add('h2o', 'Water', {'H2O': 1}, 'H2O', [
     ideal('h2o_ideal', [273.16, 611.7, 24.845, 4.986009, 22.98, .52], [230, 303]),
-    ideal('h2o_bryan', [273.16, 611.7, 24.845, 4.986009, 24.845, 4.986009], [230, 303]),
+    ideal('h2o_bryan', [273.16, 611.7, 24.815845, 4.986009, 24.815845, 4.986009], [230, 303]),
     antoine('NIST liquid', [5.40221, 1838.675, -31.737], [273, 303])],
     [('Bridgeman and Aldrich (1964), NIST Antoine table, 273–303 K', NIST.format('C7732185'))],
     'The ideal branches switch at 273.16 K. h2o_bryan continues the liquid branch below the triple point; it is not an ice fit. The displayed legacy interval is a plotting interval, not a verified validity range.')
