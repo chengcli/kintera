@@ -2,9 +2,9 @@ formula,temperature_K,ln_Q_Pa
 h2o_ideal,230,2.193423775
 h2o_ideal,266.5,5.854792938
 h2o_ideal,303,8.346098496
-h2o_bryan,230,2.611509532
-h2o_bryan,266.5,5.91842199
-h2o_bryan,303,8.346098496
+h2o_bryan,230,2.616980531
+h2o_bryan,266.5,5.919150591
+h2o_bryan,303,8.343227257
 NIST liquid,273,6.40388033
 NIST liquid,288,7.431033685
 NIST liquid,303,8.344590271

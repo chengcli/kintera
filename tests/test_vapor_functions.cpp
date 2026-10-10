@@ -10,16 +10,18 @@
 #include <torch/torch.h>
 
 // kintera
+#include <kintera/constants.h>
 #include <kintera/vapors/vapor_functions.h>
 
 #include <kintera/thermo/log_svp.hpp>
+#include <kintera/utils/molar_mass.hpp>
 
 using namespace kintera;
 
 namespace {
 
 double h2o_bryan_expected(double T) {
-  double beta = 24.845;
+  double beta = 24.815845;
   double delta = 4.986009;
   double tr = 273.16;
   double pr = 611.7;
@@ -27,7 +29,7 @@ double h2o_bryan_expected(double T) {
 }
 
 double h2o_bryan_ddT_expected(double T) {
-  double beta = 24.845;
+  double beta = 24.815845;
   double delta = 4.986009;
   double tr = 273.16;
   double t = T / tr;
@@ -173,6 +175,34 @@ TEST(VaporFunctions, h2o_bryan_dispatches_through_log_svp) {
   EXPECT_NEAR(logsvp[1].item<double>(), h2o_bryan_expected(289.85), 1.e-12);
   EXPECT_NEAR(grad[0].item<double>(), h2o_bryan_ddT_expected(250.0), 1.e-12);
   EXPECT_NEAR(grad[1].item<double>(), h2o_bryan_ddT_expected(289.85), 1.e-12);
+}
+
+// Bryan and Fritsch (2002, MWR 130), appendix: L_v0 = 2.5e6 J/kg at 273.15 K.
+// Kirchhoff form: L(T) = R_v T^2 dln(p)/dT = R_v (beta tr - delta T).
+TEST(VaporFunctions, h2o_bryan_latent_heat_matches_bryan_fritsch) {
+  double rv = constants::Rgas / molar_mass({{"H", 2.}, {"O", 1.}});
+  double temp = 273.15;
+  double latent = rv * temp * temp * h2o_bryan_ddT(temp);
+  EXPECT_NEAR(latent / 2.5e6, 1., 1.e-6);
+}
+
+// Reference values captured from h2o_ideal at 192d724. The 1e-15 relative
+// tolerance (4-9 ulp) allows libm differences, e.g. macOS log() is 1 ulp off at
+// 250 K, but fails on any change to the h2o_ideal constants.
+TEST(VaporFunctions, h2o_ideal_is_unchanged) {
+  struct {
+    double temp, value, ddT;
+  } const refs[] = {{200.0, -0x1.d3e6936ac6f68p+0, 0x1.3c1196556c6e2p-3},
+                    {250.0, 0x1.15572a189aa81p+2, 0x1.92dd2f1e0f5a8p-4},
+                    {273.15, 0x1.9a963c89fe1d6p+2, 0x1.50cf513b1f4f3p-4},
+                    {273.16, 0x1.9aa3b55810a5ep+2, 0x1.50c8ee6b236cep-4},
+                    {290.0, 0x1.e3e248d1b1505p+2, 0x1.041d28c07fb3p-4},
+                    {300.0, 0x1.057ecd4aa535fp+3, 0x1.e195ea58fe871p-5}};
+  for (const auto &ref : refs) {
+    SCOPED_TRACE(ref.temp);
+    EXPECT_NEAR(h2o_ideal(ref.temp), ref.value, 1.e-15 * std::abs(ref.value));
+    EXPECT_NEAR(h2o_ideal_ddT(ref.temp), ref.ddT, 1.e-15 * std::abs(ref.ddT));
+  }
 }
 
 // NIST WebBook, Antoine parameters: H2S (Stull 1947), CO2 (Giauque 1937).

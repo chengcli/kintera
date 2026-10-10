@@ -48,13 +48,13 @@ inline double h2o_ideal_ddT(double T) {
 
 DISPATCH_MACRO
 inline double h2o_bryan(double T) {
-  double beta = 24.845, delta = 4.986009, tr = 273.16, pr = 611.7;
+  double beta = 24.815845, delta = 4.986009, tr = 273.16, pr = 611.7;
   return logsvp_ideal(T / tr, beta, delta) + log(pr);
 }
 
 DISPATCH_MACRO
 inline double h2o_bryan_ddT(double T) {
-  double beta = 24.845, delta = 4.986009, tr = 273.16;
+  double beta = 24.815845, delta = 4.986009, tr = 273.16;
   return logsvp_ideal_ddT(T / tr, beta, delta) / tr;
 }
 

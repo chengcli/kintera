@@ -38,7 +38,7 @@ Coefficient conventions
      - legacy; coefficient provenance unresolved
    * - h2o_bryan
      - ideal
-     - [273.16, 611.7, 24.845, 4.986009, 24.845, 4.986009]
+     - [273.16, 611.7, 24.815845, 4.986009, 24.815845, 4.986009]
      - 230–303
      - legacy; coefficient provenance unresolved
    * - NIST liquid
@@ -69,13 +69,13 @@ Coefficient conventions
      - 8.346098496
    * - h2o_bryan
      - 230
-     - 2.611509532
+     - 2.616980531
    * - h2o_bryan
      - 266.5
-     - 5.91842199
+     - 5.919150591
    * - h2o_bryan
      - 303
-     - 8.346098496
+     - 8.343227257
    * - NIST liquid
      - 273
      - 6.40388033
