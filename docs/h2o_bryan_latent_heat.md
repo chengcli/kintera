@@ -45,7 +45,7 @@ and the harp atomic weights that `molar_mass` uses:
 
 At least five decimals are needed to reach 1e-6. The code uses 24.815845.
 `h2o_ideal` keeps its own literal 24.845 and is bitwise unchanged
-(`VaporFunctions.h2o_ideal_is_bitwise_unchanged`).
+(`VaporFunctions.h2o_ideal_is_unchanged`).
 
 ## SVP against Bolton (1980)
 
@@ -114,12 +114,6 @@ matplotlib 3.10.8 (the recorded environment) it reproduces every page at
 and the h2o_bryan ln Q values change in the rst and csv. The SVG is a single
 figure, so the lower panel's axis range moves with the h2o_bryan ratio curve.
 
-`validation.json` is not re-recorded. Its `source_sha256` covers
-`src/vapors/vapor_functions.h`, so `plot_reaction_comparisons.py --all --check`
-reports the native measurements as stale until `reaction_validation.py --cuda`
-is rerun on a CUDA build; that rerun re-measures every reaction. On CPU at the
-new constant, `native_curves('cpu')` gives a maximum h2o_bryan ln Q
-difference of 4.441e-15, the same as the recorded value.
 `validation.json` is stale for h2o_bryan only: it fingerprints
 `src/vapors/vapor_functions.h`, and only its two h2o_bryan `native_curves`
 entries (cpu, cuda) depend on this constant, since the equilibrium cases use

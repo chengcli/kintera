@@ -186,8 +186,10 @@ TEST(VaporFunctions, h2o_bryan_latent_heat_matches_bryan_fritsch) {
   EXPECT_NEAR(latent / 2.5e6, 1., 1.e-6);
 }
 
-// Reference values captured from h2o_ideal at 192d724.
-TEST(VaporFunctions, h2o_ideal_is_bitwise_unchanged) {
+// Reference values captured from h2o_ideal at 192d724. The 1e-15 relative
+// tolerance (4-9 ulp) allows libm differences, e.g. macOS log() is 1 ulp off at
+// 250 K, but fails on any change to the h2o_ideal constants.
+TEST(VaporFunctions, h2o_ideal_is_unchanged) {
   struct {
     double temp, value, ddT;
   } const refs[] = {{200.0, -0x1.d3e6936ac6f68p+0, 0x1.3c1196556c6e2p-3},
@@ -198,8 +200,8 @@ TEST(VaporFunctions, h2o_ideal_is_bitwise_unchanged) {
                     {300.0, 0x1.057ecd4aa535fp+3, 0x1.e195ea58fe871p-5}};
   for (const auto &ref : refs) {
     SCOPED_TRACE(ref.temp);
-    EXPECT_EQ(h2o_ideal(ref.temp), ref.value);
-    EXPECT_EQ(h2o_ideal_ddT(ref.temp), ref.ddT);
+    EXPECT_NEAR(h2o_ideal(ref.temp), ref.value, 1.e-15 * std::abs(ref.value));
+    EXPECT_NEAR(h2o_ideal_ddT(ref.temp), ref.ddT, 1.e-15 * std::abs(ref.ddT));
   }
 }
 
