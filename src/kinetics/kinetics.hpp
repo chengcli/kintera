@@ -109,6 +109,10 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   //! reactant-only stoichiometry (positive values), shape (nspecies,
   //! nreaction_orig)
   torch::Tensor react_stoich;
+  //! Forward kinetic orders; evaporation is first order in its solid only.
+  torch::Tensor forward_orders;
+  int evaporation_start_ = 0;
+  int evaporation_count_ = 0;
   //! net mole change per reaction, shape (nreaction_orig,)
   torch::Tensor dn;
   //! whether any reversible reactions exist
@@ -130,6 +134,8 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   void reset() override;
 
   //! Compute the reaction-space Jacobian of mass-action rates.
+  //! Call with the results of the most recent forward() on this instance:
+  //! evaporation at zero solid concentration uses the cached rate coefficient.
   /*!
    * \param temp   temperature [K], shape (...)
    * \param conc   species concentrations [mol/m^3], shape (..., nspecies)

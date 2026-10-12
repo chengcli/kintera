@@ -274,6 +274,24 @@ void KineticsImpl::reset() {
   rev_mask = register_buffer("rev_mask", rev_mask_data);
   prod_stoich = register_buffer("prod_stoich", prod_stoich_data);
   react_stoich = register_buffer("react_stoich", react_stoich_data);
+  auto orders = react_stoich_data.clone();
+  evaporation_start_ = options->arrhenius()->reactions().size() +
+                       options->coagulation()->reactions().size();
+  evaporation_count_ = options->evaporation()->reactions().size();
+  if (evaporation_count_ > 0) {
+    auto ngas = options->vapor_ids().size();
+    auto col = orders.narrow(1, evaporation_start_, evaporation_count_);
+    col.narrow(0, 0, ngas).zero_();
+    auto signed_col =
+        stoich_base.narrow(1, evaporation_start_, evaporation_count_);
+    auto condensed = signed_col.narrow(0, ngas, nspecies - ngas);
+    TORCH_CHECK(
+        condensed.lt(0).sum(0).eq(1).all().item<bool>() &&
+            (condensed.eq(0) | condensed.eq(-1)).all().item<bool>(),
+        "Evaporation requires one condensed reactant with coefficient 1 "
+        "and no condensed products");
+  }
+  forward_orders = register_buffer("forward_orders", orders);
   dn = register_buffer("dn", dn_data);
 
   if (options->verbose()) {
@@ -298,9 +316,9 @@ torch::Tensor KineticsImpl::jacobian(
   if (has_reversible_) {
     auto rev_indices = rev_indices_.to(prod_stoich.device(), torch::kLong);
     auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices);
-    react_st_full = torch::cat({react_stoich, prod_stoich_rev}, 1);
+    react_st_full = torch::cat({forward_orders, prod_stoich_rev}, 1);
   } else {
-    react_st_full = react_stoich;
+    react_st_full = forward_orders;
   }
   auto react_st = react_st_full.t();  // (nrxn_aug, nspecies)
   auto concp_fwd =
@@ -308,6 +326,20 @@ torch::Tensor KineticsImpl::jacobian(
 
   auto jac = concp_fwd * rc_ddC.transpose(-1, -2) +
              react_st * rate.unsqueeze(-1) / conc_safe.unsqueeze(-2);
+
+  if (evaporation_count_ > 0) {
+    auto order =
+        forward_orders.narrow(1, evaporation_start_, evaporation_count_).t();
+    auto cp = (conc.unsqueeze(-2) * order).sum(-1, true);
+    auto derivative = rc_ddC.narrow(-1, evaporation_start_, evaporation_count_)
+                          .transpose(-1, -2);
+    TORCH_CHECK(last_kf_.defined(),
+                "Evaporation jacobian requires forward first");
+    auto k = last_kf_.narrow(-1, evaporation_start_, evaporation_count_);
+    jac.narrow(-2, evaporation_start_, evaporation_count_)
+        .copy_(cp * derivative + k.unsqueeze(-1) * order);
+    concp_fwd.narrow(-2, evaporation_start_, evaporation_count_).copy_(cp);
+  }
 
   if (rc_ddT.has_value()) {
     auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
@@ -344,6 +376,9 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
   auto stoich_base = stoich.narrow(1, 0, nrxn_orig);
 
   std::map<std::string, torch::Tensor> other(extra.begin(), extra.end());
+  other["gas_mask"] =
+      torch::arange(conc.size(-1), stoich.options())
+          .lt(static_cast<int64_t>(options->vapor_ids().size()));
   int first = 0;
   for (int i = 0; i < (int)rc_evaluator.size(); ++i) {
     if (_nreactions[i] == 0) continue;
@@ -420,7 +455,14 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
   auto conc_safe = conc.clamp_min(1e-300);
 
   // mass-action forward: k_f * product(C_reactant^stoich)
-  auto rate_f = result * conc_safe.unsqueeze(-1).pow(react_stoich).prod(-2);
+  auto rate_f = result * conc_safe.unsqueeze(-1).pow(forward_orders).prod(-2);
+  if (evaporation_count_ > 0) {
+    auto orders =
+        forward_orders.narrow(1, evaporation_start_, evaporation_count_);
+    auto cp = (conc.unsqueeze(-1) * orders).sum(-2);
+    rate_f.narrow(-1, evaporation_start_, evaporation_count_)
+        .copy_(result.narrow(-1, evaporation_start_, evaporation_count_) * cp);
+  }
 
   // Split forward/reverse: augment rates with separate reverse entries
   if (has_reversible_ && options->has_nasa9()) {

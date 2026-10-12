@@ -197,14 +197,11 @@ def test_huge_product_into_empty_air_is_finite(dtype, c):
 
 
 @pytest.mark.parametrize("equation", [
-    "NH4SH(s,p) => 2 NH3",
     "2 NH4SH(s,p) => NH3 + H2S",
-    "NH4SH(s,p) => NH3 + H2S + H2O",
-    "NH4SH(s,p) + H2O => NH3 + H2S",
     "NH4SH(s,p) <=> NH3 + H2S",
 ])
 def test_other_stoichiometries_are_rejected(equation):
-    with pytest.raises(RuntimeError, match="one reactant and one or two products"):
+    with pytest.raises(RuntimeError, match="condensed reactant with coefficient 1|irreversible"):
         _module([equation], ["nh3_h2s_lewis"])
 
 
@@ -299,4 +296,4 @@ def test_gas_reactant_is_rejected(tmp_path):
     card.write_text(textwrap.dedent(CARD).replace("NH4SH(s,p) => NH3 + H2S", "H2O => NH3 + H2S"))
     res = subprocess.run([sys.executable, "-c", LOAD, str(card)], capture_output=True, text=True)
     assert res.returncode != 0
-    assert "has the gas 'H2O' (a product of 'H2O(l,p) => H2O') as its reactant" in res.stderr
+    assert "Conflicting gas/cloud classification: H2O" in res.stderr

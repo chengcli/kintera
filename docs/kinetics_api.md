@@ -349,6 +349,60 @@ Diffusion-limited evaporation. Inherits from `NucleationOptions`.
 | `vm` | `List[float]` | Molar volume [m³/mol] |
 | `diameter` | `List[float]` | Particle diameter [m] |
 
+Evaporation supports an irreversible reaction with one condensed reactant
+(coefficient 1), optional gas reactants, and any number of gas products with
+positive coefficients. For example:
+
+```yaml
+species:
+  - {name: H2, phase: gas, composition: {H: 2}, cv_R: 2.5}
+  - {name: Na, phase: gas, composition: {Na: 1}, cv_R: 1.5}
+  - {name: H2S, phase: gas, composition: {H: 2, S: 1}, cv_R: 2.5}
+  - {name: Na2S(s), phase: solid, composition: {Na: 2, S: 1}, cv_R: 18, u0_R: -60000}
+reactions:
+  - equation: Na2S(s) + H2 => 2 Na + H2S
+    type: evaporation
+    rate-constant: {formula: na_h2s_visscher, diff_c: 2.e-5,
+                    vm: 4.22e-5, diameter: 1.e-4}
+```
+
+These material parameters are illustrative. Mixed-reactant YAML requires explicit
+phases on every participating species. Legacy single-reactant cards retain their
+phase inference. Condensed products, multiple condensed reactants, reversible
+arrows, and custom kinetic orders are not supported by this rate law.
+
+For gas coefficients `nu` positive on the evaporation product side, the surface
+extent `x` satisfies
+`sum(nu * log(C + nu*x)) = log(Qsat) - sum(nu)*log(R*T)`.
+`Qsat` is the existing saturation quotient using numerical partial pressures in
+Pa, including consumed gases in its denominator. The rate in mol/(m³ s) is
+`12*D*vm/diameter**2 * Csolid * x`, where
+`D = diff_c*(T/Tref)**diff_T*(P/Pref)**diff_P`.
+Gas consumption enters the surface solve, not an extra mass-action multiplier.
+The model assumes one effective diffusivity for all gases, pure condensed-phase
+activity, and a fixed particle diameter; it is not a multicomponent transport
+model. Saturated/supersaturated or gas-reactant-starved states do not evaporate.
+
+General surface extents use a bracketed solve and implicit first derivatives.
+Inputs to this path must have finite nonnegative concentrations and a finite
+logarithmic saturation quotient. Legacy one-product and unit-coefficient
+two-product reactions retain their analytic rate formulas.
+
+`Kinetics.forward` supplies gas classification automatically. Direct calls to
+`Evaporation.forward(T, P, C, other)` require `other["stoich"]` and, for mixed
+reactants, `other["gas_mask"]`: a boolean `(nspecies,)` tensor in the same row
+order as `C` and `stoich`. Unexpanded `C` has shape `(..., nspecies)`; expanded
+`C` has shape `(..., nspecies, nreaction)`. Classification is not taken from a
+mutable global registry during rate evaluation.
+
+Chemical stoichiometry is unchanged; only evaporation's kinetic prefactor is
+first order in the solid. Call `Kinetics.jacobian` with results from the most
+recent `forward` on that instance, since its derivative at zero solid abundance
+uses the cached rate coefficient. `evolve_implicit` remains a linearized step
+without a positivity guarantee. The standalone
+`examples/example_na2s_evaporation.py` demonstrates timestep rejection and
+substepping for a conserved, isothermal box without clipping species inventories.
+
 ### Coagulation
 
 Inherits from `ArrheniusOptions` with no additional parameters.
