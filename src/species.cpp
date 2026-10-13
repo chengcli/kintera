@@ -53,6 +53,7 @@ std::string loaded_species;
 }  // namespace
 
 void clear_species_registry() {
+  species_initialized = false;
   loaded_species.clear();
   species_names.clear();
   species_phases.clear();
@@ -144,13 +145,12 @@ void init_species_from_yaml(std::string filename) {
   init_species_from_yaml(config);
 }
 
-void init_species_from_yaml(YAML::Node const& config) {
+void init_species_from_yaml(YAML::Node const& config) try {
   // check if species are defined
   TORCH_CHECK(config["species"],
               "'species' is not defined in the kintera configuration file");
 
   clear_species_registry();
-  loaded_species = YAML::Dump(config["species"]);
 
   for (const auto& sp : config["species"]) {
     species_names.push_back(sp["name"].as<std::string>());
@@ -207,7 +207,13 @@ void init_species_from_yaml(YAML::Node const& config) {
     species_nasa9_Tmid.push_back(Tmid);
   }
 
+  // Commit the cache key only after every species has been populated.
+  loaded_species = YAML::Dump(config["species"]);
   species_initialized = true;
+} catch (...) {
+  // Failed parsing must leave neither partial species data nor a cache hit.
+  clear_species_registry();
+  throw;
 }
 
 void ensure_species_initialized(std::string const& filename) {
