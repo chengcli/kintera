@@ -198,3 +198,64 @@ def test_card_after_kinetics_base_uses_its_own_species(tmp_path):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 def test_card_after_kinetics_base_uses_its_own_species_cuda(tmp_path):
     _card_after_kinetics_base(tmp_path, "cuda:0")
+
+
+RECOVERY_DEVICES = ["cpu", pytest.param(
+    "cuda:0", marks=pytest.mark.skipif(not torch.cuda.is_available(),
+                                     reason="needs CUDA"))]
+
+
+@pytest.mark.parametrize("device", RECOVERY_DEVICES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("invalid", ["phase: plasma", "cv_R: invalid"])
+def test_repeated_invalid_species_load_stays_rejected(tmp_path, device, dtype,
+                                                     invalid):
+    path = _write(tmp_path, "valid.yaml", CARD_A)
+    th = ThermoY(ThermoOptions.from_yaml(path))
+    th.to(device=torch.device(device), dtype=dtype)
+    state = torch.tensor(YFRAC, device=device, dtype=dtype)
+    before = th.compute("Y->X", (state,)).clone()
+    # Fail after an earlier species has already populated the registry.
+    bad = CARD_B.replace("name: H2O,", "name: H2O, phase: plasma,")
+    if invalid.startswith("cv_R"):
+        bad = CARD_B.replace("composition: {H: 2, O: 1}, cv_R: 2.5",
+                             "composition: {H: 2, O: 1}, cv_R: invalid")
+    bad_path = _write(tmp_path, "invalid.yaml", bad)
+    message = "Invalid phase" if invalid.startswith("phase") else "bad conversion"
+    for _ in range(3):
+        with pytest.raises(RuntimeError, match=message):
+            ThermoOptions.from_yaml(bad_path)
+        # Previously constructed objects own their species data.
+        torch.testing.assert_close(th.compute("Y->X", (state,)), before)
+
+
+@pytest.mark.parametrize("device", RECOVERY_DEVICES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_valid_card_recovers_after_partial_species_failure(tmp_path, device,
+                                                          dtype):
+    path_a = _write(tmp_path, "a.yaml", CARD_A)
+    old = ThermoOptions.from_yaml(path_a)
+    bad = CARD_B.replace("name: H2O,", "name: H2O, phase: plasma,")
+    with pytest.raises(RuntimeError, match="Invalid phase"):
+        ThermoOptions.from_yaml(_write(tmp_path, "invalid.yaml", bad))
+
+    path_b = _write(tmp_path, "b.yaml", CARD_B)
+    reference = _alone(path_b)
+    for interleave in (False, True):
+        if interleave:
+            KineticsOptions.from_kinetics_base(KB_MASTER)
+        # Repeated successful loads exercise the same-card cache as well as
+        # recovery from the distinct KINETICS-base registry.
+        for _ in range(2):
+            options = ThermoOptions.from_yaml(path_b)
+            assert options.species() == old.species()
+            th = ThermoY(options)
+            th.to(device=torch.device(device), dtype=dtype)
+            state = torch.tensor(YFRAC, device=device, dtype=dtype)
+            result = th.compute("Y->X", (state,))
+            assert result.device == state.device and result.dtype == dtype
+            torch.testing.assert_close(
+                result.cpu(), torch.tensor(reference["X"], dtype=dtype))
+            torch.testing.assert_close(
+                (1. / th.inv_mu).cpu(),
+                torch.tensor(reference["mu"], dtype=dtype))

@@ -1,12 +1,15 @@
 #include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
 
 #include <filesystem>
 #include <fstream>
 #include <kintera/species.hpp>
 
 namespace kintera {
+extern std::vector<std::string> species_phases;
 extern std::vector<std::array<double, 9>> species_nasa9_low;
 extern std::vector<std::array<double, 9>> species_nasa9_high;
+extern std::vector<double> species_nasa9_Tmid;
 }  // namespace kintera
 
 using namespace kintera;
@@ -70,4 +73,52 @@ TEST(SpeciesInit, prefers_current_directory_nasa9_file) {
   EXPECT_DOUBLE_EQ(species_nasa9_high[1][6], 17.0);
   EXPECT_DOUBLE_EQ(species_nasa9_high[1][7], 19.0);
   EXPECT_DOUBLE_EQ(species_nasa9_high[1][8], 20.0);
+}
+
+TEST(SpeciesInit, clear_invalidates_success_and_same_card_reloads) {
+  auto card = YAML::Load(R"(
+species:
+  - {name: N2, phase: gas, composition: {N: 2}, cv_R: 2.5}
+)");
+  init_species_from_yaml(card);
+  ASSERT_TRUE(species_initialized);
+  clear_species_registry();
+  EXPECT_FALSE(species_initialized);
+  EXPECT_TRUE(species_names.empty());
+  ensure_species_initialized(card);
+  EXPECT_TRUE(species_initialized);
+  EXPECT_EQ(species_names, std::vector<std::string>{"N2"});
+}
+
+TEST(SpeciesInit, failed_parse_clears_partial_state_and_never_caches_success) {
+  auto valid = YAML::Load(R"(
+species:
+  - {name: N2, phase: gas, composition: {N: 2}, cv_R: 2.5}
+)");
+  for (auto const& bad_record :
+       {"{name: H2O, phase: plasma, composition: {H: 2, O: 1}}",
+        "{name: H2O, phase: gas, composition: {H: 2, O: 1}, cv_R: bad}"}) {
+    init_species_from_yaml(valid);
+    auto invalid = YAML::Load(
+        std::string("species:\n"
+                    "  - {name: H2, phase: gas, composition: {H: 2}}\n"
+                    "  - ") +
+        bad_record);
+    for (int attempt = 0; attempt < 3; ++attempt) {
+      EXPECT_ANY_THROW(ensure_species_initialized(invalid));
+      EXPECT_FALSE(species_initialized);
+      EXPECT_TRUE(species_names.empty());
+      EXPECT_TRUE(species_phases.empty());
+      EXPECT_TRUE(species_weights.empty());
+      EXPECT_TRUE(species_cref_R.empty());
+      EXPECT_TRUE(species_uref_R.empty());
+      EXPECT_TRUE(species_sref_R.empty());
+      EXPECT_TRUE(species_nasa9_low.empty());
+      EXPECT_TRUE(species_nasa9_high.empty());
+      EXPECT_TRUE(species_nasa9_Tmid.empty());
+    }
+    ensure_species_initialized(valid);
+    EXPECT_TRUE(species_initialized);
+    EXPECT_EQ(species_names, std::vector<std::string>{"N2"});
+  }
 }
