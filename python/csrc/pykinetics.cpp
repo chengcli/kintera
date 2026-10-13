@@ -320,7 +320,13 @@ void bind_kinetics(py::module& m) {
           },
           py::arg("temp"), py::arg("pres"), py::arg("conc"),
           py::arg("extra") = std::map<std::string, torch::Tensor>{})
+      .def("forward_with_rate_constants",
+           torch::wrap_pybind_function_no_gil(
+               &kintera::KineticsImpl::forward_with_rate_constants),
+           py::arg("temp"), py::arg("pres"), py::arg("conc"),
+           py::arg("extra") = std::map<std::string, torch::Tensor>{})
       .def("jacobian", &kintera::KineticsImpl::jacobian, py::arg("temp"),
            py::arg("conc"), py::arg("cvol"), py::arg("rate"), py::arg("rc_ddC"),
-           py::arg("rc_ddT") = torch::nullopt);
+           py::arg("rc_ddT") = torch::nullopt,
+           py::arg("rate_constants") = torch::nullopt);
 }

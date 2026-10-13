@@ -15,12 +15,13 @@ torch::Tensor EvaporationExtent::forward(torch::autograd::AutogradContext* ctx,
                             : std::numeric_limits<double>::epsilon();
   const double maxval = single ? std::numeric_limits<float>::max()
                                : std::numeric_limits<double>::max();
-  TORCH_CHECK(torch::isfinite(conc).all().item<bool>() &&
-                  conc.ge(0).all().item<bool>() &&
-                  torch::isfinite(logkc).all().item<bool>(),
-              "General evaporation requires finite nonnegative concentrations "
-              "and a finite log saturation quotient");
+  TORCH_CHECK(
+      (torch::isfinite(conc).all() & torch::isfinite(logkc).all()).item<bool>(),
+      "General evaporation requires finite concentrations "
+      "and a finite log saturation quotient");
 
+  auto nonnegative = conc.ge(0);
+  conc = conc.clamp_min(0.);
   auto product = nu.gt(0);
   auto reactant = nu.lt(0);
   auto participating = nu.ne(0);
@@ -93,7 +94,9 @@ torch::Tensor EvaporationExtent::forward(torch::autograd::AutogradContext* ctx,
     // than an ulp from complete depletion of a gaseous reactant.
     done = done | f.abs().le(32 * eps) |
            (hi - lo).le(8 * eps * x.abs().clamp_min(tiny));
-    if (done.all().item<bool>()) break;
+    // Amortize CUDA device-to-host convergence checks across iterations.
+    if ((!conc.is_cuda() || iteration % 8 == 7) && done.all().item<bool>())
+      break;
     auto surface = torch::where(participating, c + nu * x.unsqueeze(-2),
                                 torch::ones_like(c))
                        .clamp_min(tiny);
@@ -121,7 +124,8 @@ torch::Tensor EvaporationExtent::forward(torch::autograd::AutogradContext* ctx,
   auto denom = (nu.square() * ratio).sum(-2);
   auto dc = -nu * ratio / denom.unsqueeze(-2);
   auto dk = smallest / denom;
-  dc = torch::where(active.unsqueeze(-2), dc, torch::zeros_like(dc));
+  dc = torch::where(active.unsqueeze(-2) & nonnegative, dc,
+                    torch::zeros_like(dc));
   dk = torch::where(active, dk, torch::zeros_like(dk));
   ctx->save_for_backward({dc, dk});
   return x;

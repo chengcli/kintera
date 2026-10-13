@@ -14,6 +14,7 @@ R = 8.31446
 KAPPA = 12 * 2e-5 * 43.7e-6 / 1e-8
 NAMES = ["Na", "H2S", "H2", "Na2S(s)"]
 NU = [2., 1., -1., -1.]
+DEVICES = ["cpu", pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA"))]
 CARD = """
 reference-state: {Tref: 300., Pref: 1.e5}
 species:
@@ -135,13 +136,15 @@ def concentrations(op, solid=.01, h2=.8):
     return torch.tensor([[values[name] for name in op.species()]], dtype=torch.float64)
 
 
+@pytest.mark.parametrize("device", DEVICES)
 @pytest.mark.parametrize("solid,h2", [(.01, .8), (0., .8), (.01, 0.)])
-def test_kinetics_rate_and_jacobian(tmp_path, solid, h2):
+def test_kinetics_rate_and_jacobian(tmp_path, solid, h2, device):
     op, kin = load(tmp_path)
-    c = concentrations(op, solid, h2)
-    t, p = torch.tensor([1200.]), torch.tensor([1e5])
-    rate, dc, _ = kin.forward(t, p, c)
-    jac = kin.jacobian(t, c, torch.ones(1), rate, dc).clone()
+    kin.to(torch.device(device))
+    c = concentrations(op, solid, h2).to(device)
+    t, p = torch.tensor([1200.], device=device), torch.tensor([1e5], device=device)
+    rate, dc, _, kf = kin.forward_with_rate_constants(t, p, c)
+    jac = kin.jacobian(t, c, torch.ones_like(t), rate, dc, rate_constants=kf).clone()
     assert rate.item() == pytest.approx(KAPPA * solid * reference([1e-5, 2e-5, h2]), rel=2e-10, abs=1e-300)
     assert torch.isfinite(jac).all()
     # Inactive missing-H2 branch intentionally uses zero derivatives.
@@ -278,14 +281,16 @@ def test_trace_extent_with_one_large_product(dtype, na, h2s):
     assert torch.isfinite(c.grad).all()
 
 
-def test_fixed_energy_kinetics_jacobian_includes_temperature_feedback(tmp_path):
+@pytest.mark.parametrize("device", DEVICES)
+def test_fixed_energy_kinetics_jacobian_includes_temperature_feedback(tmp_path, device):
     op, _ = load(tmp_path)
     op.evolve_temperature(True)
     kin = kt.Kinetics(op)
-    c = concentrations(op)
-    t, p = torch.tensor([1200.]), torch.tensor([1e5])
+    kin.to(torch.device(device))
+    c = concentrations(op).to(device)
+    t, p = torch.tensor([1200.], device=device), torch.tensor([1e5], device=device)
     cv_by_name = {"Na": 1.5, "H2S": 2.5, "H2": 2.5, "Na2S(s)": 9.}
-    cv = R * torch.tensor([cv_by_name[name] for name in op.species()])
+    cv = R * torch.tensor([cv_by_name[name] for name in op.species()], device=device)
     cvol = (c * cv).sum(-1)
     energy = cvol * (t - 300.)
     rate, dc, dt = kin.forward(t, p, c)
@@ -300,3 +305,149 @@ def test_fixed_energy_kinetics_jacobian_includes_temperature_feedback(tmp_path):
         temp_minus = 300. + energy / (minus * cv).sum(-1)
         fd = (kin.forward(temp_plus, p, plus)[0] - kin.forward(temp_minus, p, minus)[0]) / (2 * step)
         assert jac[0, 0, i].item() == pytest.approx(fd.item(), rel=3e-6, abs=1e-12)
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("general", [False, True])
+@pytest.mark.parametrize("wrt", ["conc", "dc", "dt"])
+@pytest.mark.parametrize("solid,explicit", [(0., True), (.01, True), (.01, False)])
+def test_jacobian_backward_preserves_saved_tensors(tmp_path, device, dtype, general, wrt, solid, explicit):
+    card = CARD if general else CARD.replace("Na2S(s) + H2 => 2 Na + H2S", "Na2S(s) => Na + H2S")
+    op, kin = load(tmp_path, card)
+    kin.to(torch.device(device))
+    kin.to(dtype)
+    c = concentrations(op, solid=solid).to(device=device, dtype=dtype)
+    t, p = torch.full((1,), 1200., device=device, dtype=dtype), torch.full((1,), 1e5, device=device, dtype=dtype)
+    rate, dc, _, kf = kin.forward_with_rate_constants(t, p, c)
+    c.requires_grad_(wrt == "conc")
+    dc.requires_grad_(wrt == "dc")
+    dt = torch.ones_like(rate, requires_grad=True) if wrt == "dt" else None
+    jac = kin.jacobian(t, c, torch.ones_like(t), rate, dc, dt, rate_constants=kf if explicit else None)
+    jac.sum().backward()
+    solid_id = op.species().index("Na2S(s)")
+    if wrt == "dc":
+        torch.testing.assert_close(dc.grad, c[..., solid_id, None, None].expand_as(dc))
+    elif wrt == "dt":
+        cv_by_name = {"Na": 1.5, "H2S": 2.5, "H2": 2.5, "Na2S(s)": 9.}
+        total_cv = sum(cv_by_name[name] for name in op.species())
+        expected = torch.full_like(dt, -solid * total_cv * R * (1200. - 300.))
+        torch.testing.assert_close(dt.grad, expected)
+    else:
+        expected = torch.zeros_like(c)
+        expected[..., solid_id] = dc.sum((-1, -2))
+        if not explicit:
+            expected[..., solid_id] -= rate.sum(-1) / solid**2
+        torch.testing.assert_close(c.grad, expected)
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("solid", [0., .01])
+@pytest.mark.parametrize("general", [False, True])
+def test_jacobian_retained_forward_survives_interleaved_batches(tmp_path, device, dtype, solid, general):
+    card = CARD if general else CARD.replace("Na2S(s) + H2 => 2 Na + H2S", "Na2S(s) => Na + H2S")
+    op, kin = load(tmp_path, card)
+    kin.to(torch.device(device))
+    kin.to(dtype)
+    c = concentrations(op, solid=solid).to(device=device, dtype=dtype).expand(3, -1).clone()
+    t, p = torch.full((3,), 1200., device=device, dtype=dtype), torch.full((3,), 1e5, device=device, dtype=dtype)
+    rate, dc, _, kf = kin.forward_with_rate_constants(t, p, c)
+    before = kin.jacobian(t, c, torch.ones_like(t), rate, dc, rate_constants=kf)
+    kin.forward(t[:1] + 100., p[:1] * 2., c[:1])
+    after = kin.jacobian(t, c, torch.ones_like(t), rate, dc, rate_constants=kf)
+    torch.testing.assert_close(after, before)
+    if solid:
+        torch.testing.assert_close(kin.jacobian(t, c, torch.ones_like(t), rate, dc), before)
+    else:
+        assert (after[..., op.species().index("Na2S(s)")] > 0).all()
+        with pytest.raises(RuntimeError, match="rate_constants"):
+            kin.jacobian(t, c, torch.ones_like(t), rate, dc)
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_zero_solid_jacobian_preserves_pressure_and_override(tmp_path, device, dtype):
+    op, kin = load(tmp_path, CARD.replace("diff_P: 0.", "diff_P: -1."))
+    kin.to(torch.device(device))
+    kin.to(dtype)
+    c = concentrations(op, solid=0.).to(device=device, dtype=dtype).expand(2, -1).clone()
+    t = torch.full((2,), 1200., device=device, dtype=dtype)
+    p = torch.tensor([1e5, 2e5], device=device, dtype=dtype)
+    rate, dc, _, kf = kin.forward_with_rate_constants(t, p, c)
+    jac = kin.jacobian(t, c, torch.ones_like(t), rate, dc, rate_constants=kf)
+    solid_id = op.species().index("Na2S(s)")
+    torch.testing.assert_close(jac[..., solid_id], kf)
+    torch.testing.assert_close(kf[0], 2 * kf[1])
+    override = torch.full_like(kf, .123)
+    rate, dc, _, kf = kin.forward_with_rate_constants(t, p, c, {"kf_override": override})
+    jac = kin.jacobian(t, c, torch.ones_like(t), rate, dc, rate_constants=kf)
+    torch.testing.assert_close(jac[..., solid_id], override)
+    assert torch.count_nonzero(rate) == 0
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize("general,negative_species", [(False, "Na"), (False, "Na2S(s)"), (True, "Na"), (True, "H2"), (True, "Na2S(s)")])
+def test_negative_concentrations_clamp_rate_and_derivative(tmp_path, device, dtype, negative_species, general):
+    card = CARD if general else CARD.replace("Na2S(s) + H2 => 2 Na + H2S", "Na2S(s) => Na + H2S")
+    data = yaml.safe_load(card)
+    op, kin = load(tmp_path, yaml.safe_dump(data))
+    kin.to(torch.device(device))
+    kin.to(dtype)
+    values = dict(zip(NAMES, [1e-5, 2e-5, .8, .01]))
+    values[negative_species] = -.01
+    c = torch.tensor([[values[name] for name in op.species()]], dtype=dtype, device=device)
+    t, p = torch.full((1,), 1200., device=device, dtype=dtype), torch.full((1,), 1e5, device=device, dtype=dtype)
+    rate, dc, _, kf = kin.forward_with_rate_constants(t, p, c)
+    jac = kin.jacobian(t, c, torch.ones_like(t), rate, dc, rate_constants=kf)
+    expected = kin.forward(t, p, c.clamp_min(0))[0]
+    torch.testing.assert_close(rate, expected)
+    assert torch.isfinite(jac).all()
+    assert torch.count_nonzero(jac[..., op.species().index(negative_species)]) == 0
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_three_gas_products_direct_extent(device, dtype):
+    mod = module(["Na2S(s) => Na + H2S + H2"])
+    mod.to(torch.device(device))
+    mod.to(dtype)
+    c = torch.tensor([[0., 0., 0., .01]], device=device, dtype=dtype, requires_grad=True)
+    s = torch.tensor([[1.], [1.], [1.], [-1.]], device=device, dtype=dtype)
+    rate = direct(mod, c, stoich=s)
+    expected = reference([0., 0., 0.], nu=(1., 1., 1.))
+    assert rate.item() / KAPPA == pytest.approx(expected, rel=3e-5 if dtype == torch.float32 else 2e-10)
+    rate.sum().backward()
+    assert torch.isfinite(c.grad).all()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_cpu_cuda_rate_and_jacobian_agree(tmp_path, dtype):
+    outputs = []
+    for device in ["cpu", "cuda"]:
+        op, kin = load(tmp_path)
+        kin.to(torch.device(device))
+        kin.to(dtype)
+        c = concentrations(op).to(device=device, dtype=dtype)
+        t, p = torch.full((1,), 1200., device=device, dtype=dtype), torch.full((1,), 1e5, device=device, dtype=dtype)
+        rate, dc, _, kf = kin.forward_with_rate_constants(t, p, c)
+        jac = kin.jacobian(t, c, torch.ones_like(t), rate, dc, rate_constants=kf)
+        outputs.append((rate.cpu(), jac.cpu()))
+    torch.testing.assert_close(outputs[0], outputs[1], rtol=3e-5 if dtype == torch.float32 else 2e-10, atol=1e-12)
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+def test_negative_unrelated_gas_has_no_effect(device, dtype):
+    mod = module(["Na2S(s) => 2 Na + H2S"])
+    mod.to(torch.device(device))
+    mod.to(dtype)
+    c = torch.tensor([[1e-5, 2e-5, -.01, .01]], dtype=dtype, device=device, requires_grad=True)
+    s = torch.tensor([[2.], [1.], [0.], [-1.]], dtype=dtype, device=device)
+    rate = direct(mod, c, stoich=s)
+    torch.testing.assert_close(rate, direct(mod, c.detach().clamp_min(0), stoich=s))
+    rate.sum().backward()
+    assert c.grad[0, 2] == 0
+    assert torch.isfinite(c.grad).all()

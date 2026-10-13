@@ -38,8 +38,9 @@ def run(dt=1000., duration=100000., device="cpu"):
         step = min(dt, duration - time)
         for _ in range(60):
             pressure = kt.constants.Rgas * temp * conc[:, :ngas].sum(-1)
-            rate, dc, _ = kinetics.forward(temp, pressure, conc)
-            jac = kinetics.jacobian(temp, conc, torch.ones_like(temp), rate, dc)
+            rate, dc, _, kf = kinetics.forward_with_rate_constants(temp, pressure, conc)
+            jac = kinetics.jacobian(temp, conc, torch.ones_like(temp), rate, dc,
+                                    rate_constants=kf)
             delta = kt.evolve_implicit(rate, kinetics.buffer("stoich"), jac, step)
             trial = conc + delta
             if (torch.isfinite(trial).all() and (trial >= 0).all() and

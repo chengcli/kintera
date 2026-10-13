@@ -179,7 +179,8 @@ public:
   // Jacobian of reaction rates w.r.t. species concentrations
   Tensor jacobian(Tensor temp, Tensor conc, Tensor cvol,
                   Tensor rate, Tensor rc_ddC,
-                  optional<Tensor> rc_ddT = nullopt) const;
+                  optional<Tensor> rc_ddT = nullopt,
+                  optional<Tensor> rate_constants = nullopt) const;
 
   // Buffers / data
   Tensor stoich;           // (nspecies, nreaction) stoichiometric matrix
@@ -197,6 +198,11 @@ rate, rc_ddC, rc_ddT = kinet.forward(temp, pres, conc, extra)
 
 # Jacobian
 jac = kinet.jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT=None)
+
+# Explicit forward rate constants (required for zero-abundance condensates)
+rate, rc_ddC, rc_ddT, kf = kinet.forward_with_rate_constants(temp, pres, conc)
+jac = kinet.jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT,
+                     rate_constants=kf)
 
 # Introspection
 kinet.options                   # KineticsOptions (read-only)
@@ -384,7 +390,7 @@ activity, and a fixed particle diameter; it is not a multicomponent transport
 model. Saturated/supersaturated or gas-reactant-starved states do not evaporate.
 
 General surface extents use a bracketed solve and implicit first derivatives.
-Inputs to this path must have finite nonnegative concentrations and a finite
+Inputs to this path must have finite concentrations and a finite
 logarithmic saturation quotient. Legacy one-product and unit-coefficient
 two-product reactions retain their analytic rate formulas.
 
@@ -395,10 +401,30 @@ order as `C` and `stoich`. Unexpanded `C` has shape `(..., nspecies)`; expanded
 `C` has shape `(..., nspecies, nreaction)`. Classification is not taken from a
 mutable global registry during rate evaluation.
 
+Negative concentrations are treated as zero during the general surface solve;
+its derivative with respect to a negative concentration is zero. Condensed
+abundance is also clamped at zero, so negative solver iterates never generate
+negative evaporation rates. Non-finite inputs still raise an error. The surface
+solve retains its 128-iteration convergence guard; on CUDA it checks convergence
+every eight iterations to reduce host synchronization.
+
 Chemical stoichiometry is unchanged; only evaporation's kinetic prefactor is
-first order in the solid. Call `Kinetics.jacobian` with results from the most
-recent `forward` on that instance, since its derivative at zero solid abundance
-uses the cached rate coefficient. `evolve_implicit` remains a linearized step
+first order in the solid. `jacobian` is stateless: it uses only its arguments.
+Use `forward_with_rate_constants` (the same arguments as `forward`) to obtain
+`(rate, rc_ddC, rc_ddT, kf)`, and pass `rate_constants=kf` to `jacobian`. `kf` has
+shape `(..., nreaction_orig)` and includes any `kf_override` values, before
+mass-action multiplication or reversible augmentation. The returned coefficient
+is detached, just like `rate`; differentiating the assembled Jacobian treats
+these supplied tensors and derivatives as independent inputs, not a full
+second derivative through the surface solver.
+
+The existing three-result `forward` remains available. Without `rate_constants`,
+the Jacobian recovers evaporation coefficients from rate/solid abundance where
+the solid is positive. At exactly zero solid abundance, rate alone cannot recover
+the coefficient: the call raises an explicit error instead of consulting hidden
+state. Evaporation callers in snapy/paddle that can encounter empty condensates
+should migrate to the explicit form above. Results remain valid across
+interleaved forwards with different states and batch shapes. `evolve_implicit` remains a linearized step
 without a positivity guarantee. The standalone
 `examples/example_na2s_evaporation.py` demonstrates timestep rejection and
 substepping for a conserved, isothermal box without clipping species inventories.
