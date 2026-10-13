@@ -179,7 +179,8 @@ public:
   // Jacobian of reaction rates w.r.t. species concentrations
   Tensor jacobian(Tensor temp, Tensor conc, Tensor cvol,
                   Tensor rate, Tensor rc_ddC,
-                  optional<Tensor> rc_ddT = nullopt) const;
+                  optional<Tensor> rc_ddT = nullopt,
+                  optional<Tensor> rate_constants = nullopt) const;
 
   // Buffers / data
   Tensor stoich;           // (nspecies, nreaction) stoichiometric matrix
@@ -197,6 +198,11 @@ rate, rc_ddC, rc_ddT = kinet.forward(temp, pres, conc, extra)
 
 # Jacobian
 jac = kinet.jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT=None)
+
+# Explicit forward rate constants (required for zero-abundance condensates)
+rate, rc_ddC, rc_ddT, kf = kinet.forward_with_rate_constants(temp, pres, conc)
+jac = kinet.jacobian(temp, conc, cvol, rate, rc_ddC, rc_ddT,
+                     rate_constants=kf)
 
 # Introspection
 kinet.options                   # KineticsOptions (read-only)
@@ -348,6 +354,80 @@ Diffusion-limited evaporation. Inherits from `NucleationOptions`.
 | `diff_c`, `diff_T`, `diff_P` | `List[float]` | Diffusivity parameters |
 | `vm` | `List[float]` | Molar volume [m³/mol] |
 | `diameter` | `List[float]` | Particle diameter [m] |
+
+Evaporation supports an irreversible reaction with one condensed reactant
+(coefficient 1), optional gas reactants, and any number of gas products with
+positive coefficients. For example:
+
+```yaml
+species:
+  - {name: H2, phase: gas, composition: {H: 2}, cv_R: 2.5}
+  - {name: Na, phase: gas, composition: {Na: 1}, cv_R: 1.5}
+  - {name: H2S, phase: gas, composition: {H: 2, S: 1}, cv_R: 2.5}
+  - {name: Na2S(s), phase: solid, composition: {Na: 2, S: 1}, cv_R: 18, u0_R: -60000}
+reactions:
+  - equation: Na2S(s) + H2 => 2 Na + H2S
+    type: evaporation
+    rate-constant: {formula: na_h2s_visscher, diff_c: 2.e-5,
+                    vm: 4.22e-5, diameter: 1.e-4}
+```
+
+These material parameters are illustrative. Mixed-reactant YAML requires explicit
+phases on every participating species. Legacy single-reactant cards retain their
+phase inference. Condensed products, multiple condensed reactants, reversible
+arrows, and custom kinetic orders are not supported by this rate law.
+
+For gas coefficients `nu` positive on the evaporation product side, the surface
+extent `x` satisfies
+`sum(nu * log(C + nu*x)) = log(Qsat) - sum(nu)*log(R*T)`.
+`Qsat` is the existing saturation quotient using numerical partial pressures in
+Pa, including consumed gases in its denominator. The rate in mol/(m³ s) is
+`12*D*vm/diameter**2 * Csolid * x`, where
+`D = diff_c*(T/Tref)**diff_T*(P/Pref)**diff_P`.
+Gas consumption enters the surface solve, not an extra mass-action multiplier.
+The model assumes one effective diffusivity for all gases, pure condensed-phase
+activity, and a fixed particle diameter; it is not a multicomponent transport
+model. Saturated/supersaturated or gas-reactant-starved states do not evaporate.
+
+General surface extents use a bracketed solve and implicit first derivatives.
+Inputs to this path must have finite concentrations and a finite
+logarithmic saturation quotient. Legacy one-product and unit-coefficient
+two-product reactions retain their analytic rate formulas.
+
+`Kinetics.forward` supplies gas classification automatically. Direct calls to
+`Evaporation.forward(T, P, C, other)` require `other["stoich"]` and, for mixed
+reactants, `other["gas_mask"]`: a boolean `(nspecies,)` tensor in the same row
+order as `C` and `stoich`. Unexpanded `C` has shape `(..., nspecies)`; expanded
+`C` has shape `(..., nspecies, nreaction)`. Classification is not taken from a
+mutable global registry during rate evaluation.
+
+Negative concentrations are treated as zero during the general surface solve;
+its derivative with respect to a negative concentration is zero. Condensed
+abundance is also clamped at zero, so negative solver iterates never generate
+negative evaporation rates. Non-finite inputs still raise an error. The surface
+solve retains its 128-iteration convergence guard; on CUDA it checks convergence
+every eight iterations to reduce host synchronization.
+
+Chemical stoichiometry is unchanged; only evaporation's kinetic prefactor is
+first order in the solid. `jacobian` is stateless: it uses only its arguments.
+Use `forward_with_rate_constants` (the same arguments as `forward`) to obtain
+`(rate, rc_ddC, rc_ddT, kf)`, and pass `rate_constants=kf` to `jacobian`. `kf` has
+shape `(..., nreaction_orig)` and includes any `kf_override` values, before
+mass-action multiplication or reversible augmentation. The returned coefficient
+is detached, just like `rate`; differentiating the assembled Jacobian treats
+these supplied tensors and derivatives as independent inputs, not a full
+second derivative through the surface solver.
+
+The existing three-result `forward` remains available. Without `rate_constants`,
+the Jacobian recovers evaporation coefficients from rate/solid abundance where
+the solid is positive. At exactly zero solid abundance, rate alone cannot recover
+the coefficient: the call raises an explicit error instead of consulting hidden
+state. Evaporation callers in snapy/paddle that can encounter empty condensates
+should migrate to the explicit form above. Results remain valid across
+interleaved forwards with different states and batch shapes. `evolve_implicit` remains a linearized step
+without a positivity guarantee. The standalone
+`examples/example_na2s_evaporation.py` demonstrates timestep rejection and
+substepping for a conserved, isothermal box without clipping species inventories.
 
 ### Coagulation
 

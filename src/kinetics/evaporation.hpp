@@ -97,6 +97,9 @@ class EvaporationImpl : public torch::nn::Cloneable<EvaporationImpl> {
   //! reactions with two gaseous products; not a buffer, so dtype casts skip it
   torch::Tensor two_product_rxns_;
 
+  //! Extended stoichiometries evaluated by the surface-equilibrium solver.
+  torch::Tensor general_rxns_;
+
   //! Constructor to initialize the layer
   EvaporationImpl() : options(EvaporationOptionsImpl::create()) {}
   explicit EvaporationImpl(EvaporationOptions const& options_);
@@ -108,7 +111,8 @@ class EvaporationImpl : public torch::nn::Cloneable<EvaporationImpl> {
    * \param T temperature [K], shape (...)
    * \param P pressure [pa], shape (...)
    * \param C concentration [mol/m^3], shape (..., nspecies)
-   * \param other additional parameters, e.g., concentration
+   * \param other stoich and optional gas_mask (bool, nspecies). Mixed
+   *              gas/condensed reactants require gas_mask.
    * \return rate constant in (mol, m, s), shape (..., nreaction)
    */
   torch::Tensor forward(torch::Tensor T, torch::Tensor P, torch::Tensor C,

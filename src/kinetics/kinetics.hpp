@@ -109,12 +109,14 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   //! reactant-only stoichiometry (positive values), shape (nspecies,
   //! nreaction_orig)
   torch::Tensor react_stoich;
+  //! Forward kinetic orders; evaporation is first order in its solid only.
+  torch::Tensor forward_orders;
+  int evaporation_start_ = 0;
+  int evaporation_count_ = 0;
   //! net mole change per reaction, shape (nreaction_orig,)
   torch::Tensor dn;
   //! whether any reversible reactions exist
   bool has_reversible_ = false;
-  //! cached raw rate constants from last forward() call (before mass-action)
-  mutable torch::Tensor last_kf_;
 
   // --- split forward/reverse data ---
   //! number of reversible reactions
@@ -130,6 +132,7 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   void reset() override;
 
   //! Compute the reaction-space Jacobian of mass-action rates.
+  //! Pass explicit rate_constants for evaporation at zero solid abundance.
   /*!
    * \param temp   temperature [K], shape (...)
    * \param conc   species concentrations [mol/m^3], shape (..., nspecies)
@@ -140,16 +143,19 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
    *               concentration, shape (..., nspecies, nreaction_aug)
    * \param rc_ddT optional derivative of the raw rate constants with respect
    *               to temperature [mol/(m^3 K s)], shape (..., nreaction_aug)
+   * \param rate_constants optional raw forward coefficients, shape
+   *               (..., nreaction_orig), required at zero solid abundance
    * \return       reaction-space Jacobian d(rate_i)/dC_j,
    *               shape (..., nreaction_aug, nspecies)
    *
    * Here `nreaction_aug` is the number of forward reactions plus any
    * appended reverse reactions when reversible chemistry is enabled.
    */
-  torch::Tensor jacobian(torch::Tensor temp, torch::Tensor conc,
-                         torch::Tensor cvol, torch::Tensor rate,
-                         torch::Tensor rc_ddC,
-                         torch::optional<torch::Tensor> rc_ddT) const;
+  torch::Tensor jacobian(
+      torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
+      torch::Tensor rate, torch::Tensor rc_ddC,
+      torch::optional<torch::Tensor> rc_ddT,
+      torch::optional<torch::Tensor> rate_constants = torch::nullopt) const;
 
   //! Compute kinetic rate of reactions
   /*!
@@ -166,6 +172,13 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
   std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
   forward(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
           std::map<std::string, torch::Tensor> const& extra = {});
+
+  //! As forward(), plus raw forward rate constants for a stateless Jacobian.
+  std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>,
+             torch::Tensor>
+  forward_with_rate_constants(
+      torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
+      std::map<std::string, torch::Tensor> const& extra = {});
 
  private:
   // used in evaluating jacobian

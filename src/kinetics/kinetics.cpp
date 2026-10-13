@@ -274,6 +274,24 @@ void KineticsImpl::reset() {
   rev_mask = register_buffer("rev_mask", rev_mask_data);
   prod_stoich = register_buffer("prod_stoich", prod_stoich_data);
   react_stoich = register_buffer("react_stoich", react_stoich_data);
+  auto orders = react_stoich_data.clone();
+  evaporation_start_ = options->arrhenius()->reactions().size() +
+                       options->coagulation()->reactions().size();
+  evaporation_count_ = options->evaporation()->reactions().size();
+  if (evaporation_count_ > 0) {
+    auto ngas = options->vapor_ids().size();
+    auto col = orders.narrow(1, evaporation_start_, evaporation_count_);
+    col.narrow(0, 0, ngas).zero_();
+    auto signed_col =
+        stoich_base.narrow(1, evaporation_start_, evaporation_count_);
+    auto condensed = signed_col.narrow(0, ngas, nspecies - ngas);
+    TORCH_CHECK(
+        condensed.lt(0).sum(0).eq(1).all().item<bool>() &&
+            (condensed.eq(0) | condensed.eq(-1)).all().item<bool>(),
+        "Evaporation requires one condensed reactant with coefficient 1 "
+        "and no condensed products");
+  }
+  forward_orders = register_buffer("forward_orders", orders);
   dn = register_buffer("dn", dn_data);
 
   if (options->verbose()) {
@@ -286,10 +304,12 @@ void KineticsImpl::reset() {
 torch::Tensor KineticsImpl::jacobian(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::Tensor rc_ddC,
-    torch::optional<torch::Tensor> rc_ddT) const {
+    torch::optional<torch::Tensor> rc_ddT,
+    torch::optional<torch::Tensor> rate_constants) const {
   // Tiny floor just above IEEE 754 min-normal to avoid 0/0 in rate/conc.
   // Must match the floor in forward() for consistency.
-  auto conc_safe = conc.clamp_min(1e-300);
+  auto conc_safe =
+      conc.clamp_min(conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300);
 
   // Build augmented reactant stoichiometry: for forward reactions use
   // react_stoich, for reverse reactions use prod_stoich (products of the
@@ -298,16 +318,56 @@ torch::Tensor KineticsImpl::jacobian(
   if (has_reversible_) {
     auto rev_indices = rev_indices_.to(prod_stoich.device(), torch::kLong);
     auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices);
-    react_st_full = torch::cat({react_stoich, prod_stoich_rev}, 1);
+    react_st_full = torch::cat({forward_orders, prod_stoich_rev}, 1);
   } else {
-    react_st_full = react_stoich;
+    react_st_full = forward_orders;
   }
   auto react_st = react_st_full.t();  // (nrxn_aug, nspecies)
   auto concp_fwd =
       conc_safe.unsqueeze(-2).pow(react_st).prod(-1, /*keepdim=*/true);
 
-  auto jac = concp_fwd * rc_ddC.transpose(-1, -2) +
-             react_st * rate.unsqueeze(-1) / conc_safe.unsqueeze(-2);
+  // Assemble the evaporation concentration factors before autograd can save
+  // them. Never overwrite a tensor used by a previous multiplication.
+  auto reaction_ids = torch::arange(
+      react_st.size(0), forward_orders.options().dtype(torch::kLong));
+  auto evaporation_rows =
+      reaction_ids.ge(evaporation_start_) &
+      reaction_ids.lt(evaporation_start_ + evaporation_count_);
+  auto ordinary_order = torch::where(evaporation_rows.unsqueeze(-1),
+                                     torch::zeros_like(react_st), react_st);
+  // Avoid evaluating discarded 0/C terms, whose backward can overflow at
+  // trace/zero concentrations even when the corresponding row is replaced.
+  auto denominator = torch::where(ordinary_order.ne(0), conc_safe.unsqueeze(-2),
+                                  torch::ones_like(conc_safe).unsqueeze(-2));
+  auto mass_derivative = ordinary_order * rate.unsqueeze(-1) / denominator;
+  if (evaporation_count_ > 0) {
+    auto order =
+        forward_orders.narrow(1, evaporation_start_, evaporation_count_).t();
+    auto solid = (conc.unsqueeze(-2) * order).sum(-1, true);
+    auto cp = solid.clamp_min(0.);
+    torch::Tensor k;
+    if (rate_constants.has_value()) {
+      TORCH_CHECK(rate_constants->sizes() ==
+                      rate.narrow(-1, 0, n_reactions_orig_).sizes(),
+                  "rate_constants must match the forward reaction rate shape");
+      k = rate_constants->narrow(-1, evaporation_start_, evaporation_count_);
+    } else {
+      TORCH_CHECK(solid.ne(0).all().item<bool>(),
+                  "Evaporation at zero solid abundance requires explicit "
+                  "rate_constants from forward_with_rate_constants()");
+      auto denominator =
+          torch::where(solid.gt(0), solid, torch::ones_like(solid));
+      k = rate.narrow(-1, evaporation_start_, evaporation_count_) /
+          denominator.squeeze(-1);
+    }
+    auto rows = torch::arange(evaporation_start_,
+                              evaporation_start_ + evaporation_count_,
+                              forward_orders.options().dtype(torch::kLong));
+    concp_fwd = concp_fwd.index_copy(-2, rows, cp);
+    mass_derivative = mass_derivative.index_copy(
+        -2, rows, k.unsqueeze(-1) * order * solid.ge(0));
+  }
+  auto jac = concp_fwd * rc_ddC.transpose(-1, -2) + mass_derivative;
 
   if (rc_ddT.has_value()) {
     auto intEng = eval_intEng_R(temp, conc, options) * constants::Rgas;
@@ -321,6 +381,16 @@ std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>>
 KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
                       torch::Tensor conc,
                       std::map<std::string, torch::Tensor> const& extra) {
+  auto [rate, dc, dt, kf] =
+      forward_with_rate_constants(temp, pres, conc, extra);
+  return std::make_tuple(rate, dc, dt);
+}
+
+std::tuple<torch::Tensor, torch::Tensor, torch::optional<torch::Tensor>,
+           torch::Tensor>
+KineticsImpl::forward_with_rate_constants(
+    torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
+    std::map<std::string, torch::Tensor> const& extra) {
   int nrxn_orig = n_reactions_orig_;
 
   // dimension of reaction rate constants (original reactions only)
@@ -344,6 +414,9 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
   auto stoich_base = stoich.narrow(1, 0, nrxn_orig);
 
   std::map<std::string, torch::Tensor> other(extra.begin(), extra.end());
+  other["gas_mask"] =
+      torch::arange(conc.size(-1), stoich.options())
+          .lt(static_cast<int64_t>(options->vapor_ids().size()));
   int first = 0;
   for (int i = 0; i < (int)rc_evaluator.size(); ++i) {
     if (_nreactions[i] == 0) continue;
@@ -411,16 +484,22 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     }
   }
 
-  last_kf_ = result.detach().clone();
-
   // Tiny floor just above IEEE 754 min-normal so that pow() and the
   // Jacobian's rate/conc ratio stay finite.  A large floor (e.g. 1e-20)
   // inflates rates of trace-species reactions and destroys the Jacobian
   // conditioning via the reverse-reaction rc_ddC / Kc amplification.
-  auto conc_safe = conc.clamp_min(1e-300);
+  auto conc_safe =
+      conc.clamp_min(conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300);
 
   // mass-action forward: k_f * product(C_reactant^stoich)
-  auto rate_f = result * conc_safe.unsqueeze(-1).pow(react_stoich).prod(-2);
+  auto rate_f = result * conc_safe.unsqueeze(-1).pow(forward_orders).prod(-2);
+  if (evaporation_count_ > 0) {
+    auto orders =
+        forward_orders.narrow(1, evaporation_start_, evaporation_count_);
+    auto cp = (conc.unsqueeze(-1) * orders).sum(-2).clamp_min(0.);
+    rate_f.narrow(-1, evaporation_start_, evaporation_count_)
+        .copy_(result.narrow(-1, evaporation_start_, evaporation_count_) * cp);
+  }
 
   // Split forward/reverse: augment rates with separate reverse entries
   if (has_reversible_ && options->has_nasa9()) {
@@ -460,7 +539,7 @@ KineticsImpl::forward(torch::Tensor temp, torch::Tensor pres,
     }
   }
 
-  return std::make_tuple(rate_f.detach(), rc_ddC, rc_ddT);
+  return std::make_tuple(rate_f.detach(), rc_ddC, rc_ddT, result.detach());
 }
 
 }  // namespace kintera

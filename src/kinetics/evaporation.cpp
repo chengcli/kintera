@@ -1,4 +1,5 @@
 // C/C++
+#include <cmath>
 #include <limits>
 
 // yaml
@@ -11,31 +12,59 @@
 #include <kintera/units/units.hpp>
 
 #include "evaporation.hpp"
+#include "evaporation_extent.hpp"
 
 namespace kintera {
 
 extern std::vector<std::string> species_names;
+extern std::vector<std::string> species_phases;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,
                         EvaporationOptions op) {
-  for (auto& react : op->reactions()) {
-    // go through reactants
-    for (auto& [name, _] : react.reactants()) {
+  // Resolve phases at parsing time. Existing options subsequently carry their
+  // own gas/cloud IDs, independent of the mutable species registry.
+  for (auto const& react : op->reactions()) {
+    int clouds = 0;
+    auto phase_of = [&](std::string const& name) {
       auto it = std::find(species_names.begin(), species_names.end(), name);
       TORCH_CHECK(it != species_names.end(), "Species ", name,
                   " not found in species list");
-      cloud_set.insert(name);
+      auto id = it - species_names.begin();
+      return id < species_phases.size() ? species_phases[id] : std::string();
+    };
+    const bool mixed = react.reactants().size() > 1;
+    for (auto const& [name, nu] : react.reactants()) {
+      auto phase = phase_of(name);
+      TORCH_CHECK(!mixed || !phase.empty(),
+                  "Mixed-reactant evaporation requires "
+                  "explicit phase declarations: ",
+                  name);
+      if (phase == "gas") {
+        vapor_set.insert(name);
+      } else {
+        TORCH_CHECK(nu == 1.,
+                    "Evaporation requires one condensed reactant "
+                    "with coefficient 1: ",
+                    react.equation());
+        cloud_set.insert(name);
+        ++clouds;
+      }
     }
-
-    // go through products
-    for (auto& [name, _] : react.products()) {
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name,
-                  " not found in species list");
+    TORCH_CHECK(clouds == 1, "Evaporation requires one condensed reactant: ",
+                react.equation());
+    for (auto const& [name, nu] : react.products()) {
+      auto phase = phase_of(name);
+      TORCH_CHECK(phase == "gas" || (!mixed && phase.empty()),
+                  "Evaporation products must be gases with explicit phases "
+                  "for mixed-reactant reactions: ",
+                  name);
       vapor_set.insert(name);
     }
   }
+  for (auto const& name : vapor_set)
+    TORCH_CHECK(!cloud_set.count(name),
+                "Conflicting gas/cloud classification: ", name);
 }
 
 EvaporationOptions EvaporationOptionsImpl::from_yaml(const YAML::Node& root) {
@@ -79,41 +108,43 @@ void EvaporationImpl::reset() {
   diameter = register_buffer(
       "diameter", torch::tensor(options->diameter(), torch::kFloat64));
 
-  // the rate law needs one reactant and one or two products, all coefficient 1
-  std::vector<int64_t> two;
+  std::vector<int64_t> two, general;
   std::set<std::string> condensates;
-  std::map<std::string, std::string> gases;  // product -> its equation
   auto const& rxns = options->reactions();
   for (size_t j = 0; j < rxns.size(); ++j) {
     auto const& r = rxns[j];
-    bool unit_reactant = r.reactants().size() == 1 &&
-                         r.reactants().begin()->second == 1. && !r.reversible();
-    bool unit_products = r.products().size() == 1 || r.products().size() == 2;
-    for (auto const& [name, nu] : r.products()) unit_products &= (nu == 1.);
-    TORCH_CHECK(unit_reactant && unit_products, "Evaporation reaction '",
-                r.equation(),
-                "' must be irreversible with one reactant and one or two "
-                "products, each with stoichiometric coefficient 1");
-    condensates.insert(r.reactants().begin()->first);
-    for (auto const& [name, _] : r.products())
-      gases.emplace(name, r.equation());
-    if (r.products().size() == 2) two.push_back(static_cast<int64_t>(j));
+    TORCH_CHECK(
+        !r.reversible() && !r.reactants().empty() && !r.products().empty(),
+        "Evaporation must be irreversible with reactants and gas products");
+    for (auto const& side : {r.reactants(), r.products()})
+      for (auto const& [name, nu] : side)
+        TORCH_CHECK(std::isfinite(nu) && nu > 0.,
+                    "Evaporation coefficients must be finite and positive");
+    TORCH_CHECK(r.orders().empty(),
+                "Evaporation does not accept custom orders");
+    bool simple = r.reactants().size() == 1;
+    if (simple) {
+      TORCH_CHECK(
+          r.reactants().begin()->second == 1.,
+          "Evaporation requires one condensed reactant with coefficient 1");
+      condensates.insert(r.reactants().begin()->first);
+    }
+    bool legacy = simple && r.products().size() <= 2;
+    for (auto const& [name, nu] : r.products()) {
+      legacy &= nu == 1.;
+    }
+    if (!legacy)
+      general.push_back(static_cast<int64_t>(j));
+    else if (r.products().size() == 2)
+      two.push_back(static_cast<int64_t>(j));
   }
-  for (auto j : two)
-    for (auto const& [name, _] : rxns[j].products())
+  for (auto const& r : rxns)
+    for (auto const& [name, nu] : r.products())
       TORCH_CHECK(!condensates.count(name), "Evaporation reaction '",
-                  rxns[j].equation(), "' has the condensate '", name,
+                  r.equation(), "' has the condensate '", name,
                   "' as a product");
-
-  // a species evaporated by one reaction is a gas, not a condensate
-  for (auto const& r : rxns) {
-    auto const& name = r.reactants().begin()->first;
-    auto it = gases.find(name);
-    TORCH_CHECK(it == gases.end(), "Evaporation reaction '", r.equation(),
-                "' has the gas '", name, "' (a product of '", it->second,
-                "') as its reactant, which must be a condensate");
-  }
   two_product_rxns_ = torch::tensor(two, torch::kInt64);
+  general_rxns_ = torch::tensor(general, torch::kInt64);
 }
 
 void EvaporationImpl::pretty_print(std::ostream& os) const {
@@ -147,17 +178,44 @@ torch::Tensor EvaporationImpl::forward(
   // saturation deficit
   auto stoich = other.at("stoich");
   auto sp = stoich.clamp_min(0.);
+  torch::Tensor gas;
+  auto mask = other.find("gas_mask");
+  if (mask != other.end()) {
+    TORCH_CHECK(mask->second.scalar_type() == torch::kBool &&
+                    mask->second.dim() == 1 &&
+                    mask->second.size(0) == stoich.size(0),
+                "Evaporation gas_mask must be boolean with shape (nspecies,)");
+    gas = mask->second.to(stoich.device()).unsqueeze(-1);
+  } else {
+    for (auto const& r : options->reactions())
+      TORCH_CHECK(r.reactants().size() == 1,
+                  "Mixed-reactant evaporation requires other[gas_mask]");
+    gas = stoich.ge(0.);
+  }
+  auto solid = (~gas) & stoich.ne(0.);
+  TORCH_CHECK((solid.sum(0) == 1).all().item<bool>() &&
+                  torch::where(solid, stoich.eq(-1), stoich.ge(0) | gas)
+                      .all()
+                      .item<bool>(),
+              "Evaporation requires one condensed reactant with coefficient 1 "
+              "and no condensed products");
 
   LogSVPFunc::init(options);
   auto logsvp = LogSVPFunc::apply(temp);
 
-  auto ksat = torch::exp(logsvp - sp.sum(0) * (constants::Rgas * temp).log());
+  auto general_idx = general_rxns_.to(stoich.device());
+  auto legacy_logsvp = logsvp;
+  if (general_idx.numel() > 0)
+    legacy_logsvp = logsvp.index_fill(-1, general_idx, 0.);
+  auto ksat =
+      torch::exp(legacy_logsvp - sp.sum(0) * (constants::Rgas * temp).log());
 
   // two-product columns are replaced below; leave their c1 c2 out of eta so an
   // overflowing product cannot send inf * 0 = nan into the gradient
   auto sp1 = sp;
   if (two_product_rxns_.numel() > 0)
     sp1 = sp.index_fill(1, two_product_rxns_.to(sp.device()), 0.);
+  if (general_idx.numel() > 0) sp1 = sp1.index_fill(1, general_idx, 0.);
   auto eta = ksat - conc.pow(sp1).prod(-2);
 
   eta.clamp_min_(0);
@@ -191,6 +249,23 @@ torch::Tensor EvaporationImpl::forward(
     eta = eta.index_copy(-1, idx, x.clamp_min(0.));
   }
 
+  if (general_idx.numel() > 0) {
+    auto nu = torch::where(gas, stoich, torch::zeros_like(stoich))
+                  .index_select(1, general_idx);
+    auto c = conc;
+    if (c.size(-1) == 1) {
+      auto sizes = c.sizes().vec();
+      sizes.back() = general_idx.numel();
+      c = c.expand(sizes);
+    } else {
+      c = c.index_select(-1, general_idx);
+    }
+    auto tg = temp.index_select(-1, general_idx);
+    auto logkc = logsvp.index_select(-1, general_idx) -
+                 nu.sum(0) * (constants::Rgas * tg).log();
+    auto extent = EvaporationExtent::apply(c, nu, logkc);
+    eta = eta.index_copy(-1, general_idx, extent);
+  }
   return kappa * eta;
 }
 

@@ -1,0 +1,17 @@
+# Illustrative isothermal kinetics, not calibrated Na2S particle microphysics.
+reference-state: {Tref: 0., Pref: 1.e5}
+species:
+  - {name: H2, phase: gas, composition: {H: 2}, cv_R: 2.5}
+  - {name: Na, phase: gas, composition: {Na: 1}, cv_R: 1.5}
+  - {name: H2S, phase: gas, composition: {H: 2, S: 1}, cv_R: 2.5}
+  - {name: Na2S(s), phase: solid, composition: {Na: 2, S: 1}, cv_R: 18., u0_R: -60000.}
+reactions:
+  - equation: Na2S(s) + H2 => 2 Na + H2S
+    type: evaporation
+    rate-constant:
+      formula: na_h2s_visscher
+      diff_c: 2.e-5
+      diff_T: 0.
+      diff_P: 0.
+      vm: 4.22e-5  # approximate molar mass / solid density, m^3/mol
+      diameter: 1.e-4
