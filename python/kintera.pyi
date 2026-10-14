@@ -1245,6 +1245,46 @@ class EvaporationOptions(NucleationOptions):
         """
         ...
 
+    @overload
+    def form(self) -> List[str]:
+        """Get the rate form per reaction: 'diffusion' or 'kessler'."""
+        ...
+
+    @overload
+    def form(self, value: List[str]) -> EvaporationOptions:
+        """
+        Set the rate form per reaction (empty means 'diffusion' for all).
+
+        'diffusion': kappa = 12 D vm / d^2.
+        'kessler': kappa = k3 / n, n = P/(R T) + the condensed concentrations,
+        i.e. dx_v/dt = k3 x_p (x_sat - x_v) in mole fractions, subsaturated only.
+
+        Args:
+            value (list[str]): Rate forms
+
+        Returns:
+            EvaporationOptions: class object for method chaining
+        """
+        ...
+
+    @overload
+    def k3(self) -> List[float]:
+        """Get the Kessler evaporation coefficients k3 [1/s]."""
+        ...
+
+    @overload
+    def k3(self, value: List[float]) -> EvaporationOptions:
+        """
+        Set the Kessler evaporation coefficients k3 [1/s] (form 'kessler').
+
+        Args:
+            value (list[float]): k3 per reaction [1/s]
+
+        Returns:
+            EvaporationOptions: class object for method chaining
+        """
+        ...
+
 class Evaporation:
     """
     Evaporation rate kinetics model.

@@ -76,6 +76,25 @@ EvaporationOptions EvaporationOptionsImpl::from_yaml(const YAML::Node& root) {
 
     auto node = rxn_node["rate-constant"];
 
+    auto form = node["form"].as<std::string>("diffusion");
+    TORCH_CHECK(form == "diffusion" || form == "kessler",
+                "Unknown evaporation form '", form,
+                "'; expected 'diffusion' or 'kessler'");
+    options->form().push_back(form);
+    if (form == "kessler") {
+      TORCH_CHECK(node["k3"], "'k3' required for 'kessler' evaporation");
+      for (auto key : {"diff_c", "diff_T", "diff_P", "vm", "diameter"})
+        TORCH_CHECK(!node[key], "'", key,
+                    "' is not used by 'kessler' evaporation");
+      double k3 = node["k3"].as<double>();
+      TORCH_CHECK(std::isfinite(k3) && k3 >= 0.,
+                  "Kessler evaporation 'k3' must be finite and >= 0");
+      options->k3().push_back(k3);
+    } else {
+      TORCH_CHECK(!node["k3"], "'k3' requires form: kessler");
+      options->k3().push_back(0.);
+    }
+
     // unit system is [mol, m, s]
     options->diff_c().push_back(node["diff_c"].as<double>(0.2e-4));
     options->diff_T().push_back(node["diff_T"].as<double>(1.75));
@@ -145,6 +164,32 @@ void EvaporationImpl::reset() {
                   "' as a product");
   two_product_rxns_ = torch::tensor(two, torch::kInt64);
   general_rxns_ = torch::tensor(general, torch::kInt64);
+
+  auto const& form = options->form();
+  TORCH_CHECK(
+      form.empty() || form.size() == rxns.size(),
+      "Evaporation 'form' must be empty or have one entry per reaction");
+  TORCH_CHECK(options->k3().empty() || options->k3().size() == rxns.size(),
+              "Evaporation 'k3' must be empty or have one entry per reaction");
+  std::vector<int64_t> kessler;
+  std::vector<double> k3;
+  for (size_t j = 0; j < form.size(); ++j) {
+    TORCH_CHECK(form[j] == "diffusion" || form[j] == "kessler",
+                "Unknown evaporation form '", form[j], "'");
+    if (form[j] != "kessler") continue;
+    auto const& r = rxns[j];
+    TORCH_CHECK(r.reactants().size() == 1 && r.products().size() == 1 &&
+                    r.products().begin()->second == 1.,
+                "Kessler evaporation requires one condensed reactant and "
+                "one gas product, both with coefficient 1: ",
+                r.equation());
+    TORCH_CHECK(options->k3().size() == rxns.size(),
+                "Kessler evaporation requires 'k3'");
+    kessler.push_back(static_cast<int64_t>(j));
+    k3.push_back(options->k3()[j]);
+  }
+  kessler_rxns_ = torch::tensor(kessler, torch::kInt64);
+  kessler_k3_ = torch::tensor(k3, torch::kFloat64);
 }
 
 void EvaporationImpl::pretty_print(std::ostream& os) const {
@@ -192,6 +237,18 @@ torch::Tensor EvaporationImpl::forward(
                   "Mixed-reactant evaporation requires other[gas_mask]");
     gas = stoich.ge(0.);
   }
+  // Kessler form: kappa = k3 / n, n = P/(R T) + the condensed concentrations
+  if (kessler_rxns_.numel() > 0) {
+    TORCH_CHECK(mask != other.end(),
+                "Kessler evaporation requires other[gas_mask]");
+    auto condensed = (~gas).to(conc.dtype());
+    auto ntot =
+        P.unsqueeze(-1) / (constants::Rgas * temp) + (conc * condensed).sum(-2);
+    auto idx = kessler_rxns_.to(kappa.device());
+    auto k3 = kessler_k3_.to(kappa.device(), kappa.scalar_type());
+    kappa = kappa.index_copy(-1, idx, k3 / ntot.index_select(-1, idx));
+  }
+
   auto solid = (~gas) & stoich.ne(0.);
   TORCH_CHECK((solid.sum(0) == 1).all().item<bool>() &&
                   torch::where(solid, stoich.eq(-1), stoich.ge(0) | gas)
