@@ -47,7 +47,10 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<std::vector<double>>,
                   kintera::ArrheniusOptionsImpl, Ea_R_ranges)
       .ADD_OPTION(std::vector<std::vector<double>>,
-                  kintera::ArrheniusOptionsImpl, T_ranges);
+                  kintera::ArrheniusOptionsImpl, T_ranges)
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl,
+                  p_threshold)
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, p_factor);
 
   ADD_KINTERA_MODULE(Arrhenius, ArrheniusOptions,
                      &kintera::ArrheniusImpl::forward, py::arg("temp"),

@@ -1,5 +1,6 @@
 // C/C++
 #include <algorithm>
+#include <cmath>
 
 // yaml
 #include <yaml-cpp/yaml.h>
@@ -49,6 +50,10 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
   std::vector<std::vector<double>> Ar, br, er, tr;
   bool any_ranged = false;
 
+  // Optional pressure switch, committed only if some reaction supplies one
+  std::vector<double> pth, pfac;
+  bool any_switched = false;
+
   for (auto const& rxn_node : root) {
     TORCH_CHECK(rxn_node["type"], "Reaction type not specified");
 
@@ -90,6 +95,24 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
     options->b().push_back(node["b"].as<double>(0.));
     options->Ea_R().push_back(node["Ea_R"].as<double>(1.));
     options->E4_R().push_back(node["E4"].as<double>(0.));
+
+    // pressure switch: rate x factor where P < p-threshold [Pa] (strict)
+    TORCH_CHECK(!node["p-threshold"] == !node["factor"],
+                "'p-threshold' and 'factor' must be given together");
+    if (node["p-threshold"]) {
+      any_switched = true;
+      double p = node["p-threshold"].as<double>();
+      double f = node["factor"].as<double>();
+      TORCH_CHECK(std::isfinite(p) && p > 0.,
+                  "'p-threshold' must be finite and > 0 [Pa]");
+      TORCH_CHECK(std::isfinite(f) && f >= 0.,
+                  "'factor' must be finite and >= 0");
+      pth.push_back(p);
+      pfac.push_back(f);
+    } else {
+      pth.push_back(0.);
+      pfac.push_back(1.);
+    }
 
     // Optional multi-range parameters. A reaction may replace the single (A,b,
     // Ea_R) with temperature bands via `A_ranges` + `T_ranges` (and optional
@@ -135,6 +158,10 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
     options->b_ranges() = br;
     options->Ea_R_ranges() = er;
     options->T_ranges() = tr;
+  }
+  if (any_switched) {
+    options->p_threshold() = pth;
+    options->p_factor() = pfac;
   }
 
   return options;
@@ -228,6 +255,15 @@ void ArrheniusImpl::reset() {
                         torch::tensor(tlo_flat, opt).view({nreaction, nrange}));
   Thi = register_buffer("Thi",
                         torch::tensor(thi_flat, opt).view({nreaction, nrange}));
+
+  auto const& pth = options->p_threshold();
+  auto const& pfac = options->p_factor();
+  TORCH_CHECK(pth.size() == pfac.size() &&
+                  (pth.empty() || (int)pth.size() == nreaction),
+              "Arrhenius p_threshold and p_factor must be empty or have one "
+              "entry per reaction");
+  p_threshold_ = torch::tensor(pth, opt);
+  p_factor_ = torch::tensor(pfac, opt);
 }
 
 void ArrheniusImpl::pretty_print(std::ostream& os) const {
@@ -254,7 +290,7 @@ torch::Tensor ArrheniusImpl::forward(
   if (nrange == 1) {
     auto rate_rr =
         Amr * (tempr / options->Tref()).pow(bmr) * torch::exp(-Ea_Rmr / tempr);
-    return rate_rr.squeeze(-1);
+    return switch_pressure(rate_rr.squeeze(-1), P);
   }
 
   // Select parameters before evaluating the rate. An inactive range can be far
@@ -264,8 +300,17 @@ torch::Tensor ArrheniusImpl::forward(
   auto selected_b = torch::where(mask, bmr, torch::zeros_like(bmr)).sum(-1);
   auto selected_Ea_R =
       torch::where(mask, Ea_Rmr, torch::zeros_like(Ea_Rmr)).sum(-1);
-  return selected_A * (temp / options->Tref()).pow(selected_b) *
-         torch::exp(-selected_Ea_R / temp);
+  return switch_pressure(selected_A * (temp / options->Tref()).pow(selected_b) *
+                             torch::exp(-selected_Ea_R / temp),
+                         P);
+}
+
+torch::Tensor ArrheniusImpl::switch_pressure(torch::Tensor rate,
+                                             torch::Tensor P) const {
+  if (p_threshold_.numel() == 0) return rate;
+  auto pth = p_threshold_.to(rate.device(), rate.scalar_type());
+  auto fac = p_factor_.to(rate.device(), rate.scalar_type());
+  return torch::where(P.unsqueeze(-1) < pth, rate * fac, rate);
 }
 
 }  // namespace kintera
