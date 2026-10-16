@@ -1,6 +1,7 @@
 #pragma once
 
 // C/C++
+#include <algorithm>
 #include <set>
 
 // torch
@@ -49,6 +50,9 @@ struct EvaporationOptionsImpl final : public NucleationOptionsImpl {
        << "* diff_P = " << fmt::format("{}", diff_P()) << "\n"
        << "* vm = " << fmt::format("{}", vm()) << "\n"
        << "* diameter = " << fmt::format("{}", diameter()) << "\n";
+    if (std::count(form().begin(), form().end(), "kessler") > 0)
+      os << "* form = " << fmt::format("{}", form()) << "\n"
+         << "* k3 = " << fmt::format("{}", k3()) << "\n";
   }
 
   // reference temperature
@@ -71,6 +75,19 @@ struct EvaporationOptionsImpl final : public NucleationOptionsImpl {
 
   //! Particle diameter [m]
   ADD_ARG(std::vector<double>, diameter) = {};
+
+  //! Rate form per reaction: "diffusion" (default) or "kessler".
+  //! An empty vector means "diffusion" for every reaction.
+  //!
+  //! diffusion: kappa = 12 D vm / d^2 [m^3/(mol s)]
+  //! kessler:   kappa = k3 / n, n = P/(R T) + sum of the condensed
+  //!            concentrations [mol/m^3]. The rate kappa c_p (c_sat - c_v)+
+  //!            is then dx_v/dt = k3 x_p (x_sat - x_v)+ in mole fractions
+  //!            x = c / n of all species, gas and condensed (Kessler 1969).
+  ADD_ARG(std::vector<std::string>, form) = {};
+
+  //! Kessler evaporation rate coefficient k3 [1/s] (form "kessler" only)
+  ADD_ARG(std::vector<double>, k3) = {};
 };
 using EvaporationOptions = std::shared_ptr<EvaporationOptionsImpl>;
 
@@ -99,6 +116,9 @@ class EvaporationImpl : public torch::nn::Cloneable<EvaporationImpl> {
 
   //! Extended stoichiometries evaluated by the surface-equilibrium solver.
   torch::Tensor general_rxns_;
+
+  //! reactions with the Kessler rate form and their k3 [1/s]; not buffers
+  torch::Tensor kessler_rxns_, kessler_k3_;
 
   //! Constructor to initialize the layer
   EvaporationImpl() : options(EvaporationOptionsImpl::create()) {}

@@ -52,6 +52,10 @@ struct ArrheniusOptionsImpl {
          << "* Ea_R_ranges = " << fmt::format("{}", Ea_R_ranges()) << "\n"
          << "* T_ranges = " << fmt::format("{}", T_ranges()) << "\n";
     }
+    if (!p_threshold().empty()) {
+      os << "* p_threshold = " << fmt::format("{}", p_threshold()) << " Pa\n"
+         << "* p_factor = " << fmt::format("{}", p_factor()) << "\n";
+    }
   }
 
   // reference temperature
@@ -102,6 +106,12 @@ struct ArrheniusOptionsImpl {
    * ranges always cover all temperatures with no gaps.
    */
   ADD_ARG(std::vector<std::vector<double>>, T_ranges) = {};
+
+  //! Optional pressure switch, one entry per reaction (empty = off): the rate
+  //! constant is multiplied by p_factor where P < p_threshold [Pa] (strict).
+  //! A reaction without a switch has p_threshold 0 and p_factor 1.
+  ADD_ARG(std::vector<double>, p_threshold) = {};
+  ADD_ARG(std::vector<double>, p_factor) = {};
 };
 using ArrheniusOptions = std::shared_ptr<ArrheniusOptionsImpl>;
 
@@ -140,6 +150,10 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
   //! number of temperature ranges (>= 1)
   int nrange = 1;
 
+  //! pressure switch [Pa] and factor, shape (nreaction,); empty when off.
+  //! Not buffers, so the default module keeps its state.
+  torch::Tensor p_threshold_, p_factor_;
+
   //! options with which this `ArrheniusImpl` was constructed
   ArrheniusOptions options;
 
@@ -159,6 +173,10 @@ class ArrheniusImpl : public torch::nn::Cloneable<ArrheniusImpl> {
    */
   torch::Tensor forward(torch::Tensor T, torch::Tensor P, torch::Tensor C,
                         std::map<std::string, torch::Tensor> const& other);
+
+ private:
+  //! apply the optional pressure switch to the rate constant (..., nreaction)
+  torch::Tensor switch_pressure(torch::Tensor rate, torch::Tensor P) const;
 };
 TORCH_MODULE(Arrhenius);
 

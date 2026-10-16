@@ -47,7 +47,10 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<std::vector<double>>,
                   kintera::ArrheniusOptionsImpl, Ea_R_ranges)
       .ADD_OPTION(std::vector<std::vector<double>>,
-                  kintera::ArrheniusOptionsImpl, T_ranges);
+                  kintera::ArrheniusOptionsImpl, T_ranges)
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl,
+                  p_threshold)
+      .ADD_OPTION(std::vector<double>, kintera::ArrheniusOptionsImpl, p_factor);
 
   ADD_KINTERA_MODULE(Arrhenius, ArrheniusOptions,
                      &kintera::ArrheniusImpl::forward, py::arg("temp"),
@@ -85,7 +88,10 @@ void bind_kinetics(py::module& m) {
       .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl, diff_P)
       .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl, vm)
       .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl,
-                  diameter);
+                  diameter)
+      .ADD_OPTION(std::vector<std::string>, kintera::EvaporationOptionsImpl,
+                  form)
+      .ADD_OPTION(std::vector<double>, kintera::EvaporationOptionsImpl, k3);
 
   ADD_KINTERA_MODULE(Evaporation, EvaporationOptions,
                      &kintera::EvaporationImpl::forward, py::arg("temp"),

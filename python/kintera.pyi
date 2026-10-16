@@ -1059,6 +1059,43 @@ class ArrheniusOptions:
         """
         ...
 
+    @overload
+    def p_threshold(self) -> List[float]:
+        """Get the pressure switch [Pa] per reaction (empty = off)."""
+        ...
+
+    @overload
+    def p_threshold(self, value: List[float]) -> ArrheniusOptions:
+        """
+        Set the pressure switch [Pa] per reaction: the rate constant is
+        multiplied by p_factor where P < p_threshold (strict).
+
+        Args:
+            value (list[float]): Thresholds [Pa]; 0 disables a reaction's switch
+
+        Returns:
+            ArrheniusOptions: class object for method chaining
+        """
+        ...
+
+    @overload
+    def p_factor(self) -> List[float]:
+        """Get the pressure-switch factor per reaction."""
+        ...
+
+    @overload
+    def p_factor(self, value: List[float]) -> ArrheniusOptions:
+        """
+        Set the pressure-switch factor per reaction.
+
+        Args:
+            value (list[float]): Factors applied where P < p_threshold
+
+        Returns:
+            ArrheniusOptions: class object for method chaining
+        """
+        ...
+
 class Arrhenius:
     """
     Arrhenius rate kinetics model.
@@ -1239,6 +1276,46 @@ class EvaporationOptions(NucleationOptions):
 
         Args:
             value (list[float]): Particle diameters [m]
+
+        Returns:
+            EvaporationOptions: class object for method chaining
+        """
+        ...
+
+    @overload
+    def form(self) -> List[str]:
+        """Get the rate form per reaction: 'diffusion' or 'kessler'."""
+        ...
+
+    @overload
+    def form(self, value: List[str]) -> EvaporationOptions:
+        """
+        Set the rate form per reaction (empty means 'diffusion' for all).
+
+        'diffusion': kappa = 12 D vm / d^2.
+        'kessler': kappa = k3 / n, n = P/(R T) + the condensed concentrations,
+        i.e. dx_v/dt = k3 x_p (x_sat - x_v) in mole fractions, subsaturated only.
+
+        Args:
+            value (list[str]): Rate forms
+
+        Returns:
+            EvaporationOptions: class object for method chaining
+        """
+        ...
+
+    @overload
+    def k3(self) -> List[float]:
+        """Get the Kessler evaporation coefficients k3 [1/s]."""
+        ...
+
+    @overload
+    def k3(self, value: List[float]) -> EvaporationOptions:
+        """
+        Set the Kessler evaporation coefficients k3 [1/s] (form 'kessler').
+
+        Args:
+            value (list[float]): k3 per reaction [1/s]
 
         Returns:
             EvaporationOptions: class object for method chaining
