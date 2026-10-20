@@ -49,6 +49,7 @@ void ThermoYImpl::reset() {
   if (options->nucleation() == nullptr) {
     options->nucleation() = NucleationOptionsImpl::create();
   }
+  check_nucleation_options(options->nucleation());
 
   check_dimensions(options);
 

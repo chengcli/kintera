@@ -220,14 +220,18 @@ NucleationOptions
 
    .. method:: minT(value: list[float]) -> NucleationOptions
 
-      Set minimum temperatures for each reaction.
+      Set minimum temperatures for each reaction. No solver applies the
+      range yet, so a value above 0 K is refused when the options are read
+      from YAML or ThermoX/ThermoY is built; leave it unset or at 0.
 
       :param value: List of minimum temperatures (K)
       :return: Self for method chaining
 
    .. method:: maxT(value: list[float]) -> NucleationOptions
 
-      Set maximum temperatures for each reaction.
+      Set maximum temperatures for each reaction. No solver applies the
+      range yet, so a value below 1e4 K is refused when the options are read
+      from YAML or ThermoX/ThermoY is built; leave it unset or at 1e4.
 
       :param value: List of maximum temperatures (K)
       :return: Self for method chaining

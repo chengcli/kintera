@@ -92,8 +92,6 @@ Setting up a system with phase transitions:
    # Set up phase transition
    nucleation = NucleationOptions()
    nucleation.reactions([Reaction("H2O <=> H2O(l)")])
-   nucleation.minT([200.0])
-   nucleation.maxT([400.0])
    nucleation.set_logsvp(["h2o_ideal"])
 
    # Configure thermodynamics

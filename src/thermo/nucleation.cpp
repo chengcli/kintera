@@ -9,6 +9,18 @@ namespace kintera {
 extern std::vector<std::string> species_names;
 extern std::vector<std::string> species_phases;
 
+void check_nucleation_options(NucleationOptions const& op) {
+  if (op == nullptr) return;
+  for (size_t j = 0; j < op->reactions().size(); ++j) {
+    double lo = j < op->minT().size() ? op->minT()[j] : 0.;
+    double hi = j < op->maxT().size() ? op->maxT()[j] : 1.e4;
+    TORCH_CHECK(lo <= 0. && hi >= 1.e4, "minT/maxT of reaction '",
+                op->reactions()[j].equation(), "' (", lo, ", ", hi,
+                " K) are not applied by any solver; remove them or keep the "
+                "defaults 0 and 1e4 K");
+  }
+}
+
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,
                         NucleationOptions op) {
@@ -103,6 +115,7 @@ NucleationOptions NucleationOptionsImpl::from_yaml(
     options->svp_params().push_back(params);
   }
 
+  check_nucleation_options(options);
   return options;
 }
 

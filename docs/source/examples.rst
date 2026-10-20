@@ -74,8 +74,6 @@ A complete example of modeling Earth's atmosphere with water phase transitions.
        # Configure phase transition
        nucleation = NucleationOptions()
        nucleation.reactions([Reaction("H2O <=> H2O(l)")])
-       nucleation.minT([200.0])
-       nucleation.maxT([400.0])
        nucleation.set_logsvp(["h2o_ideal"])
 
        # Configure thermodynamics
@@ -153,8 +151,6 @@ Computing a vertical atmospheric profile with adiabatic lapse rate.
 
        nucleation = NucleationOptions()
        nucleation.reactions([Reaction("H2O <=> H2O(l)")])
-       nucleation.minT([200.0])
-       nucleation.maxT([400.0])
        nucleation.set_logsvp(["h2o_ideal"])
 
        op = ThermoOptions().max_iter(15).ftol(1.e-8)
@@ -262,8 +258,6 @@ Defining and working with custom chemical reactions.
        Reaction("NH3 <=> NH3(l)"),
        Reaction("CH4 <=> CH4(l)")
    ])
-   nucleation.minT([200.0, 150.0, 80.0])
-   nucleation.maxT([400.0, 300.0, 200.0])
    nucleation.set_logsvp(["h2o_ideal", "nh3_ideal", "ch4_ideal"])
 
    print("Configured", len(nucleation.reactions()), "phase transitions")
