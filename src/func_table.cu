@@ -41,8 +41,10 @@ __device__ user_func2 func2_table_cuda[] = {
     nullptr,
     h2_rot_normal,
     h2_rot_normal_ddT,
+    h2_rot_normal_s,
     h2_rot_equilibrium,
-    h2_rot_equilibrium_ddT
+    h2_rot_equilibrium_ddT,
+    h2_rot_equilibrium_s
 };
 
 __device__ __constant__ user_func2* func2_table_device_ptr = func2_table_cuda;

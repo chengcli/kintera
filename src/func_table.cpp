@@ -28,12 +28,13 @@ std::vector<std::string> func1_names = {
 
 /////  func2 registry  /////
 
-user_func2 func2_table_cpu[] = {h2_rot_normal, h2_rot_normal_ddT,
-                                h2_rot_equilibrium, h2_rot_equilibrium_ddT};
+user_func2 func2_table_cpu[] = {h2_rot_normal,          h2_rot_normal_ddT,
+                                h2_rot_normal_s,        h2_rot_equilibrium,
+                                h2_rot_equilibrium_ddT, h2_rot_equilibrium_s};
 
-std::vector<std::string> func2_names = {"h2_rot_normal", "h2_rot_normal_ddT",
-                                        "h2_rot_equilibrium",
-                                        "h2_rot_equilibrium_ddT"};
+std::vector<std::string> func2_names = {
+    "h2_rot_normal",      "h2_rot_normal_ddT",      "h2_rot_normal_s",
+    "h2_rot_equilibrium", "h2_rot_equilibrium_ddT", "h2_rot_equilibrium_s"};
 
 /////  func3 registry  /////
 

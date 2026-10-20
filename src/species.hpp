@@ -103,10 +103,8 @@ struct SpeciesThermoImpl {
 
   //! Opt-in: use NASA-9 polynomials for cp/cv/internal-energy of species that
   //! carry NASA-9 data (gives T-dependent cv, e.g. H2 rotational/vibrational).
-  //! Default false -> constant-cref_R baseline (bit-identical to before). NOTE:
-  //! only affects cp/cv/intEng (not entropy); intended for dry H2/He runs. Do
-  //! NOT enable together with condensation of a NASA-9 vapor (entropy left on
-  //! cref_R baseline).
+  //! Default false -> constant-cref_R baseline (bit-identical to before). Gas
+  //! entropy follows it, referenced to T0 = 300 K.
   ADD_ARG(bool, use_nasa9_cp) = false;
 
   //! Opt-in: first-principles rotational partition-function
@@ -114,7 +112,7 @@ struct SpeciesThermoImpl {
   //! = 87.55 K). Captures H2 rotational freezing below ~150 K and, in
   //! "equilibrium" mode, the ortho<->para conversion peak near 50 K that NASA-9
   //! (a 200-1000 K combustion fit) cannot represent. Parameter-free; overrides
-  //! NASA-9 for the H2 species. Default false.
+  //! NASA-9 for the H2 species; gas entropy follows it. Default false.
   ADD_ARG(bool, use_h2_cp) = false;
   //! H2 ortho-para mode: "equilibrium" (ortho<->para equilibrates -> conversion
   //! peak; default) or "normal" (fixed 1:3 para:ortho, no peak).
