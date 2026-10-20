@@ -89,7 +89,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
   if (config["dynamics"]) {
     if (config["dynamics"]["equation-of-state"]) {
       thermo->max_iter() =
-          config["dynamics"]["equation-of-state"]["max-iter"].as<int>(10);
+          config["dynamics"]["equation-of-state"]["max-iter"].as<int>(100);
       if (thermo->verbose()) {
         std::cout << "[ThermoOptions] setting EOS max-iter = "
                   << thermo->max_iter() << std::endl;

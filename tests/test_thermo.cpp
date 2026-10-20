@@ -792,6 +792,22 @@ dynamics:
   init_species_from_yaml("jupiter.yaml");
 }
 
+TEST_P(DeviceTest, equilibrate_tp_default_max_iter_cold_start) {  // D4
+  if (dtype != torch::kFloat64 || device.type() == torch::kMPS) GTEST_SKIP();
+  auto op = ThermoOptionsImpl::from_yaml("jupiter.yaml");  // no max-iter
+  ThermoX thermo(op);
+  thermo->to(device, dtype);
+  auto o = torch::device(device).dtype(dtype);
+  auto x = torch::zeros(
+      {1, int64_t(op->vapor_ids().size() + op->cloud_ids().size())}, o);
+  x[0][1] = 2.5e-3, x[0][2] = 3.e-4, x[0][3] = 8.e-5;  // H2O, NH3, H2S
+  x[0][0] = 1. - x.sum();
+  auto diag = torch::zeros({1, 1}, o);
+  thermo->forward(torch::tensor({130.}, o), torch::tensor({1.e5}, o), x, false,
+                  diag);
+  EXPECT_GT(diag.item<double>(), 0.);
+}
+
 TEST_P(DeviceTest, equilibrate_uv_partition_rejects_coupled_reactions) {
   if (device.type() == torch::kMPS) {
     GTEST_SKIP() << "equilibrate_uv has no MPS backend.";
