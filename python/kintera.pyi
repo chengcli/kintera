@@ -1031,7 +1031,8 @@ class ArrheniusOptions:
     @overload
     def Ea_R(self, value: List[float]) -> ArrheniusOptions:
         """
-        Set activation energies in K.
+        Set activation energies in K. A reaction read from YAML without
+        ``Ea_R`` gets 0.
 
         Args:
             value (list[float]): Activation energies [K]

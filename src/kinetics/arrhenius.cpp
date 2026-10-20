@@ -93,7 +93,7 @@ ArrheniusOptions ArrheniusOptionsImpl::from_yaml(
     }
 
     options->b().push_back(node["b"].as<double>(0.));
-    options->Ea_R().push_back(node["Ea_R"].as<double>(1.));
+    options->Ea_R().push_back(node["Ea_R"].as<double>(0.));
     options->E4_R().push_back(node["E4"].as<double>(0.));
 
     // pressure switch: rate x factor where P < p-threshold [Pa] (strict)

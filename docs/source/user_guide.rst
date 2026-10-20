@@ -265,6 +265,9 @@ YAML configuration:
      type: arrhenius
      rate-constant: {A: 38.7, b: 2.7, Ea_R: 6260.0}
 
+An omitted ``b`` or ``Ea_R`` defaults to 0, so ``{A: 38.7}`` is a
+temperature-independent rate.
+
 Three-Body Reactions
 ~~~~~~~~~~~~~~~~~~~~
 

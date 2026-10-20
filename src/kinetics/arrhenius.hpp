@@ -74,7 +74,7 @@ struct ArrheniusOptionsImpl {
   //! Dimensionless temperature exponent
   ADD_ARG(std::vector<double>, b) = {};
 
-  //! Activation energy in K
+  //! Activation energy in K; 0 when `Ea_R` is omitted from the YAML
   ADD_ARG(std::vector<double>, Ea_R) = {};
 
   //! Additional 4th parameter in the rate expression

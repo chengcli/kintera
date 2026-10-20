@@ -115,3 +115,7 @@ def test_non_increasing_T_ranges_rejected(tmp_path, bounds):
     api = kt.ArrheniusOptions().A_ranges([A0]).b_ranges([B0]).Ea_R_ranges([E0]).T_ranges([bounds])
     with pytest.raises(RuntimeError, match="strictly increasing at reaction 0"):
         kt.Arrhenius(api)
+
+
+def test_omitted_ea_r_is_zero(tmp_path):  # K10 (#54)
+    assert _load(tmp_path, RXN.format("N2 => 2 N", "A: 7.0, b: 0.3"))[0].Ea_R() == [0.0]
