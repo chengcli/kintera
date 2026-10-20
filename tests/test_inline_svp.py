@@ -101,7 +101,8 @@ def test_tpx_to_v_cloud_without_species_0(tmp_path):  # D16 (#54)
         assert conc[0, :2].sum().item() == pytest.approx(1.e5 / (constants.Rgas * 150.), rel=1e-12)
         torch.testing.assert_close(conc[0, 2], conc[0, :2].sum() / 9., rtol=1e-12, atol=0.)
 
-@pytest.mark.parametrize("rate, msg", [("{formula: h2o_ideal, minT: 350.}", "minT/maxT")])  # K2
+@pytest.mark.parametrize("rate, msg", [("{formula: h2o_idael}", "h2o_idael not registered"),  # K7
+                                       ("{formula: h2o_ideal, minT: 350.}", "minT/maxT")])  # K2
 def test_bad_rate_constant_refused_at_parse(tmp_path, rate, msg):
     with pytest.raises(RuntimeError, match=msg):
         options(tmp_path, rate)

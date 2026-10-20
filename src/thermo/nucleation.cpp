@@ -8,9 +8,15 @@ namespace kintera {
 
 extern std::vector<std::string> species_names;
 extern std::vector<std::string> species_phases;
+extern std::vector<std::string> func1_names;
 
 void check_nucleation_options(NucleationOptions const& op) {
   if (op == nullptr) return;
+  for (auto const& f : op->logsvp())
+    if (!f.empty() && f != "null" && f != "ideal" && f != "antoine")
+      for (auto const& name : {f, f + "_ddT"})
+        TORCH_CHECK(std::count(func1_names.begin(), func1_names.end(), name),
+                    "Function ", name, " not registered.");
   for (size_t j = 0; j < op->reactions().size(); ++j) {
     double lo = j < op->minT().size() ? op->minT()[j] : 0.;
     double hi = j < op->maxT().size() ? op->maxT()[j] : 1.e4;
