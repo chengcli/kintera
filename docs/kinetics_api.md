@@ -122,7 +122,7 @@ struct KineticsOptionsImpl : SpeciesThermoImpl {
   std::vector<Reaction> reactions() const;
 
   double Tref = 298.15;             // Reference temperature [K]
-  double Pref = 101325.0;           // Reference pressure [Pa]
+  double Pref = 1.e5;               // Reference pressure [Pa]
 
   ArrheniusOptions        arrhenius;
   CoagulationOptions      coagulation;

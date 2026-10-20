@@ -59,7 +59,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   std::vector<Reaction> reactions() const;
 
   ADD_ARG(double, Tref) = 298.15;
-  ADD_ARG(double, Pref) = 101325.0;
+  ADD_ARG(double, Pref) = 1.e5;
 
   ADD_ARG(ArrheniusOptions, arrhenius) = ArrheniusOptionsImpl::create();
   ADD_ARG(CoagulationOptions, coagulation) = CoagulationOptionsImpl::create();
