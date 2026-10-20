@@ -22,12 +22,14 @@ namespace kintera {
  * \param coeffs_low    low-T coefficients, shape (nspecies, 9)
  * \param coeffs_high   high-T coefficients, shape (nspecies, 9)
  * \param Tmid          mid-point temperature, shape (nspecies,)
+ * \param[out] h_RT     optional h/RT, shape (..., nspecies)
  * \return              g/RT, shape (..., nspecies)
  */
 inline torch::Tensor nasa9_gibbs_RT(torch::Tensor temp,
                                     torch::Tensor coeffs_low,
                                     torch::Tensor coeffs_high,
-                                    torch::Tensor Tmid) {
+                                    torch::Tensor Tmid,
+                                    torch::Tensor* h_RT_out = nullptr) {
   auto T = temp.unsqueeze(-1);  // (..., 1)
   auto T2 = T * T;
   auto T3 = T2 * T;
@@ -59,6 +61,7 @@ inline torch::Tensor nasa9_gibbs_RT(torch::Tensor temp,
   auto s_R = -a0 * invT2 / 2.0 - a1 * invT + a2 * lnT + a3 * T + a4 * T2 / 2.0 +
              a5 * T3 / 3.0 + a6 * T4 / 4.0 + a9;
 
+  if (h_RT_out) *h_RT_out = h_RT;
   return h_RT - s_R;  // (..., nspecies)
 }
 
