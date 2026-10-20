@@ -812,7 +812,7 @@ class ThermoX:
             temp (torch.Tensor): Temperature tensor [K]
             pres (torch.Tensor): Pressure tensor [Pa]
             xfrac (torch.Tensor): Mole fraction tensor
-            warm_start (bool): Whether to use warm start (default: False)
+            warm_start (bool): Accepted for compatibility; has no effect (default: False)
             diag (torch.Tensor, optional): Diagnostic output tensor
 
         Returns:

@@ -364,7 +364,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param[in] temp temperature, K
    * \param[in] pres pressure, Pa
    * \param[in,out] xfrac mole fraction, (..., 1 + ny)
-   * \param[in] warm_start if true, use previous active set as warm start
+   * \param[in] warm_start accepted for compatibility; has no effect
    * \param[out] diag optional diagnostic output, (..., ndiag)
    * \return gain matrix, (..., nreaction, nreaction)
    */
