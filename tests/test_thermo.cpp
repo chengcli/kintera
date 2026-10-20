@@ -849,7 +849,8 @@ TEST_P(DeviceTest, extrapolate_ad) {
   }
 
   auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
-  (*op_thermo).max_iter(15).ftol(1e-8);
+  // 15 iterations leave the 200 K starting state unconverged
+  (*op_thermo).max_iter(50).ftol(1e-8);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
@@ -881,6 +882,27 @@ TEST_P(DeviceTest, extrapolate_ad) {
   std::cout << "temp after = " << temp << std::endl;
 
   EXPECT_EQ(torch::allclose(entropy_mole0, entropy_mole1, 1e-3, 1e-3), true);
+}
+
+TEST_P(DeviceTest, coagulation_copy_entropy) {  // D64
+  if (dtype == torch::kFloat) GTEST_SKIP();
+  ThermoX thermo(ThermoOptionsImpl::from_yaml("jupiter.yaml"));
+  thermo->to(device, dtype);
+  auto opt = torch::device(device).dtype(dtype);
+  // jupiter.yaml columns: dry, H2O, NH3, H2S, H2O(l), H2O(l,p), ...
+  auto x = torch::zeros({2, 9}, opt);
+  x.select(-1, 1) = 1e-3;
+  x.index_put_({0, 4}, 1e-3);
+  x.index_put_({1, 5}, 1e-3);
+  x.select(-1, 0) = 1. - x.narrow(-1, 1, 8).sum(-1);
+  auto temp = 280. * torch::ones({2}, opt), pres = 5.e5 * torch::ones({2}, opt);
+  auto conc = thermo->compute("TPX->V", {temp, pres, x});
+  auto s = thermo->compute("TPV->S", {temp, pres, conc}).cpu();
+  EXPECT_NEAR(s[1].item<double>(), s[0].item<double>(), 1e-9);
+  auto card = YAML::LoadFile("jupiter.yaml");  // H2O(l,p) data != H2O(l)
+  for (auto sp : card["species"])
+    if (sp["name"].as<std::string>() == "H2O(l,p)") sp["cv_R"] = 8.0;
+  EXPECT_EQ(ThermoOptionsImpl::from_yaml(card)->copy_cols().size(), 1u);
 }
 
 TEST_P(DeviceTest, relative_humidity) {

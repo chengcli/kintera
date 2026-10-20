@@ -454,6 +454,11 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   entropy_R.narrow(-1, ngas, ncloud) =
       sp_inv.view(vec2).matmul(b.unsqueeze(-1)).squeeze(-1);
 
+  // (7) a coagulation copy takes the entropy of its source
+  for (size_t k = 0; k < op->copy_cols().size(); ++k)
+    entropy_R.select(-1, op->copy_cols()[k]) =
+        entropy_R.select(-1, op->copy_src_cols()[k]);
+
   // std::cout << "entropy_R = " << entropy_R << std::endl;
 
   return entropy_R;

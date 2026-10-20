@@ -85,6 +85,10 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
 
   ADD_ARG(NucleationOptions, nucleation) = NucleationOptionsImpl::create();
   ADD_ARG(std::string, uv_solver) = "auto";
+
+  //! columns of coagulation copies X(p) and of their sources X
+  ADD_ARG(std::vector<int>, copy_cols);
+  ADD_ARG(std::vector<int>, copy_src_cols);
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 
