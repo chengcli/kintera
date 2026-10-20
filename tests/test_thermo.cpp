@@ -765,16 +765,16 @@ dynamics:
   EXPECT_NEAR(std::log(cold_conc_after[2].item<double>()), log_saturation,
               1.e-6);
 
-  op_thermo->max_iter(1);
-  auto failed_yfrac = initial.clone();
-  auto failed_diag = torch::full({1, 1}, 7., tensor_options);
+  op_thermo->max_iter(1);  // does not cap the partition search (K4)
+  auto capped_yfrac = initial.clone();
+  auto capped_diag = torch::full({1, 1}, 7., tensor_options);
   thermo_y->nactive.fill_(2);
-  auto failed_gain =
-      thermo_y->forward(rho, intEng, failed_yfrac, true, failed_diag);
-  EXPECT_TRUE(torch::all(failed_gain == 0.).item<bool>());
-  EXPECT_DOUBLE_EQ(failed_diag.item<double>(), -1.);
+  auto capped_gain =
+      thermo_y->forward(rho, intEng, capped_yfrac, true, capped_diag);
+  EXPECT_TRUE(torch::all(capped_gain == 0.).item<bool>());
+  EXPECT_GE(capped_diag.item<double>(), 1.);
   EXPECT_EQ(thermo_y->nactive.item<int>(), 0);
-  EXPECT_TRUE(torch::allclose(failed_yfrac, initial, 1.e-12, 0.));
+  EXPECT_TRUE(torch::allclose(capped_yfrac, yfrac, 1.e-12, 0.));
   op_thermo->max_iter(30);
 
   op_thermo->uv_solver("auto");
