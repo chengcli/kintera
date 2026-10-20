@@ -905,6 +905,53 @@ TEST_P(DeviceTest, coagulation_copy_entropy) {  // D64
   EXPECT_EQ(ThermoOptionsImpl::from_yaml(card)->copy_cols().size(), 1u);
 }
 
+TEST_P(DeviceTest, pxs_to_t_batched) {  // D8
+  if (dtype == torch::kFloat) GTEST_SKIP();
+  auto opt = torch::device(device).dtype(dtype);
+  ThermoX thermo(ThermoOptionsImpl::from_yaml("jupiter.yaml"));
+  auto op_ref = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_ref->max_iter(200);  // the oracle needs a converged cold start
+  ThermoX ref(op_ref);
+  thermo->to(device, dtype);
+  ref->to(device, dtype);
+  auto x = torch::zeros({4, 28, 9}, opt);
+  auto h = torch::tensor({0., 2.5e-3, 1e-2, 5e-2}, opt).view({4, 1});
+  x.select(-1, 1) = h;
+  x.select(-1, 2) = 3e-4 * (h > 0);
+  x.select(-1, 3) = 8e-5 * (h > 0);
+  x.select(-1, 0) = 1. - x.narrow(-1, 1, 8).sum(-1);
+  auto tstar = torch::arange(130., 410., 10., opt).expand({4, 28}).contiguous();
+  auto pres = 1.e5 * torch::ones_like(tstar);
+  auto xeq = x.clone();
+  ref->forward(tstar, pres, xeq);
+  auto conc = ref->compute("TPX->V", {tstar, pres, xeq});
+  auto entropy = ref->compute("TPV->S", {tstar, pres, conc});
+  auto temp = thermo->compute("PXS->T", {pres, x, entropy});
+  EXPECT_TRUE(torch::allclose(temp, tstar, 1e-5, 0.));
+}
+
+TEST_P(DeviceTest, pxs_to_t_nan_column) {  // D8: NaN never converges
+  if (dtype == torch::kFloat) GTEST_SKIP();
+  ThermoX thermo(ThermoOptionsImpl::from_yaml("jupiter.yaml"));
+  thermo->to(device, dtype);
+  auto opt = torch::device(device).dtype(dtype);
+  for (int n : {1, 3}) {
+    auto x = torch::zeros({n, 9}, opt);
+    x.select(-1, 0) = 1.;
+    auto temp = 300. * torch::ones({n}, opt),
+         pres = 1.e5 * torch::ones({n}, opt);
+    auto s = thermo->compute(
+        "TPV->S", {temp, pres, thermo->compute("TPX->V", {temp, pres, x})});
+    s.index_put_({0}, NAN);
+    testing::internal::CaptureStderr();
+    auto t = thermo->compute("PXS->T", {pres, x, s}).cpu();
+    auto err = testing::internal::GetCapturedStderr();
+    EXPECT_NE(err.find("_entropy_to_temp: max iteration reached"),
+              std::string::npos);
+    EXPECT_TRUE(t[0].isnan().item<bool>());
+  }
+}
+
 TEST_P(DeviceTest, relative_humidity) {
   auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   op_thermo->max_iter(15);
