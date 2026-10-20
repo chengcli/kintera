@@ -24,43 +24,43 @@ species:
 
   - name: H2O(l)
     composition: {H: 2, O: 1}
-    cv_R: 9.0
-    u0_R: -3430.
+    cv_R: 8.486009
+    u0_R: -4990.8575
 
   - name: H2O(s)
     composition: {H: 2, O: 1}
-    cv_R: 9.0
-    u0_R: -3430.
+    cv_R: 4.02
+    u0_R: -5821.2168
 
   - name: H2O(l,p)
     composition: {H: 2, O: 1}
-    cv_R: 9.0
-    u0_R: -3430.
+    cv_R: 8.486009
+    u0_R: -4990.8575
 
   - name: H2O(s,p)
     composition: {H: 2, O: 1}
-    cv_R: 9.0
-    u0_R: -3430.
+    cv_R: 4.02
+    u0_R: -5821.2168
 
   - name: NH3(l)
     composition: {N: 1, H: 3}
-    cv_R: 9.6
-    u0_R: -5520.
+    cv_R: 9.12
+    u0_R: -1937.632
 
   - name: NH3(s)
     composition: {N: 1, H: 3}
-    cv_R: 9.6
-    u0_R: -5520.
+    cv_R: 4.93
+    u0_R: -3304.056
 
   - name: NH3(l,p)
     composition: {N: 1, H: 3}
-    cv_R: 9.6
-    u0_R: -5520.
+    cv_R: 9.12
+    u0_R: -1937.632
 
   - name: NH3(s,p)
     composition: {N: 1, H: 3}
-    cv_R: 9.6
-    u0_R: -5520.
+    cv_R: 4.93
+    u0_R: -3304.056
 
   - name: NH4SH(s)
     composition: {N: 1, H: 5, S: 1}

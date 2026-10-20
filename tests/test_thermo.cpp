@@ -1028,6 +1028,28 @@ TEST_P(DeviceTest, pxs_to_t_nan_column) {  // D8: NaN never converges
   }
 }
 
+TEST_P(DeviceTest, jupiter_card_latent) {  // K8
+  if (dtype == torch::kFloat) GTEST_SKIP();
+  ThermoX thermo(ThermoOptionsImpl::from_yaml("jupiter.yaml"));
+  thermo->to(device, dtype);
+  auto opt = torch::device(device).dtype(dtype);
+  // {vapour, condensate column, T, beta, gamma, T3}: h2o_ideal liquid branch,
+  // nh3_ideal solid branch
+  double cases[2][6] = {{1, 4, 300., 24.845, 4.986009, 273.16},
+                        {2, 6, 160., 20.64, 1.43, 195.4}};
+  for (auto& c : cases) {
+    auto conc = torch::ones({1, 9}, opt), dn = torch::zeros({1, 9}, opt);
+    dn.index_put_({0, (int)c[0]}, -1e-3);
+    dn.index_put_({0, (int)c[1]}, 1e-3);
+    auto temp = c[2] * torch::ones({1}, opt);
+    auto l = (thermo->compute("TV->H", {temp, conc - dn}) -
+              thermo->compute("TV->H", {temp, conc + dn})) /
+             2e-3;
+    double l_svp = constants::Rgas * (c[3] * c[5] - c[4] * c[2]);
+    EXPECT_NEAR(l.item<double>() / l_svp, 1., 1e-10);
+  }
+}
+
 TEST_P(DeviceTest, relative_humidity) {
   auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
   op_thermo->max_iter(15);
