@@ -374,9 +374,8 @@ void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
   }
 
   out.narrow(-1, 0, ngas) = conc_gas;
-  out.narrow(-1, ngas, ncloud) = conc_gas.select(-1, 0).unsqueeze(-1) *
-                                 xfrac.narrow(-1, ngas, ncloud) /
-                                 xfrac.select(-1, 0).unsqueeze(-1);
+  out.narrow(-1, ngas, ncloud) = conc_gas.sum(-1, /*keepdim=*/true) *
+                                 xfrac.narrow(-1, ngas, ncloud) / xgas;
 }
 
 }  // namespace kintera
