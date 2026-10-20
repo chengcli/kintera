@@ -5,6 +5,7 @@
 #include <kintera/utils/serialize.hpp>
 
 #include "eval_uhs.hpp"
+#include "h2_rotation.h"
 #include "log_svp.hpp"
 #include "thermo.hpp"
 #include "thermo_dispatch.hpp"
@@ -344,16 +345,29 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
               "UV partition solver requires disjoint vapor-cloud reactions");
   if (!uv_partitionable) uv_solver = 0;
 
+  auto intEng_offset = u0 / inv_mu;  // J/kg -> J/mol
+  auto cv_const = cv0 / inv_mu;      // J/(kg K) -> J/(mol K)
+  auto intEng_extra = options->intEng_R_extra();
+
+  // use_h2_cp: hand the solver the H2 energy of eval_intEng_R
+  auto names = options->species();
+  int h2 = std::find(names.begin(), names.end(), "H2") - names.begin();
+  if (options->use_h2_cp() && h2 < (int)intEng_extra.size()) {
+    intEng_offset[h2] =
+        (options->uref_R()[h2] + kNasa9Tref * options->cref_R()[h2]) *
+        constants::Rgas;
+    cv_const[h2] = 0.;
+    intEng_extra[h2] = "h2_rot_" + options->h2_cp_mode();
+  }
+
   // call the equilibrium solver
   auto svp_spec =
       LogSVPFunc::make_svp_spec(options->nucleation(), conc.device());
   at::native::call_equilibrate_uv(
       conc.device().type(), iter, options->vapor_ids().size(), stoich,
-      u0 / inv_mu,   // J/kg -> J/mol
-      cv0 / inv_mu,  // J/(kg K) -> J/(mol K)
-      svp_spec.first, svp_spec.second, options->nucleation()->logsvp(),
-      options->intEng_R_extra(), options->ftol(), options->max_iter(),
-      uv_solver);
+      intEng_offset, cv_const, svp_spec.first, svp_spec.second,
+      options->nucleation()->logsvp(), intEng_extra, options->ftol(),
+      options->max_iter(), uv_solver);
 
   // Keep the failure count on the same device as the cells. forward does
   // not sync. On CPU the count is already on the host, so warn here. On

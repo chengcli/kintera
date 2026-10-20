@@ -1,4 +1,5 @@
 // kintera
+#include <kintera/thermo/h2_rotation.h>
 #include <kintera/vapors/vapor_functions.h>
 
 #include <kintera/utils/user_funcs.hpp>
@@ -27,9 +28,12 @@ std::vector<std::string> func1_names = {
 
 /////  func2 registry  /////
 
-user_func2 func2_table_cpu[] = {};
+user_func2 func2_table_cpu[] = {h2_rot_normal, h2_rot_normal_ddT,
+                                h2_rot_equilibrium, h2_rot_equilibrium_ddT};
 
-std::vector<std::string> func2_names = {};
+std::vector<std::string> func2_names = {"h2_rot_normal", "h2_rot_normal_ddT",
+                                        "h2_rot_equilibrium",
+                                        "h2_rot_equilibrium_ddT"};
 
 /////  func3 registry  /////
 

@@ -832,6 +832,26 @@ dynamics: {equation-of-state: {uv-solver: partition, max-iter: 50}})";
   }
 }
 
+TEST_P(DeviceTest, equilibrate_uv_h2_cp_saturated) {  // D12
+  if (dtype != torch::kFloat64 || device.type() == torch::kMPS) GTEST_SKIP();
+  for (std::string mode : {"normal", "equilibrium"}) {
+    auto out = uv_cells(R"(
+reference-state: {Tref: 300., Pref: 1.e5, use-h2-cp: true, h2-cp-mode: )" +
+                            mode + R"(}
+species:
+- {name: H2, composition: {H: 2}, cv_R: 2.5}
+- {name: NH3, composition: {N: 1, H: 3}, cv_R: 2.5, u0_R: 0.}
+- {name: NH3(c), composition: {N: 1, H: 3}, cv_R: 9.0, u0_R: -5520.}
+reactions:
+- {equation: 'NH3 <=> NH3(c)', type: nucleation, rate-constant: {formula: nh3_ideal}}
+dynamics: {equation-of-state: {max-iter: 50}})",
+                        {160.}, 0.02, device);
+    double T = out[1].item<double>();
+    double c = out[2].flatten()[1].item<double>();
+    EXPECT_NEAR(std::log(c * constants::Rgas * T), nh3_ideal(T), 1.e-5) << mode;
+  }
+}
+
 TEST_P(DeviceTest, equilibrate_tp_default_max_iter_cold_start) {  // D4
   if (dtype != torch::kFloat64 || device.type() == torch::kMPS) GTEST_SKIP();
   auto op = ThermoOptionsImpl::from_yaml("jupiter.yaml");  // no max-iter

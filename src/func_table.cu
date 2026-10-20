@@ -1,4 +1,5 @@
 // kintera
+#include <kintera/thermo/h2_rotation.h>
 #include <kintera/vapors/vapor_functions.h>
 #include <kintera/utils/user_funcs.hpp>
 
@@ -37,7 +38,11 @@ __device__ __constant__ user_func1* func1_table_device_ptr = func1_table_cuda;
 /////  func2 registry  /////
 
 __device__ user_func2 func2_table_cuda[] = {
-    nullptr
+    nullptr,
+    h2_rot_normal,
+    h2_rot_normal_ddT,
+    h2_rot_equilibrium,
+    h2_rot_equilibrium_ddT
 };
 
 __device__ __constant__ user_func2* func2_table_device_ptr = func2_table_cuda;
