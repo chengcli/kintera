@@ -63,7 +63,7 @@ def compute_actinic_flux_disort(
     ds = pydisort.Disort(op)
 
     prop = torch.zeros((nwave, state.ncol, state.nlyr, 2), dtype=state.dtype, device=state.device)
-    prop[..., 0] = optical_depth.permute(2, 0, 1)
+    prop[..., 0] = optical_depth.permute(2, 0, 1).flip(-1)  # DISORT is top-first.
     ds.forward(
         prop,
         umu0=_as_column(mu0, state.ncol, dtype=state.dtype, device=state.device),
@@ -73,7 +73,7 @@ def compute_actinic_flux_disort(
     )
 
     gathered = ds.gather_flx()
-    average_intensity_levels = gathered[..., pydisort.kIUAVG]
+    average_intensity_levels = gathered[..., pydisort.kIUAVG].flip(-1)  # State order.
     average_intensity = 0.5 * (
         average_intensity_levels[:, :, :-1] + average_intensity_levels[:, :, 1:]
     )

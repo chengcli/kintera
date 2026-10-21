@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import scipy.sparse.linalg
 import torch
+import yaml
 
 import kintera as kt
 from kintera.atm2d import radiation as atm2d_radiation
@@ -527,37 +528,119 @@ def test_boundary_corner_precedence_overrides_left_with_top():
     torch.testing.assert_close(row[corner_row], expected)
 
 
-def test_actinic_flux_from_disort_supports_2d_state():
-    photo_opts = kt.PhotoChemOptions.from_yaml(str(CHAPMAN_CYCLE_YAML))
+def test_actinic_flux_from_disort_supports_2d_state(tmp_path, monkeypatch):
+    """CPU end-to-end regression, including the real mean-intensity accessor."""
+    _check_actinic_flux_ordering(tmp_path, monkeypatch, "cpu")
+
+
+def test_actinic_flux_from_disort_cuda_ordering_boundary(tmp_path, monkeypatch):
+    """CUDA boundary test, NOT production CUDA actinic-flux support.
+
+    Native CUDA forward() provides flux but gather_flx() is CPU-only. For this
+    pure beam fixture only, F_down / mu0 = 4*pi*J. A test-only accessor bridge
+    lets the actual production output reversal and face averaging run on those
+    measured GPU values. No layer reversal or analytic oracle is in the bridge.
+    The native CUDA gather accessor remains untested/unsupported.
+    """
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is not available")
+    _check_actinic_flux_ordering(tmp_path, monkeypatch, "cuda")
+
+
+def _check_actinic_flux_ordering(tmp_path, monkeypatch, device):
+    pydisort = atm2d_radiation.pydisort
+    native_disort = pydisort.Disort
+
+    class BeamBoundary:
+        def __init__(self, options):
+            # No thermal emission; no diffuse illumination is supplied below.
+            assert set(options.flags().split(",")) == {"onlyfl", "lamber"}
+            self.native = native_disort(options)
+
+        def forward(self, prop, **bc):
+            assert set(bc) == {"umu0", "phi0", "fbeam", "albedo"}
+            assert torch.count_nonzero(prop[..., 1]) == 0  # no scattering
+            assert torch.count_nonzero(bc["albedo"]) == 0  # no reflection
+            assert torch.all(bc["umu0"] > 0)
+            self.flux = self.native.forward(prop, **bc)
+            assert self.flux.device == prop.device
+            assert self.flux.is_cuda == (device == "cuda")
+            assert torch.count_nonzero(self.flux[..., 0]) == 0  # no upward source
+            self.beam_intensity = self.flux[..., 1] / bc["umu0"][None, :, None]
+            return self.flux
+
+        def gather_flx(self):
+            if device == "cpu":
+                gathered = self.native.gather_flx()
+                # Independently check the fixture-specific flux/J identity at
+                # every face, including the oblique column, with real CPU J.
+                torch.testing.assert_close(self.beam_intensity,
+                                           4. * math.pi * gathered[..., pydisort.kIUAVG],
+                                           rtol=1.e-6, atol=0.)
+                native_intensity = 4. * math.pi * gathered[..., pydisort.kIUAVG]
+                identity_error = ((self.beam_intensity - native_intensity).abs()
+                                  / native_intensity).max().item()
+                print(f"CPU flux/mu0 vs 4pi*J max_relative_error={identity_error:.17g}")
+                return gathered  # unchanged native result: CPU remains end-to-end
+            # Instrumented CUDA boundary only: measured flux, not an oracle or
+            # a production fallback. NaNs make accidental use of other fields fail.
+            gathered = self.flux.new_full((*self.flux.shape[:-1], 8), float("nan"))
+            gathered[..., pydisort.kIUAVG] = self.beam_intensity / (4. * math.pi)
+            return gathered
+
+    monkeypatch.setattr(pydisort, "Disort", BeamBoundary)
+    deck = yaml.safe_load(CHAPMAN_CYCLE_YAML.read_text())
+    # Pure absorption: known cross sections at two wavelengths, no scattering
+    # or reflecting surface. Two-column YAML means total = single channel.
+    deck["reactions"] = [{"equation": "O2 => O + O", "type": "photolysis",
+                          "cross-section": [{"format": "YAML", "data":
+                                             [[100., 2.e-18], [200., 4.e-18]]}]}]
+    path = tmp_path / "beam.yaml"
+    path.write_text(yaml.safe_dump(deck))
+    photo_opts = kt.PhotoChemOptions.from_yaml(str(path))
     photo = kt.PhotoChem(photo_opts)
+    photo.to(torch.float64)
+    photo.to(torch.device(device))
     species = photo_opts.species()
-    idx = {name: i for i, name in enumerate(species)}
-
+    absorber = species.index("O2")
     ncol, nlyr = 2, 4
-    x2f = torch.linspace(0.0, 1.0e5, ncol + 1, dtype=torch.float64)
-    x1f = torch.linspace(0.0, 3.0e5, nlyr + 1, dtype=torch.float64)
-    temp = torch.full((ncol, nlyr), 250.0, dtype=torch.float64)
-    pres = torch.logspace(5.0, 3.0, nlyr, dtype=torch.float64).unsqueeze(0).expand(ncol, nlyr)
-    conc = torch.zeros((ncol, nlyr, len(species)), dtype=torch.float64)
-    conc[..., idx["N2"]] = 0.79
-    conc[..., idx["O2"]] = torch.tensor(
-        [[0.21, 0.24, 0.27, 0.30], [0.30, 0.27, 0.24, 0.21]], dtype=torch.float64
-    )
-    conc[..., idx["O"]] = 1.0e-12
-    conc[..., idx["O3"]] = torch.tensor(
-        [[1.0e-10, 3.0e-10, 1.0e-9, 3.0e-9], [3.0e-9, 1.0e-9, 3.0e-10, 1.0e-10]],
-        dtype=torch.float64,
-    )
+    x2f = torch.linspace(0., 1.e5, ncol + 1, dtype=torch.float64, device=device)
+    x1f = torch.linspace(0., 3.e5, nlyr + 1, dtype=torch.float64, device=device)
+    temp = torch.full((ncol, nlyr), 250., dtype=torch.float64, device=device)
+    pres = torch.logspace(5., 3., nlyr, dtype=torch.float64, device=device).expand(ncol, nlyr)
+    conc = torch.zeros((ncol, nlyr, len(species)), dtype=torch.float64, device=device)
+    # Atmospheric index -1 is top. First column isolates a top absorber;
+    # second column exercises unequal interior layers and oblique incidence.
+    conc[..., absorber] = 2.4e13 * torch.tensor(
+        [[0., 0., 0., 1.], [0.025, 0.05, 0.075, 0.1]], dtype=torch.float64, device=device)
     state = kt.AtmState2D(x1f=x1f, x2f=x2f, temperature=temp, pressure=pres, concentration=conc)
-
     wave = photo.module("photolysis").buffer("wavelength")
-    top_flux = torch.full((wave.numel(), ncol), 1.0e12, dtype=torch.float64)
-    rt = kt.compute_actinic_flux_disort(photo, state, top_flux, concentration_unit="molecules_cm3")
+    top_flux = torch.tensor([[1.e12, 2.e12], [3.e12, 4.e12]], dtype=torch.float64, device=device)
+    mu0 = torch.tensor([1., 0.6], dtype=torch.float64, device=device)
+    rt = kt.compute_actinic_flux_disort(photo, state, top_flux, mu0=mu0,
+                                      concentration_unit="molecules_cm3")
 
-    assert rt.optical_depth.shape == (ncol, nlyr, wave.numel())
-    assert rt.actinic_flux.shape == (wave.numel(), ncol, nlyr)
-    absorb_idx = int(torch.argmin(torch.abs(wave - 200.0)).item())
-    assert rt.actinic_flux[absorb_idx, 0, 0].item() > rt.actinic_flux[absorb_idx, 0, -1].item()
+    # dI/dtau = -I/mu0 gives I(face)/I0 = exp(-tau_above/mu0).
+    # The adapter returns the arithmetic mean of adjacent face intensities,
+    # not the exponential evaluated at the cell midpoint.
+    sigma = torch.tensor([2.e-18, 4.e-18], dtype=torch.float64, device=device)
+    tau = conc[..., absorber, None] * (x1f[1:] - x1f[:-1])[None, :, None] * sigma
+    above = tau.flip(1).cumsum(1).flip(1) - tau
+    expected = 0.5 * (torch.exp(-above / mu0[:, None, None])
+                      + torch.exp(-(above + tau) / mu0[:, None, None]))
+    expected = expected.permute(2, 0, 1)
+    normalized = rt.actinic_flux / top_flux[..., None]
+    error = (normalized - expected).abs().max().item()
+    relative_error = ((normalized - expected).abs() / expected).max().item()
+    print(f"device={device} max_abs_F_over_F0_error={error:.17g} "
+          f"max_relative_error={relative_error:.17g} "
+          f"lower_F_over_F0={normalized[0, 0, 0].item():.17g} "
+          f"oracle={expected[0, 0, 0].item():.17g}")
+    torch.testing.assert_close(rt.optical_depth, tau, rtol=1.e-14, atol=0.)
+    torch.testing.assert_close(normalized, expected, rtol=1.e-6, atol=0.)
+    torch.testing.assert_close(4. * math.pi * rt.average_intensity / top_flux[..., None],
+                               expected, rtol=1.e-6, atol=0.)
+    assert rt.actinic_flux[0, 0, 0] < rt.actinic_flux[0, 0, -1]
 
 
 def test_implicit_operator_adds_chemistry_and_photochemistry():
