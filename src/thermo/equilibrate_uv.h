@@ -169,6 +169,13 @@ DISPATCH_MACRO int equilibrate_uv_partition(
         nreaction, intEng_offset, cv_const, logsvp_func, logsvp_func_ddT,
         svp_kind, svp_params, intEng_R_extra, cv_R_extra, &energy, &derivative);
     residual = energy - h0;
+    T terms = 0.;  // U ~ 0 near Tref: scale by the terms summed into it
+    for (int i = 0; i < nspecies; ++i)
+      terms +=
+          (fabs(intEng_offset[i]) + fabs(molar_energy[i] - intEng_offset[i])) *
+          conc[i];
+    tolerance =
+        64. * std::numeric_limits<T>::epsilon() * fmax(energy_scale, terms);
   }
 
   if (valid && fabs(residual) > tolerance) {
@@ -197,8 +204,9 @@ DISPATCH_MACRO int equilibrate_uv_partition(
     }
     valid = bracketed;
 
+    int search_iter = *max_iter > 64 ? *max_iter : 64;  // not the KKT budget
     T current = original_temperature;
-    while (valid && fabs(residual) > tolerance && iterations < *max_iter) {
+    while (valid && fabs(residual) > tolerance && iterations < search_iter) {
       T candidate = current - residual / derivative;
       if (!std::isfinite(candidate) || candidate <= lower ||
           candidate >= upper) {

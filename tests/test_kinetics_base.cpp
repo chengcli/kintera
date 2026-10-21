@@ -532,6 +532,24 @@ TEST_P(DeviceTest, KineticsBasePhotoChemRequiresCatalog) {
                c10::Error);
 }
 
+TEST_P(DeviceTest, KineticsBaseColumnZeroIsAbsorptionNotQuantumYield) {
+  species_initialized = false;
+  auto opts = PhotoChemOptionsImpl::from_kinetics_base(
+      data_dir() + "test_master.inp", data_dir() + "test_catalog.dat",
+      data_dir() + "cross/");
+  PhotoChem photo(opts);
+  photo->to(device, dtype);
+  auto wave = torch::tensor({322.5}, torch::device(device).dtype(dtype));
+  auto temp = torch::tensor({298.0}, torch::device(device).dtype(dtype));
+  // Both O3 channels share absorption; their yields are 1.0 and 0.080.
+  auto xs = photo->photolysis->interp_cross_section(2, wave, temp);
+  EXPECT_NEAR(xs[0][0].item<double>(), 1.969e-20, 1.e-25);
+  EXPECT_NEAR(xs[0][1].item<double>(), 1.969e-20, 1.e-25);
+  xs = photo->photolysis->interp_cross_section(3, wave, temp);
+  EXPECT_NEAR(xs[0][0].item<double>(), 1.969e-20, 1.e-25);
+  EXPECT_NEAR(xs[0][1].item<double>(), 0.080 * 1.969e-20, 1.e-25);
+}
+
 TEST_P(DeviceTest, KineticsBaseForward) {
   species_initialized = false;
 
@@ -562,6 +580,11 @@ TEST_P(DeviceTest, KineticsBaseForward) {
   auto aflux = torch::ones_like(wave) * 1e14;
 
   auto [rate, rc_ddC, rc_ddT] = kinet->forward(temp, pres, conc);
+  // O + O2 + M <=> O3 + M: NASA-9 Kc at 300 K and 1 bar (m3/mol).
+  if (dtype == torch::kFloat64)
+    EXPECT_NEAR((rate[0][9] / rate[0][21]).item<double>() / 1e18 /
+                    2.8062191373259865e10,
+                1., 1e-10);
   photo->photolysis->update_xs_diss_stacked(temp);
   auto photo_rate = photo->forward(temp, conc, aflux);
 

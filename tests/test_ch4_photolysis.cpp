@@ -144,6 +144,46 @@ TEST_P(CH4PhotolysisTest, EffectiveStoichiometry) {
 }
 
 // Test Jacobian for photolysis
+TEST_P(CH4PhotolysisTest, TotalAbsorptionWeightsOnlyBranchZeroRemainder) {
+  for (double channel : {0.25, 1.25}) {
+    auto opts = PhotolysisOptionsImpl::create();
+    opts->wavelength() = {100., 200.};
+    opts->reactions().push_back(Reaction("N2 => N2 + N2"));
+    opts->cross_section() = {1., channel, 1., channel};
+    opts->branches().push_back(
+        {parse_comp_string("N2:1"), parse_comp_string("N2:2")});
+    Photolysis module(opts);
+    module->to(device, dtype);
+    auto wave = torch::tensor({100., 200.}, torch::device(device).dtype(dtype));
+    auto flux = torch::ones_like(wave);
+    auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
+    auto stoich = module->get_effective_stoich(0, wave, flux, temp);
+    // Product weights: branch 0 returns one N2, branch 1 returns two.
+    EXPECT_NEAR(stoich[7].item<double>(), 1.0 + std::min(channel, 1.0), 1.e-6);
+    // Computing weights must not overwrite the stored absorption total.
+    auto xs = module->interp_cross_section(0, wave, temp);
+    EXPECT_DOUBLE_EQ(xs[0][0].item<double>(), 1.0);
+  }
+}
+
+TEST_P(CH4PhotolysisTest, RemainderClipsBeforeWavelengthIntegration) {
+  auto opts = PhotolysisOptionsImpl::create();
+  opts->wavelength() = {100., 200.};
+  opts->reactions().push_back(Reaction("N2 => N2 + N2"));
+  opts->cross_section() = {1., 0.4, 0.4, 1., 0.8, 0.4};
+  opts->branches().push_back({parse_comp_string("N2:1"),
+                              parse_comp_string("N2:2"),
+                              parse_comp_string("N2:3")});
+  Photolysis module(opts);
+  module->to(device, dtype);
+  auto wave = torch::tensor({100., 200.}, torch::device(device).dtype(dtype));
+  auto temp = torch::tensor({250.}, torch::device(device).dtype(dtype));
+  auto stoich =
+      module->get_effective_stoich(0, wave, torch::ones_like(wave), temp);
+  // Integrated weights / 100: remainder 0.1, channel 1 0.6, channel 2 0.4.
+  EXPECT_NEAR(stoich[7].item<double>(), 2.5 / 1.1, 1.e-6);
+}
+
 TEST_P(CH4PhotolysisTest, PhotolysisJacobian) {
   // Setup a simple photolysis reaction
   auto rate = torch::tensor({1.e-5}, torch::device(device).dtype(dtype));

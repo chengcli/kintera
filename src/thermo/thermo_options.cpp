@@ -89,7 +89,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
   if (config["dynamics"]) {
     if (config["dynamics"]["equation-of-state"]) {
       thermo->max_iter() =
-          config["dynamics"]["equation-of-state"]["max-iter"].as<int>(10);
+          config["dynamics"]["equation-of-state"]["max-iter"].as<int>(100);
       if (thermo->verbose()) {
         std::cout << "[ThermoOptions] setting EOS max-iter = "
                   << thermo->max_iter() << std::endl;
@@ -117,6 +117,8 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
 
   // add reference species
   vapor_set.insert(species_names[0]);
+
+  std::vector<Reaction> coag_rxns;
 
   // register reactions
   if (config["reactions"]) {
@@ -160,6 +162,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
     // create temporary coagulation and evaporation options to add species
     auto coagulation = CoagulationOptionsImpl::from_yaml(config["reactions"]);
     add_to_vapor_cloud(vapor_set, cloud_set, coagulation);
+    coag_rxns = coagulation->reactions();
     if (thermo->verbose()) {
       std::cout << fmt::format(
                        "[ThermoOptions] registered {} Coagulation reactions",
@@ -246,6 +249,38 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
     thermo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
     thermo->names().push_back(species_names[id]);
     thermo->mu().push_back(species_weights[id]);
+  }
+
+  // X => X(p) copies with X's thermo data and no nucleation take X's entropy
+  std::set<std::string> nucleated;
+  for (auto const& r : thermo->reactions())
+    for (auto const& sp : r.products()) nucleated.insert(sp.first);
+  auto ids = thermo->vapor_ids();
+  ids.insert(ids.end(), thermo->cloud_ids().begin(), thermo->cloud_ids().end());
+  auto col = [&](std::string const& name) {
+    int id = std::find(species_names.begin(), species_names.end(), name) -
+             species_names.begin();
+    return std::make_pair(
+        id,
+        static_cast<int>(std::find(ids.begin(), ids.end(), id) - ids.begin()));
+  };
+  auto data = [&](int i) {
+    return std::make_tuple(species_cref_R[i], species_uref_R[i],
+                           species_sref_R[i], species_nasa9_low[i],
+                           species_nasa9_high[i], species_nasa9_Tmid[i],
+                           species_weights[i]);
+  };
+  for (auto const& r : coag_rxns) {
+    if (r.reactants().size() != 1 || r.products().size() != 1) continue;
+    auto [src, a] = *r.reactants().begin();
+    auto [dst, b] = *r.products().begin();
+    auto [i, ci] = col(src);
+    auto [j, cj] = col(dst);
+    if (a != b || nucleated.count(dst) || cj == static_cast<int>(ids.size()) ||
+        data(i) != data(j))
+      continue;
+    thermo->copy_cols().push_back(cj);
+    thermo->copy_src_cols().push_back(ci);
   }
 
   return thermo;

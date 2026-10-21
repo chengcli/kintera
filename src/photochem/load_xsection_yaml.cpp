@@ -28,7 +28,9 @@ load_xsection_yaml(YAML::Node const& data_node,
 
     wavelength.push_back(row[0]);
     for (int b = 0; b < nbranch; b++) {
-      xsection.push_back(b + 1 < (int)row.size() ? row[b + 1] : row[1]);
+      xsection.push_back(b + 1 < (int)row.size()
+                             ? row[b + 1]
+                             : (row.size() == 2 ? row[1] : 0.));
     }
   }
 

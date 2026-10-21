@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 
+import pytest
 import torch
 
 from kintera.atm2d.conservation import count_atoms, project_atomic_budget
@@ -99,6 +100,18 @@ def test_project_atomic_budget_skips_fixed():
     # C (small, below mean) untouched.
     assert out[0, 0, 2].item() == 1.0
 
+
+
+@pytest.mark.parametrize("dev", ["cpu"] + (["cuda"] if torch.cuda.is_available() else []))
+def test_project_atomic_budget_hog_total_below_one(dev):
+    # K9: hog A holds 0.5 C < 1; the budget must still be met exactly.
+    counts = torch.tensor([1.0, 2.0, 0.0], dtype=torch.float64, device=dev)
+    c = torch.tensor([[[0.5, 0.005, 1.0]]], dtype=torch.float64, device=dev)
+    out = project_atomic_budget(
+        c, atom_counts={"C": counts},
+        fixed_mask=torch.tensor([False, False, True], device=dev),
+        budget={"C": torch.full((1, 1, 1), 0.3, dtype=torch.float64, device=dev)})
+    assert abs((out * counts).sum().item() - 0.3) < 1e-15
 
 # ---------- fold_charge_balance_into_jacobian ----------
 

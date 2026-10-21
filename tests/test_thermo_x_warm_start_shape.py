@@ -91,5 +91,26 @@ def test_warm_start_after_device_move(tmp_path):
     _run_child(card, "migrate")
 
 
+@pytest.mark.parametrize("dev", ["cpu"] + ["cuda"] * torch.cuda.is_available())
+def test_warm_start_equals_cold_after_priming(dev):  # K1 (#54)
+    import kintera
+    op = ThermoOptions.from_yaml(os.path.join(os.path.dirname(__file__), "jupiter.yaml"))
+    thermo = ThermoX(op.max_iter(50))
+    thermo.to(torch.device(dev))
+    names = kintera.species_names()
+    sp = [names[i] for i in list(op.vapor_ids()) + list(op.cloud_ids())]
+    x = torch.zeros(2, len(sp), device=dev)
+    for s, v in (("H2O", 2.5e-3), ("NH3", 3e-4), ("H2S", 8e-5)):
+        x[:, sp.index(s)] = v
+    x[:, 0] = 1. - x[:, 1:].sum(-1)
+    temp = torch.tensor([130., 150.], device=dev)
+    pres = torch.full_like(temp, 1.e5)
+    out = []
+    for warm in (False, True):
+        thermo.forward(temp + 20., pres, x.clone())
+        out.append(x.clone())
+        thermo.forward(temp, pres, out[-1], warm)
+    assert torch.equal(out[0], out[1])
+
 if __name__ == "__main__":
     sys.exit(child(sys.argv[1], sys.argv[2]))

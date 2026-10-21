@@ -124,30 +124,6 @@ DISPATCH_MACRO void mmdot(T* r, T const* a, T const* b, int n1, int n2,
 }
 
 /*!
- * \brief matrix-matrix dot product: a.b^T
- * \param[out] r[0..n1*n3-1]  output matrix in row-major sequential storage
- * \param[in] a[0..n1*n2-1]   row-major sequential storage of n1 x n2 matrix
- * \param[in] b[0..n3*n2-1]   row-major sequential storage of n3 x n2 matrix
- * \param[in] n1              number of rows in matrix a
- * \param[in] n2              number of cols in matrix a (and cols in matrix b)
- * \param[in] n3              number of rows in matrix b
- */
-template <typename T>
-DISPATCH_MACRO void mmdot_t(T* r, T const* a, T const* b, int n1, int n2,
-                            int n3) {
-  // Perform matrix multiplication
-  for (int i = 0; i < n1; ++i) {
-    for (int j = 0; j < n3; ++j) {
-      T sum = 0.0;
-      for (int k = 0; k < n2; ++k) {
-        sum += a[i * n2 + j] * b[j * n2 + k];
-      }
-      r[i * n3 + j] = sum;
-    }
-  }
-}
-
-/*!
  * \brief matrix-matrix dot product: ATA = A^T * A
  * \param[out] ATA[0..n*n-1]  output matrix in row-major sequential storage
  * \param[in] A[0..n*n-1]     row-major sequential storage of n x n matrix

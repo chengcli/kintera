@@ -1659,8 +1659,12 @@ PhotoChemOptions photochem_options_from_kinetics_base(
 
       std::vector<double> vals =
           interpolate_to_shared_wavelength(ds.wavelengths_nm, ds.values);
+      std::vector<double> absorption = vals;
 
       if (ds.type == 2) {
+        TORCH_CHECK(nbranch > 1, "Photolysis reaction '", eq, "' in ", fpath,
+                    " has identical reactants and products; supply it as "
+                    "type-0 absorption");
         std::string parent_key = build_side_key2(rxn.reactants);
         auto const* abs_ds = find_absorption_dataset(parent_key, ds);
         TORCH_CHECK(abs_ds != nullptr,
@@ -1668,15 +1672,16 @@ PhotoChemOptions photochem_options_from_kinetics_base(
                     "parent species ",
                     parent_key, " while loading ", fpath);
         for (size_t j = 0; j < vals.size(); ++j) {
-          double abs_val = interpolate_on_grid(
+          absorption[j] = interpolate_on_grid(
               abs_ds->wavelengths_nm, abs_ds->values, photo->wavelength()[j]);
-          vals[j] *= abs_val;
+          vals[j] *= absorption[j];
         }
       }
 
-      for (double val : vals) {
-        for (int bi = 0; bi < nbranch; ++bi) {
-          photo->cross_section().push_back(val);
+      for (size_t j = 0; j < vals.size(); ++j) {
+        photo->cross_section().push_back(absorption[j]);
+        for (int bi = 1; bi < nbranch; ++bi) {
+          photo->cross_section().push_back(vals[j]);
         }
       }
     }

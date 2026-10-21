@@ -59,7 +59,7 @@ struct KineticsOptionsImpl final : public SpeciesThermoImpl {
   std::vector<Reaction> reactions() const;
 
   ADD_ARG(double, Tref) = 298.15;
-  ADD_ARG(double, Pref) = 101325.0;
+  ADD_ARG(double, Pref) = 1.e5;
 
   ADD_ARG(ArrheniusOptions, arrhenius) = ArrheniusOptionsImpl::create();
   ADD_ARG(CoagulationOptions, coagulation) = CoagulationOptionsImpl::create();
@@ -142,7 +142,8 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
    * \param rc_ddC derivative of the raw rate constants with respect to
    *               concentration, shape (..., nspecies, nreaction_aug)
    * \param rc_ddT optional derivative of the raw rate constants with respect
-   *               to temperature [mol/(m^3 K s)], shape (..., nreaction_aug)
+   *               to temperature [mol/(m^3 K s)], shape (..., nreaction_aug);
+   *               reverse columns are dk_r/dT of k_r = k_f / Kc
    * \param rate_constants optional raw forward coefficients, shape
    *               (..., nreaction_orig), required at zero solid abundance
    * \return       reaction-space Jacobian d(rate_i)/dC_j,
@@ -183,10 +184,6 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
  private:
   // used in evaluating jacobian
   std::vector<int> _nreactions;
-  void _jacobian_mass_action(torch::Tensor temp, torch::Tensor conc,
-                             torch::Tensor cvol, torch::Tensor rate,
-                             torch::optional<torch::Tensor> logrc_ddT,
-                             int begin, int end, torch::Tensor& out) const;
 };
 
 TORCH_MODULE(Kinetics);

@@ -60,6 +60,9 @@ using NucleationOptions = std::shared_ptr<NucleationOptionsImpl>;
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set, NucleationOptions op);
 
+//! Refuses unregistered named svp formulas and a non-default minT/maxT
+void check_nucleation_options(NucleationOptions const& op);
+
 }  // namespace kintera
 
 #undef ADD_ARG

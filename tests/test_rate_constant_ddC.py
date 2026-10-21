@@ -147,3 +147,31 @@ def test_kb_falloff_rc_ddC_is_per_reaction():
     op = _falloff_common(kt.KBFalloffOptions(), FALLOFF_EQNS)
     op.fc(0.6)
     _check(kt.KBFalloff(op))
+
+
+OZONE = """reference-state: {Tref: 300., Pref: 1.e5}
+species:
+  - {name: N2, composition: {N: 2}, cv_R: 2.5}
+  - {name: O2, composition: {O: 2}, cv_R: 2.5}
+  - {name: O, composition: {O: 1}, cv_R: 1.5}
+  - {name: O3, composition: {O: 3}, cv_R: 3.0}
+reactions:
+  - {equation: O + O2 <=> O3, type: arrhenius, rate-constant: {A: 1.7e-14, b: -2.4, Ea_R: 0.}}
+"""
+
+
+@pytest.mark.parametrize("dev", ["cpu"] + ["cuda"] * torch.cuda.is_available())
+@pytest.mark.parametrize("temp", [300.0, 1500.0])
+def test_reverse_rc_ddT_matches_finite_difference(tmp_path, dev, temp):  # D65 (#54)
+    (card := tmp_path / "ozone.yaml").write_text(OZONE)
+    kt.set_species_names(["N2", "O2", "O", "O3"])  # replace the autouse A, B, C
+    op = kt.KineticsOptions.from_yaml(str(card))
+    kin = kt.Kinetics(op.evolve_temperature(True))
+    kin.to(torch.device(dev))
+    names, P = op.species(), torch.tensor([1e5], device=dev)
+    c = torch.tensor([[{"N2": 1., "O2": .2, "O": 1e-8, "O3": 1e-6}[n] for n in names]], device=dev)
+    run = lambda t: kin.forward(torch.tensor([t], device=dev), P, c)
+    k_r = lambda t: run(t)[0][0, 1] / c[0, names.index("O3")]
+    h = temp * 1e-5
+    fd = (k_r(temp + h) - k_r(temp - h)) / (2 * h)
+    torch.testing.assert_close(run(temp)[2][0, 1], fd, rtol=1e-6, atol=0.)

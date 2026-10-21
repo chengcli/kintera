@@ -77,7 +77,7 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
   ADD_ARG(double, Tref) = 300.0;
   ADD_ARG(double, Pref) = 1.e5;
 
-  ADD_ARG(int, max_iter) = 10;
+  ADD_ARG(int, max_iter) = 100;
   ADD_ARG(double, ftol) = 1e-6;
   ADD_ARG(double, gas_floor) = 1.e-20;
   ADD_ARG(bool, verbose) = false;
@@ -85,6 +85,10 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
 
   ADD_ARG(NucleationOptions, nucleation) = NucleationOptionsImpl::create();
   ADD_ARG(std::string, uv_solver) = "auto";
+
+  //! columns of coagulation copies X(p) and of their sources X
+  ADD_ARG(std::vector<int>, copy_cols);
+  ADD_ARG(std::vector<int>, copy_src_cols);
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 
@@ -360,7 +364,7 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
    * \param[in] temp temperature, K
    * \param[in] pres pressure, Pa
    * \param[in,out] xfrac mole fraction, (..., 1 + ny)
-   * \param[in] warm_start if true, use previous active set as warm start
+   * \param[in] warm_start accepted for compatibility; has no effect
    * \param[out] diag optional diagnostic output, (..., ndiag)
    * \return gain matrix, (..., nreaction, nreaction)
    */

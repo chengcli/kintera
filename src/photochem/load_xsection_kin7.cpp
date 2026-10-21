@@ -87,13 +87,7 @@ load_xsection_kin7(std::string const& filename,
                                    xsection.begin() + max_ie * nbranch);
   }
 
-  // First branch is total absorption; subtract others to get pure absorption
-  for (size_t i = 0; i < wavelength.size(); i++) {
-    for (int j = 1; j < nbranch; j++) {
-      xsection[i * nbranch] -= xsection[i * nbranch + j];
-    }
-    xsection[i * nbranch] = std::max(xsection[i * nbranch], 0.);
-  }
+  // Keep column 0 as the file's total absorption; columns 1.. are channels.
 
   free(line);
   fclose(file);

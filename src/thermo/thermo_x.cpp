@@ -48,6 +48,7 @@ void ThermoXImpl::reset() {
   if (options->nucleation() == nullptr) {
     options->nucleation() = NucleationOptionsImpl::create();
   }
+  check_nucleation_options(options->nucleation());
 
   check_dimensions(options);
 
@@ -216,24 +217,14 @@ torch::Tensor ThermoXImpl::forward(torch::Tensor temp, torch::Tensor pres,
   vec[xfrac.dim() - 1] = reactions.size() * reactions.size();
   auto gain = torch::zeros(vec, xfrac.options());
 
-  // A warm start is valid only for the shape and device that produced it.
-  auto active_shape = temp.sizes().vec();
-  active_shape.push_back(static_cast<int64_t>(reactions.size()));
-  bool reuse = warm_start && reaction_set.defined() && nactive.defined() &&
-               reaction_set.device() == temp.device() &&
-               nactive.device() == temp.device() &&
-               nactive.sizes().equals(temp.sizes()) &&
-               reaction_set.sizes().equals(active_shape);
-  if (!reuse) {
-    auto vec2 = temp.sizes().vec();
-    vec2.push_back(reactions.size());
-    reaction_set = torch::arange(0, (int)reactions.size(),
-                                 temp.options().dtype(torch::kInt));
-    for (int i = 0; i < temp.dim(); ++i)
-      reaction_set = reaction_set.unsqueeze(0);
-    reaction_set = reaction_set.expand(vec2).contiguous();
-    nactive = torch::zeros_like(temp, temp.options().dtype(torch::kInt));
-  }
+  // warm_start has no effect: equilibrate_tp never reads the incoming nactive
+  auto vec2 = temp.sizes().vec();
+  vec2.push_back(reactions.size());
+  reaction_set = torch::arange(0, (int)reactions.size(),
+                               temp.options().dtype(torch::kInt));
+  for (int i = 0; i < temp.dim(); ++i) reaction_set = reaction_set.unsqueeze(0);
+  reaction_set = reaction_set.expand(vec2).contiguous();
+  nactive = torch::zeros_like(temp, temp.options().dtype(torch::kInt));
 
   // diagnostic array
   vec[xfrac.dim() - 1] = 1;
@@ -288,14 +279,26 @@ void ThermoXImpl::_entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
                                    torch::Tensor entropy, torch::Tensor& out) {
   int iter = 0;
   bool converged = false;
+  torch::Tensor logt_pre, entropy_pre;
+  auto active = torch::ones_like(out, out.options().dtype(torch::kBool));
   while (iter++ < options->max_iter()) {
     auto conc = compute("TPX->V", {out, pres, xfrac});
     auto cp_vol = compute("TV->cp", {out, conc});
     auto entropy_vol = compute("TPV->S", {out, pres, conc});
     auto temp_pre = out.clone();
-    out *= 1. + (entropy - entropy_vol) / cp_vol;
+    // Newton step in ln T: dS_vol/dlnT = cp_vol - S_vol, then the secant
+    auto slope = cp_vol - entropy_vol;
+    if (logt_pre.defined()) {
+      auto secant = (entropy_vol - entropy_pre) / (out.log() - logt_pre);
+      slope = torch::where(secant.isfinite() & (secant != 0.), secant, slope);
+    }
+    logt_pre = out.log();
+    entropy_pre = entropy_vol;
+    out.copy_(torch::where(
+        active, out * torch::exp((entropy - entropy_vol) / slope), out));
     forward(out, pres, xfrac);
-    if ((1. - temp_pre / out).abs().max().item<double>() < options->ftol()) {
+    active &= ~((1. - temp_pre / out).abs() < options->ftol());  // NaN stays
+    if (!active.any().item<bool>()) {
       converged = true;
       break;
     }
@@ -362,9 +365,8 @@ void ThermoXImpl::_xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
   }
 
   out.narrow(-1, 0, ngas) = conc_gas;
-  out.narrow(-1, ngas, ncloud) = conc_gas.select(-1, 0).unsqueeze(-1) *
-                                 xfrac.narrow(-1, ngas, ncloud) /
-                                 xfrac.select(-1, 0).unsqueeze(-1);
+  out.narrow(-1, ngas, ncloud) = conc_gas.sum(-1, /*keepdim=*/true) *
+                                 xfrac.narrow(-1, ngas, ncloud) / xgas;
 }
 
 }  // namespace kintera

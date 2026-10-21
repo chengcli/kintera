@@ -3,6 +3,7 @@
 
 #include <kintera/utils/utils_dispatch.hpp>
 
+#include "h2_rotation.h"
 #include "log_svp.hpp"
 #include "thermo.hpp"
 
@@ -19,7 +20,6 @@ namespace {
 // Internal energy e/R = h/R - T (ideal gas); the deviation (h(T)-h(T0)) -
 // (T-T0) is referenced to T0 so the NASA-9 and constant-cv thermo coincide at
 // T0 (continuity; preserves uref_R/sref_R latent-heat references).
-constexpr double kNasa9Tref = 300.0;  // matches ThermoOptions default Tref
 
 inline torch::Tensor nasa9_cp_R(torch::Tensor const& a,
                                 torch::Tensor const& T) {
@@ -33,11 +33,19 @@ inline torch::Tensor nasa9_h_R(torch::Tensor const& a, torch::Tensor const& T) {
          a.select(-1, 4) * T.pow(3) / 3 + a.select(-1, 5) * T.pow(4) / 4 +
          a.select(-1, 6) * T.pow(5) / 5 + a.select(-1, 7);
 }
+// NASA-9 s/R; a8 is the entropy constant
+inline torch::Tensor nasa9_s_R(torch::Tensor const& a, torch::Tensor const& T) {
+  return -a.select(-1, 0) * T.pow(-2) / 2 - a.select(-1, 1) / T +
+         a.select(-1, 2) * T.log() + a.select(-1, 3) * T +
+         a.select(-1, 4) * T.pow(2) / 2 + a.select(-1, 5) * T.pow(3) / 3 +
+         a.select(-1, 6) * T.pow(4) / 4 + a.select(-1, 8);
+}
 
 struct Nasa9Thermo {
   torch::Tensor cp_R;  // (..., nsp) NASA-9 cp/R
   torch::Tensor e_R;   // (..., nsp) internal-energy/R deviation: (h(T)-h(T0)) -
                        // (T-T0)   [0 at T0]
+  torch::Tensor s_R;   // (..., nsp) entropy/R deviation: s(T)-s(T0) [0 at T0]
   torch::Tensor mask;  // (nsp,) bool: species carries NASA-9 data
 };
 
@@ -55,99 +63,70 @@ inline Nasa9Thermo eval_nasa9(torch::Tensor temp, SpeciesThermo const& op,
   auto T0 = torch::full({1}, kNasa9Tref, o);
   auto cp = nasa9_cp_R(a, Tb);
   auto e = (nasa9_h_R(a, Tb) - nasa9_h_R(a0, T0)) - (Tb - kNasa9Tref);
-  return {cp, e, mask};
+  auto s = nasa9_s_R(a, Tb) - nasa9_s_R(a0, T0);
+  return {cp, e, s, mask};
 }
 
 inline bool nasa9_on(SpeciesThermo const& op) {
   return op->use_nasa9_cp() && op->has_nasa9();
 }
 
-// ---- First-principles H2 cp/cv/internal-energy (opt-in: use_h2_cp) ----
-// Rigid-rotor rotational thermo for an explicit "H2" species (theta_rot = 87.55
-// K), summed over J = 0..kJmax. Captures rotational freezing below ~150 K and
-// (equilibrium mode) the ortho<->para conversion heat-capacity peak near 50 K
-// -- physics that NASA-9 combustion fits (200-1000 K) miss. Parameter-free.
-// cv/R = 3/2 (trans) + cv_rot/R ; cp/R = cv/R + 1 (ideal gas); e/R = 3/2 T +
-// theta*<m> (m = J(J+1)); internal energy referenced to T0 like NASA-9
-// (continuity).
-constexpr double kThetaRot =
-    87.55;  // K, H2 rotational temperature (B = 60.853 cm^-1)
-constexpr int kJmax = 40;
-
+// use_h2_cp: the h2_rotation.h rigid-rotor kernels on the H2 column only
 struct H2Thermo {
   torch::Tensor cp_R;  // (..., nsp), H2 column = cp/R
   torch::Tensor e_R;   // (..., nsp), H2 column = (e(T)-e(T0))/R   [0 at T0]
+  torch::Tensor s_R;   // (..., nsp), H2 column = (s(T)-s(T0))/R   [0 at T0]
   torch::Tensor mask;  // (nsp,) bool, true only at the H2 species
 };
 
-// <m> and cv_rot/R for a Boltzmann ensemble: energies theta*m, weights w
-// (degeneracy * spin weight).
-inline std::pair<torch::Tensor, torch::Tensor> h2_rot_reduce(
-    torch::Tensor const& m, torch::Tensor const& w, torch::Tensor const& temp) {
-  auto wx = w * torch::exp(-kThetaRot * m / temp.unsqueeze(-1));  // (..., nJ)
-  auto Z = wx.sum(-1);                                            // (...)
-  auto m1 = (wx * m).sum(-1) / Z;                                 // (...)
-  auto m2 = (wx * m * m).sum(-1) / Z;                             // (...)
-  auto cv_rot = (kThetaRot / temp).pow(2) * (m2 - m1 * m1);       // (...)
-  return {m1, cv_rot};
-}
-
 inline H2Thermo eval_h2cp(torch::Tensor temp, SpeciesThermo const& op,
                           int nsp) {
-  auto o = temp.options();
   auto names = op->species();
-  int h2 = -1;
-  for (int i = 0; i < static_cast<int>(names.size()) && i < nsp; ++i)
-    if (names[i] == "H2") {
-      h2 = i;
-      break;
-    }
-
-  auto J = torch::arange(0, kJmax + 1, o);
-  auto m = J * (J + 1);
-  auto deg = 2 * J + 1;
-  auto odd = (J.remainder(2) == 1);
-  bool normal = (op->h2_cp_mode() == "normal");
-
-  auto eval_rot = [&](torch::Tensor const& T) {
-    if (normal) {  // fixed 1:3 para(even J):ortho(odd J), each ensemble
-                   // internally equilibrated
-      auto wpar = deg * torch::logical_not(odd).to(o.dtype());
-      auto wort = deg * odd.to(o.dtype());
-      auto rp = h2_rot_reduce(m, wpar, T);
-      auto ro = h2_rot_reduce(m, wort, T);
-      return std::make_pair(0.25 * rp.first + 0.75 * ro.first,
-                            0.25 * rp.second + 0.75 * ro.second);
-    }
-    auto w =
-        deg * torch::where(odd, torch::full_like(J, 3.0), torch::ones_like(J));
-    return h2_rot_reduce(m, w,
-                         T);  // equilibrium: single Boltzmann, ortho weight 3
-  };
-
-  auto rT = eval_rot(temp);
-  auto m1 = rT.first, cv_rot = rT.second;
-  auto T0 = torch::full({1}, kNasa9Tref, o);
-  auto m1_0 = eval_rot(T0).first;  // <m>(T0)
-
-  auto cp_h2 = 2.5 + cv_rot;  // cp/R = 5/2 + cv_rot/R
-  auto e_h2 =
-      1.5 * (temp - kNasa9Tref) + kThetaRot * (m1 - m1_0);  // (e(T)-e(T0))/R
-
-  std::vector<int64_t> shp = temp.sizes().vec();
+  names.resize(std::min<size_t>(names.size(), nsp));
+  int h2 = std::find(names.begin(), names.end(), "H2") - names.begin();
+  auto shp = temp.sizes().vec();
   shp.push_back(nsp);
-  auto cp_R = torch::zeros(shp, o);
-  auto e_R = torch::zeros(shp, o);
-  auto mask = torch::zeros({nsp}, o.dtype(torch::kBool));
-  if (h2 >= 0) {
-    cp_R.select(-1, h2) = cp_h2;
-    e_R.select(-1, h2) = e_h2;
-    mask[h2] = true;
-  }
-  return {cp_R, e_R, mask};
+  auto conc = torch::zeros(shp, temp.options());  // unused by the kernels
+  auto eval = [&](std::string const& suffix) {
+    auto out = torch::zeros_like(conc);
+    std::vector<std::string> funcs(nsp);
+    if (h2 < nsp) funcs[h2] = "h2_rot_" + op->h2_cp_mode() + suffix;
+    auto iter = at::TensorIteratorConfig()
+                    .resize_outputs(false)
+                    .check_all_same_dtype(true)
+                    .declare_static_shape(shp, /*squash_dim=*/{temp.dim()})
+                    .add_output(out)
+                    .add_owned_input(temp.unsqueeze(-1))
+                    .add_input(conc)
+                    .build();
+    at::native::call_func2(out.device().type(), iter, funcs);
+    return out;
+  };
+  auto mask = torch::zeros({nsp}, temp.options().dtype(torch::kBool));
+  if (h2 < nsp) mask[h2] = true;
+  return {eval("_ddT") + 1., eval(""), eval("_s"), mask};
 }
 
 inline bool h2_on(SpeciesThermo const& op) { return op->use_h2_cp(); }
+
+// gas entropy T part: cp ln T, or cp ln T0 + s(T) - s(T0) under the flags
+inline torch::Tensor gas_entropy_T_R(torch::Tensor temp,
+                                     torch::Tensor const& cp_gas_R,
+                                     SpeciesThermo const& op) {
+  int ngas = cp_gas_R.size(0);
+  auto result = temp.log().unsqueeze(-1) * cp_gas_R;
+  if (nasa9_on(op)) {
+    auto n9 = eval_nasa9(temp, op, ngas);
+    result =
+        torch::where(n9.mask, cp_gas_R * std::log(kNasa9Tref) + n9.s_R, result);
+  }
+  if (h2_on(op)) {
+    auto h2 = eval_h2cp(temp, op, ngas);
+    result =
+        torch::where(h2.mask, cp_gas_R * std::log(kNasa9Tref) + h2.s_R, result);
+  }
+  return result;
+}
 }  // namespace
 
 torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
@@ -353,9 +332,10 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   auto entropy_R = torch::zeros_like(conc);
 
   // gas entropy
+  auto entropy_T_R = gas_entropy_T_R(temp, cp_gas_R, op);
   entropy_R.narrow(-1, 0, ngas) =
-      sref_R.narrow(0, 0, ngas) + entropy_R_extra +
-      temp.log().unsqueeze(-1) * cp_gas_R - pres.log().unsqueeze(-1) -
+      sref_R.narrow(0, 0, ngas) + entropy_R_extra + entropy_T_R -
+      pres.log().unsqueeze(-1) -
       (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).clamp_min(1e-300).log();
 
   // std::cout << "entropy_R = " << entropy_R << std::endl;
@@ -413,9 +393,10 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   auto entropy_R = torch::zeros_like(conc);
 
   // gas entropy
+  auto entropy_T_R = gas_entropy_T_R(temp, cp_gas_R, op);
   entropy_R.narrow(-1, 0, ngas) =
-      sref_R.narrow(0, 0, ngas) + entropy_R_extra +
-      temp.log().unsqueeze(-1) * cp_gas_R - pres.log().unsqueeze(-1) -
+      sref_R.narrow(0, 0, ngas) + entropy_R_extra + entropy_T_R -
+      pres.log().unsqueeze(-1) -
       (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).clamp_min(1e-300).log();
 
   //////////// Evaluate condensate entropy ////////////
@@ -430,8 +411,8 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   // std::cout << "enthalpy_R = " << enthalpy_R << std::endl;
 
   // (3) Evaluate equilibrium vapor entropies (..., V)
-  auto entropy_vapor_R = sref_R.narrow(0, 0, ngas) + entropy_R_extra +
-                         temp.log().unsqueeze(-1) * cp_gas_R;
+  auto entropy_vapor_R =
+      sref_R.narrow(0, 0, ngas) + entropy_R_extra + entropy_T_R;
   // std::cout << "entropy_vaor_R = " << entropy_vapor_R << std::endl;
 
   // (4) Assemble b vector (..., R)
@@ -453,6 +434,11 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
   // (6) Solve for condensate entropy
   entropy_R.narrow(-1, ngas, ncloud) =
       sp_inv.view(vec2).matmul(b.unsqueeze(-1)).squeeze(-1);
+
+  // (7) a coagulation copy takes the entropy of its source
+  for (size_t k = 0; k < op->copy_cols().size(); ++k)
+    entropy_R.select(-1, op->copy_cols()[k]) =
+        entropy_R.select(-1, op->copy_src_cols()[k]);
 
   // std::cout << "entropy_R = " << entropy_R << std::endl;
 

@@ -136,10 +136,6 @@ Configuring Phase Transitions
        Reaction("NH3 <=> NH3(l)")
    ])
 
-   # Temperature range for each transition
-   nucleation.minT([200.0, 150.0])
-   nucleation.maxT([400.0, 300.0])
-
    # Saturation vapor pressure model
    nucleation.set_logsvp(["h2o_ideal", "nh3_ideal"])
 
@@ -268,6 +264,9 @@ YAML configuration:
    - equation: O + H2 <=> H + OH
      type: arrhenius
      rate-constant: {A: 38.7, b: 2.7, Ea_R: 6260.0}
+
+An omitted ``b`` or ``Ea_R`` defaults to 0, so ``{A: 38.7}`` is a
+temperature-independent rate.
 
 Three-Body Reactions
 ~~~~~~~~~~~~~~~~~~~~

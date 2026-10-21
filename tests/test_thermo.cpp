@@ -765,16 +765,16 @@ dynamics:
   EXPECT_NEAR(std::log(cold_conc_after[2].item<double>()), log_saturation,
               1.e-6);
 
-  op_thermo->max_iter(1);
-  auto failed_yfrac = initial.clone();
-  auto failed_diag = torch::full({1, 1}, 7., tensor_options);
+  op_thermo->max_iter(1);  // does not cap the partition search (K4)
+  auto capped_yfrac = initial.clone();
+  auto capped_diag = torch::full({1, 1}, 7., tensor_options);
   thermo_y->nactive.fill_(2);
-  auto failed_gain =
-      thermo_y->forward(rho, intEng, failed_yfrac, true, failed_diag);
-  EXPECT_TRUE(torch::all(failed_gain == 0.).item<bool>());
-  EXPECT_DOUBLE_EQ(failed_diag.item<double>(), -1.);
+  auto capped_gain =
+      thermo_y->forward(rho, intEng, capped_yfrac, true, capped_diag);
+  EXPECT_TRUE(torch::all(capped_gain == 0.).item<bool>());
+  EXPECT_GE(capped_diag.item<double>(), 1.);
   EXPECT_EQ(thermo_y->nactive.item<int>(), 0);
-  EXPECT_TRUE(torch::allclose(failed_yfrac, initial, 1.e-12, 0.));
+  EXPECT_TRUE(torch::allclose(capped_yfrac, yfrac, 1.e-12, 0.));
   op_thermo->max_iter(30);
 
   op_thermo->uv_solver("auto");
@@ -790,6 +790,82 @@ dynamics:
   EXPECT_LT(kkt_diag.item<double>(), op_thermo->max_iter());
 
   init_species_from_yaml("jupiter.yaml");
+}
+
+// Adjust [gas, vapour, cloud] cells at 1 bar from T0; returns diag, T, conc.
+static std::vector<torch::Tensor> uv_cells(std::string const& card,
+                                           std::vector<double> T0, double xv,
+                                           torch::Device dev) {
+  init_species_from_yaml(YAML::Load(card));
+  ThermoY th(ThermoOptionsImpl::from_yaml(YAML::Load(card)));
+  th->to(dev, torch::kFloat64);
+  auto o = torch::device(dev).dtype(torch::kFloat64);
+  auto mu = 1. / th->inv_mu;
+  auto x = torch::tensor({1. - xv, xv, 0.}, o), T = torch::tensor(T0, o);
+  auto rho = 1.e5 * (x * mu).sum() / (constants::Rgas * T);
+  auto y = (x * mu / (x * mu).sum()).narrow(0, 1, 2).unsqueeze(1);
+  y = y.expand({2, (int64_t)T0.size()}).contiguous();
+  auto U = th->compute("VT->U", {th->compute("DY->V", {rho, y}), T});
+  auto diag = torch::zeros({(int64_t)T0.size(), 1}, o);
+  th->forward(rho, U, y, false, diag);
+  auto ivol = th->compute("DY->V", {rho, y});
+  std::vector<torch::Tensor> out{diag, th->compute("VU->T", {ivol, U}),
+                                 ivol * th->inv_mu};
+  init_species_from_yaml("jupiter.yaml");
+  return out;
+}
+
+TEST_P(DeviceTest, equilibrate_uv_partition_near_tref) {  // D6
+  if (dtype != torch::kFloat64 || device.type() == torch::kMPS) GTEST_SKIP();
+  auto card = R"(
+reference-state: {Tref: 300., Pref: 1.e5}
+species:
+- {name: dry, composition: {H: 1.5, He: 0.15}, cv_R: 2.5}
+- {name: H2O, composition: {H: 2, O: 1}, cv_R: 2.5, u0_R: 0.}
+- {name: H2O(l), composition: {H: 2, O: 1}, cv_R: 9.0, u0_R: -3430.}
+reactions:
+- {equation: 'H2O <=> H2O(l)', type: nucleation, rate-constant: {formula: h2o_ideal}}
+dynamics: {equation-of-state: {uv-solver: partition, max-iter: 50}})";
+  for (double xv : {5.e-2, 1.e-3}) {
+    auto diag = uv_cells(card, {299., 300., 301.}, xv, device)[0];
+    EXPECT_TRUE(torch::all(diag > 0.).item<bool>()) << xv << diag;
+  }
+}
+
+TEST_P(DeviceTest, equilibrate_uv_h2_cp_saturated) {  // D12
+  if (dtype != torch::kFloat64 || device.type() == torch::kMPS) GTEST_SKIP();
+  for (std::string mode : {"normal", "equilibrium"}) {
+    auto out = uv_cells(R"(
+reference-state: {Tref: 300., Pref: 1.e5, use-h2-cp: true, h2-cp-mode: )" +
+                            mode + R"(}
+species:
+- {name: H2, composition: {H: 2}, cv_R: 2.5}
+- {name: NH3, composition: {N: 1, H: 3}, cv_R: 2.5, u0_R: 0.}
+- {name: NH3(c), composition: {N: 1, H: 3}, cv_R: 9.0, u0_R: -5520.}
+reactions:
+- {equation: 'NH3 <=> NH3(c)', type: nucleation, rate-constant: {formula: nh3_ideal}}
+dynamics: {equation-of-state: {max-iter: 50}})",
+                        {160.}, 0.02, device);
+    double T = out[1].item<double>();
+    double c = out[2].flatten()[1].item<double>();
+    EXPECT_NEAR(std::log(c * constants::Rgas * T), nh3_ideal(T), 1.e-5) << mode;
+  }
+}
+
+TEST_P(DeviceTest, equilibrate_tp_default_max_iter_cold_start) {  // D4
+  if (dtype != torch::kFloat64 || device.type() == torch::kMPS) GTEST_SKIP();
+  auto op = ThermoOptionsImpl::from_yaml("jupiter.yaml");  // no max-iter
+  ThermoX thermo(op);
+  thermo->to(device, dtype);
+  auto o = torch::device(device).dtype(dtype);
+  auto x = torch::zeros(
+      {1, int64_t(op->vapor_ids().size() + op->cloud_ids().size())}, o);
+  x[0][1] = 2.5e-3, x[0][2] = 3.e-4, x[0][3] = 8.e-5;  // H2O, NH3, H2S
+  x[0][0] = 1. - x.sum();
+  auto diag = torch::zeros({1, 1}, o);
+  thermo->forward(torch::tensor({130.}, o), torch::tensor({1.e5}, o), x, false,
+                  diag);
+  EXPECT_GT(diag.item<double>(), 0.);
 }
 
 TEST_P(DeviceTest, equilibrate_uv_partition_rejects_coupled_reactions) {
@@ -849,7 +925,8 @@ TEST_P(DeviceTest, extrapolate_ad) {
   }
 
   auto op_thermo = ThermoOptionsImpl::from_yaml("jupiter.yaml");
-  (*op_thermo).max_iter(15).ftol(1e-8);
+  // 15 iterations leave the 200 K starting state unconverged
+  (*op_thermo).max_iter(50).ftol(1e-8);
 
   ThermoX thermo_x(op_thermo);
   thermo_x->to(device, dtype);
@@ -881,6 +958,96 @@ TEST_P(DeviceTest, extrapolate_ad) {
   std::cout << "temp after = " << temp << std::endl;
 
   EXPECT_EQ(torch::allclose(entropy_mole0, entropy_mole1, 1e-3, 1e-3), true);
+}
+
+TEST_P(DeviceTest, coagulation_copy_entropy) {  // D64
+  if (dtype == torch::kFloat) GTEST_SKIP();
+  ThermoX thermo(ThermoOptionsImpl::from_yaml("jupiter.yaml"));
+  thermo->to(device, dtype);
+  auto opt = torch::device(device).dtype(dtype);
+  // jupiter.yaml columns: dry, H2O, NH3, H2S, H2O(l), H2O(l,p), ...
+  auto x = torch::zeros({2, 9}, opt);
+  x.select(-1, 1) = 1e-3;
+  x.index_put_({0, 4}, 1e-3);
+  x.index_put_({1, 5}, 1e-3);
+  x.select(-1, 0) = 1. - x.narrow(-1, 1, 8).sum(-1);
+  auto temp = 280. * torch::ones({2}, opt), pres = 5.e5 * torch::ones({2}, opt);
+  auto conc = thermo->compute("TPX->V", {temp, pres, x});
+  auto s = thermo->compute("TPV->S", {temp, pres, conc}).cpu();
+  EXPECT_NEAR(s[1].item<double>(), s[0].item<double>(), 1e-9);
+  auto card = YAML::LoadFile("jupiter.yaml");  // H2O(l,p) data != H2O(l)
+  for (auto sp : card["species"])
+    if (sp["name"].as<std::string>() == "H2O(l,p)") sp["cv_R"] = 8.0;
+  EXPECT_EQ(ThermoOptionsImpl::from_yaml(card)->copy_cols().size(), 1u);
+}
+
+TEST_P(DeviceTest, pxs_to_t_batched) {  // D8
+  if (dtype == torch::kFloat) GTEST_SKIP();
+  auto opt = torch::device(device).dtype(dtype);
+  ThermoX thermo(ThermoOptionsImpl::from_yaml("jupiter.yaml"));
+  auto op_ref = ThermoOptionsImpl::from_yaml("jupiter.yaml");
+  op_ref->max_iter(200);  // the oracle needs a converged cold start
+  ThermoX ref(op_ref);
+  thermo->to(device, dtype);
+  ref->to(device, dtype);
+  auto x = torch::zeros({4, 28, 9}, opt);
+  auto h = torch::tensor({0., 2.5e-3, 1e-2, 5e-2}, opt).view({4, 1});
+  x.select(-1, 1) = h;
+  x.select(-1, 2) = 3e-4 * (h > 0);
+  x.select(-1, 3) = 8e-5 * (h > 0);
+  x.select(-1, 0) = 1. - x.narrow(-1, 1, 8).sum(-1);
+  auto tstar = torch::arange(130., 410., 10., opt).expand({4, 28}).contiguous();
+  auto pres = 1.e5 * torch::ones_like(tstar);
+  auto xeq = x.clone();
+  ref->forward(tstar, pres, xeq);
+  auto conc = ref->compute("TPX->V", {tstar, pres, xeq});
+  auto entropy = ref->compute("TPV->S", {tstar, pres, conc});
+  auto temp = thermo->compute("PXS->T", {pres, x, entropy});
+  EXPECT_TRUE(torch::allclose(temp, tstar, 1e-5, 0.));
+}
+
+TEST_P(DeviceTest, pxs_to_t_nan_column) {  // D8: NaN never converges
+  if (dtype == torch::kFloat) GTEST_SKIP();
+  ThermoX thermo(ThermoOptionsImpl::from_yaml("jupiter.yaml"));
+  thermo->to(device, dtype);
+  auto opt = torch::device(device).dtype(dtype);
+  for (int n : {1, 3}) {
+    auto x = torch::zeros({n, 9}, opt);
+    x.select(-1, 0) = 1.;
+    auto temp = 300. * torch::ones({n}, opt),
+         pres = 1.e5 * torch::ones({n}, opt);
+    auto s = thermo->compute(
+        "TPV->S", {temp, pres, thermo->compute("TPX->V", {temp, pres, x})});
+    s.index_put_({0}, NAN);
+    testing::internal::CaptureStderr();
+    auto t = thermo->compute("PXS->T", {pres, x, s}).cpu();
+    auto err = testing::internal::GetCapturedStderr();
+    EXPECT_NE(err.find("_entropy_to_temp: max iteration reached"),
+              std::string::npos);
+    EXPECT_TRUE(t[0].isnan().item<bool>());
+  }
+}
+
+TEST_P(DeviceTest, jupiter_card_latent) {  // K8
+  if (dtype == torch::kFloat) GTEST_SKIP();
+  ThermoX thermo(ThermoOptionsImpl::from_yaml("jupiter.yaml"));
+  thermo->to(device, dtype);
+  auto opt = torch::device(device).dtype(dtype);
+  // {vapour, condensate column, T, beta, gamma, T3}: h2o_ideal liquid branch,
+  // nh3_ideal solid branch
+  double cases[2][6] = {{1, 4, 300., 24.845, 4.986009, 273.16},
+                        {2, 6, 160., 20.64, 1.43, 195.4}};
+  for (auto& c : cases) {
+    auto conc = torch::ones({1, 9}, opt), dn = torch::zeros({1, 9}, opt);
+    dn.index_put_({0, (int)c[0]}, -1e-3);
+    dn.index_put_({0, (int)c[1]}, 1e-3);
+    auto temp = c[2] * torch::ones({1}, opt);
+    auto l = (thermo->compute("TV->H", {temp, conc - dn}) -
+              thermo->compute("TV->H", {temp, conc + dn})) /
+             2e-3;
+    double l_svp = constants::Rgas * (c[3] * c[5] - c[4] * c[2]);
+    EXPECT_NEAR(l.item<double>() / l_svp, 1., 1e-10);
+  }
 }
 
 TEST_P(DeviceTest, relative_humidity) {

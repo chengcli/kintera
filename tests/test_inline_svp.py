@@ -91,3 +91,18 @@ def test_inline_formula_set_from_python_raises(tmp_path):
 def test_ideal_rejects_nonpositive_p3(tmp_path):
     with pytest.raises(RuntimeError, match="requires T3 > 0 and P3 > 0"):
         options(tmp_path, CURVES["h2o"][1].replace("P3: 611.7", "P3: 0."))
+
+def test_tpx_to_v_cloud_without_species_0(tmp_path):  # D16 (#54)
+    for dev in ["cpu"] + ["cuda"] * torch.cuda.is_available():
+        thermo = ThermoX(options(tmp_path, CURVES["h2o"][0]))
+        thermo.to(torch.device(dev))
+        x = torch.tensor([[0., 0.9, 0.1]], device=dev)
+        conc = thermo.compute("TPX->V", [TEMP[:1].to(dev), PRES[:1].to(dev), x])
+        assert conc[0, :2].sum().item() == pytest.approx(1.e5 / (constants.Rgas * 150.), rel=1e-12)
+        torch.testing.assert_close(conc[0, 2], conc[0, :2].sum() / 9., rtol=1e-12, atol=0.)
+
+@pytest.mark.parametrize("rate, msg", [("{formula: h2o_idael}", "h2o_idael not registered"),  # K7
+                                       ("{formula: h2o_ideal, minT: 350.}", "minT/maxT")])  # K2
+def test_bad_rate_constant_refused_at_parse(tmp_path, rate, msg):
+    with pytest.raises(RuntimeError, match=msg):
+        options(tmp_path, rate)

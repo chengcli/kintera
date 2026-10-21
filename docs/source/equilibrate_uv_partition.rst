@@ -98,14 +98,15 @@ Scalar solve and solver selection
 Starting from the temperature inferred from the input energy, the algorithm
 brackets a sign change in :math:`F` by halving or doubling the temperature.
 It then uses Newton steps inside the bracket, replacing an invalid or
-out-of-bracket step with the midpoint. The convergence test is
+out-of-bracket step with the midpoint. With offsets :math:`u^0_i` and molar
+energies :math:`u_i` at the start, the convergence test is
 
 .. math::
 
    |F(T)| \leq 64\,\epsilon_{\mathrm{machine}}
-                  \max\left(|U_0|,1\right),
+                  \max\left(|U_0|,\ \sum_i \left(|u^0_i| + |u_i - u^0_i|\right) c_i,\ 1\right),
 
-with at most ``max_iter`` iterations counting the initial evaluation. The
+with at most ``max(max_iter, 64)`` iterations counting the initial evaluation. The
 ``ftol`` option applies to the KKT solver, not this partition energy test.
 If the partition solve fails, it restores the pre-partition temperature and
 concentrations (after nonnegative clamping). ``uv_solver: auto`` then tries

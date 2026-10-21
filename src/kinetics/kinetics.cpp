@@ -507,8 +507,9 @@ KineticsImpl::forward_with_rate_constants(
     auto nasa9_coeffs_low = options->nasa9_coeffs_low_tensor(temp.options());
     auto nasa9_coeffs_high = options->nasa9_coeffs_high_tensor(temp.options());
     auto nasa9_Tmid = options->nasa9_Tmid_tensor(temp.options());
-    auto g_RT =
-        nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high, nasa9_Tmid);
+    torch::Tensor h_RT;
+    auto g_RT = nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high,
+                               nasa9_Tmid, &h_RT);
     auto delta_g_RT = torch::matmul(g_RT, stoich_base);
     auto log_standconc =
         torch::log(torch::tensor(options->Pref(), temp.options()) /
@@ -533,9 +534,16 @@ KineticsImpl::forward_with_rate_constants(
     auto rc_ddC_rev = rc_ddC_fwd_rev / Kc_rev.clamp_min(1e-250).unsqueeze(-2);
     rc_ddC = torch::cat({rc_ddC, rc_ddC_rev}, -1);
 
+    // dk_r/dT = (dk_f/dT)/Kc - k_r dlnKc/dT; Kc held where its clamp is active
     if (rc_ddT.has_value()) {
-      auto rc_ddT_fwd_rev = rc_ddT.value().index_select(-1, rev_indices);
-      rc_ddT = torch::cat({rc_ddT.value(), rc_ddT_fwd_rev}, -1);
+      auto dlnKc =
+          ((torch::matmul(h_RT, stoich_base) - dn) / temp.unsqueeze(-1))
+              .index_select(-1, rev_indices);
+      auto rc_ddT_rev = rc_ddT.value().index_select(-1, rev_indices) /
+                            Kc_rev.clamp_min(1e-250) -
+                        kr_rev * torch::where(Kc_rev > 1e-250, dlnKc,
+                                              torch::zeros_like(dlnKc));
+      rc_ddT = torch::cat({rc_ddT.value(), rc_ddT_rev}, -1);
     }
   }
 

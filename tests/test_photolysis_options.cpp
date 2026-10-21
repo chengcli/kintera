@@ -1,5 +1,8 @@
 // C/C++
 #include <algorithm>
+#include <cstdio>
+#include <fstream>
+#include <iomanip>
 
 // external
 #include <gtest/gtest.h>
@@ -9,6 +12,8 @@
 #include <torch/torch.h>
 
 // kintera
+#include <kintera/photochem/load_xsection.hpp>
+#include <kintera/photochem/photochem.hpp>
 #include <kintera/photochem/photolysis.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
 
@@ -32,6 +37,61 @@ TEST_F(PhotolysisOptionsTest, CreateDefaultOptions) {
   EXPECT_EQ(opts->name(), "photolysis");
   EXPECT_EQ(opts->reactions().size(), 0);
   EXPECT_EQ(opts->wavelength().size(), 0);
+}
+
+TEST_F(PhotolysisOptionsTest, Kin7PreservesTotalAbsorption) {
+  // Seven points fill one fixed-width KINETICS7 row exactly.
+  const char* filename = "k18-total-absorption.dat";
+  {
+    std::ofstream out(filename);
+    for (int b = 0; b < 2; ++b) {
+      out << std::left << std::setw(60) << (b == 0 ? "CH4:1" : "CH3:1 H:1")
+          << std::right << std::setw(4) << 1 << std::setw(4) << 7
+          << std::setw(4) << 7 << std::setw(6) << 300 << '\n';
+      for (int w = 0; w < 7; ++w) {
+        out << std::fixed << std::setprecision(1) << std::setw(7)
+            << 1000. + 100. * w << std::scientific << std::setprecision(3)
+            << std::setw(10) << (b == 0 ? 1.0 : 0.25);
+      }
+      out << '\n';
+    }
+  }
+  auto [wave, xs, branches] =
+      load_xsection_kin7(filename, {"CH4:1", "CH3:1 H:1"});
+  std::remove(filename);
+  ASSERT_EQ(wave.size(), 7);
+  ASSERT_EQ(xs.size(), 14);
+  for (int w = 0; w < 7; ++w) {
+    EXPECT_DOUBLE_EQ(xs[2 * w], 1.0);
+    EXPECT_DOUBLE_EQ(xs[2 * w + 1], 0.25);
+  }
+}
+
+TEST_F(PhotolysisOptionsTest, YAMLTotalAndSingleChannelConvention) {
+  auto node = YAML::Load("[[100, 1, 0.25], [200, 2, 0.5]]");
+  auto [wave, xs, branches] = load_xsection_yaml(node, {"CH4:1", "CH3:1 H:1"});
+  EXPECT_EQ(xs, (std::vector<double>{1., 0.25, 2., 0.5}));
+  node = YAML::Load("[[100, 1], [200, 2]]");
+  std::tie(wave, xs, branches) =
+      load_xsection_yaml(node, {"CH4:1", "CH3:1 H:1"});
+  EXPECT_EQ(xs, (std::vector<double>{1., 1., 2., 2.}));
+}
+
+TEST_F(PhotolysisOptionsTest, ChapmanYAMLColumnZeroIsTotal) {
+  auto photo =
+      PhotoChemOptionsImpl::from_yaml("chapman_cycle.yaml")->photolysis();
+  auto const& xs = photo->cross_section();
+  ASSERT_EQ(xs.size() % 2, 0);
+  for (size_t i = 0; i < xs.size(); i += 2) {
+    EXPECT_GE(xs[i], xs[i + 1]) << "flattened wavelength row " << i / 2;
+  }
+}
+
+TEST_F(PhotolysisOptionsTest, MissingExplicitYAMLChannelsAreZero) {
+  auto node = YAML::Load("[[100, 1, 0.25], [200, 2, 0.5]]");
+  auto [wave, xs, branches] =
+      load_xsection_yaml(node, {"CH4:1", "CH3:1 H:1", "CH2:1 H2:1"});
+  EXPECT_EQ(xs, (std::vector<double>{1., 0.25, 0., 2., 0.5, 0.}));
 }
 
 TEST_F(PhotolysisOptionsTest, ParseYAMLInlineData) {

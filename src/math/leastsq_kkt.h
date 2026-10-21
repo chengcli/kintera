@@ -37,13 +37,14 @@ DISPATCH_MACRO T kkt_row_scale(T const* c, T const* d, T const* column_norm,
   return scale > 0. ? scale : 1.;
 }
 
-// Active-set policies of the KKT driver below. Only the step that grows the
-// active set differs; assembly, factorization and multiplier drops are shared.
+// Active-set policies of the KKT driver below. Assembly and factorization are
+// shared; how the active set grows and shrinks differs.
 enum class KktActivePolicy {
   // add every violated inequality at once (#110 contract of leastsq_kkt)
   AddAllViolated,
-  // add the single most violated inequality that is linearly independent of
-  // the active block; requires x = 0 to be feasible
+  // primal active set with a ratio test: step from a feasible iterate up to the
+  // first blocking independent row and add it, drop one negative multiplier
+  // only after a full step; requires x = 0 to be feasible
   AddOneIndependent,
 };
 
@@ -159,12 +160,14 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
   lu_indx = (int*)pmalloc<Backend>(work, size * sizeof(int));
   skip_row = (int*)pmalloc<Backend>(work, size * sizeof(int));
   // direct-solve hook buffers, feasible-origin policy only
-  T *at_lu = nullptr, *at_col = nullptr;
+  T *at_lu = nullptr, *at_col = nullptr, *x = nullptr;
   int* at_indx = nullptr;
   if (Policy == KktActivePolicy::AddOneIndependent) {
     at_lu = (T*)pmalloc<Backend>(work, n2 * n2 * sizeof(T));
     at_col = (T*)pmalloc<Backend>(work, n2 * sizeof(T));
     at_indx = (int*)pmalloc<Backend>(work, n2 * sizeof(int));
+    x = (T*)pmalloc<Backend>(work, n2 * sizeof(T));  // feasible iterate
+    for (int j = 0; j < n2; ++j) x[j] = 0.;
   }
 
   T objective_scale = 1.;
@@ -198,6 +201,12 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
   }
 
   int nactive = neq;
+  // working sets of the last 8 passes and a fingerprint of the iterate then;
+  // the set is a 64-bit mask of the n3 rows (the callers' species bounds),
+  // row k on bit k % 63, so rows from index 63 on alias (the in-repo decks
+  // have at most 9 rows, tests/jupiter.yaml)
+  unsigned long long seen[8] = {}, set;
+  T seen_x[8] = {}, xs;
   int iter = 0;
   int status = 0;
   bool converged = false;
@@ -314,6 +323,64 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
     for (int i = 0; i < nactive; ++i) skip_row[ct_indx[i]] = 1;
     int previous_active = nactive;
 
+    // Feasible-origin policy: primal active-set step (Nocedal & Wright, Alg.
+    // 16.3). Move x toward the working-set solution only up to the first
+    // blocking independent row and add it; drop the most negative multiplier
+    // only after a full step. q holds an orthonormal basis of the active rows.
+    int block = -1, drop = -1;
+    if (Policy == KktActivePolicy::AddOneIndependent) {
+      T *q = aug, *v = aug + n3 * n2, alpha = 1.;
+      int nq = 0;
+      for (int i = 0; i < nactive; ++i) {
+        T* row = q + nq * n2;
+        kkt_scaled_row(row, c, d, column_norm, objective_scale, n2, ct_indx[i]);
+        T norm = 0.;
+        for (int j = 0; j < n2; ++j) norm += row[j] * row[j];
+        T remain = kkt_orthogonalize(row, q, nq, n2);
+        if (remain > independence_tolerance * sqrt(norm)) {
+          for (int j = 0; j < n2; ++j) row[j] /= remain;
+          ++nq;
+        }
+      }
+      for (int i = nactive; i < n3; ++i) {
+        int k = ct_indx[i];
+        kkt_scaled_row(v, c, d, column_norm, objective_scale, n2, k);
+        T cp = 0., cx = 0., norm = 0.;
+        for (int j = 0; j < n2; ++j) {
+          cp += v[j] * (rhs[j] - x[j]);
+          cx += v[j] * x[j];
+          norm += v[j] * v[j];
+        }
+        T slack =
+            d[k] / kkt_row_scale(c, d, column_norm, objective_scale, n2, k) -
+            cx;
+        if (!(cp > 0.) || !(slack < alpha * cp)) continue;
+        if (kkt_orthogonalize(v, q, nq, n2) >
+            independence_tolerance * sqrt(norm)) {
+          alpha = fmax(slack, T(0.)) / cp;
+          block = i;
+        }
+      }
+      // a working set that recurs with the same iterate fingerprint (the
+      // iterate equal to round-off, no objective decrease) is a round-off cycle
+      // on a singular gain: accept the current feasible iterate as a
+      // non-optimal step; the outer Newton loop continues from it
+      set = 1ull << 63, xs = 0.;
+      for (int i = 0; i < nactive; ++i) set |= 1ull << (ct_indx[i] % 63);
+      for (int j = 0; j < n2; ++j) xs += x[j] * (j + 1);
+      bool cycle = false;
+      for (int k = 0; k < 8; ++k) cycle |= seen[k] == set && seen_x[k] == xs;
+      seen[iter % 8] = set, seen_x[iter % 8] = xs;
+      if (cycle) {
+        converged = true;
+        break;
+      }
+      for (int j = 0; j < n2; ++j) x[j] += alpha * (rhs[j] - x[j]);
+      for (int i = neq; i < nactive && block < 0; ++i)
+        if (rhs[n2 + i] < 0. && (drop < 0 || rhs[n2 + i] < rhs[n2 + drop]))
+          drop = i;
+    }
+
     // remove inactive constraints (three-way swap)
     //           mu < 0
     //           |---------------->|
@@ -327,7 +394,8 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
     int mid = nactive;
     int last = n3;
     while (first < mid) {
-      if (rhs[n2 + first] < 0.0) {  // inactive constraint
+      if (rhs[n2 + first] < 0.0 &&  // inactive constraint
+          (Policy == KktActivePolicy::AddAllViolated || first == drop)) {
         // swap with the last active constraint
         int tmp = ct_indx[first];
         ct_indx[first] = ct_indx[mid - 1];
@@ -365,46 +433,11 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
           --last;
         }
       }
-    } else {
-      // add back ONE constraint: the most violated row that is independent of
-      // the active block. aug is free until the next factorization: q holds an
-      // orthonormal basis of the scaled active rows, v the candidate row.
-      T* q = aug;
-      T* v = aug + n3 * n2;
-      int nq = 0;
-      for (int i = 0; i < first; ++i) {
-        T* row = q + nq * n2;
-        kkt_scaled_row(row, c, d, column_norm, objective_scale, n2, ct_indx[i]);
-        T norm = 0.;
-        for (int j = 0; j < n2; ++j) norm += row[j] * row[j];
-        norm = sqrt(norm);
-        T remain = kkt_orthogonalize(row, q, nq, n2);
-        if (remain > independence_tolerance * norm) {
-          for (int j = 0; j < n2; ++j) row[j] /= remain;
-          ++nq;
-        }
-      }
-
-      int best = -1;
-      T worst = 0.;
-      for (int i = first; i < last; ++i) {
-        int k = ct_indx[i];
-        if (!(eval[k] > worst)) continue;
-        kkt_scaled_row(v, c, d, column_norm, objective_scale, n2, k);
-        T norm = 0.;
-        for (int j = 0; j < n2; ++j) norm += v[j] * v[j];
-        norm = sqrt(norm);
-        if (kkt_orthogonalize(v, q, nq, n2) > independence_tolerance * norm) {
-          worst = eval[k];
-          best = i;
-        }
-      }
-      if (best >= 0) {
-        int tmp = ct_indx[first];
-        ct_indx[first] = ct_indx[best];
-        ct_indx[best] = tmp;
-        ++first;
-      }
+    } else if (block >= 0) {
+      int tmp = ct_indx[first];
+      ct_indx[first] = ct_indx[block];
+      ct_indx[block] = tmp;
+      ++first;
     }
 
     nactive = first;
@@ -413,6 +446,8 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
       converged = skip_row[ct_indx[i]] != 0;
     if (converged) break;
   }
+  if (Policy == KktActivePolicy::AddOneIndependent)
+    for (int j = 0; j < n2; ++j) rhs[j] = x[j];
 
   if (status == 0 && converged && used_regularization) {
     T feasibility_tolerance =
@@ -468,6 +503,7 @@ DISPATCH_MACRO int leastsq_kkt_impl(T* b, T const* a, T const* c, T const* d,
     pfree<Backend>(at_lu);
     pfree<Backend>(at_col);
     pfree<Backend>(at_indx);
+    pfree<Backend>(x);
   }
   pool_rewind<Backend>(work, mark);
 
@@ -532,10 +568,12 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
  * leastsq_kkt; only the active-set policy differs. The policy also tries,
  * for a square A, the direct KKT form first (kkt_solve_direct), which avoids
  * squaring cond(A); if it hits a zero pivot or a non-finite solution the
- * shared normal-equation path runs as in leastsq_kkt. Each iteration adds back
- * the single most violated inequality that is linearly independent of the
- * active block, so the active block never goes rank-deficient when several
- * rows share a direction (e.g. two condensates drawing on one vapour).
+ * shared normal-equation path runs as in leastsq_kkt. The iterate starts at
+ * x = 0 and stays feasible: each pass steps toward the working-set solution
+ * only up to the first blocking row that is linearly independent of the active
+ * block, and adds that row, so the active block never goes rank-deficient when
+ * several rows share a direction (e.g. two condensates drawing on one vapour);
+ * the most negative multiplier is dropped only after a full step.
  *
  * A row counts as independent when the part of its scaled form orthogonal to
  * the active rows keeps more than sqrt(eps) of its 2-norm (relative, so it
@@ -545,8 +583,8 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
  * which is returned exactly on it (d_k / C_kj), not to the round-off of the
  * solve.
  *
- * A violated row that is dependent on the active block is never activated,
- * so the returned x may violate it; the caller must limit the step (the
+ * A row that is dependent on the active block never blocks the step, so the
+ * returned x may violate it; the caller must limit the step (the
  * saturation adjustment clips each reaction extent to its reactant stock).
  * This is only meaningful when x = 0 is feasible, which is checked on entry:
  * d >= -64 eps max|d| and, for the first neq rows, |d| <= 64 eps max|d|, so
@@ -555,9 +593,10 @@ DISPATCH_MACRO int leastsq_kkt(T* b, T const* a, T const* c, T const* d, int n1,
  * Callers: equilibrate_uv and equilibrate_tp, whose bounds are the current
  * concentrations. A general QP must use leastsq_kkt, which fails closed.
  *
- * \return 0 on success, 1 on invalid input or if x = 0 is infeasible (b is
- *         left unchanged), 2 if max_iter is reached without convergence, or
- *         3 if the KKT system remains singular.
+ * \return 0 on success, which includes a cycle stop that accepts the current
+ *         feasible iterate as a non-optimal step; 1 on invalid input or if
+ *         x = 0 is infeasible (b is left unchanged), 2 if max_iter is reached
+ *         without convergence, or 3 if the KKT system remains singular.
  */
 template <typename T, PoolBackend Backend = PoolBackend::Shared>
 DISPATCH_MACRO int leastsq_kkt_feasible_origin(T* b, T const* a, T const* c,

@@ -135,6 +135,7 @@ size_t leastsq_kkt_feasible_origin_space(int n2, int n3) {
   bump(alignof(T), n2 * n2 * sizeof(T));  // at_lu
   bump(alignof(T), n2 * sizeof(T));       // at_col
   bump(alignof(int), n2 * sizeof(int));   // at_indx
+  bump(alignof(T), n2 * sizeof(T));       // x
   return bytes + leastsq_kkt_space<T>(n2, n3);
 }
 

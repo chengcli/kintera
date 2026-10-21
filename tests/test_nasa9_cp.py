@@ -33,9 +33,12 @@ for key, card in zip(("on", "off", "default"), sys.argv[2:]):
     V = tx.compute("TPX->V", (T, 1e5 * torch.ones_like(T), torch.ones(T.shape + (1,))))
     c, ivol = V[..., 0] * R, V / ty.inv_mu
     U = lambda t: ty.compute("VT->U", (ivol, t)) / c
+    S = lambda t: tx.compute("TPV->S", (t, 1e5 * torch.ones_like(T), V)) / c
     out[key] = {"cp": (tx.compute("TV->cp", (T, V)) / c).tolist(),
                 "cv": (ty.compute("VT->cv", (ivol, T)) / c).tolist(), "U": U(T).tolist(),
-                "dUdT": ((U(T * (1 + 1e-6)) - U(T * (1 - 1e-6))) / (2e-6 * T)).tolist()}
+                "dUdT": ((U(T * (1 + 1e-6)) - U(T * (1 - 1e-6))) / (2e-6 * T)).tolist(),
+                "Tdsdt": (T * (S(T * (1 + 1e-6)) - S(T * (1 - 1e-6))) / (2e-6 * T)).tolist(),
+                "S": S(T).tolist()}
 print(json.dumps(out))
 """
 
@@ -69,8 +72,10 @@ def test_nasa9_on_follows_the_polynomial(probe):  # rtol 1e-10 (cp, cv, U), 1e-6
     np.testing.assert_allclose(got["on"]["cp"], want, rtol=1e-10, atol=0)
     np.testing.assert_allclose(got["on"]["cv"], want - 1.0, rtol=1e-10, atol=0)
     np.testing.assert_allclose(got["on"]["dUdT"], want - 1.0, rtol=1e-6, atol=0)
+    np.testing.assert_allclose(got["on"]["Tdsdt"], want, rtol=1e-6, atol=0)  # K6
     i300 = TEMPS.index(300.0)
     np.testing.assert_allclose(got["on"]["U"][i300], got["off"]["U"][i300], rtol=1e-12, atol=0)
+    np.testing.assert_allclose(got["on"]["S"][i300], got["off"]["S"][i300], rtol=1e-12, atol=0)
 
 
 def test_nasa9_off_keeps_the_constant_cp(probe):
