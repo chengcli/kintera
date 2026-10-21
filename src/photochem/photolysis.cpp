@@ -308,6 +308,11 @@ torch::Tensor PhotolysisImpl::get_effective_stoich(int rxn_idx,
               "Invalid reaction index: ", rxn_idx);
 
   auto xs = interp_cross_section(rxn_idx, wave, temp);
+  // Stored column 0 is total absorption, not a separate competing channel.
+  // Only its non-dissociating remainder weights branch 0; clip pointwise
+  // before integration so excess channel yields cannot create negative weight.
+  auto channels = xs.narrow(-1, 1, xs.size(-1) - 1).sum(-1);
+  xs.select(-1, 0).copy_((xs.select(-1, 0) - channels).clamp_min(0));
   auto aflux_exp = aflux.unsqueeze(-1);
   auto branch_rate = torch::trapezoid(xs * aflux_exp, wave, 0);
   auto total_rate = branch_rate.sum() + 1e-30;

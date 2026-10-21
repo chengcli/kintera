@@ -94,9 +94,11 @@ def _total_cross_section_by_species(
 ) -> torch.Tensor:
     """Return total absorber cross section by species on the requested grid.
 
-    Only branch ``0`` is used from each interpolated photolysis cross section,
-    matching the convention that branch ``0`` is total photoabsorption and
-    branches ``1:`` are dissociation channels.
+    Branch ``0`` is total photoabsorption; branches ``1:`` are dissociation
+    channels. Use the first nonzero photolysis reaction's total for each absorber,
+    since its other reactions describe channels of the same absorption. Their
+    totals must agree to relative tolerance 1e-6 (zero absolute tolerance).
+    Entirely zero totals on the requested grid are missing data and are skipped.
     """
     photolysis = photo_chem.module("photolysis")
     reactions = photo_chem.options.photolysis().reactions()
@@ -111,6 +113,7 @@ def _total_cross_section_by_species(
     )
 
     temp_flat = temperature.reshape(-1)
+    seen_absorbers = set()
     for rxn_idx, reaction in enumerate(reactions):
         reactants = reaction.reactants()
         if len(reactants) != 1:
@@ -118,7 +121,17 @@ def _total_cross_section_by_species(
         absorber = next(iter(reactants.keys()))
         absorber_idx = species_index[absorber]
         sigma_rxn = photolysis.interp_cross_section(rxn_idx, wavelength, temp_flat).select(-1, 0)
-        sigma[:, :, :, absorber_idx] += sigma_rxn.reshape(ncol, nz, wavelength.numel())
+        sigma_rxn = sigma_rxn.reshape(ncol, nz, wavelength.numel())
+        if torch.count_nonzero(sigma_rxn).item() == 0:
+            continue
+        if absorber in seen_absorbers:
+            if not torch.allclose(sigma_rxn, sigma[:, :, :, absorber_idx], rtol=1e-6, atol=0.0):
+                raise ValueError(
+                    f"column 0 must be the total absorption; reactions of {absorber} disagree"
+                )
+            continue
+        seen_absorbers.add(absorber)
+        sigma[:, :, :, absorber_idx] = sigma_rxn
 
     return sigma
 
