@@ -391,9 +391,19 @@ torch::Tensor KineticsImpl::jacobian(
       -1);
   // nu_j C_j^(nu_j - 1), 0 where the species does not react; the exponent is
   // held at 0 there so that no negative power of a zero concentration forms.
+  // A fractional order below 1 has an unbounded derivative at zero
+  // concentration: for a negative exponent C_j is floored just above the
+  // IEEE 754 min-normal, the finite value the old rate / C_j form gave. The
+  // floor is not applied for nu_j >= 1, where the derivative at zero is exact.
   auto expo = torch::where(ordinary_order.ne(0), ordinary_order - 1,
                            torch::zeros_like(ordinary_order));
-  auto dpow = ordinary_order * conc_pos.unsqueeze(-2).pow(expo);
+  auto conc_row = conc_pos.unsqueeze(-2);
+  auto base =
+      torch::where(expo.lt(0),
+                   conc_row.clamp_min(
+                       conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300),
+                   conc_row);
+  auto dpow = ordinary_order * base.pow(expo);
   auto mass_derivative =
       k.unsqueeze(-1) * dpow * left * right * conc.ge(0).unsqueeze(-2);
   if (evaporation_count_ > 0) {

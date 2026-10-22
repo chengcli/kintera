@@ -231,3 +231,37 @@ def test_negative_concentration_is_treated_as_absent(tmp_path, dev):
     assert jac[0, 0, s].item() == 0.
     c1 = c + kt.evolve_implicit(rate, kin.buffer("stoich"), jac, 542.)
     assert c1.tolist() == c.tolist()
+
+
+# Fractional orders: d(k C^nu)/dC = nu k C^(nu - 1) is unbounded at C = 0 for
+# nu < 1, so that factor is taken at the 1e-300 floor, the value main gave.
+FRACTIONAL = """reference-state: {Tref: 300., Pref: 1.e5}
+species:
+  - {name: A, composition: {H: 1}, cv_R: 1.5}
+  - {name: B, composition: {H: 2}, cv_R: 2.5}
+reactions:
+  - {equation: 0.5 A => B, type: arrhenius, rate-constant: {A: 1.e-3, b: 0., Ea_R: 0.}}
+  - {equation: 1.5 A => B, type: arrhenius, rate-constant: {A: 2.e-3, b: 0., Ea_R: 0.}}
+"""
+
+
+@pytest.mark.parametrize("dev", DEVICES)
+def test_fractional_orders_stay_finite(tmp_path, dev):
+    op, kin = load(tmp_path, FRACTIONAL, dev)
+    a = op.species().index("A")
+    T, P, cvol = state(2, dev, T=300.)
+    c = conc(op, [{}, {"A": 1e-3}], dev)
+    rate, dc, _, kf = kin.forward_with_rate_constants(T, P, c)
+    assert rate[0].tolist() == [0., 0.]
+    with_k = kin.jacobian(T, c, cvol, rate, dc, None, kf)
+    without = kin.jacobian(T, c, cvol, rate, dc)
+    assert torch.isfinite(with_k).all() and torch.isfinite(without).all()
+    k0, k1 = kf[0, 0].item(), kf[0, 1].item()
+    # order 0.5 at zero: the floored value; order 1.5 at zero: exactly 0
+    assert with_k[0, 0, a].item() == pytest.approx(.5 * k0 * 1e-300 ** -.5, rel=1e-12)
+    assert with_k[0, 1, a].item() == 0.
+    assert without[0, :, a].tolist() == [0., 0.]
+    # closed form where A is present, with and without rate constants
+    assert with_k[1, 0, a].item() == pytest.approx(.5 * k0 * 1e-3 ** -.5, rel=1e-12)
+    assert with_k[1, 1, a].item() == pytest.approx(1.5 * k1 * 1e-3 ** .5, rel=1e-12)
+    torch.testing.assert_close(without[1], with_k[1], rtol=1e-12, atol=0.)
