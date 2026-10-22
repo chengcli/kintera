@@ -265,3 +265,34 @@ def test_fractional_orders_stay_finite(tmp_path, dev):
     assert with_k[1, 0, a].item() == pytest.approx(.5 * k0 * 1e-3 ** -.5, rel=1e-12)
     assert with_k[1, 1, a].item() == pytest.approx(1.5 * k1 * 1e-3 ** .5, rel=1e-12)
     torch.testing.assert_close(without[1], with_k[1], rtol=1e-12, atol=0.)
+
+
+# Backward through the Jacobian: pow at a zero base with a fractional exponent
+# has an infinite backward, which 0 * inf turns into NaN; the powers are taken
+# at a safe base and the value at zero is selected afterwards.
+BACKWARD = """reference-state: {Tref: 300., Pref: 1.e5}
+species:
+  - {name: A, composition: {H: 1}, cv_R: 1.5}
+  - {name: B, composition: {H: 2}, cv_R: 2.5}
+  - {name: D, composition: {H: 3}, cv_R: 2.5}
+reactions:
+  - {equation: 0.5 A => B, type: arrhenius, rate-constant: {A: 1.e-3, b: 0., Ea_R: 0.}}
+  - {equation: 1.5 A => B, type: arrhenius, rate-constant: {A: 2.e-3, b: 0., Ea_R: 0.}}
+  - {equation: 2 A => B, type: arrhenius, rate-constant: {A: 3.e-3, b: 0., Ea_R: 0.}}
+  - {equation: A + D => B, type: arrhenius, rate-constant: {A: 4.e-3, b: 0., Ea_R: 0.}}
+"""
+
+
+@pytest.mark.parametrize("dev", DEVICES)
+@pytest.mark.parametrize("use_k", [True, False])
+def test_jacobian_backward_is_finite_at_zero(tmp_path, dev, use_k):
+    op, kin = load(tmp_path, BACKWARD, dev)
+    a = op.species().index("A")
+    T, P, cvol = state(2, dev, T=300.)
+    c = conc(op, [{"D": 1e-3}, {"A": 1e-3, "D": 1e-3}], dev).requires_grad_(True)
+    rate, dc, _, kf = kin.forward_with_rate_constants(T, P, c.detach())
+    jac = kin.jacobian(T, c, cvol, rate, dc, None, kf if use_k else None)
+    assert torch.isfinite(jac).all()
+    jac.sum().backward()
+    assert torch.isfinite(c.grad).all()
+    assert c.grad[0, a].item() == 0.

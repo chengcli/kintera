@@ -326,6 +326,16 @@ torch::Tensor KineticsImpl::jacobian(
   // exact at zero concentration, instead of nu_j rate / C_j.
   auto conc_pos = conc.clamp_min(0.);
   auto nspecies = conc.size(-1);
+  // Powers of the concentration with a finite backward at zero: pow is taken
+  // at a base of 1 where C_j = 0 and the value at zero is selected afterwards,
+  // so no 0^(nu - 1) enters the graph (its backward, 0 * inf, is NaN).
+  auto conc_row = conc_pos.unsqueeze(-2);  // (..., 1, nspecies)
+  auto present = conc_row.gt(0);
+  auto safe = torch::where(present, conc_row, torch::ones_like(conc_row));
+  auto pow_present = [&](torch::Tensor const& expo,
+                         torch::Tensor const& at_zero) {
+    return torch::where(present, safe.pow(expo), at_zero);
+  };
   if (rate_constants.has_value()) {
     TORCH_CHECK(rate_constants->sizes() ==
                     rate.narrow(-1, 0, n_reactions_orig_).sizes(),
@@ -344,8 +354,8 @@ torch::Tensor KineticsImpl::jacobian(
     react_st_full = forward_orders;
   }
   auto react_st = react_st_full.t();  // (nrxn_aug, nspecies)
-  auto concp_fwd =
-      conc_pos.unsqueeze(-2).pow(react_st).prod(-1, /*keepdim=*/true);
+  auto concp_fwd = pow_present(react_st, react_st.eq(0).to(conc.dtype()))
+                       .prod(-1, /*keepdim=*/true);
 
   // Assemble the evaporation concentration factors before autograd can save
   // them. Never overwrite a tensor used by a previous multiplication.
@@ -362,7 +372,8 @@ torch::Tensor KineticsImpl::jacobian(
   // that product is positive. A zero rate carries no rate constant, so
   // without rate_constants the derivative with respect to an absent
   // reactant is 0.
-  auto cpow = conc_pos.unsqueeze(-2).pow(ordinary_order);
+  auto cpow =
+      pow_present(ordinary_order, ordinary_order.eq(0).to(conc.dtype()));
   torch::Tensor k;
   if (rate_constants.has_value()) {
     k = rate_constants.value();
@@ -397,13 +408,13 @@ torch::Tensor KineticsImpl::jacobian(
   // floor is not applied for nu_j >= 1, where the derivative at zero is exact.
   auto expo = torch::where(ordinary_order.ne(0), ordinary_order - 1,
                            torch::zeros_like(ordinary_order));
-  auto conc_row = conc_pos.unsqueeze(-2);
-  auto base =
-      torch::where(expo.lt(0),
-                   conc_row.clamp_min(
-                       conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300),
-                   conc_row);
-  auto dpow = ordinary_order * base.pow(expo);
+  double tiny = conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300;
+  auto base = torch::where(expo.lt(0), safe.clamp_min(tiny), safe);
+  // at zero: 1 for nu_j = 1, tiny^(nu_j - 1) for nu_j < 1, 0 for nu_j > 1
+  auto at_zero =
+      torch::where(expo.lt(0), torch::full_like(expo, tiny).pow(expo),
+                   expo.eq(0).to(conc.dtype()));
+  auto dpow = ordinary_order * torch::where(present, base.pow(expo), at_zero);
   auto mass_derivative =
       k.unsqueeze(-1) * dpow * left * right * conc.ge(0).unsqueeze(-2);
   if (evaporation_count_ > 0) {
