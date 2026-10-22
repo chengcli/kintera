@@ -301,15 +301,36 @@ void KineticsImpl::reset() {
   }
 }
 
+torch::Tensor KineticsImpl::_equilibrium_constants(torch::Tensor temp,
+                                                   torch::Tensor* h_RT) const {
+  auto nasa9_coeffs_low = options->nasa9_coeffs_low_tensor(temp.options());
+  auto nasa9_coeffs_high = options->nasa9_coeffs_high_tensor(temp.options());
+  auto nasa9_Tmid = options->nasa9_Tmid_tensor(temp.options());
+  auto g_RT = nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high,
+                             nasa9_Tmid, h_RT);
+  auto delta_g_RT = torch::matmul(g_RT, stoich.narrow(1, 0, n_reactions_orig_));
+  auto log_standconc =
+      torch::log(torch::tensor(options->Pref(), temp.options()) /
+                 (constants::Rgas * temp));
+  return (-delta_g_RT + dn * log_standconc.unsqueeze(-1)).exp();
+}
+
 torch::Tensor KineticsImpl::jacobian(
     torch::Tensor temp, torch::Tensor conc, torch::Tensor cvol,
     torch::Tensor rate, torch::Tensor rc_ddC,
     torch::optional<torch::Tensor> rc_ddT,
     torch::optional<torch::Tensor> rate_constants) const {
-  // Tiny floor just above IEEE 754 min-normal to avoid 0/0 in rate/conc.
-  // Must match the floor in forward() for consistency.
-  auto conc_safe =
-      conc.clamp_min(conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300);
+  // The mass-action rate uses the real, non-negative concentration (#147), so
+  // its derivative is formed from the rate constant and the product over the
+  // other reactants, k nu_j C_j^(nu_j - 1) prod_{i != j} C_i^nu_i, which is
+  // exact at zero concentration, instead of nu_j rate / C_j.
+  auto conc_pos = conc.clamp_min(0.);
+  auto nspecies = conc.size(-1);
+  if (rate_constants.has_value()) {
+    TORCH_CHECK(rate_constants->sizes() ==
+                    rate.narrow(-1, 0, n_reactions_orig_).sizes(),
+                "rate_constants must match the forward reaction rate shape");
+  }
 
   // Build augmented reactant stoichiometry: for forward reactions use
   // react_stoich, for reverse reactions use prod_stoich (products of the
@@ -324,7 +345,7 @@ torch::Tensor KineticsImpl::jacobian(
   }
   auto react_st = react_st_full.t();  // (nrxn_aug, nspecies)
   auto concp_fwd =
-      conc_safe.unsqueeze(-2).pow(react_st).prod(-1, /*keepdim=*/true);
+      conc_pos.unsqueeze(-2).pow(react_st).prod(-1, /*keepdim=*/true);
 
   // Assemble the evaporation concentration factors before autograd can save
   // them. Never overwrite a tensor used by a previous multiplication.
@@ -335,37 +356,70 @@ torch::Tensor KineticsImpl::jacobian(
       reaction_ids.lt(evaporation_start_ + evaporation_count_);
   auto ordinary_order = torch::where(evaporation_rows.unsqueeze(-1),
                                      torch::zeros_like(react_st), react_st);
-  // Avoid evaluating discarded 0/C terms, whose backward can overflow at
-  // trace/zero concentrations even when the corresponding row is replaced.
-  auto denominator = torch::where(ordinary_order.ne(0), conc_safe.unsqueeze(-2),
-                                  torch::ones_like(conc_safe).unsqueeze(-2));
-  auto mass_derivative = ordinary_order * rate.unsqueeze(-1) / denominator;
+
+  // Rate constant of every augmented row: the explicit forward constants,
+  // with the reverse rows divided by Kc; otherwise rate / prod C^nu where
+  // that product is positive. A zero rate carries no rate constant, so
+  // without rate_constants the derivative with respect to an absent
+  // reactant is 0.
+  auto cpow = conc_pos.unsqueeze(-2).pow(ordinary_order);
+  torch::Tensor k;
+  if (rate_constants.has_value()) {
+    k = rate_constants.value();
+    if (has_reversible_ && options->has_nasa9()) {
+      auto rev_indices = rev_indices_.to(conc.device(), torch::kLong);
+      auto Kc_rev = _equilibrium_constants(temp).index_select(-1, rev_indices);
+      k = torch::cat(
+          {k, k.index_select(-1, rev_indices) / Kc_rev.clamp_min(1e-250)}, -1);
+    }
+  } else {
+    auto concp = cpow.prod(-1);
+    auto positive = concp.gt(0);
+    k = torch::where(
+        positive, rate / torch::where(positive, concp, torch::ones_like(concp)),
+        torch::zeros_like(rate));
+  }
+
+  // prod_{i != j} C_i^nu_i without dividing by C_j: the exclusive products
+  // from the left and from the right.
+  auto ones = torch::ones_like(cpow.narrow(-1, 0, 1));
+  auto left = torch::cat(
+      {ones, torch::cumprod(cpow, -1).narrow(-1, 0, nspecies - 1)}, -1);
+  auto right = torch::cat(
+      {torch::cumprod(cpow.flip(-1), -1).flip(-1).narrow(-1, 1, nspecies - 1),
+       ones},
+      -1);
+  // nu_j C_j^(nu_j - 1), 0 where the species does not react; the exponent is
+  // held at 0 there so that no negative power of a zero concentration forms.
+  auto expo = torch::where(ordinary_order.ne(0), ordinary_order - 1,
+                           torch::zeros_like(ordinary_order));
+  auto dpow = ordinary_order * conc_pos.unsqueeze(-2).pow(expo);
+  auto mass_derivative =
+      k.unsqueeze(-1) * dpow * left * right * conc.ge(0).unsqueeze(-2);
   if (evaporation_count_ > 0) {
     auto order =
         forward_orders.narrow(1, evaporation_start_, evaporation_count_).t();
     auto solid = (conc.unsqueeze(-2) * order).sum(-1, true);
     auto cp = solid.clamp_min(0.);
-    torch::Tensor k;
+    torch::Tensor k_evap;
     if (rate_constants.has_value()) {
-      TORCH_CHECK(rate_constants->sizes() ==
-                      rate.narrow(-1, 0, n_reactions_orig_).sizes(),
-                  "rate_constants must match the forward reaction rate shape");
-      k = rate_constants->narrow(-1, evaporation_start_, evaporation_count_);
+      k_evap =
+          rate_constants->narrow(-1, evaporation_start_, evaporation_count_);
     } else {
       TORCH_CHECK(solid.ne(0).all().item<bool>(),
                   "Evaporation at zero solid abundance requires explicit "
                   "rate_constants from forward_with_rate_constants()");
       auto denominator =
           torch::where(solid.gt(0), solid, torch::ones_like(solid));
-      k = rate.narrow(-1, evaporation_start_, evaporation_count_) /
-          denominator.squeeze(-1);
+      k_evap = rate.narrow(-1, evaporation_start_, evaporation_count_) /
+               denominator.squeeze(-1);
     }
     auto rows = torch::arange(evaporation_start_,
                               evaporation_start_ + evaporation_count_,
                               forward_orders.options().dtype(torch::kLong));
     concp_fwd = concp_fwd.index_copy(-2, rows, cp);
     mass_derivative = mass_derivative.index_copy(
-        -2, rows, k.unsqueeze(-1) * order * solid.ge(0));
+        -2, rows, k_evap.unsqueeze(-1) * order * solid.ge(0));
   }
   auto jac = concp_fwd * rc_ddC.transpose(-1, -2) + mass_derivative;
 
@@ -484,15 +538,14 @@ KineticsImpl::forward_with_rate_constants(
     }
   }
 
-  // Tiny floor just above IEEE 754 min-normal so that pow() and the
-  // Jacobian's rate/conc ratio stay finite.  A large floor (e.g. 1e-20)
-  // inflates rates of trace-species reactions and destroys the Jacobian
-  // conditioning via the reverse-reaction rc_ddC / Kc amplification.
-  auto conc_safe =
-      conc.clamp_min(conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300);
+  // Mass action with the real, non-negative concentration: an absent
+  // reactant gives an exact zero rate (#147). jacobian() forms the
+  // derivative from the rate constants, so no floor is needed to carry k
+  // through the rate at zero concentration.
+  auto conc_pos = conc.clamp_min(0.);
 
   // mass-action forward: k_f * product(C_reactant^stoich)
-  auto rate_f = result * conc_safe.unsqueeze(-1).pow(forward_orders).prod(-2);
+  auto rate_f = result * conc_pos.unsqueeze(-1).pow(forward_orders).prod(-2);
   if (evaporation_count_ > 0) {
     auto orders =
         forward_orders.narrow(1, evaporation_start_, evaporation_count_);
@@ -504,23 +557,14 @@ KineticsImpl::forward_with_rate_constants(
   // Split forward/reverse: augment rates with separate reverse entries
   if (has_reversible_ && options->has_nasa9()) {
     auto rev_indices = rev_indices_.to(result.device(), torch::kLong);
-    auto nasa9_coeffs_low = options->nasa9_coeffs_low_tensor(temp.options());
-    auto nasa9_coeffs_high = options->nasa9_coeffs_high_tensor(temp.options());
-    auto nasa9_Tmid = options->nasa9_Tmid_tensor(temp.options());
     torch::Tensor h_RT;
-    auto g_RT = nasa9_gibbs_RT(temp, nasa9_coeffs_low, nasa9_coeffs_high,
-                               nasa9_Tmid, &h_RT);
-    auto delta_g_RT = torch::matmul(g_RT, stoich_base);
-    auto log_standconc =
-        torch::log(torch::tensor(options->Pref(), temp.options()) /
-                   (constants::Rgas * temp));
-    auto Kc = (-delta_g_RT + dn * log_standconc.unsqueeze(-1)).exp();
+    auto Kc = _equilibrium_constants(temp, &h_RT);
 
     // Extract only reversible reactions
     auto Kc_rev = Kc.index_select(-1, rev_indices);
     auto kf_rev = result.index_select(-1, rev_indices);
     auto prod_stoich_rev = prod_stoich.index_select(1, rev_indices);
-    auto conc_prod_rev = conc_safe.unsqueeze(-1).pow(prod_stoich_rev).prod(-2);
+    auto conc_prod_rev = conc_pos.unsqueeze(-1).pow(prod_stoich_rev).prod(-2);
 
     // Reverse rate = (k_f / Kc) * product(C_product^stoich), no clamp
     auto kr_rev = kf_rev / Kc_rev.clamp_min(1e-250);

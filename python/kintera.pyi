@@ -1936,7 +1936,8 @@ class Kinetics:
         cvol: torch.Tensor,
         rate: torch.Tensor,
         rc_ddC: torch.Tensor,
-        rc_ddT: Optional[torch.Tensor] = None
+        rc_ddT: Optional[torch.Tensor] = None,
+        rate_constants: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
         """
         Compute the Jacobian matrix for kinetics.
@@ -1948,6 +1949,11 @@ class Kinetics:
             rate (torch.Tensor): Reaction rates
             rc_ddC (torch.Tensor): Rate derivatives w.r.t. concentration
             rc_ddT (torch.Tensor, optional): Rate derivatives w.r.t. temperature
+            rate_constants (torch.Tensor, optional): Raw forward rate constants
+                from forward_with_rate_constants(), shape (..., nreaction).
+                Required for evaporation at zero solid abundance; with it the
+                derivative with respect to an absent reactant is exact,
+                without it that entry is 0.
 
         Returns:
             torch.Tensor: Jacobian matrix
