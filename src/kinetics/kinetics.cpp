@@ -326,15 +326,26 @@ torch::Tensor KineticsImpl::jacobian(
   // exact at zero concentration, instead of nu_j rate / C_j.
   auto conc_pos = conc.clamp_min(0.);
   auto nspecies = conc.size(-1);
-  // Powers of the concentration with a finite backward at zero: pow is taken
-  // at a base of 1 where C_j = 0 and the value at zero is selected afterwards,
-  // so no 0^(nu - 1) enters the graph (its backward, 0 * inf, is NaN).
+  // A power of the concentration with a finite value and backward at zero.
+  // pow(0, e) and its backward are finite for e = 0 and e >= 1, so those keep
+  // the plain pow and its gradient (an integer order has a well-defined
+  // derivative at zero). For 0 < e < 1 the backward at zero is infinite and
+  // for e < 0 the value is, so there the power is taken at a base of 1 where
+  // C_j = 0 and at_zero is selected instead; with floor_negative, a negative
+  // exponent is also evaluated at C_j floored just above the IEEE 754
+  // min-normal.
+  double tiny = conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300;
   auto conc_row = conc_pos.unsqueeze(-2);  // (..., 1, nspecies)
   auto present = conc_row.gt(0);
-  auto safe = torch::where(present, conc_row, torch::ones_like(conc_row));
-  auto pow_present = [&](torch::Tensor const& expo,
-                         torch::Tensor const& at_zero) {
-    return torch::where(present, safe.pow(expo), at_zero);
+  auto safe_pow = [&](torch::Tensor const& expo, torch::Tensor const& at_zero,
+                      bool floor_negative) {
+    auto plain = present | expo.ge(1) | expo.eq(0);
+    auto base =
+        floor_negative
+            ? torch::where(expo.lt(0), conc_row.clamp_min(tiny), conc_row)
+            : conc_row;
+    base = torch::where(plain, base, torch::ones_like(base));
+    return torch::where(plain, base.pow(expo), at_zero);
   };
   if (rate_constants.has_value()) {
     TORCH_CHECK(rate_constants->sizes() ==
@@ -354,7 +365,7 @@ torch::Tensor KineticsImpl::jacobian(
     react_st_full = forward_orders;
   }
   auto react_st = react_st_full.t();  // (nrxn_aug, nspecies)
-  auto concp_fwd = pow_present(react_st, react_st.eq(0).to(conc.dtype()))
+  auto concp_fwd = safe_pow(react_st, react_st.eq(0).to(conc.dtype()), false)
                        .prod(-1, /*keepdim=*/true);
 
   // Assemble the evaporation concentration factors before autograd can save
@@ -373,7 +384,7 @@ torch::Tensor KineticsImpl::jacobian(
   // without rate_constants the derivative with respect to an absent
   // reactant is 0.
   auto cpow =
-      pow_present(ordinary_order, ordinary_order.eq(0).to(conc.dtype()));
+      safe_pow(ordinary_order, ordinary_order.eq(0).to(conc.dtype()), false);
   torch::Tensor k;
   if (rate_constants.has_value()) {
     k = rate_constants.value();
@@ -408,13 +419,11 @@ torch::Tensor KineticsImpl::jacobian(
   // floor is not applied for nu_j >= 1, where the derivative at zero is exact.
   auto expo = torch::where(ordinary_order.ne(0), ordinary_order - 1,
                            torch::zeros_like(ordinary_order));
-  double tiny = conc.scalar_type() == torch::kFloat32 ? 1e-30 : 1e-300;
-  auto base = torch::where(expo.lt(0), safe.clamp_min(tiny), safe);
-  // at zero: 1 for nu_j = 1, tiny^(nu_j - 1) for nu_j < 1, 0 for nu_j > 1
+  // at zero for a fractional order: tiny^(nu_j - 1) below 1, 0 above
   auto at_zero =
       torch::where(expo.lt(0), torch::full_like(expo, tiny).pow(expo),
-                   expo.eq(0).to(conc.dtype()));
-  auto dpow = ordinary_order * torch::where(present, base.pow(expo), at_zero);
+                   torch::zeros_like(expo));
+  auto dpow = ordinary_order * safe_pow(expo, at_zero, true);
   // The concentration factors are multiplied first and k last, as the rate
   // is formed (k times the product): k times nu_j C_j^(nu_j - 1) alone can
   // overflow where the derivative itself is representable.

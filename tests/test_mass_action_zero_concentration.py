@@ -267,9 +267,10 @@ def test_fractional_orders_stay_finite(tmp_path, dev):
     torch.testing.assert_close(without[1], with_k[1], rtol=1e-12, atol=0.)
 
 
-# Backward through the Jacobian: pow at a zero base with a fractional exponent
-# has an infinite backward, which 0 * inf turns into NaN; the powers are taken
-# at a safe base and the value at zero is selected afterwards.
+# Backward through the Jacobian. pow(0, e) and its backward are finite for
+# e = 0 and e >= 1, so an integer order keeps its gradient at zero (the
+# Jacobian is a polynomial there). For 0 < e < 1 the backward is infinite and
+# 0 * inf is NaN, so a fractional order takes a constant at zero instead.
 BACKWARD = """reference-state: {Tref: 300., Pref: 1.e5}
 species:
   - {name: A, composition: {H: 1}, cv_R: 1.5}
@@ -295,7 +296,42 @@ def test_jacobian_backward_is_finite_at_zero(tmp_path, dev, use_k):
     assert torch.isfinite(jac).all()
     jac.sum().backward()
     assert torch.isfinite(c.grad).all()
-    assert c.grad[0, a].item() == 0.
+    # d/dA of the Jacobian sum at A = 0: the fractional orders contribute 0,
+    # 2 A => B contributes 2 k, A + D => B contributes k (from d(k A)/dA)
+    if use_k:
+        expected = 2. * kf[0, 2].item() + kf[0, 3].item()
+        assert c.grad[0, a].item() == pytest.approx(expected, rel=1e-12)
+    else:
+        # without rate constants a zero rate carries no k, so nothing to vary
+        assert c.grad[0, a].item() == 0.
+
+
+# The two integer-order cases from the review of #151, with k = 1
+INTEGER = """reference-state: {Tref: 300., Pref: 1.e5}
+species:
+  - {name: A, composition: {H: 1}, cv_R: 1.5}
+  - {name: B, composition: {H: 2}, cv_R: 2.5}
+  - {name: C, composition: {H: 3}, cv_R: 2.5}
+reactions:
+  - {equation: A + A + B => C, type: arrhenius, rate-constant: {A: 1.e-3, b: 0., Ea_R: 0.}}
+  - {equation: A + B => C, type: arrhenius, rate-constant: {A: 1.e-3, b: 0., Ea_R: 0.}}
+"""
+
+
+@pytest.mark.parametrize("dev", DEVICES)
+def test_integer_order_gradients_at_zero(tmp_path, dev):
+    op, kin = load(tmp_path, INTEGER, dev)
+    T, P, cvol = state(1, dev, T=300.)
+    c = conc(op, [{"B": 2.}], dev)
+    extra = {"kf_override": torch.tensor([[1., 1.]], device=dev)}
+    rate, dc, _, kf = kin.forward_with_rate_constants(T, P, c, extra)
+    # 2 A + B: J = [2 k A B, k A^2, 0], gradient of its sum = [2 k B + 2 k A, 2 k A, 0]
+    # A + B:   J = [k B, k A, 0],       gradient of its sum = [k, k, 0]
+    for row, expected in [(0, [4., 0., 0.]), (1, [1., 1., 0.])]:
+        cc = c.clone().requires_grad_(True)
+        jac = kin.jacobian(T, cc, cvol, rate, dc, None, kf)
+        jac[0, row].sum().backward()
+        assert cc.grad[0].tolist() == pytest.approx(expected, rel=1e-12, abs=0.)
 
 
 # A large rate constant with a small concentration product: k nu_j C_j^(nu_j - 1)
