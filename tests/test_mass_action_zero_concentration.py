@@ -296,3 +296,32 @@ def test_jacobian_backward_is_finite_at_zero(tmp_path, dev, use_k):
     jac.sum().backward()
     assert torch.isfinite(c.grad).all()
     assert c.grad[0, a].item() == 0.
+
+
+# A large rate constant with a small concentration product: k nu_j C_j^(nu_j - 1)
+# alone overflows while the derivative is representable, so k is multiplied last.
+OVERFLOW = """reference-state: {Tref: 300., Pref: 1.e5}
+species:
+  - {name: A, composition: {H: 1}, cv_R: 1.5}
+  - {name: B, composition: {H: 2}, cv_R: 2.5}
+  - {name: D, composition: {H: 3}, cv_R: 2.5}
+reactions:
+  - {equation: 2 A + B => D, type: arrhenius, rate-constant: {A: 1.e-3, b: 0., Ea_R: 0.}}
+"""
+
+
+@pytest.mark.parametrize("dev", DEVICES)
+def test_large_rate_constant_does_not_overflow(tmp_path, dev):
+    op, kin = load(tmp_path, OVERFLOW, dev)
+    names = op.species()
+    a, b = names.index("A"), names.index("B")
+    T, P, cvol = state(1, dev, T=300.)
+    c = conc(op, [{"A": 1., "B": 5e-9}], dev)
+    extra = {"kf_override": torch.tensor([[1e308]], device=dev)}  # k 2 [A] = 2e308 overflows
+    rate, dc, _, kf = kin.forward_with_rate_constants(T, P, c, extra)
+    assert rate[0, 0].item() == pytest.approx(5e299, rel=1e-12)  # k [A]^2 [B]
+    with_k = kin.jacobian(T, c, cvol, rate, dc, None, kf)
+    without = kin.jacobian(T, c, cvol, rate, dc)
+    for jac in (with_k, without):
+        assert jac[0, 0, a].item() == pytest.approx(1e300, rel=1e-12)  # 2 k [A] [B]
+        assert jac[0, 0, b].item() == pytest.approx(1e308, rel=1e-12)  # k [A]^2

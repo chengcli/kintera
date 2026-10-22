@@ -415,8 +415,11 @@ torch::Tensor KineticsImpl::jacobian(
       torch::where(expo.lt(0), torch::full_like(expo, tiny).pow(expo),
                    expo.eq(0).to(conc.dtype()));
   auto dpow = ordinary_order * torch::where(present, base.pow(expo), at_zero);
+  // The concentration factors are multiplied first and k last, as the rate
+  // is formed (k times the product): k times nu_j C_j^(nu_j - 1) alone can
+  // overflow where the derivative itself is representable.
   auto mass_derivative =
-      k.unsqueeze(-1) * dpow * left * right * conc.ge(0).unsqueeze(-2);
+      dpow * left * right * k.unsqueeze(-1) * conc.ge(0).unsqueeze(-2);
   if (evaporation_count_ > 0) {
     auto order =
         forward_orders.narrow(1, evaporation_start_, evaporation_count_).t();
