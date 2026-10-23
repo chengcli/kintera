@@ -189,9 +189,10 @@ class CoreChemistrySource:
                 kf_override[..., col] = ov[..., i]
 
         extra = {"number_density": density, "kf_override": kf_override}
-        rate, rc_ddC, rc_ddT = self.kin.forward(T, P, conc_core, extra)
+        rate, rc_ddC, rc_ddT, kf = self.kin.forward_with_rate_constants(T, P, conc_core, extra)
         cvol = torch.ones_like(T)
-        jac_rxn = self.kin.jacobian(T, conc_core, cvol, rate, rc_ddC, rc_ddT)
+        # the rate constants keep the Jacobian exact for a species at zero (#147)
+        jac_rxn = self.kin.jacobian(T, conc_core, cvol, rate, rc_ddC, rc_ddT, kf)
         stoich = self._stoich.to(dtype=rate.dtype, device=rate.device)
         # tendency_core[s] = Σ_r stoich[s,r] * rate_f[r];  jac_core[s,n] = Σ_r stoich[s,r] * jac_rxn[r,n]
         tend_core = torch.einsum("sr,clr->cls", stoich, rate)

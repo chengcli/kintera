@@ -25,11 +25,14 @@ def build_chemistry_jacobian(
     photo_flat = _flatten_photo_inputs(photo_inputs, ncol, nz) if photo_inputs is not None else None
 
     if photo_flat is None:
-        rate, rc_ddc, rc_ddt = kinetics.forward(temp_flat, pressure_flat, conc_flat)
+        rate, rc_ddc, rc_ddt, kf = kinetics.forward_with_rate_constants(temp_flat, pressure_flat, conc_flat)
     else:
-        rate, rc_ddc, rc_ddt = kinetics.forward(temp_flat, pressure_flat, conc_flat, photo_flat)
+        rate, rc_ddc, rc_ddt, kf = kinetics.forward_with_rate_constants(
+            temp_flat, pressure_flat, conc_flat, photo_flat
+        )
     cvol = torch.ones_like(temp_flat)
-    jac_rxn = kinetics.jacobian(temp_flat, conc_flat, cvol, rate, rc_ddc, rc_ddt)
+    # the rate constants keep the Jacobian exact for a species at zero (#147)
+    jac_rxn = kinetics.jacobian(temp_flat, conc_flat, cvol, rate, rc_ddc, rc_ddt, kf)
     stoich = kinetics.stoich.to(device=jac_rxn.device, dtype=jac_rxn.dtype)
     jac_species = torch.einsum("sr,brn->bsn", stoich, jac_rxn)
     return jac_species.reshape(ncol, nz, nspecies, nspecies)

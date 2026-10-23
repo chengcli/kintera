@@ -145,7 +145,10 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
    *               to temperature [mol/(m^3 K s)], shape (..., nreaction_aug);
    *               reverse columns are dk_r/dT of k_r = k_f / Kc
    * \param rate_constants optional raw forward coefficients, shape
-   *               (..., nreaction_orig), required at zero solid abundance
+   *               (..., nreaction_orig), required at zero solid abundance.
+   *               With it the derivative with respect to an absent reactant
+   *               is exact (k times the other reactants); without it that
+   *               entry is 0, since a zero rate carries no rate constant.
    * \return       reaction-space Jacobian d(rate_i)/dC_j,
    *               shape (..., nreaction_aug, nspecies)
    *
@@ -184,6 +187,12 @@ class KineticsImpl : public torch::nn::Cloneable<KineticsImpl> {
  private:
   // used in evaluating jacobian
   std::vector<int> _nreactions;
+
+  //! Equilibrium constants in concentration units of the original reactions
+  //! from NASA-9 thermodynamics, shape (..., nreaction_orig); h_RT receives
+  //! h/RT of every species, shape (..., nspecies), when given.
+  torch::Tensor _equilibrium_constants(torch::Tensor temp,
+                                       torch::Tensor* h_RT = nullptr) const;
 };
 
 TORCH_MODULE(Kinetics);
