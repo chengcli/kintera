@@ -220,7 +220,7 @@ void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
   auto xfrac0 = xfrac.clone();
 
   // using isothermal as an initial guess
-  pres.set_(pres0 * exp(-grav * mmw * dz / (constants::Rgas * temp)));
+  pres.copy_(pres0 * exp(-grav * mmw * dz / (constants::Rgas * temp)));
 
   int iter = 0;
   bool converged = false;
@@ -281,9 +281,9 @@ void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
     // total gas mole fractions
     auto xg = xfrac.narrow(-1, 0, options->vapor_ids().size()).sum(-1);
     auto rho = compute("V->D", {conc});
-    pres.set_(pres0 - 0.5 * (rho + rho0) * grav * dz);
+    pres.copy_(pres0 - 0.5 * (rho + rho0) * grav * dz);
     auto dlnp = pres.log() - pres1.log();
-    temp.set_(temp1 * (1. + (entropy_step - entropy_mole +
+    temp.copy_(temp1 * (1. + (entropy_step - entropy_mole +
                              xg * constants::Rgas * dlnp) /
                                 cp_mole));
     conc = compute("TPX->V", {temp, pres, xfrac});
