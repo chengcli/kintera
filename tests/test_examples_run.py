@@ -6,8 +6,8 @@ Three of them did not, each for its own reason, and none of them was a regressio
                             binding requires a fourth, `other`, with no default.
   example_earth_dry.py      called extrapolate_ad, which was split into
                             extrapolate_dlnp and extrapolate_dz. The replacement
-                            takes dz before grav, so a plain rename would have
-                            swapped them silently.
+                            takes dz before grav, the reverse of the old call, so
+                            the two had to be reordered and not merely renamed.
   test_type_hints.py        raised Skipped at import from a module-level
                             pytest.skip, so running it directly exited 1 instead
                             of reaching its own __main__ banner.
@@ -15,6 +15,19 @@ Three of them did not, each for its own reason, and none of them was a regressio
 Each is copied to a scratch directory and run there, so a script that writes
 output cannot touch the source tree. They are run as `python <name>.py`, which is
 how a reader runs an example.
+
+What these checks catch: a script that raises, dies on a signal or times out, and
+an earth column that comes back isothermal because extrapolate_dz never wrote
+through its layer slices.
+
+What they do not catch: dz and grav passed in the wrong order. With ds_dz left at
+its default of zero, as example_earth_dry.py leaves it, the hydrostatic step uses
+the two only through the product grav * dz -- in the isothermal first guess and
+in p0 - 0.5 * (rho + rho0) * grav * dz -- so exchanging them cannot change the
+answer. Measured on this script's dz = 100 m and grav = 9.8 m/s^2, the swapped
+run returns temperature and pressure bit for bit identical and every check below
+still passes. Only a non-zero ds_dz, which multiplies dz on its own, would make
+the order observable.
 """
 
 import os
