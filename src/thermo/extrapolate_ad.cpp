@@ -284,8 +284,8 @@ void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
     pres.copy_(pres0 - 0.5 * (rho + rho0) * grav * dz);
     auto dlnp = pres.log() - pres1.log();
     temp.copy_(temp1 * (1. + (entropy_step - entropy_mole +
-                             xg * constants::Rgas * dlnp) /
-                                cp_mole));
+                              xg * constants::Rgas * dlnp) /
+                                 cp_mole));
     conc = compute("TPX->V", {temp, pres, xfrac});
     if (verbose) {
       std::cout << "  Sub-iter: pres = [" << pres.min().item<double>() << ", "
