@@ -61,7 +61,8 @@ set(subprocess_tests
   test_thermo_y_none_nucleation.py
   test_latent_heat_sign.py
   test_evaporation_inputs.py
-  test_extrapolate_dz_slice.py)
+  test_extrapolate_dz_slice.py
+  test_species_names_unset.py)
 list(TRANSFORM subprocess_tests PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 add_test(NAME test_python_subprocess
          COMMAND ${Python3_EXECUTABLE} -m pytest ${subprocess_tests})

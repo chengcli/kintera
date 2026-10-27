@@ -252,14 +252,27 @@ std::vector<std::string> SpeciesThermoImpl::species() const {
 
   std::vector<std::string> species_list;
 
+  // The ids index the global species_names, which is empty until the registry is
+  // populated and need not cover an id that was set by hand. Report that instead
+  // of reading out of bounds.
+  auto name_at = [](int64_t id, char const* kind) {
+    TORCH_CHECK(id >= 0 && static_cast<size_t>(id) < species_names.size(),
+                "species(): ", kind, " id ", id,
+                " is out of range of the global species names, which holds ",
+                species_names.size(),
+                " entries. Set the names with set_species_names() (or load a "
+                "thermodynamics file) before asking for them.");
+    return species_names[id];
+  };
+
   // add vapors
   for (int i = 0; i < vapor_ids().size(); ++i) {
-    species_list.push_back(species_names[vapor_ids()[i]]);
+    species_list.push_back(name_at(vapor_ids()[i], "vapor"));
   }
 
   // add clouds
   for (int i = 0; i < cloud_ids().size(); ++i) {
-    species_list.push_back(species_names[cloud_ids()[i]]);
+    species_list.push_back(name_at(cloud_ids()[i], "cloud"));
   }
 
   return species_list;
