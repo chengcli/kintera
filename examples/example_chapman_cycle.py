@@ -131,7 +131,7 @@ def run_chapman_cycle():
 
     photolysis.update_xs_diss_stacked(temp)
     J = photolysis.forward(temp, flux_values)
-    k = arrhenius.forward(temp, pres, conc)
+    k = arrhenius.forward(temp, pres, conc, {})
     print(f"\nPhotolysis rates:")
     print(f"  J(O2) = {J[0, 0].item():.3e} s^-1")
     print(f"  J(O3) = {J[0, 1].item():.3e} s^-1")
@@ -152,7 +152,7 @@ def run_chapman_cycle():
         c_N2, c_O2, c_O, c_O3 = conc_evolve[0].tolist()
 
         J_vals = photolysis.forward(temp, flux_values)
-        k_vals = arrhenius.forward(temp, pres, conc_evolve)
+        k_vals = arrhenius.forward(temp, pres, conc_evolve, {})
         J_O2, J_O3 = J_vals[0, 0].item(), J_vals[0, 1].item()
         k2, k4 = k_vals[0, 0].item(), k_vals[0, 1].item()
 

@@ -8,12 +8,17 @@ that the kintera.pyi stub file provides proper type information.
 # This file will be type-checked but not executed
 # It demonstrates that IDEs/type checkers can understand the API
 
-import pytest
+# The bodies below are written for a type checker, not for execution: they call the
+# API with placeholder files and shapes. Keep pytest from collecting them, but only
+# when pytest is the one importing this module -- running it directly must still
+# reach __main__ below and print what it is for.
+if __name__ != "__main__":
+    import pytest
 
-pytest.skip(
-    "type-hint demonstration only; not a runtime pytest module",
-    allow_module_level=True,
-)
+    pytest.skip(
+        "type-hint demonstration only; not a runtime pytest module",
+        allow_module_level=True,
+    )
 
 def test_species_thermo() -> None:
     """Test SpeciesThermo type hints."""
