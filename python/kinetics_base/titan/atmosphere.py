@@ -19,7 +19,13 @@ def kinetics_base_profile_tensor(profile: Any, species: list[str]) -> torch.Tens
     ]
     return torch.tensor(rows)
 
-def altitude_faces_from_kinetics_base_centers_km(altitude: list[float]) -> torch.Tensor:
+def altitude_faces_from_kinetics_base_centers_km(
+    altitude: list[float], faces_km: list[float] | None = None
+) -> torch.Tensor:
+    if faces_km is not None:  # true faces: midpoints of centres are exact only on a uniform grid
+        if len(faces_km) != len(altitude) + 1:
+            raise ValueError("faces_km must hold len(altitude) + 1 face positions")
+        return torch.tensor(faces_km) * 1.0e5
     centers = torch.tensor(altitude) * 1.0e5
     faces = torch.empty(centers.numel() + 1)
     faces[1:-1] = 0.5 * (centers[:-1] + centers[1:])
@@ -96,6 +102,7 @@ def build_kinetics_base_titan_state(
     boundary_path: str | Path | None = None,
     pun_path: str | Path | None = None,
     pun_metadata: dict[str, Any] | None = None,
+    faces_km: list[float] | None = None,
 ) -> KBTitanState:
     if isinstance(atmosphere, (str, Path)):
         atmosphere = parse_kinetics_base_atmosphere(str(atmosphere))
@@ -120,7 +127,7 @@ def build_kinetics_base_titan_state(
     )
     concentration = concentration_2d.view(1, len(atmosphere.altitude), len(selected_species))
     state = AtmState2D(
-        x1f=altitude_faces_from_kinetics_base_centers_km(atmosphere.altitude),
+        x1f=altitude_faces_from_kinetics_base_centers_km(atmosphere.altitude, faces_km),
         x2f=torch.tensor([0.0, 1.0]),
         temperature=torch.tensor(atmosphere.temperature).view(1, -1),
         pressure=torch.tensor(atmosphere.pressure).view(1, -1),
