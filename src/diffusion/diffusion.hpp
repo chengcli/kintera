@@ -7,7 +7,8 @@ namespace kintera {
 //! \param y      number density (nz, nspecies)
 //! \param Kzz    eddy diffusion coefficient at interfaces (nz-1,)  [cm^2/s]
 //! \param dzi    interface grid spacing (nz-1,) [cm]
-//! \param x1f    face positions (nz+1,) [cm]; if given, cell widths come from them
+//! \param x1f    face positions (nz+1,) [cm]; if given, cell widths come from
+//! them
 //! \return       diffusion tendency dy/dt (nz, nspecies)
 torch::Tensor diffusion_tendency(torch::Tensor y, torch::Tensor Kzz,
                                  torch::Tensor dzi,

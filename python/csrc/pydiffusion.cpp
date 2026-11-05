@@ -14,7 +14,8 @@ void bind_diffusion(py::module& m) {
         return kintera::diffusion_tendency(y, Kzz, dzi,
                                            x1f.value_or(torch::Tensor()));
       },
-      py::arg("y"), py::arg("Kzz"), py::arg("dzi"), py::arg("x1f") = py::none());
+      py::arg("y"), py::arg("Kzz"), py::arg("dzi"),
+      py::arg("x1f") = py::none());
 
   m.def(
       "diffusion_coefficients",
@@ -23,5 +24,6 @@ void bind_diffusion(py::module& m) {
         return kintera::diffusion_coefficients(y, Kzz, dzi,
                                                x1f.value_or(torch::Tensor()));
       },
-      py::arg("y"), py::arg("Kzz"), py::arg("dzi"), py::arg("x1f") = py::none());
+      py::arg("y"), py::arg("Kzz"), py::arg("dzi"),
+      py::arg("x1f") = py::none());
 }
