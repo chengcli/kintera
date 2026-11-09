@@ -10,8 +10,11 @@
 namespace kintera {
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> diffusion_coefficients(
-    torch::Tensor y, torch::Tensor Kzz, torch::Tensor dzi) {
+    torch::Tensor y, torch::Tensor Kzz, torch::Tensor dzi, torch::Tensor x1f) {
   int nz = y.size(0);
+  bool faces = x1f.defined();
+  TORCH_CHECK(!faces || (x1f.dim() == 1 && x1f.size(0) == nz + 1),
+              "diffusion: x1f must hold nz + 1 face positions");
   auto opts = y.options();
   auto n_tot = y.sum(-1);  // (nz,)
 
@@ -23,16 +26,21 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> diffusion_coefficients(
   auto B = torch::zeros({nz}, opts);
   auto C = torch::zeros({nz}, opts);
 
-  A[0] = -D[0] / dzi[0] / n_tot[0];
-  B[0] = D[0] / dzi[0] / n_tot[1];
+  // boundary cell widths: from the faces if given, else from dzi
+  auto w_lo = faces ? x1f[1] - x1f[0] : dzi[0];
+  auto w_hi = faces ? x1f[nz] - x1f[nz - 1] : dzi[nz - 2];
 
-  A[nz - 1] = -D[nz - 2] / dzi[nz - 2] / n_tot[nz - 1];
-  C[nz - 1] = D[nz - 2] / dzi[nz - 2] / n_tot[nz - 2];
+  A[0] = -D[0] / w_lo / n_tot[0];
+  B[0] = D[0] / w_lo / n_tot[1];
+
+  A[nz - 1] = -D[nz - 2] / w_hi / n_tot[nz - 1];
+  C[nz - 1] = D[nz - 2] / w_hi / n_tot[nz - 2];
 
   if (nz > 2) {
     auto dzi_lo = dzi.slice(0, 0, nz - 2);  // dzi[j-1], j=1..nz-2
     auto dzi_hi = dzi.slice(0, 1, nz - 1);  // dzi[j],   j=1..nz-2
-    auto dz_avg = (dzi_lo + dzi_hi) / 2.0;
+    auto dz_avg = faces ? x1f.slice(0, 2, nz) - x1f.slice(0, 1, nz - 1)
+                        : (dzi_lo + dzi_hi) / 2.0;
 
     auto D_lo = D.slice(0, 0, nz - 2);  // D[j-1]
     auto D_hi = D.slice(0, 1, nz - 1);  // D[j]
@@ -51,9 +59,9 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> diffusion_coefficients(
 }
 
 torch::Tensor diffusion_tendency(torch::Tensor y, torch::Tensor Kzz,
-                                 torch::Tensor dzi) {
+                                 torch::Tensor dzi, torch::Tensor x1f) {
   int nz = y.size(0);
-  auto [A, B, C] = diffusion_coefficients(y, Kzz, dzi);
+  auto [A, B, C] = diffusion_coefficients(y, Kzz, dzi, x1f);
 
   auto Au = A.unsqueeze(-1);
   auto Bu = B.unsqueeze(-1);
