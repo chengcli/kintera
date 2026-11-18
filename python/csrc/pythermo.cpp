@@ -52,6 +52,11 @@ void bind_thermo(py::module& m) {
       .ADD_OPTION(double, TO, ftol)
       .ADD_OPTION(std::string, TO, uv_solver);
 
+  py::enum_<kintera::SolveMode>(m, "SolveMode")
+      .value("automatic", kintera::SolveMode::automatic)
+      .value("eager_exit", kintera::SolveMode::eager_exit)
+      .value("fixed", kintera::SolveMode::fixed);
+
   ADD_KINTERA_MODULE(ThermoY, ThermoOptions, &Y::forward, arg("rho"),
                      arg("intEng"), arg("yfrac"), arg("warm_start") = false,
                      arg("diag") = py::none())
@@ -60,7 +65,9 @@ void bind_thermo(py::module& m) {
            &Y::take_saturation_adjustment_failures)
       .def("failures", &Y::failures)
       .def("reset_failures", &Y::reset_failures)
-      .def("consume_failures", &Y::consume_failures);
+      .def("consume_failures", &Y::consume_failures)
+      .def("compute_into", &Y::compute_into)
+      .def_readwrite("solve_mode", &Y::solve_mode);
 
   ADD_KINTERA_MODULE(ThermoX, ThermoOptions, &X::forward, arg("temp"),
                      arg("pres"), arg("xfrac"), arg("warm_start") = false,

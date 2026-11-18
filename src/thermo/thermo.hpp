@@ -196,6 +196,13 @@ struct ExtrapOptions {
   ADD_ARG(bool, rainout) = false;
 };
 
+//! VU->T and PV->T: exact (constant heat capacity: the first guess and one
+//! correction, no read) or newton (iterate as the SolveMode says)
+enum class SolvePlan { exact, newton };
+//! newton: eager_exit reads the host each pass; fixed runs max_iter passes and
+//! freezes the converged state on the device; automatic: fixed in capture
+enum class SolveMode { automatic, eager_exit, fixed };
+
 //! Mass Thermodynamics
 class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
  public:
@@ -217,6 +224,9 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! options with which this `ThermoY` was constructed
   ThermoOptions options;
   bool uv_partitionable = false;
+  //! chosen by reset() from the options only; solve_mode is read per call
+  SolvePlan temp_plan = SolvePlan::newton, pres_plan = SolvePlan::newton;
+  SolveMode solve_mode = SolveMode::automatic;
 
   ThermoYImpl() : options(ThermoOptionsImpl::create()) {}
   explicit ThermoYImpl(const ThermoOptions& options_);
@@ -226,8 +236,11 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
-  //! \brief perform conversions
+  //! \brief perform conversions; compute() allocates `out` for compute_into,
+  //! which writes it with copy_ (any dtype; tables in the input dtype)
   torch::Tensor compute(std::string ab, std::vector<torch::Tensor> const& args);
+  void compute_into(std::string ab, std::vector<torch::Tensor> const& args,
+                    torch::Tensor out);
 
   //! the tables and counter for `device` and `dtype` (K.rst 3.3), outside
   //! capture; a repeat with the same arguments reallocates nothing
@@ -278,10 +291,10 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! ivol [kg/m^3] (..., 1 + ny), temp [K] -> volumetric intEng [J/m^3] (...)
   void _intEng_vol(torch::Tensor ivol, torch::Tensor temp,
                    torch::Tensor& out) const {
-    // kg/m^3 -> mol/m^3
-    auto conc = ivol * inv_mu;
+    // kg/m^3 -> mol/m^3, in the compute dtype
+    auto conc = ivol * tables_for(options, ivol)->inv_mu;
     auto ui = eval_intEng_R(temp, conc, options) * constants::Rgas;
-    out.set_((ui * conc).sum(-1));
+    out.copy_((ui * conc).sum(-1));
   }
 
   //! ivol [kg/m^3] (..., 1 + ny), intEng [J/m^3] (...) -> temperature [K] (...)
@@ -295,11 +308,11 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! pres [Pa], ivol [kg/m^3] (..., 1 + ny), temp [K] -> entropy [J/(m^3 K)]
   void _entropy_vol(torch::Tensor pres, torch::Tensor ivol, torch::Tensor temp,
                     torch::Tensor& out) const {
-    // kg/m^3 -> mol/m^3
-    auto conc = ivol * inv_mu;
+    // kg/m^3 -> mol/m^3, in the compute dtype
+    auto conc = ivol * tables_for(options, ivol)->inv_mu;
     auto si =
         eval_entropy_R(temp, pres, conc, stoich, options) * constants::Rgas;
-    out.set_((si * conc).sum(-1));
+    out.copy_((si * conc).sum(-1));
   }
 };
 TORCH_MODULE(ThermoY);

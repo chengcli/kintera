@@ -168,6 +168,15 @@ void ThermoYImpl::reset() {
     std::cout << stoich << std::endl;
   }
 
+  auto none = [](std::vector<std::string> const& v) {
+    return std::all_of(v.begin(), v.end(),
+                       [](auto const& s) { return s.empty() || s == "null"; });
+  };
+  bool cv_const = !options->use_nasa9_cp() && !options->use_h2_cp();
+  temp_plan = cv_const && none(options->intEng_R_extra()) ? SolvePlan::exact
+                                                          : SolvePlan::newton;
+  pres_plan = none(options->czh()) ? SolvePlan::exact : SolvePlan::newton;
+
   // clone() calls reset(); drop any count copied from the original.
   nfail_ = failures_ = torch::Tensor();
   tables_ = nullptr;
@@ -206,96 +215,54 @@ void ThermoYImpl::pretty_print(std::ostream& os) const {
 
 torch::Tensor ThermoYImpl::compute(std::string ab,
                                    std::vector<torch::Tensor> const& args) {
+  if (ab == "TUS->F") return args[1] - args[0] * args[2];  // T, U, S
+  auto const& a = args.back();
+  auto vec = a.sizes().vec();
+  if (ab == "V->Y") {  // (..., 1 + ny) -> (ny, ...)
+    vec.pop_back(), vec.insert(vec.begin(), a.size(-1) - 1);
+  } else if (ab == "Y->X" || ab == "DY->V") {  // (ny, ...) -> (..., 1 + ny)
+    vec.erase(vec.begin()), vec.push_back(a.size(0) + 1);
+  } else {  // main's set_: the broadcast cell shape (V's last dim: species)
+    vec.clear();
+    for (size_t i = 0; i < args.size(); ++i)
+      vec = at::infer_size(
+          vec, args[i].sizes().slice(0, args[i].dim() - (ab[i] == 'V')));
+  }
+  auto out = torch::empty(vec, a.options());
+  return compute_into(ab, args, out), out;
+}
+
+void ThermoYImpl::compute_into(std::string ab,
+                               std::vector<torch::Tensor> const& args,
+                               torch::Tensor out) {
+  if (ab == "V->Y" || ab == "Y->X" || ab == "DY->V") {
+    auto ny = ab == "V->Y" ? args[0].size(-1) - 1 : args.back().size(0);
+    TORCH_CHECK(
+        ny + 1 == options->vapor_ids().size() + options->cloud_ids().size(),
+        "mass fraction size mismatch");
+  }
+  if (ab == "VU->T" || ab == "PV->T") _counter(args[0].device());
+
   if (ab == "V->Y") {
-    auto V = args[0];
-    int ny = V.size(-1) - 1;
-    TORCH_CHECK(
-        ny + 1 == options->vapor_ids().size() + options->cloud_ids().size(),
-        "mass fraction size mismatch");
-
-    auto vec = V.sizes().vec();
-    for (int i = 0; i < vec.size() - 1; ++i) {
-      vec[i + 1] = V.size(i);
-    }
-    vec[0] = ny;
-
-    auto Y = torch::empty(vec, V.options());
-    _ivol_to_yfrac(V, Y);
-    return Y;
+    _ivol_to_yfrac(args[0], out);
   } else if (ab == "Y->X") {
-    auto Y = args[0];
-    int ny = Y.size(0);
-    TORCH_CHECK(
-        ny + 1 == options->vapor_ids().size() + options->cloud_ids().size(),
-        "mass fraction size mismatch");
-
-    auto vec = Y.sizes().vec();
-    for (int i = 0; i < vec.size() - 1; ++i) {
-      vec[i] = Y.size(i + 1);
-    }
-    vec.back() = ny + 1;
-
-    auto X = torch::empty(vec, Y.options());
-    _yfrac_to_xfrac(Y, X);
-    return X;
+    _yfrac_to_xfrac(args[0], out);
   } else if (ab == "DY->V") {
-    auto D = args[0];
-    auto Y = args[1];
-
-    int ny = Y.size(0);
-    TORCH_CHECK(
-        ny + 1 == options->vapor_ids().size() + options->cloud_ids().size(),
-        "mass fraction size mismatch");
-
-    auto vec = Y.sizes().vec();
-    vec.erase(vec.begin());
-    vec.push_back(1 + ny);
-
-    auto V = torch::empty(vec, Y.options());
-    _yfrac_to_ivol(D, Y, V);
-    return V;
+    _yfrac_to_ivol(args[0], args[1], out);
   } else if (ab == "PV->T") {
-    auto P = args[0];
-    auto V = args[1];
-    auto T = torch::empty_like(P);
-    _pres_to_temp(P, V, T);
-    return T;
+    _pres_to_temp(args[0], args[1], out);
   } else if (ab == "VT->cv") {
-    auto V = args[0];
-    auto T = args[1];
-    auto cv = torch::empty_like(T);
-    _cv_vol(V, T, cv);
-    return cv;
+    _cv_vol(args[0], args[1], out);
   } else if (ab == "VT->U") {
-    auto V = args[0];
-    auto T = args[1];
-    auto U = torch::empty_like(T);
-    _intEng_vol(V, T, U);
-    return U;
+    _intEng_vol(args[0], args[1], out);
   } else if (ab == "VU->T") {
-    auto V = args[0];
-    auto U = args[1];
-    auto T = torch::empty_like(U);
-    _intEng_to_temp(V, U, T);
-    return T;
+    _intEng_to_temp(args[0], args[1], out);
   } else if (ab == "VT->P") {
-    auto V = args[0];
-    auto T = args[1];
-    auto P = torch::empty_like(T);
-    _temp_to_pres(V, T, P);
-    return P;
+    _temp_to_pres(args[0], args[1], out);
   } else if (ab == "PVT->S") {
-    auto P = args[0];
-    auto V = args[1];
-    auto T = args[2];
-    auto S = torch::empty_like(T);
-    _entropy_vol(P, V, T, S);
-    return S;
+    _entropy_vol(args[0], args[1], args[2], out);
   } else if (ab == "TUS->F") {
-    auto T = args[0];
-    auto U = args[1];
-    auto S = args[2];
-    return U - T * S;
+    out.copy_(args[1] - args[0] * args[2]);
   } else {
     TORCH_CHECK(false, "Unknown abbreviation: ", ab);
   }
@@ -481,23 +448,53 @@ void ThermoYImpl::_yfrac_to_ivol(torch::Tensor rho, torch::Tensor yfrac,
   out.narrow(-1, 1, ny) = (rho.unsqueeze(-1) * yfrac.permute(vec));
 }
 
+// T +/- step(T) into `out` as m's plan and mode say: PV->T (row 2) subtracts
+// its step, VU->T (row 1) adds it; a failed solve adds one to that row
+static void solve(ThermoYImpl const& m, torch::Tensor T, torch::Tensor& out,
+                  int row, std::function<at::Tensor(at::Tensor const&)> step) {
+  auto next = [&] { return row == 2 ? T - step(T) : T + step(T); };
+  auto run = torch::ones({}, T.options().dtype(torch::kBool));
+  bool exact = (row == 2 ? m.pres_plan : m.temp_plan) == SolvePlan::exact;
+  bool cap = !exact && capture_active(T.device());
+  bool fixed = cap || m.solve_mode == SolveMode::fixed;
+  TORCH_CHECK(!cap || m.solve_mode != SolveMode::eager_exit,
+              "[ThermoY] solve mode eager_exit is not capturable");
+  int iter = 0, max_iter = m.options->max_iter();
+  for (; iter < (exact ? 1 : max_iter); ++iter) {  // exact: no read
+    auto T_prev = T;
+    T = fixed ? torch::where(run, next(), T) : next();
+    auto err = (1. - T_prev / T).abs().max();
+    if (exact) {
+      run = T.isfinite().all().logical_not();
+    } else if (fixed) {  // the negated test: a NaN keeps running, as on main
+      run.logical_and_(
+          (err.to(torch::kFloat64) < m.options->ftol()).logical_not());
+    } else if (err.item<double>() < m.options->ftol()) {
+      run.fill_(false);
+      break;
+    }
+  }
+  if (!exact && !fixed && iter == max_iter)
+    TORCH_WARN("ThermoYImpl::", row == 2 ? "_pres_to_temp" : "_intEng_to_temp",
+               ": max iterations reached");
+  m.failures()[row].add_(run);
+  out.copy_(T);
+}
+
 void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
                                 torch::Tensor& out) const {
   int ngas = options->vapor_ids().size();
 
-  // kg/m^3 -> mol/m^3
-  auto conc_gas =
-      (ivol * inv_mu).narrow(-1, 0, ngas).clamp_min(options->gas_floor());
-
-  out.set_(pres / (conc_gas.sum(-1) * constants::Rgas));
-  int iter = 0;
-  bool converged = false;
-  while (iter++ < options->max_iter()) {
-    auto cz = eval_czh(out, conc_gas, options);
-    auto func = out * (cz * conc_gas).sum(-1) - pres / constants::Rgas;
-    auto cv_R = eval_cv_R(out, conc_gas, options);
-    auto cp_R = eval_cp_R(out, conc_gas, options);
-    auto temp_pre = out.clone();
+  // kg/m^3 -> mol/m^3, in the compute dtype
+  auto conc_gas = (ivol * tables_for(options, ivol)->inv_mu)
+                      .narrow(-1, 0, ngas)
+                      .clamp_min(options->gas_floor());
+  auto T0 = pres / (conc_gas.sum(-1) * constants::Rgas);
+  solve(*this, T0, out, /*row=*/2, [&](torch::Tensor const& T) {
+    auto cz = eval_czh(T, conc_gas, options);
+    auto func = T * (cz * conc_gas).sum(-1) - pres / constants::Rgas;
+    auto cv_R = eval_cv_R(T, conc_gas, options);
+    auto cp_R = eval_cp_R(T, conc_gas, options);
     // Newton: T <- T - f/f'.  f = T*sum(cz*c) - P/R increases with T, so the
     // step must be SUBTRACTED. (cp_R-cv_R)*c >= f' = sum(cz + T dcz/dT)*c for a
     // dissociating gas (Mayer: cp-cv = (z+T z_T)^2/(z+c z_c) with z_T>0,
@@ -506,60 +503,42 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
     // = P/(R*sum c) is already exact (func == 0) and the loop exits at once.
     // use_h2_dissociation is the first cz != 1 consumer and made PV->T diverge
     // (3900 -> 17000 K).
-    out -= func / ((cp_R - cv_R) * conc_gas).sum(-1);
-    if ((1. - temp_pre / out).abs().max().item<double>() < options->ftol()) {
-      converged = true;
-      break;
-    }
-  }
-
-  if (!converged && iter >= options->max_iter()) {
-    TORCH_WARN("ThermoYImpl::_pres_to_temp: max iterations reached");
-  }
+    return func / ((cp_R - cv_R) * conc_gas).sum(-1);
+  });
 }
 
 void ThermoYImpl::_cv_vol(torch::Tensor ivol, torch::Tensor temp,
                           torch::Tensor& out) const {
-  // kg/m^3 -> mol/m^3
-  auto conc = ivol * inv_mu;
+  // kg/m^3 -> mol/m^3, in the compute dtype
+  auto conc = ivol * tables_for(options, ivol)->inv_mu;
   auto cv = eval_cv_R(temp, conc, options) * constants::Rgas;
-  out.set_((cv * conc).sum(-1));
+  out.copy_((cv * conc).sum(-1));
 }
 
 void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
                                   torch::Tensor& out) const {
-  // kg/m^3 -> mol/m^3
-  auto u0_sum = (ivol * u0).sum(-1);
-  auto cv0_sum = (ivol * cv0).sum(-1);
-  auto conc = ivol * inv_mu;
-
-  out.set_((intEng - u0_sum) / cv0_sum);
-  int iter = 0;
-  bool converged = false;
-  while (iter++ < options->max_iter()) {
-    auto u = eval_intEng_R(out, conc, options) * constants::Rgas;
-    auto cv = eval_cv_R(out, conc, options) * constants::Rgas;
-    auto temp_pre = out.clone();
-    out += (intEng - (u * conc).sum(-1)) / (cv * conc).sum(-1);
-    if ((1. - temp_pre / out).abs().max().item<double>() < options->ftol()) {
-      converged = true;
-      break;
-    }
-  }
-
-  if (!converged && iter >= options->max_iter()) {
-    TORCH_WARN("ThermoYImpl::_intEng_to_temp: max iterations reached");
-  }
+  // kg/m^3 -> mol/m^3, in the compute dtype
+  auto t = tables_for(options, ivol);
+  auto u0_sum = (ivol * t->u0).sum(-1);
+  auto cv0_sum = (ivol * t->cv0).sum(-1);
+  auto conc = ivol * t->inv_mu;
+  solve(*this, (intEng - u0_sum) / cv0_sum, out, /*row=*/1,
+        [&](torch::Tensor const& T) {
+          auto u = eval_intEng_R(T, conc, options) * constants::Rgas;
+          auto cv = eval_cv_R(T, conc, options) * constants::Rgas;
+          return (intEng - (u * conc).sum(-1)) / (cv * conc).sum(-1);
+        });
 }
 
 void ThermoYImpl::_temp_to_pres(torch::Tensor ivol, torch::Tensor temp,
                                 torch::Tensor& out) const {
   int ngas = options->vapor_ids().size();
 
-  // kg/m^3 -> mol/m^3
-  auto conc_gas = (ivol * inv_mu).narrow(-1, 0, ngas);
+  // kg/m^3 -> mol/m^3, in the compute dtype
+  auto conc_gas =
+      (ivol * tables_for(options, ivol)->inv_mu).narrow(-1, 0, ngas);
   auto cz = eval_czh(temp, conc_gas, options);
-  out.set_(constants::Rgas * temp * (cz * conc_gas).sum(-1));
+  out.copy_(constants::Rgas * temp * (cz * conc_gas).sum(-1));
 }
 
 }  // namespace kintera
