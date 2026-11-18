@@ -200,13 +200,42 @@ void ThermoYImpl::consume_failures(torch::Tensor out) {
 
 ThermoTablesPtr ThermoYImpl::prepare(torch::Device device, torch::Dtype dtype,
                                      torch::IntArrayRef shape) {
-  _counter(device);
+  _counter(device), _active_set(device, shape, /*cold=*/false);
   if (tables_ && tables_->cref_R.device() == device &&
       tables_->cref_R.scalar_type() == dtype)
     return NoTableBuild::record(tables_), tables_;  // used in the scope
   TORCH_CHECK(!capture_active(device), "[ThermoY] prepare() before capture");
   auto like = torch::empty({0}, torch::dtype(dtype).device(device));
   return tables_ = tables_for(options, like);
+}
+
+void ThermoYImpl::_active_set(torch::Device device, torch::IntArrayRef shape,
+                              bool cold) {
+  auto vec = shape.vec();
+  vec.push_back(options->reactions().size());
+  bool fits = reaction_set.defined() && reaction_set.device() == device &&
+              reaction_set.sizes().equals(vec) && nactive.sizes().equals(shape);
+  if (fits && !cold) return;
+  TORCH_CHECK(fits || !capture_active(device), "[ThermoY] prepare() first");
+  c10::InferenceMode off(false);  // normal tensors: written in place later
+  auto opts = torch::dtype(torch::kInt).device(device);
+  auto cold_set = torch::arange(0, (int)vec.back(), opts).expand(vec);
+  reaction_set = fits ? reaction_set.copy_(cold_set) : cold_set.contiguous();
+  nactive = fits ? nactive.zero_() : torch::zeros(shape, opts);
+}
+
+ActiveSet ThermoYImpl::snapshot_active_set(ActiveSet out) {
+  _active_set(out.second.device(), out.second.sizes(), /*cold=*/false);
+  return out.first.copy_(reaction_set), out.second.copy_(nactive), out;
+}
+
+void ThermoYImpl::restore_active_set(ActiveSet const& in) {
+  reaction_set.copy_(in.first), nactive.copy_(in.second);
+}
+
+ActiveSet ThermoYImpl::make_active_set_storage() const {
+  TORCH_CHECK(nactive.defined(), "[ThermoY] prepare() first");
+  return {torch::empty_like(reaction_set), torch::empty_like(nactive)};
 }
 
 void ThermoYImpl::pretty_print(std::ostream& os) const {
@@ -292,26 +321,10 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
   vec[ivol.dim() - 1] = reactions.size() * reactions.size();
   auto gain = torch::empty(vec, ivol.options());
 
-  // A warm start is the active set of the last call. It is only valid for
-  // that shape and device. Another shape (one cell, a column) must get a
-  // cold start, not those buffers.
-  auto active_shape = rho.sizes().vec();
-  active_shape.push_back(static_cast<int64_t>(reactions.size()));
-  bool reuse = warm_start && reaction_set.defined() && nactive.defined() &&
-               reaction_set.device() == rho.device() &&
-               nactive.device() == rho.device() &&
-               nactive.sizes().equals(rho.sizes()) &&
-               reaction_set.sizes().equals(active_shape);
-  if (!reuse) {
-    auto vec2 = rho.sizes().vec();
-    vec2.push_back(reactions.size());
-    reaction_set = torch::arange(0, (int)reactions.size(),
-                                 rho.options().dtype(torch::kInt));
-    for (int i = 0; i < rho.dim(); ++i)
-      reaction_set = reaction_set.unsqueeze(0);
-    reaction_set = reaction_set.expand(vec2).contiguous();
-    nactive = torch::zeros_like(rho, rho.options().dtype(torch::kInt));
-  }
+  // A warm start is the active set of the last call or of prepare(). It is
+  // only valid for that shape and device. Another shape (one cell, a column)
+  // must get a cold start, not those buffers.
+  _active_set(rho.device(), rho.sizes(), /*cold=*/!warm_start);
 
   // diagnostic array
   vec[ivol.dim() - 1] = 1;

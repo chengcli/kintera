@@ -67,7 +67,15 @@ void bind_thermo(py::module& m) {
       .def("reset_failures", &Y::reset_failures)
       .def("consume_failures", &Y::consume_failures)
       .def("compute_into", &Y::compute_into)
-      .def_readwrite("solve_mode", &Y::solve_mode);
+      .def_readwrite("solve_mode", &Y::solve_mode)
+      .def("prepare",  // device, dtype and cell shape of `r`
+           [](Y& s, T r) { s.prepare(r.device(), r.scalar_type(), r.sizes()); })
+      .def("tables",  // the epoch of the module's table, -1 before prepare
+           [](Y const& s) { return s.tables() ? s.tables()->epoch : -1; })
+      .def("alloc_epoch", [](Y const& s) { return kintera::alloc_epoch(s); })
+      .def("snapshot_active_set", &Y::snapshot_active_set)
+      .def("restore_active_set", &Y::restore_active_set)
+      .def("make_active_set_storage", &Y::make_active_set_storage);
 
   ADD_KINTERA_MODULE(ThermoX, ThermoOptions, &X::forward, arg("temp"),
                      arg("pres"), arg("xfrac"), arg("warm_start") = false,

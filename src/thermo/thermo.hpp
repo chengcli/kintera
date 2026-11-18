@@ -203,6 +203,9 @@ enum class SolvePlan { exact, newton };
 //! freezes the converged state on the device; automatic: fixed in capture
 enum class SolveMode { automatic, eager_exit, fixed };
 
+//! (reaction_set, nactive): the KKT warm start, int32 (..., nreaction), (...)
+using ActiveSet = std::pair<torch::Tensor, torch::Tensor>;
+
 //! Mass Thermodynamics
 class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
  public:
@@ -242,11 +245,16 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   void compute_into(std::string ab, std::vector<torch::Tensor> const& args,
                     torch::Tensor out);
 
-  //! the tables and counter for `device` and `dtype` (K.rst 3.3), outside
-  //! capture; a repeat with the same arguments reallocates nothing
+  //! the tables, counter and active set for cells of `shape` (K.rst 3.3),
+  //! outside capture; a repeat with the same arguments reallocates nothing
   ThermoTablesPtr prepare(torch::Device device, torch::Dtype dtype,
                           torch::IntArrayRef shape);
   ThermoTablesPtr tables() const { return tables_; }  // null before prepare
+
+  //! copy_ between fixed buffers; a snapshot prepares a missing active set
+  ActiveSet snapshot_active_set(ActiveSet out);
+  void restore_active_set(ActiveSet const& in);
+  ActiveSet make_active_set_storage() const;  // buffers of the module's shape
 
   //! (3,) int64 on the cells' device, rows saturation, temp_solve,
   //! pres_solve; never read here. reset_ zeroes all rows; consume_ copies
@@ -269,6 +277,8 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   ThermoTablesPtr tables_;  // of the last prepare(); reset() drops it
   torch::Tensor failures_;
   torch::Tensor const& _counter(torch::Device device);  // made if missing
+  //! the last warm start, or a cold one (in place when the buffers fit)
+  void _active_set(torch::Device device, torch::IntArrayRef shape, bool cold);
 
   //! inverse specific volume ivol [kg/m^3] (..., 1 + ny) -> yfrac (ny, ...)
   void _ivol_to_yfrac(torch::Tensor ivol, torch::Tensor& out) const;
@@ -316,6 +326,23 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   }
 };
 TORCH_MODULE(ThermoY);
+
+//! host hash of the address, sizes and dtype of m's buffers (a ThermoY adds
+//! its counter, active set and table): any reallocation changes it
+inline int64_t alloc_epoch(torch::nn::Module const& m) {  // FNV-1a, host only
+  auto ts = m.buffers();
+  if (auto y = dynamic_cast<ThermoYImpl const*>(&m))
+    ts.insert(ts.end(), {y->failures(), y->reaction_set, y->nactive,
+                         y->tables() ? y->tables()->cv0 : at::Tensor()});
+  uint64_t h = 1469598103934665603ull;
+  auto mix = [&](uint64_t v) { h = (h ^ v) * 1099511628211ull; };
+  for (auto const& t : ts) {
+    mix(t.defined() ? reinterpret_cast<uintptr_t>(t.data_ptr()) : 0);
+    for (auto s : t.defined() ? t.sizes() : at::IntArrayRef()) mix(s);
+    mix(t.defined() ? static_cast<uint64_t>(t.scalar_type()) : 99);
+  }
+  return static_cast<int64_t>(h);
+}
 
 //! Molar thermodynamics
 class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
