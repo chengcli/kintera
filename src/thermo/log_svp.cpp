@@ -6,13 +6,15 @@
 
 #include "log_svp.hpp"
 #include "svp_eval.h"
+#include "thermo.hpp"
 #include "thermo_dispatch.hpp"
 
 namespace kintera {
 
-std::pair<torch::Tensor, torch::Tensor> LogSVPFunc::make_svp_spec(
-    NucleationOptions const& op, torch::Device device) {
-  auto const& names = op->logsvp();
+void LogSVPFunc::make_svp_spec(NucleationOptions const& op_, ThermoTables& t,
+                               torch::Device device) {
+  auto const& op = op_ ? op_ : NucleationOptionsImpl::create();
+  auto names = op->logsvp();  // inline columns get a valid name below
   auto const& params = op->svp_params();
   int n = static_cast<int>(names.size());
 
@@ -24,7 +26,10 @@ std::pair<torch::Tensor, torch::Tensor> LogSVPFunc::make_svp_spec(
     } else if (names[j] == "antoine") {
       kind[j] = 2;
     }
-    if (kind[j] != 0) check_inline(op, j, kind[j]);
+    if (kind[j] != 0) {
+      check_inline(op, j, kind[j]);
+      names[j] = "h2o_ideal", t.svp_inline = true;
+    }
     if (j < static_cast<int>(params.size())) {
       auto const& pj = params[j];
       int m = std::min(static_cast<int>(pj.size()), KSVP_NPARAM);
@@ -33,20 +38,29 @@ std::pair<torch::Tensor, torch::Tensor> LogSVPFunc::make_svp_spec(
     }
   }
 
-  auto kind_t = torch::tensor(kind, torch::dtype(torch::kInt32)).to(device);
-  auto par_t = torch::tensor(flat, torch::dtype(torch::kFloat64))
-                   .to(device)
-                   .view({n, KSVP_NPARAM});
-  return {kind_t, par_t};
+  t.svp_kind = torch::tensor(kind, torch::dtype(torch::kInt32)).to(device);
+  t.svp_params = torch::tensor(flat, torch::dtype(torch::kFloat64))
+                     .to(device)
+                     .view({n, KSVP_NPARAM});
+  auto names_ddT = names;  // every name, as the solvers and grad() had it
+  for (auto& name : names_ddT) name += "_ddT";
+  t.logsvp = at::native::fill_func_table(device.type(), names, 1, device);
+  t.logsvp_ddT =
+      at::native::fill_func_table(device.type(), names_ddT, 1, device);
 }
 
-std::vector<std::string> LogSVPFunc::_logsvp = {};
-std::vector<std::string> LogSVPFunc::_logsvp_ddT = {};
-torch::Tensor LogSVPFunc::_svp_kind =
-    torch::empty({0}, torch::dtype(torch::kInt32));
-torch::Tensor LogSVPFunc::_svp_params =
-    torch::empty({0, KSVP_NPARAM}, torch::dtype(torch::kFloat64));
-bool LogSVPFunc::_has_inline = false;
+SpeciesThermo LogSVPFunc::_op;
+
+void LogSVPFunc::init(NucleationOptions const& op_) {
+  auto op = ThermoOptionsImpl::create();  // no species: the svp columns only
+  op->nucleation() = op_ ? op_ : NucleationOptionsImpl::create();
+  _op = op;
+}
+
+ThermoTables const& LogSVPFunc::tables(torch::Tensor const& temp) {
+  if (!_op) init(nullptr);
+  return *tables_for(_op, temp);  // the store keeps it
+}
 
 void LogSVPFunc::apply_inline(at::TensorIterator& iter,
                               torch::Tensor const& svp_kind,
@@ -63,13 +77,13 @@ void LogSVPFunc::apply_inline(at::TensorIterator& iter,
 }
 
 torch::Tensor LogSVPFunc::evaluate(torch::Tensor const& temp, bool expanded,
-                                   std::vector<std::string> const& names,
+                                   FuncTable const& funcs,
                                    torch::Tensor const& svp_kind,
                                    torch::Tensor const& svp_params,
                                    bool has_inline, bool deriv) {
   auto vec = temp.sizes().vec();
   if (!expanded) {
-    vec.push_back(names.size());
+    vec.push_back(funcs.size(0));
   }
 
   auto result = torch::zeros(vec, temp.options());
@@ -88,52 +102,30 @@ torch::Tensor LogSVPFunc::evaluate(torch::Tensor const& temp, bool expanded,
   }
 
   auto iter = iter_config.build();
-  at::native::call_func1(result.device().type(), iter, names);
+  at::native::call_func1(result.device().type(), iter, funcs);
   apply_inline(iter, svp_kind, svp_params, has_inline, deriv);
   return result;
 }
 
 torch::Tensor LogSVPFunc::grad(torch::Tensor const& temp, bool expanded) {
-  torch::Tensor svp_kind;
-  torch::Tensor svp_params;
-  if (_has_inline) {
-    svp_kind = _svp_kind.to(temp.device());
-    svp_params = _svp_params.to(temp.device());
-  }
-  return evaluate(temp, expanded, _logsvp_ddT, svp_kind, svp_params,
-                  _has_inline, /*deriv=*/true);
+  auto const& t = tables(temp);
+  return evaluate(temp, expanded, t.logsvp_ddT, t.svp_kind, t.svp_params,
+                  t.svp_inline, /*deriv=*/true);
 }
 
 torch::Tensor LogSVPFunc::call(torch::Tensor const& temp, bool expanded) {
-  torch::Tensor svp_kind;
-  torch::Tensor svp_params;
-  if (_has_inline) {
-    svp_kind = _svp_kind.to(temp.device());
-    svp_params = _svp_params.to(temp.device());
-  }
-  return evaluate(temp, expanded, _logsvp, svp_kind, svp_params, _has_inline,
-                  /*deriv=*/false);
+  auto const& t = tables(temp);
+  return evaluate(temp, expanded, t.logsvp, t.svp_kind, t.svp_params,
+                  t.svp_inline, /*deriv=*/false);
 }
 
 torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext* ctx,
                                   torch::Tensor const& temp) {
-  auto names = _logsvp;
-  auto names_ddT = _logsvp_ddT;
-  bool has_inline = _has_inline;
-  torch::Tensor svp_kind;
-  torch::Tensor svp_params;
-  if (has_inline) {
-    // init replaces metadata; saved handles keep the old storage alive.
-    svp_kind = _svp_kind.to(temp.device());
-    svp_params = _svp_params.to(temp.device());
-    ctx->save_for_backward({temp, svp_kind, svp_params});
-  } else {
-    ctx->save_for_backward({temp});
-  }
-
-  ctx->saved_data["logsvp_ddT"] = names_ddT;
-  ctx->saved_data["has_inline"] = has_inline;
-  return evaluate(temp, true, names, svp_kind, svp_params, has_inline,
+  // a later init() replaces the table; saved handles keep these alive
+  auto const& t = tables(temp);
+  ctx->save_for_backward({temp, t.logsvp_ddT, t.svp_kind, t.svp_params});
+  ctx->saved_data["has_inline"] = t.svp_inline;
+  return evaluate(temp, true, t.logsvp, t.svp_kind, t.svp_params, t.svp_inline,
                   /*deriv=*/false);
 }
 
@@ -141,19 +133,9 @@ std::vector<torch::Tensor> LogSVPFunc::backward(
     torch::autograd::AutogradContext* ctx,
     std::vector<torch::Tensor> grad_outputs) {
   auto saved = ctx->get_saved_variables();
-  std::vector<std::string> names_ddT;
-  for (auto const& name : ctx->saved_data.at("logsvp_ddT").toListRef()) {
-    names_ddT.push_back(name.toStringRef());
-  }
   bool has_inline = ctx->saved_data.at("has_inline").toBool();
-  torch::Tensor svp_kind;
-  torch::Tensor svp_params;
-  if (has_inline) {
-    svp_kind = saved[1];
-    svp_params = saved[2];
-  }
-  auto logsvp_ddT = evaluate(/*temp=*/saved[0], /*expanded=*/true, names_ddT,
-                             svp_kind, svp_params, has_inline, /*deriv=*/true);
+  auto logsvp_ddT = evaluate(/*temp=*/saved[0], /*expanded=*/true, saved[1],
+                             saved[2], saved[3], has_inline, /*deriv=*/true);
   return {grad_outputs[0] * logsvp_ddT};
 }
 

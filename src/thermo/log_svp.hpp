@@ -13,29 +13,10 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
  public:
   static constexpr bool is_traceable = true;
 
-  static void init(NucleationOptions const& op_) {
-    // a null NucleationOptions (e.g. nucleation(None)) is the empty default
-    auto const& op = op_ ? op_ : NucleationOptionsImpl::create();
-    _logsvp = op->logsvp();
-
-    auto spec = make_svp_spec(op, torch::kCPU);
-    _svp_kind = spec.first;
-    _svp_params = spec.second;
-
-    // Inline columns use eval_logsvp below. Give func-table dispatch a valid
-    // sentinel name; apply_inline overwrites those columns afterwards.
-    _has_inline = false;
-    auto kind = _svp_kind.accessor<int, 1>();
-    for (size_t i = 0; i < _logsvp.size(); ++i) {
-      if (kind[i] != 0) {
-        _has_inline = true;
-        _logsvp[i] = "h2o_ideal";
-      }
-    }
-
-    _logsvp_ddT = _logsvp;
-    for (auto& name : _logsvp_ddT) name += "_ddT";
-  }
+  //! the svp columns of op_ (null: the empty default) for the next calls,
+  //! which read them from a ThermoTables (its svp spec and FuncTables; an
+  //! inline column has a valid name there, overwritten by apply_inline)
+  static void init(NucleationOptions const& op_);
 
   //! \brief Computes the gradient of logarithm of the saturation vapor pressure
   /*!
@@ -91,14 +72,15 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
       std::vector<torch::Tensor> grad_outputs);
 
  public:
-  //! \brief Build inline-SVP spec tensors {kind, params} for the equilibrate
-  //! kernels from a nucleation option set, on the given device.
+  //! \brief Fill the svp part of a table (op null: the empty default), on
+  //! `device`: the inline-SVP spec for the equilibrate kernels and the
+  //! logsvp, logsvp_ddT function tables (an inline column has a valid name).
   //!
-  //! kind   is int32   [nreaction]   (0 named, 1 'ideal', 2 'antoine');
-  //! params is float64 [nreaction, KSVP_NPARAM] (zero-padded; parameters are
-  //! unused for named rows).
-  static std::pair<torch::Tensor, torch::Tensor> make_svp_spec(
-      NucleationOptions const& op, torch::Device device);
+  //! svp_kind   is int32   [nreaction]   (0 named, 1 'ideal', 2 'antoine');
+  //! svp_params is float64 [nreaction, KSVP_NPARAM] (zero-padded; parameters
+  //! are unused for named rows).
+  static void make_svp_spec(NucleationOptions const& op, ThermoTables& t,
+                            torch::Device device);
 
  private:
   //! Inline formulas need their YAML parameters: 6 for 'ideal', 3 for 'antoine'
@@ -113,7 +95,7 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
   }
 
   static torch::Tensor evaluate(torch::Tensor const& temp, bool expanded,
-                                std::vector<std::string> const& names,
+                                FuncTable const& funcs,
                                 torch::Tensor const& svp_kind,
                                 torch::Tensor const& svp_params,
                                 bool has_inline, bool deriv);
@@ -125,11 +107,9 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
                            torch::Tensor const& svp_params, bool has_inline,
                            bool deriv);
 
-  static std::vector<std::string> _logsvp;
-  static std::vector<std::string> _logsvp_ddT;
-  static torch::Tensor _svp_kind;
-  static torch::Tensor _svp_params;
-  static bool _has_inline;
+  //! the store's table for temp's device and dtype (built once)
+  static ThermoTables const& tables(torch::Tensor const& temp);
+  static SpeciesThermo _op;  // a ThermoOptions holding init()'s op only
 };
 
 }  // namespace kintera

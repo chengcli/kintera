@@ -52,11 +52,12 @@ struct Nasa9Thermo {
 inline Nasa9Thermo eval_nasa9(torch::Tensor temp, SpeciesThermo const& op,
                               int nsp) {
   auto o = temp.options();
-  auto alow = op->nasa9_coeffs_low_tensor(o).narrow(0, 0, nsp);    // (nsp,9)
-  auto ahigh = op->nasa9_coeffs_high_tensor(o).narrow(0, 0, nsp);  // (nsp,9)
-  auto Tmid = op->nasa9_Tmid_tensor(o).narrow(0, 0, nsp);          // (nsp,)
-  auto mask = (alow.abs().sum(-1) + ahigh.abs().sum(-1)) > 0;      // (nsp,)
-  auto Tb = temp.unsqueeze(-1);                                    // (...,1)
+  auto t = tables_for(op, temp);
+  auto alow = t->nasa9_low.narrow(0, 0, nsp);                     // (nsp,9)
+  auto ahigh = t->nasa9_high.narrow(0, 0, nsp);                   // (nsp,9)
+  auto Tmid = t->nasa9_Tmid.narrow(0, 0, nsp);                    // (nsp,)
+  auto mask = (alow.abs().sum(-1) + ahigh.abs().sum(-1)) > 0;     // (nsp,)
+  auto Tb = temp.unsqueeze(-1);                                   // (...,1)
   auto a = torch::where((Tb < Tmid).unsqueeze(-1), alow, ahigh);  // (...,nsp,9)
   auto a0 =
       torch::where((kNasa9Tref < Tmid).unsqueeze(-1), alow, ahigh);  // (nsp,9)
@@ -81,16 +82,12 @@ struct H2Thermo {
 
 inline H2Thermo eval_h2cp(torch::Tensor temp, SpeciesThermo const& op,
                           int nsp) {
-  auto names = op->species();
-  names.resize(std::min<size_t>(names.size(), nsp));
-  int h2 = std::find(names.begin(), names.end(), "H2") - names.begin();
+  auto t = tables_for(op, temp);  // only the H2 column is used: the mask
   auto shp = temp.sizes().vec();
   shp.push_back(nsp);
-  auto conc = torch::zeros(shp, temp.options());  // unused by the kernels
-  auto eval = [&](std::string const& suffix) {
+  auto conc = torch::zeros(shp, temp.options());
+  auto eval = [&](FuncTable const& funcs) {
     auto out = torch::zeros_like(conc);
-    std::vector<std::string> funcs(nsp);
-    if (h2 < nsp) funcs[h2] = "h2_rot_" + op->h2_cp_mode() + suffix;
     auto iter = at::TensorIteratorConfig()
                     .resize_outputs(false)
                     .check_all_same_dtype(true)
@@ -99,12 +96,11 @@ inline H2Thermo eval_h2cp(torch::Tensor temp, SpeciesThermo const& op,
                     .add_owned_input(temp.unsqueeze(-1))
                     .add_input(conc)
                     .build();
-    at::native::call_func2(out.device().type(), iter, funcs);
+    at::native::call_func2(out.device().type(), iter, funcs.narrow(0, 0, nsp));
     return out;
   };
-  auto mask = torch::zeros({nsp}, temp.options().dtype(torch::kBool));
-  if (h2 < nsp) mask[h2] = true;
-  return {eval("_ddT") + 1., eval(""), eval("_s"), mask};
+  return {eval(t->intEng_extra_ddT) + 1., eval(t->intEng_extra),
+          eval(t->h2_entropy), t->h2_mask.narrow(0, 0, nsp)};
 }
 
 inline bool h2_on(SpeciesThermo const& op) { return op->use_h2_cp(); }
@@ -145,15 +141,10 @@ torch::Tensor eval_cv_R(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  auto cv_R_extra_func = op->intEng_R_extra();
-  for (auto& name : cv_R_extra_func) {
-    if (!name.empty()) name += "_ddT";
-  }
+  auto t = tables_for(op, temp);
+  at::native::call_func2(cv_R_extra.device().type(), iter, t->intEng_extra_ddT);
 
-  at::native::call_func2(cv_R_extra.device().type(), iter, cv_R_extra_func);
-
-  auto cref_R =
-      torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
+  auto cref_R = t->cref_R.narrow(0, 0, conc.size(-1));
   auto cv_R = cv_R_extra + cref_R;
   if (nasa9_on(op)) {
     auto n9 = eval_nasa9(temp, op, conc.size(-1));
@@ -182,10 +173,10 @@ torch::Tensor eval_cp_R(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  at::native::call_func2(cp_R_extra.device().type(), iter, op->cp_R_extra());
+  auto t = tables_for(op, temp);
+  at::native::call_func2(cp_R_extra.device().type(), iter, t->cp_R_extra);
 
-  auto cref_R =
-      torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, conc.size(-1));
+  auto cref_R = t->cref_R.narrow(0, 0, conc.size(-1)).clone();  // += below
   cref_R.narrow(-1, 0, op->vapor_ids().size()) += 1;
   auto cp_R = cp_R_extra + cref_R;
   if (nasa9_on(op)) {
@@ -216,7 +207,7 @@ torch::Tensor eval_czh(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  at::native::call_func2(cz.device().type(), iter, op->czh());
+  at::native::call_func2(cz.device().type(), iter, tables_for(op, temp)->czh);
 
   return cz;
 }
@@ -237,7 +228,8 @@ torch::Tensor eval_czh_ddC(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  at::native::call_func2(cz_ddC.device().type(), iter, op->czh_ddC());
+  at::native::call_func2(cz_ddC.device().type(), iter,
+                         tables_for(op, temp)->czh_ddC);
 
   return cz_ddC;
 }
@@ -258,11 +250,10 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
                   .build();
 
   // call the evaluation function
-  at::native::call_func2(intEng_R_extra.device().type(), iter,
-                         op->intEng_R_extra());
+  auto t = tables_for(op, temp);
+  at::native::call_func2(intEng_R_extra.device().type(), iter, t->intEng_extra);
 
-  auto cref_R = torch::tensor(op->cref_R(), temp.options());
-  auto uref_R = torch::tensor(op->uref_R(), temp.options());
+  auto const &cref_R = t->cref_R, &uref_R = t->uref_R;
 
   auto result = uref_R + temp.unsqueeze(-1) * cref_R + intEng_R_extra;
   if (nasa9_on(op)) {
@@ -319,15 +310,14 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                   .build();
 
   // call the evaluation function
+  auto t = tables_for(op, temp);
   at::native::call_func3(entropy_R_extra.device().type(), iter,
-                         op->entropy_R_extra());
+                         t->entropy_extra);
 
   // std::cout << "entropy_R_extra = " << entropy_R_extra << std::endl;
 
-  auto sref_R = torch::tensor(op->sref_R(), temp.options());
-  auto cp_gas_R =
-      torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, ngas);
-  cp_gas_R += 1;
+  auto const& sref_R = t->sref_R;
+  auto cp_gas_R = t->cref_R.narrow(0, 0, ngas) + 1;
 
   auto entropy_R = torch::zeros_like(conc);
 
@@ -382,13 +372,12 @@ torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                   .build();
 
   // call the evaluation function
+  auto t = tables_for(op, temp);
   at::native::call_func3(entropy_R_extra.device().type(), iter,
-                         op->entropy_R_extra());
+                         t->entropy_extra);
 
-  auto sref_R = torch::tensor(op->sref_R(), temp.options());
-  auto cp_gas_R =
-      torch::tensor(op->cref_R(), temp.options()).narrow(0, 0, ngas);
-  cp_gas_R += 1;
+  auto const& sref_R = t->sref_R;
+  auto cp_gas_R = t->cref_R.narrow(0, 0, ngas) + 1;
 
   auto entropy_R = torch::zeros_like(conc);
 
@@ -464,8 +453,8 @@ torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
       eval_intEng_R(temp, conc, op).narrow(-1, 0, ngas) +
       czh.narrow(-1, 0, ngas) * temp.unsqueeze(-1);
 
-  auto cref_R = torch::tensor(op->cref_R(), temp.options());
-  auto uref_R = torch::tensor(op->uref_R(), temp.options());
+  auto t = tables_for(op, temp);
+  auto const &cref_R = t->cref_R, &uref_R = t->uref_R;
   enthalpy_R.narrow(-1, ngas, ncloud) =
       uref_R.narrow(-1, ngas, ncloud) +
       cref_R.narrow(-1, ngas, ncloud) * temp.unsqueeze(-1) +

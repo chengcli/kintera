@@ -13,32 +13,22 @@
 
 namespace kintera {
 
-extern std::vector<std::string> func1_names;
-extern std::vector<std::string> func2_names;
-
 void call_equilibrate_tp_cuda(at::TensorIterator &iter, int ngas,
                               at::Tensor const& stoich,
-                              at::Tensor const& svp_kind,
-                              at::Tensor const& svp_params,
-                              std::vector<std::string> const &logsvp_func,
+                              ThermoTables const& t,
                               double logsvp_eps, int max_iter) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  // Inline-parametrized columns are evaluated analytically in the kernel; swap
-  // a valid sentinel name for the func-table lookup of the named columns.
-  auto svp_names = logsvp_func;
-  for (auto& s : svp_names)
-    if (s == "ideal" || s == "antoine") s = "h2o_ideal";
-  auto f1 = get_device_func1(svp_names, func1_names);
-  auto logsvp_ptrs = f1.data().get();
+  // device function pointers resolved when the table was built
+  auto logsvp_ptrs = static_cast<user_func1*>(t.logsvp.data_ptr());
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cuda", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
     int nreaction = at::native::ensure_nonempty_size(stoich, 1);
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
-    auto svp_kind_ptr = svp_kind.data_ptr<int>();
-    auto svp_params_ptr = svp_params.data_ptr<double>();
+    auto svp_kind_ptr = t.svp_kind.data_ptr<int>();
+    auto svp_params_ptr = t.svp_params.data_ptr<double>();
 
     size_t mem_size =
         pool_workspace_bytes(equilibrate_tp_space<scalar_t>(nspecies, nreaction));
@@ -68,41 +58,18 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
                              at::Tensor const& stoich,
                              at::Tensor const& intEng_offset,
                              at::Tensor const& cv_const,
-                             at::Tensor const& svp_kind,
-                             at::Tensor const& svp_params,
-                             std::vector<std::string> const &logsvp_func,
-                             std::vector<std::string> const &intEng_extra_func,
+                             ThermoTables const& t,
                              double logsvp_eps, int max_iter, int uv_solver) {
   at::cuda::CUDAGuard device_guard(iter.device());
 
-  /////  (1) Get svp functions   /////
-  // Inline-parametrized columns are evaluated analytically in the kernel; swap
-  // a valid sentinel name for the func-table lookup of the named columns.
-  auto svp_names = logsvp_func;
-  for (auto& s : svp_names)
-    if (s == "ideal" || s == "antoine") s = "h2o_ideal";
-  auto f1a = get_device_func1(svp_names, func1_names);
-  auto logsvp_ptrs = f1a.data().get();
+  /////  (1) svp and intEng_extra functions, resolved when the table was built
+  auto logsvp_ptrs = static_cast<user_func1*>(t.logsvp.data_ptr());
+  auto logsvp_ddT_ptrs = static_cast<user_func1*>(t.logsvp_ddT.data_ptr());
+  auto intEng_extra_ptrs = static_cast<user_func2*>(t.intEng_extra.data_ptr());
+  auto intEng_extra_ddT_ptrs =
+      static_cast<user_func2*>(t.intEng_extra_ddT.data_ptr());
 
-  // transform the name of logsvp_func by appending "_ddT"
-  auto logsvp_ddT_func = svp_names;
-  for (auto &name : logsvp_ddT_func) name += "_ddT";
-
-  auto f1b = get_device_func1(logsvp_ddT_func, func1_names);
-  auto logsvp_ddT_ptrs = f1b.data().get();
-
-  /////  (2) Get intEng_extra functions   /////
-  auto f2a = get_device_func2(intEng_extra_func, func2_names);
-  auto intEng_extra_ptrs = f2a.data().get();
-
-  auto intEng_extra_ddT_func = intEng_extra_func;
-  for (auto &name : intEng_extra_ddT_func) {
-    if (!name.empty()) name += "_ddT";
-  }
-  auto f2b = get_device_func2(intEng_extra_ddT_func, func2_names);
-  auto intEng_extra_ddT_ptrs = f2b.data().get();
-
-  /////  (3) Launch kernel calculation    /////
+  /////  (2) Launch kernel calculation    /////
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_uv_cuda", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
@@ -111,8 +78,8 @@ void call_equilibrate_uv_cuda(at::TensorIterator &iter, int ngas,
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
     auto intEng_offset_ptr = intEng_offset.data_ptr<scalar_t>();
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
-    auto svp_kind_ptr = svp_kind.data_ptr<int>();
-    auto svp_params_ptr = svp_params.data_ptr<double>();
+    auto svp_kind_ptr = t.svp_kind.data_ptr<int>();
+    auto svp_params_ptr = t.svp_params.data_ptr<double>();
 
     size_t mem_size = pool_workspace_bytes(
         uv_solver == 2

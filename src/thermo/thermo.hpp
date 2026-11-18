@@ -5,6 +5,7 @@
 #include <iomanip>
 
 // torch
+#include <ATen/native/DispatchStub.h>
 #include <torch/nn/cloneable.h>
 #include <torch/nn/module.h>
 #include <torch/nn/modules/common.h>
@@ -25,7 +26,96 @@ namespace YAML {
 class Node;
 }  // namespace YAML
 
+namespace at::native {  // kernels: utils_dispatch.cpp (CPU), .cu (CUDA)
+using fill_fn = at::Tensor (*)(std::vector<std::string> const& names, int arity,
+                               at::Device device);
+using capture_fn = bool (*)(at::Device device);
+DECLARE_DISPATCH(fill_fn, fill_func_table);
+DECLARE_DISPATCH(capture_fn, capture_active);
+}  // namespace at::native
+
 namespace kintera {
+
+//! true while the current stream of `device` captures a graph
+inline bool capture_active(torch::Device device) {
+  return device.is_cuda() && at::native::capture_active(device.type(), device);
+}
+
+//! X opens one around a segment's warm-up and capture: tables_for builds no
+//! table inside it; used() lists the tables returned or used in the scope
+class NoTableBuild {
+ public:
+  NoTableBuild() : prev_(top()) { top() = this; }
+  ~NoTableBuild() { top() = prev_; }
+  NoTableBuild(NoTableBuild const&) = delete;
+  std::vector<ThermoTablesPtr> const& used() const { return used_; }
+  static NoTableBuild*& top() {  // the innermost open scope of this thread
+    static thread_local NoTableBuild* scope = nullptr;
+    return scope;
+  }
+  static void record(ThermoTablesPtr const& t) {
+    if (top()) top()->used_.push_back(t);
+  }
+
+ private:
+  NoTableBuild* prev_;
+  std::vector<ThermoTablesPtr> used_;
+};
+
+template <typename T>  // FNV-1a over values and sizes, for options_digest
+void fnv1a(uint64_t& h, T const& v) {
+  if constexpr (std::is_arithmetic_v<T>) {
+    auto c = reinterpret_cast<unsigned char const*>(&v);
+    for (size_t i = 0; i < sizeof(T); ++i) h = (h ^ c[i]) * 1099511628211ull;
+  } else {
+    for (auto const& x : v) fnv1a(h, x);
+    fnv1a(h, v.size());
+  }
+}
+
+//! the species columns of op's table for like's device and dtype (tables_for;
+//! with use_h2_cp, the H2 column of intEng_extra is the H2 energy)
+inline std::shared_ptr<ThermoTables> species_tables(SpeciesThermo const& op,
+                                                    at::Tensor const& like) {
+  auto t = std::make_shared<ThermoTables>();
+  auto o = like.options();
+  auto dev = like.device();
+  auto ft = [&](std::vector<std::string> n, int arity, std::string sfx = "") {
+    for (auto& s : n) s += s.empty() ? "" : sfx;
+    return at::native::fill_func_table(dev.type(), n, arity, dev);
+  };
+  t->cref_R = torch::tensor(op->cref_R(), o);
+  t->uref_R = torch::tensor(op->uref_R(), o);
+  t->sref_R = torch::tensor(op->sref_R(), o);
+  if (op->mu().size() == op->cref_R().size()) {  // as ThermoY's buffers
+    t->inv_mu = (1. / torch::tensor(op->mu(), torch::kFloat64)).to(o);
+    t->cv0 = t->cref_R * constants::Rgas * t->inv_mu;
+    t->u0 = t->uref_R * constants::Rgas * t->inv_mu;
+  }
+  if (op->has_nasa9()) {
+    t->nasa9_low = op->nasa9_coeffs_low_tensor(o);
+    t->nasa9_high = op->nasa9_coeffs_high_tensor(o);
+    t->nasa9_Tmid = op->nasa9_Tmid_tensor(o);
+  }
+  int nsp = op->cref_R().size(), h2 = nsp;
+  auto u = op->intEng_R_extra();
+  std::vector<std::string> s(nsp);
+  if (op->use_h2_cp()) {
+    auto names = op->species();
+    h2 = std::find(names.begin(), names.end(), "H2") - names.begin();
+  }
+  t->h2_mask = torch::zeros({nsp}, o.dtype(torch::kBool));
+  if (h2 < nsp) {
+    t->h2_mask[h2] = true;
+    s[h2] = "h2_rot_" + op->h2_cp_mode() + "_s";
+    if (h2 < (int)u.size()) u[h2] = "h2_rot_" + op->h2_cp_mode();
+  }
+  t->intEng_extra = ft(u, 2), t->intEng_extra_ddT = ft(u, 2, "_ddT");
+  t->h2_entropy = ft(s, 2), t->cp_R_extra = ft(op->cp_R_extra(), 2);
+  t->czh = ft(op->czh(), 2), t->czh_ddC = ft(op->czh_ddC(), 2);
+  t->entropy_extra = ft(op->entropy_R_extra(), 3);
+  return t;
+}
 
 template <typename T>
 inline std::vector<T> insert_first(T value, std::vector<T> const& input) {
@@ -41,13 +131,8 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
     return std::make_shared<ThermoOptionsImpl>();
   }
 
-  //! \brief Create a `ThermoOptions` object from a YAML file
-  /*!
-   * This function reads a YAML file and attempts to create a `ThermoOptions`
-   * object from it. If the YAML file contains "reference-state", a valid
-   * `ThermoOptions` object will be created. Otherwise, a nullptr
-   * is returned.
-   */
+  //! from a YAML file or node: a `ThermoOptions` if it contains
+  //! "reference-state", else nullptr
   static std::shared_ptr<ThermoOptionsImpl> from_yaml(
       std::string const& filename, bool verbose = false);
   static std::shared_ptr<ThermoOptionsImpl> from_yaml(YAML::Node const& config,
@@ -114,30 +199,14 @@ struct ExtrapOptions {
 //! Mass Thermodynamics
 class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
  public:
-  //! Create and register an ThermoY module
-  /*!
-   * This function registers the created module as a submodule
-   * of the given parent module `p`.
-   *
-   * \param[in] opts  options for creating the ThermoY module
-   * \param[in] p     parent module for registering the created module
-   * \return          created ThermoY module
-   */
+  //! Create a ThermoY module from `opts`, registered as `name` under `p`
   static std::shared_ptr<ThermoYImpl> create(
       ThermoOptions const& opts, torch::nn::Module* p,
       std::string const& name = "thermo");
 
-  //! 1. / mu. [mol/kg]
-  torch::Tensor inv_mu;
-
-  //! constant part of heat capacity at constant volume [J/(kg K)]
-  torch::Tensor cv0;
-
-  //! internal energy offset at T = 0 [J/kg]
-  torch::Tensor u0;
-
-  //! stoichiometry matrix (nspecies, nreaction)
-  torch::Tensor stoich;
+  //! 1/mu [mol/kg], cv0 [J/(kg K)], u0 at T = 0 [J/kg] (float64; the tables
+  //! hold them per dtype), stoich (nspecies, nreaction)
+  torch::Tensor inv_mu, cv0, u0, stoich;
 
   //! kkt warm start active set
   torch::Tensor reaction_set, nactive;
@@ -161,77 +230,46 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! \brief perform conversions
   torch::Tensor compute(std::string ab, std::vector<torch::Tensor> const& args);
 
+  //! the tables for `device` and `dtype` (K.rst 3.3), outside capture; a
+  //! repeat with the same arguments returns them and reallocates nothing
+  ThermoTablesPtr prepare(torch::Device device, torch::Dtype dtype,
+                          torch::IntArrayRef shape);
+  ThermoTablesPtr tables() const { return tables_; }  // null before prepare
+
   //! Read and reset the number of cells whose saturation adjustment failed
   //! since the previous take. On CUDA this copies one integer to the host.
   int64_t take_saturation_adjustment_failures();
 
-  //! \brief Perform saturation adjustment
-  /*!
-   * This function adjusts the mass fraction to account for saturation
-   * conditions. It modifies the input mass fraction tensor in place.
-   * After calling this function, equilibrium temperature (T) and pressure (P)
-   * will be cached and can be accessed later using `buffer("T")` and
-   * `buffer("P")`.
-   *
-   * \param[in] rho density
-   * \param[in] intEng total internal energy [J/m^3]
-   * \param[in,out] yfrac mass fraction, (ny, ...)
-   * \param[in] warm_start if true, use previous active set as warm start
-   * \param[out] diag optional diagnostic output, (..., ndiag)
-   * \return gain matrix, (..., nreaction, nreaction)
-   */
+  //! \brief saturation adjustment of yfrac (ny, ...) in place, from density
+  //! rho and total internal energy intEng [J/m^3]; caches T and P (buffer("T"),
+  //! buffer("P")); warm_start: from the previous active set; diag: optional
+  //! (..., ndiag); returns the gain matrix (..., nreaction, nreaction)
   torch::Tensor forward(torch::Tensor rho, torch::Tensor intEng,
                         torch::Tensor const& yfrac, bool warm_start = false,
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:
-  //! \brief specific volume (m^3/kg) to mass fraction
-  /*
-   * \param[in] ivol inverse specific volume, kg/m^3, (..., 1 + ny)
-   * \param[out] out mass fraction, (ny, ...)
-   */
+  ThermoTablesPtr tables_;  // of the last prepare(); reset() drops it
+
+  //! inverse specific volume ivol [kg/m^3] (..., 1 + ny) -> yfrac (ny, ...)
   void _ivol_to_yfrac(torch::Tensor ivol, torch::Tensor& out) const;
 
-  //! \brief Calculate mole fraction from mass fraction
-  /*!
-   * \param[in] yfrac mass fraction, (ny, ...)
-   * \param[out] out mole fraction, (..., 1 + ny)
-   */
+  //! mass fraction (ny, ...) -> mole fraction (..., 1 + ny)
   void _yfrac_to_xfrac(torch::Tensor yfrac, torch::Tensor& out) const;
 
-  //! \brief mass fraction to specific volume (m^3/kg)
-  /*!
-   * \param[in] rho total density, kg/m^3
-   * \param[in] yfrac mass fraction, (ny, ...)
-   * \param[out] out inverse specific volume, kg/m^3/, (..., 1 + ny)
-   */
+  //! total density rho [kg/m^3], yfrac (ny, ...) -> ivol [kg/m^3] (..., 1 + ny)
   void _yfrac_to_ivol(torch::Tensor rho, torch::Tensor yfrac,
                       torch::Tensor& out) const;
 
-  //! \brief Calculate temperature (K)
-  /*`
-   * \param[in] pres pressure, pa
-   * \param[in] ivol inverse of specific volume, kg/m^3, (..., 1 + ny)
-   * \param[out] temperature, K, (...)
-   */
+  //! pres [Pa], ivol [kg/m^3] (..., 1 + ny) -> temperature [K] (...)
   void _pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
                      torch::Tensor& out) const;
 
-  //! \brief calculate volumetric heat capacity (J/(m^3 K))
-  /*!
-   * \param[in] ivol inverse of specific volume, kg/m^3, (..., 1 + ny)
-   * \param[in] temp temperature, K
-   * \param[out] out volumetric heat capacity, J/(m^3 K), (...)
-   */
+  //! ivol [kg/m^3] (..., 1 + ny), temp [K] -> volumetric cv [J/(m^3 K)] (...)
   void _cv_vol(torch::Tensor ivol, torch::Tensor temp,
                torch::Tensor& out) const;
 
-  //! \brief calculate volumetric internal energy (J/m^3)
-  /*!
-   * \param[in] ivol inverse of specific volume, kg/m^3, (..., 1 + ny)
-   * \param[in] temp temperature, K
-   * \param[out] out volumetric internal energy, J/m^3, (...)
-   */
+  //! ivol [kg/m^3] (..., 1 + ny), temp [K] -> volumetric intEng [J/m^3] (...)
   void _intEng_vol(torch::Tensor ivol, torch::Tensor temp,
                    torch::Tensor& out) const {
     // kg/m^3 -> mol/m^3
@@ -240,31 +278,15 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
     out.set_((ui * conc).sum(-1));
   }
 
-  //! \brief calculate temperature (K) from internal energy
-  /*!
-   * \param[in] ivol inverse of specific volume, kg/m^3, (..., 1 + ny)
-   * \param[in] intEng volumetric internal energy, J/m^3, (...)
-   * \param[out] out temperature, K, (...)
-   */
+  //! ivol [kg/m^3] (..., 1 + ny), intEng [J/m^3] (...) -> temperature [K] (...)
   void _intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
                        torch::Tensor& out) const;
 
-  //! \brief calculate pressure (Pa)
-  /*!
-   * \param[in] ivol inverse of specific volume, kg/m^3, (..., 1 + ny)
-   * \param[in] temp temperature, K
-   * \param[out] out pressure, Pa, (...)
-   */
+  //! ivol [kg/m^3] (..., 1 + ny), temp [K] -> pressure [Pa] (...)
   void _temp_to_pres(torch::Tensor ivol, torch::Tensor temp,
                      torch::Tensor& out) const;
 
-  //! \brief calculate volumetric entropy (J/(m^3 K))
-  /*
-   * \param[in] pres pressure, pa
-   * \param[in] ivol inverse of specific volume, kg/m^3, (..., 1 + ny)
-   * \param[in] temp temperature, K
-   * \param[out] out volumetric entropy, J/(m^3 K), (...)
-   */
+  //! pres [Pa], ivol [kg/m^3] (..., 1 + ny), temp [K] -> entropy [J/(m^3 K)]
   void _entropy_vol(torch::Tensor pres, torch::Tensor ivol, torch::Tensor temp,
                     torch::Tensor& out) const {
     // kg/m^3 -> mol/m^3
@@ -279,15 +301,7 @@ TORCH_MODULE(ThermoY);
 //! Molar thermodynamics
 class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
  public:
-  //! Create and register an ThermoX module
-  /*!
-   * This function registers the created module as a submodule
-   * of the given parent module `p`.
-   *
-   * \param[in] opts  options for creating the ThermoX module
-   * \param[in] p     parent module for registering the created module
-   * \return          created ThermoX module
-   */
+  //! Create a ThermoX module from `opts`, registered as `name` under `p`
   static std::shared_ptr<ThermoXImpl> create(
       ThermoOptions const& opts, torch::nn::Module* p,
       std::string const& name = "thermo");
@@ -312,114 +326,55 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   void reset() override;
   void pretty_print(std::ostream& os) const override;
 
-  //! \brief perform conversions
-  /*!
-   * \param ab name of the conversion to perform
-   * \param args arguments to the conversion function
-   * \return result of the conversion
-   */
+  //! \brief perform the conversion named `ab` on `args`; returns its result
   torch::Tensor compute(std::string ab, std::vector<torch::Tensor> const& args);
 
-  //! \brief Calculate effective heat capacity at constant pressure
-  /*!
-   *
-   * \param temp Temperature tensor (K)
-   * \param pres Pressure tensor (Pa)
-   * \param xfrac Mole fraction tensor
-   * \param gain Gain tensor
-   * \param conc Optional concentration tensor, if not provided it will be
-   * computed
-   * \return Equivalent heat capacity at constant pressure (Cp) tensor [J/(mol
-   * K)]
-   */
+  //! equivalent cp [J/(mol K)] from temp [K], pres [Pa], mole fraction xfrac
+  //! and the gain; conc is computed if not given
   torch::Tensor effective_cp(
       torch::Tensor temp, torch::Tensor pres, torch::Tensor xfrac,
       torch::Tensor gain, torch::optional<torch::Tensor> conc = torch::nullopt);
 
-  //! \brief Extrapolate state TPX to a new pressure along an adiabat
-  /*!
-   * Extrapolates the state variables (temperature, pressure, and mole
-   * fractions)
-   *
-   * \param[in,out] temp Temperature tensor (K)
-   * \param[in,out] pres Pressure tensor (Pa)
-   * \param[in,out] xfrac Mole fraction tensor
-   */
+  //! extrapolate temp [K], pres [Pa] and mole fraction xfrac in place to a new
+  //! pressure along an adiabat
   void extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
                         torch::Tensor xfrac, ExtrapOptions const& opts);
 
-  /*! \brief Extrapolate state TPX to a new height along an adiabat
-   * Extrapolates the state variables (temperature, pressure, and mole
-   * fractions)
-   *
-   * \param[in,out] temp Temperature tensor (K)
-   * \param[in,out] pres Pressure tensor (Pa)
-   * \param[in,out] xfrac Mole fraction tensor
-   */
+  //! the same to a new height
   void extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
                       torch::Tensor xfrac, ExtrapOptions const& opts);
 
-  //! \brief Calculate the equilibrium state given temperature and pressure
-  /*!
-   * \param[in] temp temperature, K
-   * \param[in] pres pressure, Pa
-   * \param[in,out] xfrac mole fraction, (..., 1 + ny)
-   * \param[in] warm_start accepted for compatibility; has no effect
-   * \param[out] diag optional diagnostic output, (..., ndiag)
-   * \return gain matrix, (..., nreaction, nreaction)
-   */
+  //! \brief equilibrium state at temp [K] and pres [Pa]: xfrac (..., 1 + ny) in
+  //! place; warm_start is accepted for compatibility and has no effect; diag:
+  //! optional (..., ndiag); returns the gain matrix (..., nreaction, nreaction)
   torch::Tensor forward(torch::Tensor temp, torch::Tensor pres,
                         torch::Tensor const& xfrac, bool warm_start = false,
                         torch::optional<torch::Tensor> diag = torch::nullopt);
 
  private:
-  //! \brief Calculate mass fraction from mole fraction
-  /*!
-   * \param[in] xfrac mole fraction, (..., 1 + ny)
-   * \param[out] out mass fraction, (ny, ...)
-   */
+  //! mole fraction (..., 1 + ny) -> mass fraction (ny, ...)
   void _xfrac_to_yfrac(torch::Tensor xfrac, torch::Tensor& out) const;
 
-  //! \brief Calculate total density
-  /*!
-   * \param[in] conc mole concentration, (..., 1 + ny)
-   * \param[out] out total density, kg/m^3, (...)
-   */
+  //! mole concentration (..., 1 + ny) -> total density [kg/m^3] (...)
   void _conc_to_dens(torch::Tensor conc, torch::Tensor& out) const {
     out.set_((conc * mu).sum(-1));
   }
 
-  //! \brief calculatec volumetric heat capacity
-  /*
-   * \param[in] temp temperature, K
-   * \param[in] conc mole concentration, (..., 1 + ny)
-   * \param[out] out volumetric heat capacity, J/(m^3 K), (...)
-   */
+  //! temp [K], conc (..., 1 + ny) -> volumetric heat capacity [J/(m^3 K)] (...)
   void _cp_vol(torch::Tensor temp, torch::Tensor conc,
                torch::Tensor& out) const {
     auto cp = eval_cp_R(temp, conc, options) * constants::Rgas;
     out.set_((conc * cp).sum(-1));
   }
 
-  //! \brief calculate volumetric enthalpy
-  /*!
-   * \param[in] temp temperature, K
-   * \param[in] conc mole concentration, (..., 1 + ny)
-   * \param[out] out volumetric enthalpy, J/m^3, (...)
-   */
+  //! temp [K], conc (..., 1 + ny) -> volumetric enthalpy [J/m^3] (...)
   void _enthalpy_vol(torch::Tensor temp, torch::Tensor conc,
                      torch::Tensor& out) const {
     auto hi = eval_enthalpy_R(temp, conc, options) * constants::Rgas;
     out.set_((conc * hi).sum(-1));
   }
 
-  //! \brief calculate volumetric entropy
-  /*!
-   * \param[in] temp temperature, K, (...)
-   * \param[in] pres pressure, Pa, (...)
-   * \param[in] conc mole concentration, (..., 1 + ny)
-   * \param[out] out volumetric entropy, J/(m^3 K), (...)
-   */
+  //! temp [K], pres [Pa] (...), conc (..., 1 + ny) -> entropy [J/(m^3 K)] (...)
   void _entropy_vol(torch::Tensor temp, torch::Tensor pres, torch::Tensor conc,
                     torch::Tensor& out) const {
     auto si =
@@ -427,23 +382,11 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
     out.set_((conc * si).sum(-1));
   }
 
-  //! \brief Calculate temperature from pressure and entropy
-  /*!
-   * \param[in] pres pressure, Pa, (...)
-   * \param[in] xfrac mole fractions, (..., 1 + ny)
-   * \param[in] entropy volumetric entropy, J/(m^3 K), (...)
-   * \param[out] out temperature, K, (...)
-   */
+  //! pres [Pa], xfrac (..., 1 + ny), entropy [J/(m^3 K)] -> temperature [K]
   void _entropy_to_temp(torch::Tensor pres, torch::Tensor xfrac,
                         torch::Tensor entropy, torch::Tensor& out);
 
-  //! \brief Calculate concentration from mole fraction
-  /*
-   * \param[in] temp temperature, K
-   * \param[in] pres pressure, Pa
-   * \param[in] xfrac mole fractions, (..., 1 + ny)
-   * \param[out] out mole concentration, mol/m^3, (..., 1 + ny)
-   */
+  //! temp [K], pres [Pa], xfrac (..., 1 + ny) -> conc [mol/m^3] (..., 1 + ny)
   void _xfrac_to_conc(torch::Tensor temp, torch::Tensor pres,
                       torch::Tensor xfrac, torch::Tensor& out) const;
 };

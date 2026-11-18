@@ -1,5 +1,6 @@
 // C/C++
-#include <algorithm>
+#include <map>
+#include <mutex>
 
 // torch
 #include <ATen/Dispatch.h>
@@ -8,44 +9,27 @@
 #include <ATen/native/cpu/Loops.h>
 
 // kintera
-#include <kintera/utils/user_funcs.hpp>
-
 #include "equilibrate_tp.h"
 #include "equilibrate_uv.h"
+#include "log_svp.hpp"
+#include "thermo.hpp"
 #include "thermo_dispatch.hpp"
 
 namespace kintera {
 
-extern user_func1 func1_table_cpu[];
-extern std::vector<std::string> func1_names;
-
-extern user_func2 func2_table_cpu[];
-extern std::vector<std::string> func2_names;
-
 void call_equilibrate_tp_cpu(at::TensorIterator& iter, int ngas,
-                             at::Tensor const& stoich,
-                             at::Tensor const& svp_kind,
-                             at::Tensor const& svp_params,
-                             std::vector<std::string> const& logsvp_func,
+                             at::Tensor const& stoich, ThermoTables const& t,
                              double logsvp_eps, int max_iter) {
   int grain_size = iter.numel() / at::get_num_threads();
-
-  // Inline-parametrized columns ('ideal'/'antoine') are evaluated analytically
-  // inside the kernel; swap a valid sentinel name so the func-table lookup of
-  // the remaining named columns does not fail.
-  auto svp_names = logsvp_func;
-  for (auto& s : svp_names)
-    if (s == "ideal" || s == "antoine") s = "h2o_ideal";
-  auto f1 = get_host_func(svp_names, func1_names, func1_table_cpu);
-  auto logsvp_ptrs = f1.data();
+  auto logsvp_ptrs = static_cast<user_func1*>(t.logsvp.data_ptr());
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_tp_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
     int nreaction = at::native::ensure_nonempty_size(stoich, 1);
 
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
-    auto svp_kind_ptr = svp_kind.data_ptr<int>();
-    auto svp_params_ptr = svp_params.data_ptr<double>();
+    auto svp_kind_ptr = t.svp_kind.data_ptr<int>();
+    auto svp_params_ptr = t.svp_params.data_ptr<double>();
 
     iter.for_each(
         [&](char** data, const int64_t* strides, int64_t n) {
@@ -72,44 +56,16 @@ void call_equilibrate_tp_cpu(at::TensorIterator& iter, int ngas,
 void call_equilibrate_uv_cpu(at::TensorIterator& iter, int ngas,
                              at::Tensor const& stoich,
                              at::Tensor const& intEng_offset,
-                             at::Tensor const& cv_const,
-                             at::Tensor const& svp_kind,
-                             at::Tensor const& svp_params,
-                             std::vector<std::string> const& logsvp_func,
-                             std::vector<std::string> const& intEng_extra_func,
+                             at::Tensor const& cv_const, ThermoTables const& t,
                              double logsvp_eps, int max_iter, int uv_solver) {
   int grain_size = iter.numel() / at::get_num_threads();
 
-  /////  (1) Get svp functions   /////
-  // Inline-parametrized columns are evaluated analytically in the kernel; swap
-  // a valid sentinel name for the func-table lookup of the named columns.
-  auto svp_names = logsvp_func;
-  for (auto& s : svp_names)
-    if (s == "ideal" || s == "antoine") s = "h2o_ideal";
-  auto f1a = get_host_func(svp_names, func1_names, func1_table_cpu);
-  auto logsvp_ptrs = f1a.data();
-
-  // transform the name of logsvp_func by appending "_ddT"
-  auto logsvp_ddT_func = svp_names;
-  for (auto& name : logsvp_ddT_func) name += "_ddT";
-
-  auto f1b = get_host_func(logsvp_ddT_func, func1_names, func1_table_cpu);
-  auto logsvp_ddT_ptrs = f1b.data();
-
-  /////  (2) Get intEng_extra functions   /////
-  auto f2a = get_host_func(intEng_extra_func, func2_names, func2_table_cpu);
-  auto intEng_extra_ptrs = f2a.data();
-
-  // transform the name of intEng_extra_func by appending "_ddT"
-  auto intEng_extra_ddT_func = intEng_extra_func;
-  for (auto& name : intEng_extra_ddT_func) {
-    if (!name.empty()) name += "_ddT";
-  }
-
-  auto f2b = get_host_func(intEng_extra_ddT_func, func2_names, func2_table_cpu);
-  auto intEng_extra_ddT_ptrs = f2b.data();
-
-  /////  (3) Launch kernel calculation    /////
+  // svp and intEng_extra functions: the table's, resolved when it was built
+  auto logsvp_ptrs = static_cast<user_func1*>(t.logsvp.data_ptr());
+  auto logsvp_ddT_ptrs = static_cast<user_func1*>(t.logsvp_ddT.data_ptr());
+  auto intEng_extra_ptrs = static_cast<user_func2*>(t.intEng_extra.data_ptr());
+  auto intEng_extra_ddT_ptrs =
+      static_cast<user_func2*>(t.intEng_extra_ddT.data_ptr());
 
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_equilibrate_uv_cpu", [&] {
     int nspecies = at::native::ensure_nonempty_size(stoich, 0);
@@ -118,8 +74,8 @@ void call_equilibrate_uv_cpu(at::TensorIterator& iter, int ngas,
     auto stoich_ptr = stoich.data_ptr<scalar_t>();
     auto intEng_offset_ptr = intEng_offset.data_ptr<scalar_t>();
     auto cv_const_ptr = cv_const.data_ptr<scalar_t>();
-    auto svp_kind_ptr = svp_kind.data_ptr<int>();
-    auto svp_params_ptr = svp_params.data_ptr<double>();
+    auto svp_kind_ptr = t.svp_kind.data_ptr<int>();
+    auto svp_params_ptr = t.svp_params.data_ptr<double>();
 
     iter.for_each(
         [&](char** data, const int64_t* strides, int64_t n) {
@@ -173,6 +129,47 @@ void call_logsvp_inline_cpu(at::TensorIterator& iter,
         },
         grain_size);
   });
+}
+
+uint64_t options_digest(SpeciesThermo const& op) {  // of the content
+  uint64_t h = 1469598103934665603ull;
+  auto add = [&](auto const&... v) { (fnv1a(h, v), ...); };
+  add(op->vapor_ids(), op->cloud_ids(), op->names(), op->mu(), op->cref_R(),
+      op->uref_R(), op->sref_R(), op->intEng_R_extra(), op->cp_R_extra(),
+      op->entropy_R_extra(), op->czh(), op->czh_ddC(), op->nasa9_low(),
+      op->nasa9_high(), op->nasa9_Tmid(), op->use_nasa9_cp(), op->use_h2_cp(),
+      op->h2_cp_mode());
+  auto th = std::dynamic_pointer_cast<ThermoOptionsImpl>(op);
+  if (th && th->nucleation())
+    add(th->nucleation()->logsvp(), th->nucleation()->svp_params());
+  return h;
+}
+
+// the store: one table per (options digest, device, dtype), kept, so it is
+// built once; a missing one is built by species_tables (thermo.hpp) and
+// make_svp_spec. Never freed: no device tensor is released at process exit
+ThermoTablesPtr tables_for(SpeciesThermo const& op, at::Tensor const& like) {
+  static std::mutex mutex;
+  static auto& store =
+      *new std::map<std::tuple<uint64_t, int, int, int>, ThermoTablesPtr>;
+  static int64_t epoch = 0;
+  auto h = options_digest(op);
+  auto dev = like.device();
+  std::lock_guard<std::mutex> lock(mutex);
+  auto& slot =
+      store[{h, (int)dev.type(), dev.index(), (int)like.scalar_type()}];
+  if (slot) return NoTableBuild::record(slot), slot;
+  TORCH_CHECK(!NoTableBuild::top() && !capture_active(dev),
+              "[kintera] no thermo table for ", dev, " ", like.scalar_type(),
+              " inside capture or NoTableBuild: prepare() first");
+  c10::InferenceMode off(false);  // normal tensors, usable in both modes
+  auto t = species_tables(op, like);
+  auto th = std::dynamic_pointer_cast<ThermoOptionsImpl>(op);
+  LogSVPFunc::make_svp_spec(th ? th->nucleation() : nullptr, *t, dev);
+  t->digest = h, t->epoch = ++epoch;  // the epoch never changes after
+  slot = t;
+  NoTableBuild::record(t);
+  return t;
 }
 
 }  // namespace kintera

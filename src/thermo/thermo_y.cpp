@@ -2,7 +2,6 @@
 #include <kintera/constants.h>
 
 #include <kintera/utils/check_resize.hpp>
-#include <kintera/utils/serialize.hpp>
 
 #include "eval_uhs.hpp"
 #include "h2_rotation.h"
@@ -171,6 +170,17 @@ void ThermoYImpl::reset() {
 
   // clone() calls reset(); drop any count copied from the original.
   nfail_ = torch::Tensor();
+  tables_ = nullptr;
+}
+
+ThermoTablesPtr ThermoYImpl::prepare(torch::Device device, torch::Dtype dtype,
+                                     torch::IntArrayRef shape) {
+  if (tables_ && tables_->cref_R.device() == device &&
+      tables_->cref_R.scalar_type() == dtype)
+    return NoTableBuild::record(tables_), tables_;  // used in the scope
+  TORCH_CHECK(!capture_active(device), "[ThermoY] prepare() before capture");
+  auto like = torch::empty({0}, torch::dtype(dtype).device(device));
+  return tables_ = tables_for(options, like);
 }
 
 void ThermoYImpl::pretty_print(std::ostream& os) const {
@@ -281,6 +291,14 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
     return torch::Tensor();
   }
 
+  // the module's table (eager code prepares it); a stale one throws (debug)
+  auto t = prepare(rho.device(), rho.scalar_type(), rho.sizes());
+#ifndef NDEBUG
+  TORCH_CHECK(
+      capture_active(rho.device()) || t->digest == options_digest(options),
+      "[ThermoY] options changed after prepare(): call reset() first");
+#endif
+
   auto yfrac0 = yfrac.clone();
   auto ivol = compute("DY->V", {rho, yfrac});
   auto vec = ivol.sizes().vec();
@@ -348,27 +366,23 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 
   auto intEng_offset = u0 / inv_mu;  // J/kg -> J/mol
   auto cv_const = cv0 / inv_mu;      // J/(kg K) -> J/(mol K)
-  auto intEng_extra = options->intEng_R_extra();
 
-  // use_h2_cp: hand the solver the H2 energy of eval_intEng_R
+  // use_h2_cp: hand the solver the H2 energy of eval_intEng_R (the table's
+  // intEng_extra holds it in the H2 column)
   auto names = options->species();
   int h2 = std::find(names.begin(), names.end(), "H2") - names.begin();
-  if (options->use_h2_cp() && h2 < (int)intEng_extra.size()) {
+  if (options->use_h2_cp() && h2 < (int)options->intEng_R_extra().size()) {
     intEng_offset[h2] =
         (options->uref_R()[h2] + kNasa9Tref * options->cref_R()[h2]) *
         constants::Rgas;
     cv_const[h2] = 0.;
-    intEng_extra[h2] = "h2_rot_" + options->h2_cp_mode();
   }
 
   // call the equilibrium solver
-  auto svp_spec =
-      LogSVPFunc::make_svp_spec(options->nucleation(), conc.device());
-  at::native::call_equilibrate_uv(
-      conc.device().type(), iter, options->vapor_ids().size(), stoich,
-      intEng_offset, cv_const, svp_spec.first, svp_spec.second,
-      options->nucleation()->logsvp(), intEng_extra, options->ftol(),
-      options->max_iter(), uv_solver);
+  at::native::call_equilibrate_uv(conc.device().type(), iter,
+                                  options->vapor_ids().size(), stoich,
+                                  intEng_offset, cv_const, *t, options->ftol(),
+                                  options->max_iter(), uv_solver);
 
   // Keep the failure count on the same device as the cells. forward does
   // not sync. On CPU the count is already on the host, so warn here. On
@@ -485,17 +499,6 @@ void ThermoYImpl::_pres_to_temp(torch::Tensor pres, torch::Tensor ivol,
 
   if (!converged && iter >= options->max_iter()) {
     TORCH_WARN("ThermoYImpl::_pres_to_temp: max iterations reached");
-
-    // get a time stamp (string) to dump diagnostic data
-    auto time_stamp = std::to_string(std::time(nullptr));
-
-    // save torch tensor data to file with time stamp
-    // auto filename = "thermo_y_pres_to_temp_" + time_stamp + ".pt";
-
-    // std::map<std::string, torch::Tensor> data;
-    // data["pres"] = pres;
-    // data["ivol"] = ivol;
-    // save_tensors(data, filename);
   }
 }
 
@@ -530,17 +533,6 @@ void ThermoYImpl::_intEng_to_temp(torch::Tensor ivol, torch::Tensor intEng,
 
   if (!converged && iter >= options->max_iter()) {
     TORCH_WARN("ThermoYImpl::_intEng_to_temp: max iterations reached");
-
-    // get a time stamp (string) to dump diagnostic data
-    auto time_stamp = std::to_string(std::time(nullptr));
-
-    // save torch tensor data to file with time stamp
-    // auto filename = "thermo_y_intEng_to_temp_" + time_stamp + ".pt";
-
-    // std::map<std::string, torch::Tensor> data;
-    // data["ivol"] = ivol;
-    // data["intEng"] = intEng;
-    // save_tensors(data, filename);
   }
 }
 

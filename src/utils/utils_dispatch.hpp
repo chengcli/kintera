@@ -7,7 +7,7 @@
 namespace at::native {
 
 using fn_iter = void (*)(at::TensorIterator& iter,
-                         std::vector<std::string> const& funcs);
+                         at::Tensor const& funcs);  // a kintera::FuncTable
 
 DECLARE_DISPATCH(fn_iter, call_func1);
 DECLARE_DISPATCH(fn_iter, call_func2);
