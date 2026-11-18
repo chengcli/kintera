@@ -1,8 +1,6 @@
-// torch
-#include <torch/extension.h>
-
-// pybind11
+// torch, pybind11
 #include <pybind11/stl.h>
+#include <torch/extension.h>
 
 // kintera
 #include <kintera/thermo/relative_humidity.hpp>
@@ -15,29 +13,28 @@
 namespace py = pybind11;
 
 void bind_thermo(py::module& m) {
-  auto pyNucleationOptions =
-      py::class_<kintera::NucleationOptionsImpl, kintera::NucleationOptions>(
-          m, "NucleationOptions");
-
-  pyNucleationOptions.def(py::init<>())
+  using NO = kintera::NucleationOptionsImpl;
+  using TO = kintera::ThermoOptionsImpl;
+  using Y = kintera::ThermoYImpl;
+  using X = kintera::ThermoXImpl;
+  using T = torch::Tensor;
+  using py::arg;
+  py::class_<NO, kintera::NucleationOptions>(m, "NucleationOptions")
+      .def(py::init<>())
       .def("__repr__",
            [](const kintera::NucleationOptions& self) {
              std::stringstream ss;
              self->report(ss);
              return fmt::format("NucleationOptions({})", ss.str());
            })
-      .ADD_OPTION(std::vector<double>, kintera::NucleationOptionsImpl, minT)
-      .ADD_OPTION(std::vector<double>, kintera::NucleationOptionsImpl, maxT)
-      .ADD_OPTION(std::vector<std::string>, kintera::NucleationOptionsImpl,
-                  logsvp)
-      .ADD_OPTION(std::vector<kintera::Reaction>,
-                  kintera::NucleationOptionsImpl, reactions);
+      .ADD_OPTION(std::vector<double>, NO, minT)
+      .ADD_OPTION(std::vector<double>, NO, maxT)
+      .ADD_OPTION(std::vector<std::string>, NO, logsvp)
+      .ADD_OPTION(std::vector<kintera::Reaction>, NO, reactions);
 
-  auto pyThermoOptions =
-      py::class_<kintera::ThermoOptionsImpl, kintera::SpeciesThermoImpl,
-                 kintera::ThermoOptions>(m, "ThermoOptions");
-
-  pyThermoOptions.def(py::init<>())
+  py::class_<TO, kintera::SpeciesThermoImpl, kintera::ThermoOptions>(
+      m, "ThermoOptions")
+      .def(py::init<>())
       .def("__repr__",
            [](const kintera::ThermoOptions& self) {
              std::stringstream ss;
@@ -45,66 +42,54 @@ void bind_thermo(py::module& m) {
              return fmt::format("ThermoOptions({})", ss.str());
            })
       .def_static("from_yaml",
-                  py::overload_cast<std::string const&, bool>(
-                      &kintera::ThermoOptionsImpl::from_yaml),
-                  py::arg("filename"), py::arg("verbose") = false)
-      .def("reactions", &kintera::ThermoOptionsImpl::reactions)
-      .ADD_OPTION(double, kintera::ThermoOptionsImpl, Tref)
-      .ADD_OPTION(double, kintera::ThermoOptionsImpl, Pref)
-      .ADD_OPTION(kintera::NucleationOptions, kintera::ThermoOptionsImpl,
-                  nucleation)
-      .ADD_OPTION(int, kintera::ThermoOptionsImpl, max_iter)
-      .ADD_OPTION(double, kintera::ThermoOptionsImpl, ftol)
-      .ADD_OPTION(std::string, kintera::ThermoOptionsImpl, uv_solver);
+                  py::overload_cast<std::string const&, bool>(&TO::from_yaml),
+                  arg("filename"), arg("verbose") = false)
+      .def("reactions", &TO::reactions)
+      .ADD_OPTION(double, TO, Tref)
+      .ADD_OPTION(double, TO, Pref)
+      .ADD_OPTION(kintera::NucleationOptions, TO, nucleation)
+      .ADD_OPTION(int, TO, max_iter)
+      .ADD_OPTION(double, TO, ftol)
+      .ADD_OPTION(std::string, TO, uv_solver);
 
-  ADD_KINTERA_MODULE(ThermoY, ThermoOptions, &kintera::ThermoYImpl::forward,
-                     py::arg("rho"), py::arg("intEng"), py::arg("yfrac"),
-                     py::arg("warm_start") = false,
-                     py::arg("diag") = py::none())
-
-      .def("compute", &kintera::ThermoYImpl::compute, py::arg("ab"),
-           py::arg("args"))
+  ADD_KINTERA_MODULE(ThermoY, ThermoOptions, &Y::forward, arg("rho"),
+                     arg("intEng"), arg("yfrac"), arg("warm_start") = false,
+                     arg("diag") = py::none())
+      .def("compute", &Y::compute, arg("ab"), arg("args"))
       .def("take_saturation_adjustment_failures",
-           &kintera::ThermoYImpl::take_saturation_adjustment_failures);
+           &Y::take_saturation_adjustment_failures)
+      .def("failures", &Y::failures)
+      .def("reset_failures", &Y::reset_failures)
+      .def("consume_failures", &Y::consume_failures);
 
-  ADD_KINTERA_MODULE(ThermoX, ThermoOptions, &kintera::ThermoXImpl::forward,
-                     py::arg("temp"), py::arg("pres"), py::arg("xfrac"),
-                     py::arg("warm_start") = false,
-                     py::arg("diag") = py::none())
-
-      .def("compute", &kintera::ThermoXImpl::compute, py::arg("ab"),
-           py::arg("args"))
-      .def("effective_cp", &kintera::ThermoXImpl::effective_cp, py::arg("temp"),
-           py::arg("pres"), py::arg("xfrac"), py::arg("gain"),
-           py::arg("conc") = py::none())
+  ADD_KINTERA_MODULE(ThermoX, ThermoOptions, &X::forward, arg("temp"),
+                     arg("pres"), arg("xfrac"), arg("warm_start") = false,
+                     arg("diag") = py::none())
+      .def("compute", &X::compute, arg("ab"), arg("args"))
+      .def("effective_cp", &X::effective_cp, arg("temp"), arg("pres"),
+           arg("xfrac"), arg("gain"), arg("conc") = py::none())
       .def(
           "extrapolate_dlnp",
-          [](kintera::ThermoXImpl& self, torch::Tensor temp, torch::Tensor pres,
-             torch::Tensor xfrac, double dlnp, double ds_dlnp, bool rainout,
-             bool verbose) {
+          [](X& self, T temp, T pres, T xfrac, double dlnp, double ds_dlnp,
+             bool rainout, bool verbose) {
             kintera::ExtrapOptions opts;
             opts.dlnp(dlnp).ds_dlnp(ds_dlnp).rainout(rainout).verbose(verbose);
             return self.extrapolate_dlnp(temp, pres, xfrac, opts);
           },
-          py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dlnp"),
-          py::arg("ds_dlnp") = 0., py::arg("rainout") = false,
-          py::arg("verbose") = false)
-
+          arg("temp"), arg("pres"), arg("xfrac"), arg("dlnp"),
+          arg("ds_dlnp") = 0., arg("rainout") = false, arg("verbose") = false)
       .def(
           "extrapolate_dz",
-          [](kintera::ThermoXImpl& self, torch::Tensor temp, torch::Tensor pres,
-             torch::Tensor xfrac, double dz, double grav, double ds_dz,
-             bool rainout, bool verbose) {
+          [](X& self, T temp, T pres, T xfrac, double dz, double grav,
+             double ds_dz, bool rainout, bool verbose) {
             kintera::ExtrapOptions opts;
             opts.dz(dz).grav(grav).ds_dz(ds_dz).rainout(rainout).verbose(
                 verbose);
             return self.extrapolate_dz(temp, pres, xfrac, opts);
           },
-          py::arg("temp"), py::arg("pres"), py::arg("xfrac"), py::arg("dz"),
-          py::arg("grav"), py::arg("ds_dz") = 0., py::arg("rainout") = false,
-          py::arg("verbose") = false);
+          arg("temp"), arg("pres"), arg("xfrac"), arg("dz"), arg("grav"),
+          arg("ds_dz") = 0., arg("rainout") = false, arg("verbose") = false);
 
-  m.def("relative_humidity", &kintera::relative_humidity, py::arg("temp"),
-        py::arg("conc"), py::arg("stoich"), py::arg("op"),
-        py::arg("ngas") = -1);
+  m.def("relative_humidity", &kintera::relative_humidity, arg("temp"),
+        arg("conc"), arg("stoich"), arg("op"), arg("ngas") = -1);
 }

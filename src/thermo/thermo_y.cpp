@@ -169,12 +169,29 @@ void ThermoYImpl::reset() {
   }
 
   // clone() calls reset(); drop any count copied from the original.
-  nfail_ = torch::Tensor();
+  nfail_ = failures_ = torch::Tensor();
   tables_ = nullptr;
+}
+
+torch::Tensor const& ThermoYImpl::_counter(torch::Device device) {
+  if (failures_.defined() && failures_.device() == device) return failures_;
+  TORCH_CHECK(!capture_active(device), "[ThermoY] prepare() before capture");
+  c10::InferenceMode off(false);  // a normal tensor: add_ legal in both modes
+  return failures_ = torch::zeros({3}, at::device(device).dtype(at::kLong));
+}
+
+void ThermoYImpl::reset_failures() {
+  _counter(failures_.defined() ? failures_.device() : inv_mu.device()).zero_();
+}
+
+void ThermoYImpl::consume_failures(torch::Tensor out) {
+  auto f = _counter(failures_.defined() ? failures_.device() : out.device());
+  out.copy_(f[0] > 0), f[0].zero_();
 }
 
 ThermoTablesPtr ThermoYImpl::prepare(torch::Device device, torch::Dtype dtype,
                                      torch::IntArrayRef shape) {
+  _counter(device);
   if (tables_ && tables_->cref_R.device() == device &&
       tables_->cref_R.scalar_type() == dtype)
     return NoTableBuild::record(tables_), tables_;  // used in the scope
@@ -384,17 +401,15 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
                                   intEng_offset, cv_const, *t, options->ftol(),
                                   options->max_iter(), uv_solver);
 
-  // Keep the failure count on the same device as the cells. forward does
-  // not sync. On CPU the count is already on the host, so warn here. On
-  // CUDA the caller reads it with take_saturation_adjustment_failures().
-  // Out of place: nfail_ += would throw after a forward under inference_mode.
-  // A later forward on another device replaces nfail_; the move itself does
-  // not.
+  // Counts stay on the cells' device, no sync (on CPU, warn here). Row 0 of
+  // failures() counts in place (made outside inference mode); nfail_, read by
+  // take_*(), stays out of place for one release, as on main.
   auto nfail_t = (diag.value() < 0).sum().to(torch::kLong);
   if (!nfail_.defined() || nfail_.device() != nfail_t.device()) {
     nfail_ = torch::zeros({}, nfail_t.options());
   }
   nfail_ = nfail_ + nfail_t;
+  failures_[0].add_(nfail_t);
   if (nfail_t.is_cpu()) {
     auto nfail = nfail_t.item<int64_t>();
     if (nfail > 0) {
@@ -412,6 +427,7 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 }
 
 int64_t ThermoYImpl::take_saturation_adjustment_failures() {
+  if (failures_.defined()) failures_[0].zero_();
   if (!nfail_.defined()) return 0;
   auto n = nfail_.item<int64_t>();
   nfail_ = torch::Tensor();

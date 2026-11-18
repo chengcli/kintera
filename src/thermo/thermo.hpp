@@ -211,8 +211,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! kkt warm start active set
   torch::Tensor reaction_set, nactive;
 
-  //! cells whose saturation adjustment failed since the last take.
-  //! A plain tensor, not a registered buffer, so state_dict is unchanged.
+  //! failed saturation cells since the last take; public for one release
   torch::Tensor nfail_;
 
   //! options with which this `ThermoY` was constructed
@@ -230,14 +229,19 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! \brief perform conversions
   torch::Tensor compute(std::string ab, std::vector<torch::Tensor> const& args);
 
-  //! the tables for `device` and `dtype` (K.rst 3.3), outside capture; a
-  //! repeat with the same arguments returns them and reallocates nothing
+  //! the tables and counter for `device` and `dtype` (K.rst 3.3), outside
+  //! capture; a repeat with the same arguments reallocates nothing
   ThermoTablesPtr prepare(torch::Device device, torch::Dtype dtype,
                           torch::IntArrayRef shape);
   ThermoTablesPtr tables() const { return tables_; }  // null before prepare
 
-  //! Read and reset the number of cells whose saturation adjustment failed
-  //! since the previous take. On CUDA this copies one integer to the host.
+  //! (3,) int64 on the cells' device, rows saturation, temp_solve,
+  //! pres_solve; never read here. reset_ zeroes all rows; consume_ copies
+  //! row 0 > 0 into `out` and zeroes row 0. Both capturable.
+  torch::Tensor const& failures() const { return failures_; }
+  void reset_failures();
+  void consume_failures(torch::Tensor out);
+  //! host read and reset of nfail_, and row 0 zeroed; not capturable
   int64_t take_saturation_adjustment_failures();
 
   //! \brief saturation adjustment of yfrac (ny, ...) in place, from density
@@ -250,6 +254,8 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
 
  private:
   ThermoTablesPtr tables_;  // of the last prepare(); reset() drops it
+  torch::Tensor failures_;
+  torch::Tensor const& _counter(torch::Device device);  // made if missing
 
   //! inverse specific volume ivol [kg/m^3] (..., 1 + ny) -> yfrac (ny, ...)
   void _ivol_to_yfrac(torch::Tensor ivol, torch::Tensor& out) const;
