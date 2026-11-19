@@ -4,25 +4,23 @@
 #include <ATen/TensorIterator.h>
 #include <ATen/native/DispatchStub.h>
 
-using user_func1 = double (*)(double);
-using user_func2 = double (*)(double, double);
+// kintera
+#include <kintera/utils/user_funcs.hpp>
 
 namespace at::native {
 
 using equilibrate_tp_fn = void (*)(at::TensorIterator& iter, int ngas,
                                    at::Tensor const& stoich,
-                                   at::Tensor const& svp_kind,
-                                   at::Tensor const& svp_params,
-                                   std::vector<std::string> const& logsvp_func,
+                                   kintera::ThermoTables const& tables,
                                    double logsvp_eps, int max_iter);
 
-using equilibrate_uv_fn =
-    void (*)(at::TensorIterator& iter, int ngas, at::Tensor const& stoich,
-             at::Tensor const& intEng_offset, at::Tensor const& cv_const,
-             at::Tensor const& svp_kind, at::Tensor const& svp_params,
-             std::vector<std::string> const& logsvp_func,
-             std::vector<std::string> const& intEng_extra_func,
-             double logsvp_eps, int max_iter, int uv_solver);
+using equilibrate_uv_fn = void (*)(at::TensorIterator& iter, int ngas,
+                                   at::Tensor const& stoich,
+                                   at::Tensor const& intEng_offset,
+                                   at::Tensor const& cv_const,
+                                   kintera::ThermoTables const& tables,
+                                   double logsvp_eps, int max_iter,
+                                   int uv_solver);
 
 using logsvp_inline_fn = void (*)(at::TensorIterator& iter,
                                   at::Tensor const& svp_kind,

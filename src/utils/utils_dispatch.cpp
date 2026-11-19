@@ -4,10 +4,9 @@
 #include <ATen/native/cpu/Loops.h>
 #include <torch/torch.h>
 
-// base
-#include <configure.h>
-
 // kintera
+#include <kintera/thermo/thermo.hpp>
+
 #include "user_funcs.hpp"
 #include "utils_dispatch.hpp"
 
@@ -15,19 +14,14 @@ namespace kintera {
 
 extern user_func1 func1_table_cpu[];
 extern std::vector<std::string> func1_names;
-
 extern user_func2 func2_table_cpu[];
 extern std::vector<std::string> func2_names;
-
 extern user_func3 func3_table_cpu[];
 extern std::vector<std::string> func3_names;
 
-void call_func1_cpu(at::TensorIterator& iter,
-                    std::vector<std::string> const& funcs) {
+void call_func1_cpu(at::TensorIterator& iter, at::Tensor const& funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto f1 = get_host_func(funcs, func1_names, func1_table_cpu);
-  auto f1_ptrs = f1.data();
-
+  auto f1_ptrs = static_cast<user_func1*>(funcs.data_ptr());
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func1_cpu", [&] {
     int nout = at::native::ensure_nonempty_size(iter.output(), -1);
     iter.for_each(
@@ -44,12 +38,9 @@ void call_func1_cpu(at::TensorIterator& iter,
   });
 }
 
-void call_func2_cpu(at::TensorIterator& iter,
-                    std::vector<std::string> const& funcs) {
+void call_func2_cpu(at::TensorIterator& iter, at::Tensor const& funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto f2 = get_host_func(funcs, func2_names, func2_table_cpu);
-  auto f2_ptrs = f2.data();
-
+  auto f2_ptrs = static_cast<user_func2*>(funcs.data_ptr());
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func2_cpu", [&] {
     int nout = at::native::ensure_nonempty_size(iter.output(), -1);
     iter.for_each(
@@ -68,12 +59,9 @@ void call_func2_cpu(at::TensorIterator& iter,
   });
 }
 
-void call_func3_cpu(at::TensorIterator& iter,
-                    std::vector<std::string> const& funcs) {
+void call_func3_cpu(at::TensorIterator& iter, at::Tensor const& funcs) {
   int grain_size = iter.numel() / at::get_num_threads();
-  auto f3 = get_host_func(funcs, func3_names, func3_table_cpu);
-  auto f3_ptrs = f3.data();
-
+  auto f3_ptrs = static_cast<user_func3*>(funcs.data_ptr());
   AT_DISPATCH_FLOATING_TYPES(iter.dtype(), "call_func3_cpu", [&] {
     int nout = at::native::ensure_nonempty_size(iter.output(), -1);
     iter.for_each(
@@ -94,20 +82,32 @@ void call_func3_cpu(at::TensorIterator& iter,
   });
 }
 
+// the stubs' CPU kernels: host pointers via get_host_func; no CPU capture
+FuncTable fill_func_table_cpu(std::vector<std::string> const& names, int arity,
+                              at::Device) {
+  auto host = [&](auto* table, std::vector<std::string> const& all) {
+    auto f = get_host_func(names, all, table);  // pointers fit in int64
+    return at::from_blob(f.data(), {(int64_t)f.size()}, at::kLong).clone();
+  };
+  return arity == 1   ? host(func1_table_cpu, func1_names)
+         : arity == 2 ? host(func2_table_cpu, func2_names)
+                      : host(func3_table_cpu, func3_names);
+}
+bool capture_active_cpu(at::Device) { return false; }
+
 }  // namespace kintera
 
 namespace at::native {
 
-// #ifdef DISABLE_CUDA
-
 DEFINE_DISPATCH(call_func1);
 DEFINE_DISPATCH(call_func2);
 DEFINE_DISPATCH(call_func3);
-
-// #endif
-
+DEFINE_DISPATCH(fill_func_table);
+DEFINE_DISPATCH(capture_active);
 REGISTER_ALL_CPU_DISPATCH(call_func1, &kintera::call_func1_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_func2, &kintera::call_func2_cpu);
 REGISTER_ALL_CPU_DISPATCH(call_func3, &kintera::call_func3_cpu);
+REGISTER_ALL_CPU_DISPATCH(fill_func_table, &kintera::fill_func_table_cpu);
+REGISTER_ALL_CPU_DISPATCH(capture_active, &kintera::capture_active_cpu);
 
 }  // namespace at::native

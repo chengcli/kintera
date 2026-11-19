@@ -2,16 +2,13 @@
 
 // C/C++
 #include <algorithm>
-#include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-#ifdef __CUDACC__
-// thrust
-#include <thrust/device_vector.h>
-
-#endif
+// torch
+#include <ATen/core/Tensor.h>
 
 namespace kintera {
 
@@ -38,20 +35,23 @@ std::vector<T> get_host_func(std::vector<std::string> const& names,
   return funcs;
 }
 
-#ifdef __CUDACC__
-
-thrust::device_vector<user_func1> get_device_func1(
-    std::vector<std::string> const& names,
-    std::vector<std::string> const& func_names);
-
-thrust::device_vector<user_func2> get_device_func2(
-    std::vector<std::string> const& names,
-    std::vector<std::string> const& func_names);
-
-thrust::device_vector<user_func3> get_device_func3(
-    std::vector<std::string> const& names,
-    std::vector<std::string> const& func_names);
-
-#endif
+//! int64 tensor of host or device function pointers, one per column; 0: none
+using FuncTable = at::Tensor;
+//! one per (options digest, device, compute dtype), immutable once built
+struct ThermoTables {
+  uint64_t digest = 0;      // of the options content
+  int64_t epoch = 0;        // set when built; a rebuild is a new table
+  bool svp_inline = false;  // some svp column is 'ideal' or 'antoine'
+  at::Tensor cref_R, uref_R, sref_R, cv0, u0, inv_mu, h2_mask, nasa9_low,
+      nasa9_high, nasa9_Tmid, svp_kind, svp_params;  // int32 kind, FP64 params
+  FuncTable logsvp, logsvp_ddT, intEng_extra, intEng_extra_ddT, cp_R_extra, czh,
+      czh_ddC, entropy_extra, h2_entropy;  // intEng_extra has H2's
+};
+using ThermoTablesPtr = std::shared_ptr<ThermoTables const>;
+struct SpeciesThermoImpl;
+uint64_t options_digest(std::shared_ptr<SpeciesThermoImpl> const& op);
+//! op's table for like's device and dtype; built outside capture/NoTableBuild
+ThermoTablesPtr tables_for(std::shared_ptr<SpeciesThermoImpl> const& op,
+                           at::Tensor const& like);
 
 }  // namespace kintera

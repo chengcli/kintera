@@ -410,7 +410,9 @@ TEST_P(DeviceTest, thermo_y) {
 
   ////////// Testing PVT->S conversion //////////
   auto entropy = thermo->compute("PVT->S", {pres, ivol, temp});
-  // std::cout << "entropy = " << entropy << std::endl;
+  auto epoch = tables_for(thermo->options, ivol)->epoch;  // no build after
+  for (int i = 0; i < 8; ++i) thermo->compute("VT->U", {ivol, temp});
+  EXPECT_EQ(tables_for(thermo->options, ivol)->epoch, epoch);
 }
 
 TEST_P(DeviceTest, thermo_x) {
@@ -434,6 +436,9 @@ TEST_P(DeviceTest, thermo_x) {
   /////////// Testing TDX->V conversion //////////
   auto temp = 300. * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
   auto pres = 1.e5 * torch::ones({1, 2, 3}, torch::device(device).dtype(dtype));
+  auto epoch = tables_for(thermo->options, xfrac)->epoch;  // no build after
+  for (int i = 0; i < 8; ++i) thermo->compute("TPX->V", {temp, pres, xfrac});
+  EXPECT_EQ(tables_for(thermo->options, xfrac)->epoch, epoch);
   auto conc = thermo->compute("TPX->V", {temp, pres, xfrac});
 
   //////////// Testing V->D conversion //////////
