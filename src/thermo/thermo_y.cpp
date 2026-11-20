@@ -178,7 +178,7 @@ void ThermoYImpl::reset() {
   pres_plan = none(options->czh()) ? SolvePlan::exact : SolvePlan::newton;
 
   // clone() calls reset(); drop any count copied from the original.
-  nfail_ = failures_ = torch::Tensor();
+  failures_ = torch::Tensor();
   tables_ = nullptr;
 }
 
@@ -382,19 +382,14 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
                                   options->max_iter(), uv_solver);
 
   // Counts stay on the cells' device, no sync (on CPU, warn here). Row 0 of
-  // failures() counts in place (made outside inference mode); nfail_, read by
-  // take_*(), stays out of place for one release, as on main.
-  auto nfail_t = (diag.value() < 0).sum().to(torch::kLong);
-  if (!nfail_.defined() || nfail_.device() != nfail_t.device()) {
-    nfail_ = torch::zeros({}, nfail_t.options());
-  }
-  nfail_ = nfail_ + nfail_t;
-  failures_[0].add_(nfail_t);
-  if (nfail_t.is_cpu()) {
-    auto nfail = nfail_t.item<int64_t>();
-    if (nfail > 0) {
-      TORCH_WARN("ThermoYImpl::forward: saturation adjustment failed in ",
-                 nfail, " cell(s); diag = -(100 * status + iterations)");
+  // failures() counts in place (made outside inference mode).
+  auto unadjusted = (diag.value() < 0).sum().to(torch::kLong);
+  failures_[0].add_(unadjusted);
+  if (unadjusted.is_cpu()) {
+    auto n = unadjusted.item<int64_t>();
+    if (n > 0) {
+      TORCH_WARN("ThermoYImpl::forward: saturation adjustment failed in ", n,
+                 " cell(s); diag = -(100 * status + iterations)");
     }
   }
 
@@ -407,10 +402,9 @@ torch::Tensor ThermoYImpl::forward(torch::Tensor rho, torch::Tensor intEng,
 }
 
 int64_t ThermoYImpl::take_saturation_adjustment_failures() {
-  if (failures_.defined()) failures_[0].zero_();
-  if (!nfail_.defined()) return 0;
-  auto n = nfail_.item<int64_t>();
-  nfail_ = torch::Tensor();
+  if (!failures_.defined()) return 0;
+  auto n = failures_[0].item<int64_t>();
+  failures_[0].zero_();
   return n;
 }
 

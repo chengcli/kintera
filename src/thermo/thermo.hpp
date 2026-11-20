@@ -227,9 +227,6 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! kkt warm start active set
   torch::Tensor reaction_set, nactive;
 
-  //! failed saturation cells since the last take; public for one release
-  torch::Tensor nfail_;
-
   //! options with which this `ThermoY` was constructed
   ThermoOptions options;
   bool uv_partitionable = false;
@@ -268,7 +265,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   torch::Tensor const& failures() const { return failures_; }
   void reset_failures();
   void consume_failures(torch::Tensor out);
-  //! host read and reset of nfail_, and row 0 zeroed; not capturable
+  //! host read of failures() row 0, then row 0 zeroed; not capturable
   int64_t take_saturation_adjustment_failures();
 
   //! \brief saturation adjustment of yfrac (ny, ...) in place, from density
