@@ -20,6 +20,30 @@
 
 namespace kintera {
 
+//! The vapour (the reactant, coefficient < 0) and the cloud (the product,
+//! coefficient > 0) of reaction `reaction_index` in the (nspecies x nreaction)
+//! stoichiometry matrix, with their coefficients; -1 when a side is absent.
+template <typename T>
+DISPATCH_MACRO void reaction_pair(T const* stoich, int nspecies, int nreaction,
+                                  int reaction_index, int& vapor_index,
+                                  int& cloud_index, T& reactant_coefficient,
+                                  T& product_coefficient) {
+  vapor_index = -1;
+  cloud_index = -1;
+  reactant_coefficient = 0.;
+  product_coefficient = 0.;
+  for (int species_index = 0; species_index < nspecies; ++species_index) {
+    T coefficient = stoich[species_index * nreaction + reaction_index];
+    if (coefficient < 0.) {
+      vapor_index = species_index;
+      reactant_coefficient = -coefficient;
+    } else if (coefficient > 0.) {
+      cloud_index = species_index;
+      product_coefficient = coefficient;
+    }
+  }
+}
+
 template <typename T>
 DISPATCH_MACRO bool is_depleted_cloud(T amount, T reference) {
   return reference > 0. && amount >= 0. &&
@@ -36,20 +60,10 @@ DISPATCH_MACRO bool partition_uv_state(
     user_func2 const* cv_R_extra, T* energy, T* derivative) {
   memcpy(conc, baseline, nspecies * sizeof(T));
   for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
-    int vapor_index = -1;
-    int cloud_index = -1;
-    T reactant_coefficient = 0.;
-    T product_coefficient = 0.;
-    for (int species_index = 0; species_index < nspecies; ++species_index) {
-      T coefficient = stoich[species_index * nreaction + reaction_index];
-      if (coefficient < 0.) {
-        vapor_index = species_index;
-        reactant_coefficient = -coefficient;
-      } else if (coefficient > 0.) {
-        cloud_index = species_index;
-        product_coefficient = coefficient;
-      }
-    }
+    int vapor_index, cloud_index;
+    T reactant_coefficient, product_coefficient;
+    reaction_pair(stoich, nspecies, nreaction, reaction_index, vapor_index,
+                  cloud_index, reactant_coefficient, product_coefficient);
     T total = totals[reaction_index];
     if (total == 0.) {
       conc[vapor_index] = 0.;
@@ -89,20 +103,10 @@ DISPATCH_MACRO bool partition_uv_state(
   }
 
   for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
-    int vapor_index = -1;
-    int cloud_index = -1;
-    T reactant_coefficient = 0.;
-    T product_coefficient = 0.;
-    for (int species_index = 0; species_index < nspecies; ++species_index) {
-      T coefficient = stoich[species_index * nreaction + reaction_index];
-      if (coefficient < 0.) {
-        vapor_index = species_index;
-        reactant_coefficient = -coefficient;
-      } else if (coefficient > 0.) {
-        cloud_index = species_index;
-        product_coefficient = coefficient;
-      }
-    }
+    int vapor_index, cloud_index;
+    T reactant_coefficient, product_coefficient;
+    reaction_pair(stoich, nspecies, nreaction, reaction_index, vapor_index,
+                  cloud_index, reactant_coefficient, product_coefficient);
     if (conc[vapor_index] >= totals[reaction_index]) continue;
     T vapor_derivative =
         conc[vapor_index] *
@@ -136,20 +140,10 @@ DISPATCH_MACRO int equilibrate_uv_partition(
   bool valid = true;
 
   for (int reaction_index = 0; reaction_index < nreaction; ++reaction_index) {
-    int vapor_index = -1;
-    int cloud_index = -1;
-    T reactant_coefficient = 0.;
-    T product_coefficient = 0.;
-    for (int species_index = 0; species_index < nspecies; ++species_index) {
-      T coefficient = stoich[species_index * nreaction + reaction_index];
-      if (coefficient < 0.) {
-        vapor_index = species_index;
-        reactant_coefficient = -coefficient;
-      } else if (coefficient > 0.) {
-        cloud_index = species_index;
-        product_coefficient = coefficient;
-      }
-    }
+    int vapor_index, cloud_index;
+    T reactant_coefficient, product_coefficient;
+    reaction_pair(stoich, nspecies, nreaction, reaction_index, vapor_index,
+                  cloud_index, reactant_coefficient, product_coefficient);
     totals[reaction_index] = baseline[vapor_index] + reactant_coefficient /
                                                          product_coefficient *
                                                          baseline[cloud_index];
