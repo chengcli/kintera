@@ -85,20 +85,17 @@ EquilibriumOptions EquilibriumOptionsImpl::from_yaml(
   TORCH_CHECK(!reactions.empty(), "equilibrium YAML contains no reactions");
 
   for (size_t j = 0; j < reactions.size(); ++j) {
-    for (auto const& [name, coefficient] : reactions[j].reactants()) {
-      auto found = std::find(options->components().begin(),
-                             options->components().end(), name);
-      TORCH_CHECK(found != options->components().end(),
-                  "reaction references unknown component: ", name);
-      (void)coefficient;
-    }
-    for (auto const& [name, coefficient] : reactions[j].products()) {
-      auto found = std::find(options->components().begin(),
-                             options->components().end(), name);
-      TORCH_CHECK(found != options->components().end(),
-                  "reaction references unknown component: ", name);
-      (void)coefficient;
-    }
+    auto check_known = [&](Composition const& side) {
+      for (auto const& [name, coefficient] : side) {
+        auto found = std::find(options->components().begin(),
+                               options->components().end(), name);
+        TORCH_CHECK(found != options->components().end(),
+                    "reaction references unknown component: ", name);
+        (void)coefficient;
+      }
+    };
+    check_known(reactions[j].reactants());
+    check_known(reactions[j].products());
     for (auto const& element : element_set) {
       double balance = 0.;
       for (auto const& [name, coefficient] : reactions[j].reactants()) {
