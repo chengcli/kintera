@@ -10,6 +10,7 @@
 #include <kintera/units/units.hpp>
 
 #include "arrhenius_params.hpp"
+#include "third_body_rate.hpp"
 #include "troe_falloff.hpp"
 
 namespace kintera {
@@ -35,14 +36,7 @@ TroeFalloffOptions TroeFalloffOptionsImpl::from_yaml(
     // Only process if Troe is present
     if (!rxn_node["Troe"]) continue;
 
-    TORCH_CHECK(rxn_node["equation"], "'equation' not defined");
-    std::string equation = rxn_node["equation"].as<std::string>();
-    Reaction reaction(equation);
-
-    double sum_stoich = 0.;
-    for (const auto& [name, coeff] : reaction.reactants()) {
-      if (name != "M" && name != "(+M)") sum_stoich += coeff;
-    }
+    auto [reaction, sum_stoich] = third_body_reaction(rxn_node);
 
     double k0_A_val = 0., k0_b_val = 0., k0_Ea_R_val = 0.;
     double kinf_A_val = 0., kinf_b_val = 0., kinf_Ea_R_val = 0.;
@@ -65,12 +59,7 @@ TroeFalloffOptions TroeFalloffOptionsImpl::from_yaml(
 
     reaction.falloff_type("Troe");
 
-    Composition eff;
-    if (rxn_node["efficiencies"]) {
-      for (auto const& eff_node : rxn_node["efficiencies"]) {
-        eff[eff_node.first.as<std::string>()] = eff_node.second.as<double>();
-      }
-    }
+    auto eff = parse_efficiencies(rxn_node);
     reaction.efficiencies(eff);
 
     options->reactions().push_back(reaction);
@@ -125,23 +114,9 @@ void TroeFalloffImpl::reset() {
   troe_T2 = register_buffer("troe_T2",
                             torch::tensor(options->troe_T2(), torch::kFloat64));
 
-  // Build efficiency matrix: (nreaction, nspecies), default efficiency = 1.0
-  std::vector<double> eff_matrix_data(nreaction * nspecies, 1.0);
-
-  for (int i = 0; i < nreaction; i++) {
-    const auto& eff_map = options->efficiencies()[i];
-    for (int j = 0; j < nspecies; j++) {
-      const std::string& sp_name = species_names[j];
-      auto it = eff_map.find(sp_name);
-      if (it != eff_map.end()) {
-        eff_matrix_data[i * nspecies + j] = it->second;
-      }
-    }
-  }
-
   efficiency_matrix = register_buffer(
-      "efficiency_matrix", torch::tensor(eff_matrix_data, torch::kFloat64)
-                               .view({nreaction, nspecies}));
+      "efficiency_matrix",
+      efficiency_matrix_from(options->efficiencies(), nreaction, nspecies));
 }
 
 void TroeFalloffImpl::pretty_print(std::ostream& os) const {
@@ -160,28 +135,16 @@ void TroeFalloffImpl::pretty_print(std::ostream& os) const {
        << ", T1 = " << options->troe_T1()[i]
        << ", T2 = " << options->troe_T2()[i] << std::endl;
 
-    const auto& eff = options->efficiencies()[i];
-    if (!eff.empty()) {
-      os << "    Efficiencies: ";
-      bool first = true;
-      for (const auto& [sp, val] : eff) {
-        if (!first) os << ", ";
-        os << sp << "=" << val;
-        first = false;
-      }
-      os << std::endl;
-    }
+    print_efficiencies(os, options->efficiencies()[i]);
   }
 }
 
 torch::Tensor TroeFalloffImpl::compute_k0(torch::Tensor T) const {
-  auto Tref = options->Tref();
-  return k0_A * (T / Tref).pow(k0_b) * torch::exp(-k0_Ea_R / T);
+  return arrhenius_rate(k0_A, k0_b, k0_Ea_R, T, options->Tref());
 }
 
 torch::Tensor TroeFalloffImpl::compute_kinf(torch::Tensor T) const {
-  auto Tref = options->Tref();
-  return kinf_A * (T / Tref).pow(kinf_b) * torch::exp(-kinf_Ea_R / T);
+  return arrhenius_rate(kinf_A, kinf_b, kinf_Ea_R, T, options->Tref());
 }
 
 torch::Tensor TroeFalloffImpl::compute_falloff_factor(torch::Tensor T,
@@ -223,41 +186,15 @@ torch::Tensor TroeFalloffImpl::forward(
     torch::Tensor T, torch::Tensor P, torch::Tensor C,
     std::map<std::string, torch::Tensor> const& other) {
   int nreaction = options->reactions().size();
-  if (nreaction == 0) {
-    auto out_shape = T.sizes().vec();
-    out_shape.push_back(0);
-    return torch::empty(out_shape, T.options());
-  }
+  if (nreaction == 0) return empty_rate(T);
 
   // Only unsqueeze T if it doesn't already have the reaction dimension
   auto temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
   auto k0 = compute_k0(temp);
   auto kinf = compute_kinf(temp);
 
-  torch::Tensor M_eff;
-  int nspecies_kinetics, nspecies_full = efficiency_matrix.size(1);
-
-  if (C.dim() >= 2 && C.size(-1) == nreaction) {
-    // C has shape (..., nspecies, nreaction): KineticsImpl expands the
-    // concentration once per reaction so that a single backward pass over the
-    // summed rate still yields d(k_r)/dC_s separately for each reaction.
-    // Contract over species while KEEPING the reaction axis -- selecting one
-    // slice away (C[..., :, 0]) collapsed the whole sum_r d(k_r)/dC_s onto
-    // this block's first reaction column and left every other reaction at
-    // exactly zero.
-    nspecies_kinetics = C.size(-2);
-    int ncontract = std::min(nspecies_kinetics, nspecies_full);
-
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, ncontract);
-    M_eff = (C.narrow(-2, 0, ncontract) * eff_matrix_kinetics.transpose(0, 1))
-                .sum(-2);
-  } else {
-    nspecies_kinetics = C.size(-1);
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(
-        1, 0, std::min(nspecies_kinetics, nspecies_full));
-    auto eff_T = eff_matrix_kinetics.transpose(0, 1);
-    M_eff = torch::matmul(C, eff_T);
-  }
+  bool expanded = C.dim() >= 2 && C.size(-1) == nreaction;
+  auto M_eff = third_body_concentration(C, efficiency_matrix, expanded);
 
   // Troe falloff: k = k_Lindemann * F_Troe
   // k_Lindemann = k0*[M]_eff / (1 + Pr)

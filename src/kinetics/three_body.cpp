@@ -13,6 +13,7 @@
 #include <kintera/units/units.hpp>
 
 #include "arrhenius_params.hpp"
+#include "third_body_rate.hpp"
 #include "three_body.hpp"
 
 namespace kintera {
@@ -34,14 +35,7 @@ ThreeBodyOptions ThreeBodyOptionsImpl::from_yaml(
     std::string type = rxn_node["type"].as<std::string>();
     if (type != "three-body") continue;
 
-    TORCH_CHECK(rxn_node["equation"], "'equation' not defined");
-    std::string equation = rxn_node["equation"].as<std::string>();
-    Reaction reaction(equation);
-
-    double sum_stoich = 0.;
-    for (const auto& [name, coeff] : reaction.reactants()) {
-      if (name != "M" && name != "(+M)") sum_stoich += coeff;
-    }
+    auto [reaction, sum_stoich] = third_body_reaction(rxn_node);
     sum_stoich += 1.0;  // Add 1 for M
 
     double k0_A_val = 0., k0_b_val = 0., k0_Ea_R_val = 0.;
@@ -50,12 +44,7 @@ ThreeBodyOptions ThreeBodyOptionsImpl::from_yaml(
     parse_arrhenius_params(rxn_node["rate-constant"], sum_stoich, us, k0_A_val,
                            k0_b_val, k0_Ea_R_val);
 
-    Composition eff;
-    if (rxn_node["efficiencies"]) {
-      for (auto const& eff_node : rxn_node["efficiencies"]) {
-        eff[eff_node.first.as<std::string>()] = eff_node.second.as<double>();
-      }
-    }
+    auto eff = parse_efficiencies(rxn_node);
     reaction.efficiencies(eff);
 
     options->reactions().push_back(reaction);
@@ -87,23 +76,9 @@ void ThreeBodyImpl::reset() {
   k0_Ea_R = register_buffer("k0_Ea_R",
                             torch::tensor(options->k0_Ea_R(), torch::kFloat64));
 
-  // Build efficiency matrix: (nreaction, nspecies), default efficiency = 1.0
-  std::vector<double> eff_matrix_data(nreaction * nspecies, 1.0);
-
-  for (int i = 0; i < nreaction; i++) {
-    const auto& eff_map = options->efficiencies()[i];
-    for (int j = 0; j < nspecies; j++) {
-      const std::string& sp_name = species_names[j];
-      auto it = eff_map.find(sp_name);
-      if (it != eff_map.end()) {
-        eff_matrix_data[i * nspecies + j] = it->second;
-      }
-    }
-  }
-
   efficiency_matrix = register_buffer(
-      "efficiency_matrix", torch::tensor(eff_matrix_data, torch::kFloat64)
-                               .view({nreaction, nspecies}));
+      "efficiency_matrix",
+      efficiency_matrix_from(options->efficiencies(), nreaction, nspecies));
 }
 
 void ThreeBodyImpl::pretty_print(std::ostream& os) const {
@@ -115,75 +90,27 @@ void ThreeBodyImpl::pretty_print(std::ostream& os) const {
     os << "    k0: A = " << options->k0_A()[i] << ", b = " << options->k0_b()[i]
        << ", Ea_R = " << options->k0_Ea_R()[i] << " K" << std::endl;
 
-    const auto& eff = options->efficiencies()[i];
-    if (!eff.empty()) {
-      os << "    Efficiencies: ";
-      bool first = true;
-      for (const auto& [sp, val] : eff) {
-        if (!first) os << ", ";
-        os << sp << "=" << val;
-        first = false;
-      }
-      os << std::endl;
-    }
+    print_efficiencies(os, options->efficiencies()[i]);
   }
 }
 
 torch::Tensor ThreeBodyImpl::compute_k0(torch::Tensor T) const {
-  auto Tref = options->Tref();
-  return k0_A * (T / Tref).pow(k0_b) * torch::exp(-k0_Ea_R / T);
+  return arrhenius_rate(k0_A, k0_b, k0_Ea_R, T, options->Tref());
 }
 
 torch::Tensor ThreeBodyImpl::forward(
     torch::Tensor T, torch::Tensor P, torch::Tensor C,
     std::map<std::string, torch::Tensor> const& other) {
   int nreaction = options->reactions().size();
-  if (nreaction == 0) {
-    auto out_shape = T.sizes().vec();
-    out_shape.push_back(0);
-    return torch::empty(out_shape, T.options());
-  }
+  if (nreaction == 0) return empty_rate(T);
 
   // Only unsqueeze T if it doesn't already have the reaction dimension
   auto temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
   auto k0 = compute_k0(temp);
 
-  torch::Tensor M_eff;
-  int nspecies_kinetics, nspecies_full = efficiency_matrix.size(1);
-  bool has_reaction_axis =
-      C.dim() >= 3 && C.size(-1) == nreaction && C.size(-2) == nspecies_full;
-
-  if (has_reaction_axis) {
-    // KineticsImpl expands concentration to (..., nspecies, nreaction) so
-    // autograd can accumulate d(rate_i)/dC_j for each reaction independently.
-    // Detect that layout by matching both trailing dimensions:
-    // (..., nspecies_full, nreaction). This avoids confusing a normal
-    // concentration tensor (..., nspecies) with the expanded autodiff form
-    // when nspecies happens to equal nreaction.
-    //
-    // Every slice along the reaction axis holds the same physical
-    // concentrations, so *any* of them gives the right M_eff -- but the axis
-    // must be carried through, not selected away. KineticsImpl differentiates
-    // the summed rate in a single backward pass and relies on this expansion
-    // to keep the reactions separate; `C.select(last_dim, 0)` used to drop the
-    // axis, so the entire sum_r d(k_r)/dC_s collapsed onto the block's first
-    // reaction column and every other reaction got exactly zero.
-    nspecies_kinetics = C.size(-2);
-    int ncontract = std::min(nspecies_kinetics, nspecies_full);
-
-    // Build effective third-body concentration for each reaction:
-    // M_eff_r = sum_s C_{s,r} * efficiency[r, s]
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, ncontract);
-    M_eff = (C.narrow(-2, 0, ncontract) * eff_matrix_kinetics.transpose(0, 1))
-                .sum(-2);
-  } else {
-    // Standard path: C already has shape (..., nspecies).
-    nspecies_kinetics = C.size(-1);
-    auto eff_matrix_kinetics = efficiency_matrix.narrow(
-        1, 0, std::min(nspecies_kinetics, nspecies_full));
-    auto eff_T = eff_matrix_kinetics.transpose(0, 1);
-    M_eff = torch::matmul(C, eff_T);
-  }
+  bool expanded = C.dim() >= 3 && C.size(-1) == nreaction &&
+                  C.size(-2) == efficiency_matrix.size(1);
+  auto M_eff = third_body_concentration(C, efficiency_matrix, expanded);
 
   // Three-body: k = k0 * [M]_eff
   auto result = k0 * M_eff;
