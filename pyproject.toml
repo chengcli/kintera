@@ -80,8 +80,9 @@ include-package-data = false
 #   and a plain copied tree report fallback_version, the release floor below.
 # scm_version_scheme.py applies the floor on the archive path too, which
 # setuptools_scm alone would report as 0.0 (#125).
-# fallback_version is raised when a downstream minimum needs it (snapy needs
-# 2.5.13). cd.yml tags a patch release on every merge, so it is not bumped per
-# release; tests/test_version_floor.py checks it is never ahead of the tags.
-fallback_version = "2.5.13"
+# fallback_version is the newest release at the time it was last raised:
+# tests/test_version_fallback.py requires an archive of any commit to report at
+# least the newest tag, and tests/test_version_floor.py requires the floor to
+# be at most the newest tag, so it is raised to each new release it lags.
+fallback_version = "2.6.12"
 version_scheme = "scm_version_scheme:floored_guess_next_dev"
