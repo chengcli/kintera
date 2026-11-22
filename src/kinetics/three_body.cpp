@@ -8,6 +8,7 @@
 #include <fmt/format.h>
 
 // kintera
+#include <kintera/kinetics/reaction_species.hpp>
 #include <kintera/species.hpp>
 #include <kintera/units/units.hpp>
 
@@ -17,27 +18,7 @@ namespace kintera {
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set, ThreeBodyOptions op) {
-  for (auto& react : op->reactions()) {
-    for (auto& [name, _] : react.reactants()) {
-      if (name == "M" || name == "(+M)") continue;
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name, " not found");
-      vapor_set.insert(name);
-    }
-
-    for (auto& [name, _] : react.products()) {
-      if (name == "M" || name == "(+M)") continue;
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name, " not found");
-      vapor_set.insert(name);
-    }
-
-    for (auto& [name, _] : react.efficiencies()) {
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name, " not found");
-      vapor_set.insert(name);
-    }
-  }
+  add_reaction_species(vapor_set, op, true, true);
 }
 
 static void parse_arrhenius_params(const YAML::Node& node, double sum_stoich,
