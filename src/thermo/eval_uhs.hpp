@@ -32,10 +32,6 @@ torch::Tensor eval_enthalpy_R(torch::Tensor temp, torch::Tensor conc,
 
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                              torch::Tensor conc, torch::Tensor stoich,
-                             SpeciesThermo const& op);
-
-torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
-                             torch::Tensor conc, torch::Tensor stoich,
                              ThermoOptions const& op);
 
 //! Pressure change of a constant-cv ideal mixture without subtracting totals.
