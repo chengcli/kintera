@@ -9,6 +9,7 @@
 #include <kintera/species.hpp>
 #include <kintera/units/units.hpp>
 
+#include "arrhenius_params.hpp"
 #include "sri_falloff.hpp"
 
 namespace kintera {
@@ -17,43 +18,6 @@ void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,
                         SRIFalloffOptions op) {
   add_reaction_species(vapor_set, op, true, true);
-}
-
-static void parse_arrhenius_params(const YAML::Node& node, double sum_stoich,
-                                   UnitSystem& us, double& A, double& b,
-                                   double& Ea_R) {
-  // Map format {A: ..., b: ..., Ea: ...} - consistent with Arrhenius
-  if (node["A"]) {
-    auto unit = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
-                            -3. * (1. - sum_stoich));
-    A = us.convert_from(node["A"].as<double>(), unit);
-  } else {
-    A = 1.;
-  }
-
-  b = node["b"].as<double>(0.);
-
-  if (node["Ea_R"]) {
-    Ea_R = node["Ea_R"].as<double>();
-  } else if (node["Ea"]) {
-    std::string ea_str = node["Ea"].as<std::string>();
-    double ea_val = 0.0;
-    std::string ea_unit = "";
-    std::istringstream iss(ea_str);
-    iss >> ea_val >> ea_unit;
-
-    if (ea_unit.find("cal") != std::string::npos) {
-      Ea_R = ea_val / 1.987;
-    } else if (ea_unit.find("kJ") != std::string::npos) {
-      Ea_R = ea_val * 1000.0 / 8.314;
-    } else if (ea_unit.find("J") != std::string::npos) {
-      Ea_R = ea_val / 8.314;
-    } else {
-      Ea_R = ea_val;
-    }
-  } else {
-    Ea_R = 0.;
-  }
 }
 
 SRIFalloffOptions SRIFalloffOptionsImpl::from_yaml(
