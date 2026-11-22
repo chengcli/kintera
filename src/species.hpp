@@ -122,6 +122,10 @@ using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
 void populate_thermo(SpeciesThermo thermo);
 
+//! Append species `id` of the registry (cref_R, uref_R, sref_R, the nasa9
+//! tables, name and weight) to `thermo`'s per-species tables.
+void append_species_thermo(SpeciesThermo const& thermo, int id);
+
 void check_dimensions(SpeciesThermo const& thermo);
 
 //! Merge species records; global heat-capacity policy is owned by thermo1 and

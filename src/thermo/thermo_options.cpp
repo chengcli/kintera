@@ -205,14 +205,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
   }
 
   for (const auto& id : thermo->vapor_ids()) {
-    thermo->cref_R().push_back(species_cref_R[id]);
-    thermo->uref_R().push_back(species_uref_R[id]);
-    thermo->sref_R().push_back(species_sref_R[id]);
-    thermo->nasa9_low().push_back(species_nasa9_low[id]);
-    thermo->nasa9_high().push_back(species_nasa9_high[id]);
-    thermo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    thermo->names().push_back(species_names[id]);
-    thermo->mu().push_back(species_weights[id]);
+    append_species_thermo(thermo, id);
   }
 
   // register clouds
@@ -231,14 +224,7 @@ ThermoOptions ThermoOptionsImpl::from_yaml(YAML::Node const& config,
   }
 
   for (const auto& id : thermo->cloud_ids()) {
-    thermo->cref_R().push_back(species_cref_R[id]);
-    thermo->uref_R().push_back(species_uref_R[id]);
-    thermo->sref_R().push_back(species_sref_R[id]);
-    thermo->nasa9_low().push_back(species_nasa9_low[id]);
-    thermo->nasa9_high().push_back(species_nasa9_high[id]);
-    thermo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    thermo->names().push_back(species_names[id]);
-    thermo->mu().push_back(species_weights[id]);
+    append_species_thermo(thermo, id);
   }
 
   // X => X(p) copies with X's thermo data and no nucleation take X's entropy

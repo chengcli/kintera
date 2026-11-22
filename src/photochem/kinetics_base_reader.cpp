@@ -1223,14 +1223,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
   std::sort(kinet->vapor_ids().begin(), kinet->vapor_ids().end());
 
   for (auto const& id : kinet->vapor_ids()) {
-    kinet->cref_R().push_back(species_cref_R[id]);
-    kinet->uref_R().push_back(species_uref_R[id]);
-    kinet->sref_R().push_back(species_sref_R[id]);
-    kinet->nasa9_low().push_back(species_nasa9_low[id]);
-    kinet->nasa9_high().push_back(species_nasa9_high[id]);
-    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    kinet->names().push_back(species_names[id]);
-    kinet->mu().push_back(species_weights[id]);
+    append_species_thermo(kinet, id);
   }
 
   return kinet;
@@ -1358,14 +1351,7 @@ KineticsOptions kinetics_options_from_kinetics_base_pun(
   }
   std::sort(kinet->vapor_ids().begin(), kinet->vapor_ids().end());
   for (auto const& id : kinet->vapor_ids()) {
-    kinet->cref_R().push_back(species_cref_R[id]);
-    kinet->uref_R().push_back(species_uref_R[id]);
-    kinet->sref_R().push_back(species_sref_R[id]);
-    kinet->nasa9_low().push_back(species_nasa9_low[id]);
-    kinet->nasa9_high().push_back(species_nasa9_high[id]);
-    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    kinet->names().push_back(species_names[id]);
-    kinet->mu().push_back(species_weights[id]);
+    append_species_thermo(kinet, id);
   }
 
   if (verbose) {
@@ -1681,14 +1667,7 @@ PhotoChemOptions photochem_options_from_kinetics_base(
     photo_chem->vapor_ids().push_back(id);
   }
   for (auto const& id : photo_chem->vapor_ids()) {
-    photo_chem->cref_R().push_back(species_cref_R[id]);
-    photo_chem->uref_R().push_back(species_uref_R[id]);
-    photo_chem->sref_R().push_back(species_sref_R[id]);
-    photo_chem->nasa9_low().push_back(species_nasa9_low[id]);
-    photo_chem->nasa9_high().push_back(species_nasa9_high[id]);
-    photo_chem->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    photo_chem->names().push_back(species_names[id]);
-    photo_chem->mu().push_back(species_weights[id]);
+    append_species_thermo(photo_chem, id);
   }
 
   return photo_chem;
