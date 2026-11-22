@@ -288,4 +288,92 @@ std::vector<Reaction> ThermoOptionsImpl::reactions() const {
   return reactions;
 }
 
+void thermo_check_options(ThermoOptions const& options, char const* tag) {
+  if (options->verbose()) {
+    std::cout << "[" << tag << "] initializing with species: "
+              << fmt::format("{}", options->species()) << std::endl;
+  }
+
+  // an explicit nucleation(None) means no nucleation reactions
+  if (options->nucleation() == nullptr) {
+    options->nucleation() = NucleationOptionsImpl::create();
+  }
+  check_nucleation_options(options->nucleation());
+
+  check_dimensions(options);
+}
+
+void thermo_zero_offsets(ThermoOptions const& options, char const* tag) {
+  if (!options->offset_zero()) {
+    // change internal energy offset to T = 0
+    for (int i = 0; i < options->uref_R().size(); ++i) {
+      options->uref_R()[i] -= options->cref_R()[i] * options->Tref();
+    }
+
+    // change entropy offset to T = 1, P = 1
+    for (int i = 0; i < options->vapor_ids().size(); ++i) {
+      auto Tref = std::max(options->Tref(), 1.);
+      auto Pref = std::max(options->Pref(), 1.);
+      options->sref_R()[i] -=
+          (options->cref_R()[i] + 1) * log(Tref) - log(Pref);
+    }
+
+    // set cloud entropy offset to 0 (not used)
+    for (int i = options->vapor_ids().size(); i < options->sref_R().size();
+         ++i) {
+      options->sref_R()[i] = 0.;
+    }
+    options->offset_zero(true);
+  }
+
+  if (options->verbose()) {
+    std::cout << "[" << tag << "] species cref_R (dimensionless): "
+              << fmt::format("{}", options->cref_R()) << std::endl;
+    std::cout << "[" << tag << "] species uref_R (K) at T = 0: "
+              << fmt::format("{}", options->uref_R()) << std::endl;
+    std::cout << "[" << tag << "] species sref_R (dimensionless) at T = 0: "
+              << fmt::format("{}", options->sref_R()) << std::endl;
+  }
+}
+
+torch::Tensor thermo_stoich(ThermoOptions const& options) {
+  auto species = options->species();
+  auto nspecies = species.size();
+  auto reactions = options->reactions();
+  auto stoich =
+      torch::zeros({(int)nspecies, (int)reactions.size()}, torch::kFloat64);
+
+  for (int j = 0; j < reactions.size(); ++j) {
+    auto const& r = reactions[j];
+    for (int i = 0; i < nspecies; ++i) {
+      auto it = r.reactants().find(species[i]);
+      if (it != r.reactants().end()) {
+        stoich[i][j] = -it->second;
+      }
+      it = r.products().find(species[i]);
+      if (it != r.products().end()) {
+        stoich[i][j] = it->second;
+      }
+    }
+  }
+
+  if (options->nucleation()) {
+    auto s = stoich.accessor<double, 2>();
+    for (int j = 0; j < reactions.size(); ++j) {
+      bool cloud = false;
+      for (int i = 0; i < nspecies; ++i) {
+        if (i < options->vapor_ids().size()) {
+          if (s[i][j] > 0.) options->nucleation()->has_gas_products = true;
+        } else {
+          TORCH_CHECK(s[i][j] >= 0., "Nucleation requires gaseous reactants");
+          cloud |= s[i][j] > 0.;
+        }
+      }
+      TORCH_CHECK(cloud, "Nucleation requires a condensed product");
+    }
+  }
+
+  return stoich;
+}
+
 }  // namespace kintera

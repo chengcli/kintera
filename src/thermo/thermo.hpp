@@ -183,6 +183,17 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 
+//! The parts of ThermoX::reset and ThermoY::reset that are the same for both
+//! (thermo_options.cpp); `tag` names the caller in the verbose prints.
+//! Default and check the nucleation options, then check_dimensions.
+void thermo_check_options(ThermoOptions const& options, char const* tag);
+//! Move uref_R to T = 0 and sref_R to T = 1, P = 1 once per options object
+//! (offset_zero), then print the reference tables when verbose.
+void thermo_zero_offsets(ThermoOptions const& options, char const* tag);
+//! The stoichiometry matrix (float64, nspecies x nreaction) and the
+//! nucleation product check.
+torch::Tensor thermo_stoich(ThermoOptions const& options);
+
 struct ExtrapOptions {
   // Logarithmic change in pressure (dlnp = ln(p_new / p_old))
   ADD_ARG(double, dlnp) = 0.;
