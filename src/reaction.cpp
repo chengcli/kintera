@@ -3,7 +3,6 @@
 
 // kintera
 #include "reaction.hpp"
-#include "utils/constants.hpp"
 #include "utils/fp_value.hpp"
 #include "utils/vectorize.hpp"
 
@@ -38,7 +37,7 @@ Reaction::Reaction(const std::string& equation) {
   auto tokens = Vectorize<std::string>(equation.c_str(), " ");
   tokens.push_back("+");  // makes parsing last species not a special case
 
-  size_t last_used = npos;  // index of last-used token
+  size_t last_used = std::string::npos;  // index of last-used token
   bool is_reactants = true;
   for (size_t i = 1; i < tokens.size(); i++) {
     if (tokens[i] == "+" || starts_with(tokens[i], "(+") ||
@@ -47,7 +46,7 @@ Reaction::Reaction(const std::string& equation) {
 
       double stoich = 1.0;
       bool mass_action = true;
-      if (last_used != npos && tokens[last_used] == "(+" &&
+      if (last_used != std::string::npos && tokens[last_used] == "(+" &&
           ends_with(species, ")")) {
         // Falloff third body with space, such as "(+ M)"
         mass_action = false;
