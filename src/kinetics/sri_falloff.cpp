@@ -265,11 +265,6 @@ torch::Tensor SRIFalloffImpl::compute_falloff_factor(torch::Tensor T,
   auto E_exp_term = sri_D.unsqueeze(0) * torch::exp(-sri_E.unsqueeze(0) / temp);
   // Broadcast mask to match F_cent shape
   auto out_shape = F_cent.sizes();
-  std::vector<int64_t> mask_shape;
-  for (int64_t i = 0; i < out_shape.size() - 1; i++) {
-    mask_shape.push_back(1);
-  }
-  mask_shape.push_back(out_shape.back());
   auto is_5param_broadcast =
       is_5param.toType(torch::kFloat64).unsqueeze(0).expand(out_shape);
   F_cent = F_cent + is_5param_broadcast * E_exp_term;

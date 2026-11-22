@@ -261,11 +261,6 @@ torch::Tensor TroeFalloffImpl::compute_falloff_factor(torch::Tensor T,
   auto T2_exp_term = torch::exp(-troe_T2.unsqueeze(0) / temp);
   // Broadcast mask to match F_cent shape
   auto out_shape = F_cent.sizes();
-  std::vector<int64_t> mask_shape;
-  for (int64_t i = 0; i < out_shape.size() - 1; i++) {
-    mask_shape.push_back(1);
-  }
-  mask_shape.push_back(out_shape.back());
   auto is_4param_broadcast =
       is_4param.toType(torch::kFloat64).unsqueeze(0).expand(out_shape);
   F_cent = F_cent + is_4param_broadcast * T2_exp_term;
