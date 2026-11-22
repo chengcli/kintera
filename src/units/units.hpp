@@ -92,20 +92,13 @@ class Units {
 class UnitSystem {
  public:
   UnitSystem() = default;
-  UnitSystem(std::initializer_list<std::string> units) { set_defaults(units); }
 
   std::map<std::string, std::string> defaults() const;
-  void set_defaults(std::initializer_list<std::string> units);
 
   //! Convert `value` from the units of `src` to the units of `dest`.
   double convert(double value, const std::string& src,
                  const std::string& dest) const;
   double convert(double value, const Units& src, const Units& dest) const;
-
-  //! Convert `value` to the specified `dest` units from the appropriate units
-  //! for this unit system (defined by `setDefaults`)
-  double convert_to(double value, const std::string& dest) const;
-  double convert_to(double value, const Units& dest) const;
 
   //! Convert `value` from the specified `src` units to units appropriate for
   //! this unit system (defined by `setDefaults`)

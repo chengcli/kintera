@@ -298,46 +298,6 @@ std::map<std::string, std::string> UnitSystem::defaults() const {
   return units;
 }
 
-void UnitSystem::set_defaults(std::initializer_list<std::string> units) {
-  for (const auto& name : units) {
-    auto unit = Units(name);
-    if (unit.convertible(knownUnits.at("kg"))) {
-      _mass_factor = unit.factor();
-      _defaults["mass"] = name;
-    } else if (unit.convertible(knownUnits.at("m"))) {
-      _length_factor = unit.factor();
-      _defaults["length"] = name;
-    } else if (unit.convertible(knownUnits.at("s"))) {
-      _time_factor = unit.factor();
-      _defaults["time"] = name;
-    } else if (unit.convertible(knownUnits.at("kmol"))) {
-      _quantity_factor = unit.factor();
-      _defaults["quantity"] = name;
-    } else if (unit.convertible(knownUnits.at("Pa"))) {
-      _pressure_factor = unit.factor();
-      _defaults["pressure"] = name;
-    } else if (unit.convertible(knownUnits.at("J"))) {
-      _energy_factor = unit.factor();
-      _defaults["energy"] = name;
-    } else if (unit.convertible(knownUnits.at("K"))) {
-      // Do nothing -- no other scales are supported for temperature
-      if (unit.factor() != 1.) {
-        throw std::invalid_argument(
-            fmt::format("Unit '{}' is not supported for temperature", name));
-      }
-    } else if (unit.convertible(knownUnits.at("A"))) {
-      // Do nothing -- no other scales are supported for current
-      if (unit.factor() != 1.) {
-        throw std::invalid_argument(
-            fmt::format("Unit '{}' is not supported for current", name));
-      }
-    } else {
-      throw std::invalid_argument(fmt::format(
-          "Unit '{}' is not convertible to any basic dimension", name));
-    }
-  }
-}
-
 double UnitSystem::convert(double value, const std::string& src,
                            const std::string& dest) const {
   return convert(value, Units(src), Units(dest));
@@ -350,23 +310,6 @@ double UnitSystem::convert(double value, const Units& src,
         fmt::format("Cannot convert from '{}' to '{}'", src.str(), dest.str()));
   }
   return value * src.factor() / dest.factor();
-}
-
-double UnitSystem::convert_to(double value, const std::string& dest) const {
-  return convert_to(value, Units(dest));
-}
-
-double UnitSystem::convert_to(double value, const Units& dest) const {
-  return value / dest.factor() *
-         pow(_mass_factor,
-             dest._mass_dim - dest._pressure_dim - dest._energy_dim) *
-         pow(_length_factor,
-             dest._length_dim + dest._pressure_dim - 2 * dest._energy_dim) *
-         pow(_time_factor,
-             dest._time_dim + 2 * dest._pressure_dim + 2 * dest._energy_dim) *
-         pow(_quantity_factor, dest._quantity_dim) *
-         pow(_pressure_factor, dest._pressure_dim) *
-         pow(_energy_factor, dest._energy_dim);
 }
 
 double UnitSystem::convert_from(double value, const std::string& dest) const {
