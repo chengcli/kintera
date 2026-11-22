@@ -86,18 +86,6 @@ DISPATCH_MACRO void mvdot(T* y, const T* A, const T* x, int n, int m) {
  * \param[in] n           number of columns in matrix A
  * \param[in] m           number of rows in matrix A
  */
-template <typename T>
-DISPATCH_MACRO void mvdot_t(T* y, const T* A, const T* x, int n, int m) {
-  // y = A^T x, A is m×n
-  for (int i = 0; i < n; i++) {
-    T sum = 0.0;
-    for (int j = 0; j < m; j++) {
-      sum += A[j * n + i] * x[j];
-    }
-    y[i] = sum;
-  }
-}
-
 /*!
  * \brief matrix-matrix dot product: a.b
  * \param[out] r[0..n1*n3-1]  output matrix in row-major sequential storage
