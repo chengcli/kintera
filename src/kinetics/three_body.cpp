@@ -8,13 +8,12 @@
 #include <fmt/format.h>
 
 // kintera
+#include <kintera/species.hpp>
 #include <kintera/units/units.hpp>
 
 #include "three_body.hpp"
 
 namespace kintera {
-
-extern std::vector<std::string> species_names;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set, ThreeBodyOptions op) {

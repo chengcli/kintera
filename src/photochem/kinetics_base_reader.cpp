@@ -23,17 +23,6 @@
 
 namespace kintera {
 
-extern std::vector<std::string> species_names;
-extern std::vector<double> species_weights;
-extern std::vector<double> species_cref_R;
-extern std::vector<double> species_uref_R;
-extern std::vector<double> species_sref_R;
-extern bool species_initialized;
-
-extern std::vector<std::array<double, 9>> species_nasa9_low;
-extern std::vector<std::array<double, 9>> species_nasa9_high;
-extern std::vector<double> species_nasa9_Tmid;
-
 static std::string trim(std::string const& s) {
   auto start = s.find_first_not_of(" \t\r\n");
   if (start == std::string::npos) return "";

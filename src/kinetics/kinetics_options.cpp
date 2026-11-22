@@ -9,15 +9,6 @@
 
 namespace kintera {
 
-extern std::vector<std::string> species_names;
-extern std::vector<double> species_weights;
-extern std::vector<double> species_cref_R;
-extern std::vector<double> species_uref_R;
-extern std::vector<double> species_sref_R;
-extern std::vector<std::array<double, 9>> species_nasa9_low;
-extern std::vector<std::array<double, 9>> species_nasa9_high;
-extern std::vector<double> species_nasa9_Tmid;
-
 KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename,
                                                bool verbose) {
   auto config = YAML::LoadFile(filename);

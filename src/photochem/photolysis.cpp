@@ -7,14 +7,13 @@
 #include <yaml-cpp/yaml.h>
 
 #include <kintera/math/interpolation.hpp>
+#include <kintera/species.hpp>
 #include <kintera/units/units.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
 
 #include "load_xsection.hpp"
 
 namespace kintera {
-
-extern std::vector<std::string> species_names;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,

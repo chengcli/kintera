@@ -1,9 +1,9 @@
 // kintera
 #include "coagulation.hpp"
 
-namespace kintera {
+#include <kintera/species.hpp>
 
-extern std::vector<std::string> species_names;
+namespace kintera {
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,

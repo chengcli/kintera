@@ -8,6 +8,7 @@
 // kintera
 #include <kintera/constants.h>
 
+#include <kintera/species.hpp>
 #include <kintera/thermo/log_svp.hpp>
 #include <kintera/units/units.hpp>
 
@@ -15,9 +16,6 @@
 #include "evaporation_extent.hpp"
 
 namespace kintera {
-
-extern std::vector<std::string> species_names;
-extern std::vector<std::string> species_phases;
 
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,
