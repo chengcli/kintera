@@ -11,6 +11,8 @@
 #include <fmt/format.h>
 
 // kintera
+#include <kintera/constants.h>
+
 #include <kintera/units/units.hpp>
 
 namespace kintera {
@@ -42,11 +44,11 @@ inline void parse_arrhenius_params(const YAML::Node& node, double sum_stoich,
     iss >> ea_val >> ea_unit;
 
     if (ea_unit.find("cal") != std::string::npos) {
-      Ea_R = ea_val / 1.987;
+      Ea_R = ea_val * constants::JoulePerCal / constants::Rgas;
     } else if (ea_unit.find("kJ") != std::string::npos) {
-      Ea_R = ea_val * 1000.0 / 8.314;
+      Ea_R = ea_val * 1000.0 / constants::Rgas;
     } else if (ea_unit.find("J") != std::string::npos) {
-      Ea_R = ea_val / 8.314;
+      Ea_R = ea_val / constants::Rgas;
     } else {
       Ea_R = ea_val;
     }
