@@ -21,6 +21,8 @@ def test_uv_cell_converges_to_the_equilibrium(dev):
     thermo = ThermoY(op.max_iter(100).uv_solver("kkt"))
     thermo.to(torch.device(dev))
     inv_mu = thermo.buffer("inv_mu")
+    # kept at 8.31446 rather than the SI Rgas: the state this scales is the
+    # one that cycled, and that cycling is what the test exercises
     c = torch.tensor(X, device=dev) * P0 / (8.31446 * T0) / sum(X[:4])  # mol/m^3
     rho = (c / inv_mu).sum().reshape(1)
     y = (c[1:] / inv_mu[1:] / rho).reshape(-1, 1).contiguous()

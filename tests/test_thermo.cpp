@@ -725,7 +725,11 @@ dynamics:
   auto trace_rho = trace_mass.sum().reshape({1});
   auto trace_yfrac = (trace_mass.slice(0, 1) / trace_rho).reshape({6, 1});
   auto trace_ivol = thermo_y->compute("DY->V", {trace_rho, trace_yfrac});
-  auto trace_temp = torch::tensor({86.95274487484208}, tensor_options);
+  // This checks that the trace cloud is removed in a single iteration. The
+  // one-iteration band starts at 86.953 K with the exact gas constant;
+  // 86.9527 K, the converged temperature with Rgas = 8.31446, sat inside it
+  // then and takes two iterations now.
+  auto trace_temp = torch::tensor({86.96}, tensor_options);
   auto trace_intEng = thermo_y->compute("VT->U", {trace_ivol, trace_temp});
   auto trace_diag = torch::zeros({1, 1}, tensor_options);
 

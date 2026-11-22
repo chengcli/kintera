@@ -23,7 +23,7 @@ import kintera as kt
 
 torch.set_default_dtype(torch.float64)
 
-RGAS = 8.31446  # kintera constants.h
+RGAS = 8.31446261815324  # kintera constants.h
 SPECIES = ["H2O", "NH3", "H2S", "H2O(l,p)", "NH4SH(s,p)"]
 I_H2O, I_NH3, I_H2S, I_LP, I_SP = range(5)
 DIFF_C, VM, DIAM = 2.0e-5, 43.7e-6, 1.0e-4

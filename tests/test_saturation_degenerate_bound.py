@@ -85,7 +85,8 @@ reactions:
   type: evaporation
   rate-constant: {formula: nh3_h2s_lewis, diff_c: 2.0e-05, diff_T: 0.0, diff_P: 0.0, vm: 4.37e-05, diameter: 0.0001}
 dynamics:
-  equation-of-state: {max-iter: 20, ftol: 1.0e-06}
+  # the fifth cell takes 21 iterations with the exact gas constant on x86
+  equation-of-state: {max-iter: 30, ftol: 1.0e-06}
 """
 
 CELLS = [
