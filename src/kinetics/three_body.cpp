@@ -108,8 +108,8 @@ torch::Tensor ThreeBodyImpl::forward(
   auto temp = T.sizes() == P.sizes() ? T.unsqueeze(-1) : T;
   auto k0 = compute_k0(temp);
 
-  bool expanded = C.dim() >= 3 && C.size(-1) == nreaction &&
-                  C.size(-2) == efficiency_matrix.size(1);
+  bool expanded =
+      expanded_layout(C, nreaction, efficiency_matrix.size(1), other);
   auto M_eff = third_body_concentration(C, efficiency_matrix, expanded);
 
   // Three-body: k = k0 * [M]_eff

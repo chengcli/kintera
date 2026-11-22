@@ -501,6 +501,9 @@ KineticsImpl::forward_with_rate_constants(
   auto stoich_base = stoich.narrow(1, 0, nrxn_orig);
 
   std::map<std::string, torch::Tensor> other(extra.begin(), extra.end());
+  // the rate modules receive conc expanded over the reactions (below); the
+  // third-body ones read this flag rather than guess the layout from shapes
+  other["conc_expanded"] = torch::ones({1}, torch::kBool);
   other["gas_mask"] =
       torch::arange(conc.size(-1), stoich.options())
           .lt(static_cast<int64_t>(options->vapor_ids().size()));

@@ -197,7 +197,8 @@ torch::Tensor SRIFalloffImpl::forward(
   auto k0 = compute_k0(temp);
   auto kinf = compute_kinf(temp);
 
-  bool expanded = C.dim() >= 2 && C.size(-1) == nreaction;
+  bool expanded =
+      expanded_layout(C, nreaction, efficiency_matrix.size(1), other);
   auto M_eff = third_body_concentration(C, efficiency_matrix, expanded);
 
   // SRI falloff: k = k_Lindemann * F_SRI

@@ -332,6 +332,122 @@ TEST_P(FalloffEndToEndTest, forward_falloff_lindemann) {
   EXPECT_GT(torch::sum(torch::abs(result)).item<double>(), 0.0);
 }
 
+TEST_P(FalloffEndToEndTest, plain_layout_when_nspecies_equals_nreaction) {
+  // Two species and two reactions: a plain (ncol, nspecies) concentration
+  // has C.size(-1) == nreaction, which must not be read as KineticsImpl's
+  // expanded (..., nspecies, nreaction) layout (that needs dim >= 3 and
+  // both trailing sizes to match). The rate is k0 M / (1 + k0 M / kinf)
+  // with M the efficiency-weighted concentration sum, per column.
+  kintera::species_names = {"H2O2", "OH"};
+  std::string yaml_str = R"(
+- equation: H2O2 (+ M) <=> 2 OH (+ M)
+  type: falloff
+  low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: 0.0}
+  high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+  efficiencies: {OH: 2.0}
+- equation: 2 OH (+ M) <=> H2O2 (+ M)
+  type: falloff
+  low-P-rate-constant: {A: 1.1e+12, b: -0.5, Ea_R: 0.0}
+  high-P-rate-constant: {A: 3.7e+10, b: -0.2, Ea_R: 0.0}
+)";
+  auto opts = LindemannFalloffOptionsImpl::from_yaml(YAML::Load(yaml_str));
+  ASSERT_EQ(opts->reactions().size(), 2);
+  LindemannFalloff module(opts);
+  module->to(device, dtype);
+
+  int ncol = 3;
+  auto temp = torch::tensor({300.0, 400.0, 500.0}, dtype).to(device);
+  auto pres = torch::full({ncol}, 101325.0, dtype).to(device);
+  // The concentrations are scaled so that Pr = k0 [M] / kinf is of order 0.1:
+  // in the high-pressure limit (Pr >> 1) the rate tends to kinf and no longer
+  // depends on [M], and a wrong [M] would go unnoticed.
+  auto conc = torch::tensor(
+                  {{1.0e-3, 2.0e-3}, {3.0e-3, 1.0e-3}, {5.0e-4, 4.0e-3}}, dtype)
+                  .to(device) *
+              1.0e-18;
+  auto k = module->forward(temp, pres, conc, {});
+  ASSERT_EQ(k.sizes(), (std::vector<int64_t>{ncol, 2}));
+
+  auto T = temp.unsqueeze(-1);
+  auto k0 = module->k0_A * (T / opts->Tref()).pow(module->k0_b) *
+            torch::exp(-module->k0_Ea_R / T);
+  auto kinf = module->kinf_A * (T / opts->Tref()).pow(module->kinf_b) *
+              torch::exp(-module->kinf_Ea_R / T);
+  auto M = torch::matmul(conc, module->efficiency_matrix.transpose(0, 1));
+  auto Pr = k0 * M / kinf;
+  auto expected = k0 * M / (1.0 + Pr);
+  EXPECT_LT(Pr.abs().max().item<double>(), 1.0)
+      << "the case must not sit in the high-pressure limit";
+  EXPECT_TRUE(torch::allclose(k, expected, 1e-12, 0.0))
+      << "k = " << k << "\nexpected = " << expected;
+}
+
+TEST_P(FalloffEndToEndTest, expanded_layout_with_fewer_kinetics_species) {
+  // The deck lists a species no reaction uses (AR), so KineticsImpl's
+  // species are fewer than the registry. It expands its concentration over
+  // its own species before calling the rate modules; a shape test against
+  // the registry size would route that layout to the plain path, so the
+  // modules have to be told. Checked against each module evaluated directly
+  // with the plain concentration; the concentrations are scaled so the
+  // falloff reaction sits well below its high-pressure limit (Pr < 1), as
+  // in plain_layout_when_nspecies_equals_nreaction.
+  std::string yaml_str = R"(
+species:
+  - name: H2O2
+    composition: {H: 2, O: 2}
+    cv_R: 2.5
+  - name: OH
+    composition: {H: 1, O: 1}
+    cv_R: 2.5
+  - name: AR
+    composition: {Ar: 1}
+    cv_R: 2.5
+reference-state:
+  Tref: 300.0
+  Pref: 101325.0
+reactions:
+- equation: H2O2 (+ M) <=> 2 OH (+ M)
+  type: falloff
+  low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: 0.0}
+  high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+  efficiencies: {OH: 2.0}
+- equation: 2 OH + M <=> H2O2 + M
+  type: three-body
+  rate-constant: {A: 1.1e+12, b: -0.5, Ea_R: 0.0}
+)";
+  YAML::Node config = YAML::Load(yaml_str);
+  auto kinet_opts = KineticsOptionsImpl::from_yaml(config);
+  ASSERT_TRUE(kinet_opts != nullptr);
+  ASSERT_EQ(kintera::species_names.size(), 3);  // the registry: H2O2, OH, AR
+  ASSERT_EQ(kinet_opts->species().size(), 2);   // H2O2 and OH; AR is unused
+  ASSERT_EQ(kinet_opts->three_body()->reactions().size(), 1);
+  ASSERT_EQ(kinet_opts->lindemann_falloff()->reactions().size(), 1);
+  Kinetics kinet(kinet_opts);
+  kinet->to(device, dtype);
+
+  auto temp = torch::tensor({300.0, 400.0, 500.0}, dtype).to(device);
+  auto pres = torch::full({3}, 101325.0, dtype).to(device);
+  auto conc = torch::tensor(
+                  {{1.0e-3, 2.0e-3}, {3.0e-3, 1.0e-3}, {5.0e-4, 4.0e-3}}, dtype)
+                  .to(device) *
+              1.0e-18;
+  auto [rate, rc_ddC, rc_ddT, rc] =
+      kinet->forward_with_rate_constants(temp, pres, conc);
+  ASSERT_EQ(rc.sizes(), (std::vector<int64_t>{3, 2}));
+
+  ThreeBody tb(kinet_opts->three_body());
+  tb->to(device, dtype);
+  LindemannFalloff lf(kinet_opts->lindemann_falloff());
+  lf->to(device, dtype);
+  auto k_tb = tb->forward(temp, pres, conc, {});
+  auto k_lf = lf->forward(temp, pres, conc, {});
+  // rate constants are laid out by module: three-body before Lindemann
+  EXPECT_TRUE(torch::allclose(rc.narrow(-1, 0, 1), k_tb, 1e-12, 0.0))
+      << "three-body: " << rc.narrow(-1, 0, 1) << " vs " << k_tb;
+  EXPECT_TRUE(torch::allclose(rc.narrow(-1, 1, 1), k_lf, 1e-12, 0.0))
+      << "Lindemann: " << rc.narrow(-1, 1, 1) << " vs " << k_lf;
+}
+
 TEST_P(FalloffEndToEndTest, forward_falloff_troe) {
   std::string yaml_str = R"(
 - equation: 2 OH (+ M) <=> H2O2 (+ M)
