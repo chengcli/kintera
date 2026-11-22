@@ -4,42 +4,26 @@
 
 #include <kintera/utils/user_funcs.hpp>
 
+#include "func_list.h"
+
 namespace kintera {
 
 /////  func1 registry  /////
 
-user_func1 func1_table_cpu[] = {
-    h2o_ideal,       h2o_ideal_ddT,      h2o_bryan,     h2o_bryan_ddT,
-    nh3_ideal,       nh3_ideal_ddT,      nh3_h2s_lewis, nh3_h2s_lewis_ddT,
-    h2s_ideal,       h2s_ideal_ddT,      h2s_antoine,   h2s_antoine_ddT,
-    ch4_ideal,       ch4_ideal_ddT,      so2_antoine,   so2_antoine_ddT,
-    co2_antoine,     co2_antoine_ddT,    kcl_lodders,   kcl_lodders_ddT,
-    na_h2s_visscher, na_h2s_visscher_ddT};
+user_func1 func1_table_cpu[] = {KINTERA_FUNC1_LIST(KINTERA_FUNC_PTR)};
 
-std::vector<std::string> func1_names = {
-    "h2o_ideal",          "h2o_ideal_ddT",     "h2o_bryan",
-    "h2o_bryan_ddT",      "nh3_ideal",         "nh3_ideal_ddT",
-    "nh3_h2s_lewis",      "nh3_h2s_lewis_ddT", "h2s_ideal",
-    "h2s_ideal_ddT",      "h2s_antoine",       "h2s_antoine_ddT",
-    "ch4_ideal",          "ch4_ideal_ddT",     "so2_antoine",
-    "so2_antoine_ddT",    "co2_antoine",       "co2_antoine_ddT",
-    "kcl_lodders",        "kcl_lodders_ddT",   "na_h2s_visscher",
-    "na_h2s_visscher_ddT"};
+std::vector<std::string> func1_names = {KINTERA_FUNC1_LIST(KINTERA_FUNC_NAME)};
 
 /////  func2 registry  /////
 
-user_func2 func2_table_cpu[] = {h2_rot_normal,          h2_rot_normal_ddT,
-                                h2_rot_normal_s,        h2_rot_equilibrium,
-                                h2_rot_equilibrium_ddT, h2_rot_equilibrium_s};
+user_func2 func2_table_cpu[] = {KINTERA_FUNC2_LIST(KINTERA_FUNC_PTR)};
 
-std::vector<std::string> func2_names = {
-    "h2_rot_normal",      "h2_rot_normal_ddT",      "h2_rot_normal_s",
-    "h2_rot_equilibrium", "h2_rot_equilibrium_ddT", "h2_rot_equilibrium_s"};
+std::vector<std::string> func2_names = {KINTERA_FUNC2_LIST(KINTERA_FUNC_NAME)};
 
 /////  func3 registry  /////
 
-user_func3 func3_table_cpu[] = {};
+user_func3 func3_table_cpu[] = {KINTERA_FUNC3_LIST(KINTERA_FUNC_PTR)};
 
-std::vector<std::string> func3_names = {};
+std::vector<std::string> func3_names = {KINTERA_FUNC3_LIST(KINTERA_FUNC_NAME)};
 
 }  // namespace kintera
