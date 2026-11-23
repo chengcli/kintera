@@ -165,7 +165,8 @@ ThermoTablesPtr tables_for(SpeciesThermo const& op, at::Tensor const& like) {
   c10::InferenceMode off(false);  // normal tensors, usable in both modes
   auto t = species_tables(op, like);
   auto th = std::dynamic_pointer_cast<ThermoOptionsImpl>(op);
-  LogSVPFunc::make_svp_spec(th ? th->nucleation() : nullptr, *t, dev);
+  LogSVPFunc::make_svp_spec(th ? th->nucleation() : nullptr, *t,
+                            thermo_callback_device(dev));
   t->digest = h, t->epoch = ++epoch;  // the epoch never changes after
   slot = t;
   NoTableBuild::record(t);

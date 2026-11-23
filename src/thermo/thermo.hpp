@@ -62,6 +62,12 @@ class NoTableBuild {
   std::vector<ThermoTablesPtr> used_;
 };
 
+// MPS can prepare a column's tensor state. Its unused callback pointers and
+// FP64 saturation parameters must stay on the host.
+inline at::Device thermo_callback_device(at::Device device) {
+  return device.is_mps() ? at::Device(at::kCPU) : device;
+}
+
 template <typename T>  // FNV-1a over values and sizes, for options_digest
 void fnv1a(uint64_t& h, T const& v) {
   if constexpr (std::is_arithmetic_v<T>) {
@@ -79,7 +85,7 @@ inline std::shared_ptr<ThermoTables> species_tables(SpeciesThermo const& op,
                                                     at::Tensor const& like) {
   auto t = std::make_shared<ThermoTables>();
   auto o = like.options();
-  auto dev = like.device();
+  auto dev = thermo_callback_device(like.device());
   auto ft = [&](std::vector<std::string> n, int arity, std::string sfx = "") {
     for (auto& s : n) s += s.empty() ? "" : sfx;
     return at::native::fill_func_table(dev.type(), n, arity, dev);
