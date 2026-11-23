@@ -146,7 +146,10 @@ void KineticsImpl::reset() {
     }
   }
 
+  // clone() copy-constructs the module, then calls reset() on the copy: both
+  // lists start over, or the copy evaluates every family twice
   _nreactions.clear();
+  rc_evaluator.clear();
 
   // register Arrhenius rates
   rc_evaluator.push_back(torch::nn::AnyModule(Arrhenius(options->arrhenius())));

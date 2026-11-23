@@ -554,6 +554,58 @@ reactions:
       << "AR first: " << rc << " vs AR last: " << rc_last;
 }
 
+TEST_P(FalloffEndToEndTest, clone_evaluates_each_family_once) {
+  // Cloneable::clone copy-constructs the module and calls reset() on the
+  // copy. reset() appended the rate evaluators to the copied list, so a
+  // clone held every family twice against a reaction count list that was
+  // cleared, and its forward read past the end of that list.
+  std::string yaml_str = R"(
+species:
+  - name: H2O2
+    composition: {H: 2, O: 2}
+    cv_R: 2.5
+  - name: OH
+    composition: {H: 1, O: 1}
+    cv_R: 2.5
+reference-state:
+  Tref: 300.0
+  Pref: 101325.0
+reactions:
+- equation: 2 OH + M <=> H2O2 + M
+  type: three-body
+  rate-constant: {A: 1.1e+12, b: -0.5, Ea_R: 0.0}
+  efficiencies: {OH: 2.0}
+- equation: H2O2 (+ M) <=> 2 OH (+ M)
+  type: falloff
+  low-P-rate-constant: {A: 2.3e+12, b: -0.9, Ea_R: 0.0}
+  high-P-rate-constant: {A: 7.4e+10, b: -0.37, Ea_R: 0.0}
+  efficiencies: {OH: 2.0}
+)";
+  YAML::Node config = YAML::Load(yaml_str);
+  auto kinet_opts = KineticsOptionsImpl::from_yaml(config);
+  ASSERT_TRUE(kinet_opts != nullptr);
+  Kinetics kinet(kinet_opts);
+  kinet->to(device, dtype);
+
+  auto temp = torch::tensor({300.0, 400.0, 500.0}, dtype).to(device);
+  auto pres = torch::full({3}, 101325.0, dtype).to(device);
+  auto conc = torch::tensor(
+                  {{1.0e-3, 2.0e-3}, {3.0e-3, 1.0e-3}, {5.0e-4, 4.0e-3}}, dtype)
+                  .to(device) *
+              1.0e-18;
+  auto [rate, rc_ddC, rc_ddT, rc] =
+      kinet->forward_with_rate_constants(temp, pres, conc);
+
+  auto cloned = std::dynamic_pointer_cast<KineticsImpl>(kinet->clone(device));
+  ASSERT_TRUE(cloned != nullptr);
+  EXPECT_EQ(cloned->rc_evaluator.size(), kinet->rc_evaluator.size());
+  auto [rate_c, ddC_c, ddT_c, rc_c] =
+      cloned->forward_with_rate_constants(temp, pres, conc);
+  EXPECT_TRUE(torch::equal(rc_c, rc)) << "clone: " << rc_c << " vs " << rc;
+  EXPECT_TRUE(torch::equal(ddC_c, rc_ddC));
+  EXPECT_TRUE(torch::equal(rate_c, rate));
+}
+
 TEST_P(FalloffEndToEndTest, forward_falloff_troe) {
   std::string yaml_str = R"(
 - equation: 2 OH (+ M) <=> H2O2 (+ M)
