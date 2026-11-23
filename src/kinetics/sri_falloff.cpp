@@ -199,7 +199,8 @@ torch::Tensor SRIFalloffImpl::forward(
 
   bool expanded =
       expanded_layout(C, nreaction, efficiency_matrix.size(1), other);
-  auto M_eff = third_body_concentration(C, efficiency_matrix, expanded);
+  auto M_eff = third_body_concentration(C, efficiency_matrix, expanded,
+                                        conc_species_from(other));
 
   // SRI falloff: k = k_Lindemann * F_SRI
   // k_Lindemann = k0*[M]_eff / (1 + Pr)

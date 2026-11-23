@@ -92,8 +92,18 @@ inline torch::Tensor arrhenius_rate(torch::Tensor const& A,
 inline bool expanded_layout(torch::Tensor const& C, int nreaction,
                             int nspecies_full,
                             std::map<std::string, torch::Tensor> const& other) {
-  if (other.count("conc_expanded") > 0) return true;
+  auto it = other.find("conc_expanded");
+  if (it != other.end()) return it->second.item<bool>();
   return C.dim() >= 3 && C.size(-1) == nreaction && C.size(-2) == nspecies_full;
+}
+
+//! The registry ids of the species along the concentration's species axis,
+//! other["conc_species"], when the caller gives them; an undefined tensor
+//! otherwise.
+inline torch::Tensor conc_species_from(
+    std::map<std::string, torch::Tensor> const& other) {
+  auto it = other.find("conc_species");
+  return it == other.end() ? torch::Tensor() : it->second;
 }
 
 //! The effective third-body concentration [M]_eff of every reaction.
@@ -105,12 +115,26 @@ inline bool expanded_layout(torch::Tensor const& C, int nreaction,
 //! contraction runs over species and keeps the reaction axis; selecting one
 //! slice away collapsed the whole sum_r d(k_r)/dC_s onto the first reaction
 //! column and left every other reaction at exactly zero.
+//! The efficiency matrix is laid out over the whole registry. When the
+//! caller names the registry id of each concentration column
+//! (`species_ids`, from other["conc_species"]), those columns are selected;
+//! without the ids the concentration is taken to hold the first columns of
+//! the registry, which is wrong as soon as a species no reaction uses is
+//! listed before one that is.
 inline torch::Tensor third_body_concentration(
     torch::Tensor const& C, torch::Tensor const& efficiency_matrix,
-    bool expanded) {
+    bool expanded, torch::Tensor const& species_ids = torch::Tensor()) {
   int nspecies_full = efficiency_matrix.size(1);
   if (expanded) {
     int nspecies_kinetics = C.size(-2);
+    if (species_ids.defined()) {
+      TORCH_CHECK(species_ids.numel() == nspecies_kinetics,
+                  "third_body_concentration: ", species_ids.numel(),
+                  " species ids for ", nspecies_kinetics,
+                  " concentration columns");
+      auto eff_matrix_kinetics = efficiency_matrix.index_select(1, species_ids);
+      return (C * eff_matrix_kinetics.transpose(0, 1)).sum(-2);
+    }
     int ncontract = std::min(nspecies_kinetics, nspecies_full);
     auto eff_matrix_kinetics = efficiency_matrix.narrow(1, 0, ncontract);
     return (C.narrow(-2, 0, ncontract) * eff_matrix_kinetics.transpose(0, 1))

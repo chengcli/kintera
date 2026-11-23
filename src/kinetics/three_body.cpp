@@ -110,7 +110,8 @@ torch::Tensor ThreeBodyImpl::forward(
 
   bool expanded =
       expanded_layout(C, nreaction, efficiency_matrix.size(1), other);
-  auto M_eff = third_body_concentration(C, efficiency_matrix, expanded);
+  auto M_eff = third_body_concentration(C, efficiency_matrix, expanded,
+                                        conc_species_from(other));
 
   // Three-body: k = k0 * [M]_eff
   auto result = k0 * M_eff;
