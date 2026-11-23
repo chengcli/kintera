@@ -10,7 +10,7 @@ import kintera as kt
 
 torch.set_default_dtype(torch.float64)
 
-R = 8.31446
+R = 8.31446261815324  # kintera constants::Rgas
 KAPPA = 12 * 2e-5 * 43.7e-6 / 1e-8
 NAMES = ["Na", "H2S", "H2", "Na2S(s)"]
 NU = [2., 1., -1., -1.]

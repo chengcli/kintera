@@ -10,6 +10,75 @@
 
 namespace kintera {
 
+namespace {
+
+//! verbose: the state the extrapolation starts from
+void print_initial_state(torch::Tensor const& temp, torch::Tensor const& pres,
+                         torch::Tensor const& entropy_mole0,
+                         torch::Tensor const& xfrac) {
+  std::cout << "Initial State: T = [" << temp.min().item<double>() << ", "
+            << temp.max().item<double>() << "] K" << std::endl;
+  std::cout << "               P = [" << pres.min().item<double>() << ", "
+            << pres.max().item<double>() << "] Pa" << std::endl;
+  std::cout << "               S = [" << entropy_mole0.min().item<double>()
+            << ", " << entropy_mole0.max().item<double>() << "] J/K/mol"
+            << std::endl;
+  std::cout << "Composition:   X = { ";
+  for (int i = 0; i < xfrac.size(-1); ++i) {
+    std::cout << "[" << xfrac.select(-1, i).min().item<double>() << ", "
+              << xfrac.select(-1, i).max().item<double>() << "], ";
+  }
+  std::cout << "}" << std::endl;
+}
+
+//! verbose: one iteration of the entropy solve
+void print_iteration(int iter, torch::Tensor const& temp,
+                     torch::Tensor const& pres,
+                     torch::Tensor const& entropy_mole,
+                     torch::Tensor const& xfrac) {
+  std::cout << "Iter " << iter << std::endl;
+  std::cout << "temp = [" << temp.min().item<double>() << ", "
+            << temp.max().item<double>() << "] K" << std::endl;
+  std::cout << "pres = [" << pres.min().item<double>() << ", "
+            << pres.max().item<double>() << "] Pa" << std::endl;
+
+  std::cout << "entropy_mole = [" << entropy_mole.min().item<double>() << ", "
+            << entropy_mole.max().item<double>() << "] J/K/mol" << std::endl;
+
+  std::cout << "Composition: X = { ";
+  for (int i = 0; i < xfrac.size(-1); ++i) {
+    std::cout << "[" << xfrac.select(-1, i).min().item<double>() << ", "
+              << xfrac.select(-1, i).max().item<double>() << "], ";
+  }
+  std::cout << "}" << std::endl;
+}
+
+}  // namespace
+
+// pseudo-adiabat: the departing condensate carries its own molar entropy
+// s_cond away, d(n_gas * s_gas) = -sum_j s_cond,j * dn_j. Per mole of
+// (conserved) dry air the entropy target for the rained-out gas is then
+//   (x_dry_new / x_dry0) * s0 - sum_j s_cond,j * conc_cloud,j / n_gas
+// plus the imposed change ds_term; the clouds are then removed from xfrac.
+torch::Tensor ThermoXImpl::rainout_entropy_target(
+    torch::Tensor temp, torch::Tensor pres, torch::Tensor xfrac,
+    torch::Tensor const& x_dry0, torch::Tensor const& entropy_mole0,
+    double ds_term, int ngas, int ncloud) {
+  auto conc_full = compute("TPX->V", {temp, pres, xfrac});
+  auto scond = eval_entropy_R(temp, pres, conc_full, stoich, options)
+                   .narrow(-1, ngas, ncloud) *
+               constants::Rgas;
+  auto n_gas = conc_full.narrow(-1, 0, ngas).sum(-1);
+  auto x_dry_new = conc_full.select(-1, 0) / n_gas;
+  auto cloud_flux =
+      (scond * conc_full.narrow(-1, ngas, ncloud)).sum(-1) / n_gas;
+  auto target = (x_dry_new / x_dry0) * entropy_mole0 - cloud_flux + ds_term;
+
+  xfrac.narrow(-1, ngas, ncloud) = 0.;
+  xfrac /= xfrac.sum(-1, true);
+  return target;
+}
+
 torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
                                         torch::Tensor xfrac, torch::Tensor gain,
                                         torch::optional<torch::Tensor> conc) {
@@ -89,21 +158,7 @@ void ThermoXImpl::extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
   // dry-gas mole fraction (dry never condenses; reference for rain-out)
   auto x_dry0 = conc.select(-1, 0) / conc.sum(-1);
 
-  if (verbose) {
-    std::cout << "Initial State: T = [" << temp.min().item<double>() << ", "
-              << temp.max().item<double>() << "] K" << std::endl;
-    std::cout << "               P = [" << pres.min().item<double>() << ", "
-              << pres.max().item<double>() << "] Pa" << std::endl;
-    std::cout << "               S = [" << entropy_mole0.min().item<double>()
-              << ", " << entropy_mole0.max().item<double>() << "] J/K/mol"
-              << std::endl;
-    std::cout << "Composition:   X = { ";
-    for (int i = 0; i < xfrac.size(-1); ++i) {
-      std::cout << "[" << xfrac.select(-1, i).min().item<double>() << ", "
-                << xfrac.select(-1, i).max().item<double>() << "], ";
-    }
-    std::cout << "}" << std::endl;
-  }
+  if (verbose) print_initial_state(temp, pres, entropy_mole0, xfrac);
 
   int iter = 0;
   bool converged = false;
@@ -114,25 +169,12 @@ void ThermoXImpl::extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
     xfrac.copy_(xfrac0);
     auto gain = forward(temp, pres, xfrac);
 
-    // pseudo-adiabat: the departing condensate carries its own molar entropy
-    // s_cond away, d(n_gas * s_gas) = -sum_j s_cond,j * dn_j. Per mole of
-    // (conserved) dry air the entropy target for the rained-out gas is then
-    //   (x_dry_new / x_dry0) * s0 - sum_j s_cond,j * conc_cloud,j / n_gas
+    // pseudo-adiabat rain-out: see rainout_entropy_target
     auto entropy_step = entropy_target;
     if (opts.rainout()) {
-      auto conc_full = compute("TPX->V", {temp, pres, xfrac});
-      auto scond = eval_entropy_R(temp, pres, conc_full, stoich, options)
-                       .narrow(-1, ngas, ncloud) *
-                   constants::Rgas;
-      auto n_gas = conc_full.narrow(-1, 0, ngas).sum(-1);
-      auto x_dry_new = conc_full.select(-1, 0) / n_gas;
-      auto cloud_flux =
-          (scond * conc_full.narrow(-1, ngas, ncloud)).sum(-1) / n_gas;
       entropy_step =
-          (x_dry_new / x_dry0) * entropy_mole0 - cloud_flux + ds_dlnp * dlnp;
-
-      xfrac.narrow(-1, ngas, ncloud) = 0.;
-      xfrac /= xfrac.sum(-1, true);
+          rainout_entropy_target(temp, pres, xfrac, x_dry0, entropy_mole0,
+                                 ds_dlnp * dlnp, ngas, ncloud);
     }
 
     conc = compute("TPX->V", {temp, pres, xfrac});
@@ -141,24 +183,7 @@ void ThermoXImpl::extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
     entropy_vol = compute("TPV->S", {temp, pres, conc});
     auto entropy_mole = entropy_vol / conc.sum(-1);
 
-    if (verbose) {
-      std::cout << "Iter " << iter << std::endl;
-      std::cout << "temp = [" << temp.min().item<double>() << ", "
-                << temp.max().item<double>() << "] K" << std::endl;
-      std::cout << "pres = [" << pres.min().item<double>() << ", "
-                << pres.max().item<double>() << "] Pa" << std::endl;
-
-      std::cout << "entropy_mole = [" << entropy_mole.min().item<double>()
-                << ", " << entropy_mole.max().item<double>() << "] J/K/mol"
-                << std::endl;
-
-      std::cout << "Composition: X = { ";
-      for (int i = 0; i < xfrac.size(-1); ++i) {
-        std::cout << "[" << xfrac.select(-1, i).min().item<double>() << ", "
-                  << xfrac.select(-1, i).max().item<double>() << "], ";
-      }
-      std::cout << "}" << std::endl;
-    }
+    if (verbose) print_iteration(iter, temp, pres, entropy_mole, xfrac);
 
     if ((entropy_step - entropy_mole).abs().max().item<double>() <
         10 * options->ftol()) {
@@ -199,21 +224,7 @@ void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
   // dry-gas mole fraction (dry never condenses; reference for rain-out)
   auto x_dry0 = conc.select(-1, 0) / conc.sum(-1);
 
-  if (verbose) {
-    std::cout << "Initial State: T = [" << temp.min().item<double>() << ", "
-              << temp.max().item<double>() << "] K" << std::endl;
-    std::cout << "               P = [" << pres.min().item<double>() << ", "
-              << pres.max().item<double>() << "] Pa" << std::endl;
-    std::cout << "               S = [" << entropy_mole0.min().item<double>()
-              << ", " << entropy_mole0.max().item<double>() << "] J/K/mol"
-              << std::endl;
-    std::cout << "Composition:   X = { ";
-    for (int i = 0; i < xfrac.size(-1); ++i) {
-      std::cout << "[" << xfrac.select(-1, i).min().item<double>() << ", "
-                << xfrac.select(-1, i).max().item<double>() << "], ";
-    }
-    std::cout << "}" << std::endl;
-  }
+  if (verbose) print_initial_state(temp, pres, entropy_mole0, xfrac);
 
   auto mmw = (mu * xfrac).sum(-1);
   auto pres0 = pres.clone();
@@ -228,46 +239,18 @@ void ThermoXImpl::extrapolate_dz(torch::Tensor temp, torch::Tensor pres,
     xfrac.copy_(xfrac0);
     auto gain = forward(temp, pres, xfrac);
 
-    // pseudo-adiabat rain-out entropy target; see extrapolate_dlnp
+    // pseudo-adiabat rain-out: see rainout_entropy_target
     auto entropy_step = entropy_target;
     if (opts.rainout()) {
-      auto conc_full = compute("TPX->V", {temp, pres, xfrac});
-      auto scond = eval_entropy_R(temp, pres, conc_full, stoich, options)
-                       .narrow(-1, ngas, ncloud) *
-                   constants::Rgas;
-      auto n_gas = conc_full.narrow(-1, 0, ngas).sum(-1);
-      auto x_dry_new = conc_full.select(-1, 0) / n_gas;
-      auto cloud_flux =
-          (scond * conc_full.narrow(-1, ngas, ncloud)).sum(-1) / n_gas;
-      entropy_step =
-          (x_dry_new / x_dry0) * entropy_mole0 - cloud_flux + ds_dz * dz;
-
-      xfrac.narrow(-1, ngas, ncloud) = 0.;
-      xfrac /= xfrac.sum(-1, true);
+      entropy_step = rainout_entropy_target(
+          temp, pres, xfrac, x_dry0, entropy_mole0, ds_dz * dz, ngas, ncloud);
     }
 
     conc = compute("TPX->V", {temp, pres, xfrac});
     auto cp_mole = effective_cp(temp, pres, xfrac, gain, conc);
     auto entropy_mole = compute("TPV->S", {temp, pres, conc}) / conc.sum(-1);
 
-    if (verbose) {
-      std::cout << "Iter " << iter << std::endl;
-      std::cout << "temp = [" << temp.min().item<double>() << ", "
-                << temp.max().item<double>() << "] K" << std::endl;
-      std::cout << "pres = [" << pres.min().item<double>() << ", "
-                << pres.max().item<double>() << "] Pa" << std::endl;
-
-      std::cout << "entropy_mole = [" << entropy_mole.min().item<double>()
-                << ", " << entropy_mole.max().item<double>() << "] J/K/mol"
-                << std::endl;
-
-      std::cout << "Composition: X = { ";
-      for (int i = 0; i < xfrac.size(-1); ++i) {
-        std::cout << "[" << xfrac.select(-1, i).min().item<double>() << ", "
-                  << xfrac.select(-1, i).max().item<double>() << "], ";
-      }
-      std::cout << "}" << std::endl;
-    }
+    if (verbose) print_iteration(iter, temp, pres, entropy_mole, xfrac);
 
     if ((entropy_step - entropy_mole).abs().max().item<double>() <
         10 * options->ftol()) {

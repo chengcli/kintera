@@ -273,68 +273,6 @@ torch::Tensor eval_intEng_R(torch::Tensor temp, torch::Tensor conc,
 
 torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
                              torch::Tensor conc, torch::Tensor stoich,
-                             SpeciesThermo const& op) {
-  int ngas = op->vapor_ids().size();
-  int ncloud = op->cloud_ids().size();
-
-  // check dimension consistency
-  TORCH_CHECK(conc.size(-1) == ngas + ncloud,
-              "The last dimension of `conc` must match the number of species "
-              "in the thermodynamic model (ngas + ncloud). "
-              "Expected: ",
-              ngas + ncloud, ", got: ", conc.size(-1));
-
-  TORCH_CHECK(
-      stoich.size(0) == ngas + ncloud,
-      "The first dimension of `stoich` must match the number of species "
-      "in the thermodynamic model (ngas + ncloud). "
-      "Expected: ",
-      ngas + ncloud, ", got: ", stoich.size(0));
-
-  //////////// Evaluate gas entropy ////////////
-  auto conc_gas = conc.narrow(-1, 0, ngas);
-
-  // only evaluate vapors
-  auto entropy_R_extra = torch::zeros_like(conc_gas);
-
-  // bundle iterator
-  auto iter = at::TensorIteratorConfig()
-                  .resize_outputs(false)
-                  .check_all_same_dtype(true)
-                  .declare_static_shape(entropy_R_extra.sizes(),
-                                        /*squash_dim=*/{conc.dim() - 1})
-                  .add_output(entropy_R_extra)
-                  .add_owned_input(temp.unsqueeze(-1))
-                  .add_owned_input(pres.unsqueeze(-1))
-                  .add_input(conc_gas)
-                  .build();
-
-  // call the evaluation function
-  auto t = tables_for(op, temp);
-  at::native::call_func3(entropy_R_extra.device().type(), iter,
-                         t->entropy_extra);
-
-  // std::cout << "entropy_R_extra = " << entropy_R_extra << std::endl;
-
-  auto const& sref_R = t->sref_R;
-  auto cp_gas_R = t->cref_R.narrow(0, 0, ngas) + 1;
-
-  auto entropy_R = torch::zeros_like(conc);
-
-  // gas entropy
-  auto entropy_T_R = gas_entropy_T_R(temp, cp_gas_R, op);
-  entropy_R.narrow(-1, 0, ngas) =
-      sref_R.narrow(0, 0, ngas) + entropy_R_extra + entropy_T_R -
-      pres.log().unsqueeze(-1) -
-      (conc_gas / conc_gas.sum(-1, /*keepdim=*/true)).clamp_min(1e-300).log();
-
-  // std::cout << "entropy_R = " << entropy_R << std::endl;
-
-  return entropy_R;
-}
-
-torch::Tensor eval_entropy_R(torch::Tensor temp, torch::Tensor pres,
-                             torch::Tensor conc, torch::Tensor stoich,
                              ThermoOptions const& op) {
   int ngas = op->vapor_ids().size();
   int ncloud = op->cloud_ids().size();

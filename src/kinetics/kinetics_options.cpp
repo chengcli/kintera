@@ -9,15 +9,6 @@
 
 namespace kintera {
 
-extern std::vector<std::string> species_names;
-extern std::vector<double> species_weights;
-extern std::vector<double> species_cref_R;
-extern std::vector<double> species_uref_R;
-extern std::vector<double> species_sref_R;
-extern std::vector<std::array<double, 9>> species_nasa9_low;
-extern std::vector<std::array<double, 9>> species_nasa9_high;
-extern std::vector<double> species_nasa9_Tmid;
-
 KineticsOptions KineticsOptionsImpl::from_yaml(std::string const& filename,
                                                bool verbose) {
   auto config = YAML::LoadFile(filename);
@@ -160,14 +151,7 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
   }
 
   for (const auto& id : kinet->vapor_ids()) {
-    kinet->cref_R().push_back(species_cref_R[id]);
-    kinet->uref_R().push_back(species_uref_R[id]);
-    kinet->sref_R().push_back(species_sref_R[id]);
-    kinet->nasa9_low().push_back(species_nasa9_low[id]);
-    kinet->nasa9_high().push_back(species_nasa9_high[id]);
-    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    kinet->names().push_back(species_names[id]);
-    kinet->mu().push_back(species_weights[id]);
+    append_species_thermo(kinet, id);
   }
 
   // register clouds
@@ -186,14 +170,7 @@ KineticsOptions KineticsOptionsImpl::from_yaml(YAML::Node const& config,
   }
 
   for (const auto& id : kinet->cloud_ids()) {
-    kinet->cref_R().push_back(species_cref_R[id]);
-    kinet->uref_R().push_back(species_uref_R[id]);
-    kinet->sref_R().push_back(species_sref_R[id]);
-    kinet->nasa9_low().push_back(species_nasa9_low[id]);
-    kinet->nasa9_high().push_back(species_nasa9_high[id]);
-    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    kinet->names().push_back(species_names[id]);
-    kinet->mu().push_back(species_weights[id]);
+    append_species_thermo(kinet, id);
   }
 
   return kinet;

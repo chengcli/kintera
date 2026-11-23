@@ -183,6 +183,17 @@ struct ThermoOptionsImpl final : public SpeciesThermoImpl {
 };
 using ThermoOptions = std::shared_ptr<ThermoOptionsImpl>;
 
+//! The parts of ThermoX::reset and ThermoY::reset that are the same for both
+//! (thermo_options.cpp); `tag` names the caller in the verbose prints.
+//! Default and check the nucleation options, then check_dimensions.
+void thermo_check_options(ThermoOptions const& options, char const* tag);
+//! Move uref_R to T = 0 and sref_R to T = 1, P = 1 once per options object
+//! (offset_zero), then print the reference tables when verbose.
+void thermo_zero_offsets(ThermoOptions const& options, char const* tag);
+//! The stoichiometry matrix (float64, nspecies x nreaction) and the
+//! nucleation product check.
+torch::Tensor thermo_stoich(ThermoOptions const& options);
+
 struct ExtrapOptions {
   // Logarithmic change in pressure (dlnp = ln(p_new / p_old))
   ADD_ARG(double, dlnp) = 0.;
@@ -227,9 +238,6 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   //! kkt warm start active set
   torch::Tensor reaction_set, nactive;
 
-  //! failed saturation cells since the last take; public for one release
-  torch::Tensor nfail_;
-
   //! options with which this `ThermoY` was constructed
   ThermoOptions options;
   bool uv_partitionable = false;
@@ -268,7 +276,7 @@ class ThermoYImpl : public torch::nn::Cloneable<ThermoYImpl> {
   torch::Tensor const& failures() const { return failures_; }
   void reset_failures();
   void consume_failures(torch::Tensor out);
-  //! host read and reset of nfail_, and row 0 zeroed; not capturable
+  //! host read of failures() row 0, then row 0 zeroed; not capturable
   int64_t take_saturation_adjustment_failures();
 
   //! \brief saturation adjustment of yfrac (ny, ...) in place, from density
@@ -391,6 +399,14 @@ class ThermoXImpl : public torch::nn::Cloneable<ThermoXImpl> {
   //! pressure along an adiabat
   void extrapolate_dlnp(torch::Tensor temp, torch::Tensor pres,
                         torch::Tensor xfrac, ExtrapOptions const& opts);
+
+  //! the rain-out entropy target of extrapolate_dlnp / extrapolate_dz
+  //! (extrapolate_ad.cpp); removes the clouds from xfrac in place
+  torch::Tensor rainout_entropy_target(torch::Tensor temp, torch::Tensor pres,
+                                       torch::Tensor xfrac,
+                                       torch::Tensor const& x_dry0,
+                                       torch::Tensor const& entropy_mole0,
+                                       double ds_term, int ngas, int ncloud);
 
   //! the same to a new height
   void extrapolate_dz(torch::Tensor temp, torch::Tensor pres,

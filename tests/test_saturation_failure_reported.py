@@ -96,3 +96,26 @@ def test_clone_does_not_share_the_failure_count(tmp_path, device):
     # stays with the module that ran it.
     assert th.take_saturation_adjustment_failures() == 2
     assert cloned.take_saturation_adjustment_failures() == 1
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_take_reads_the_one_counter(tmp_path, device):
+    """K5: the count lives in failures() only, so reset_failures() and
+    consume_failures() also clear what take_saturation_adjustment_failures()
+    returns (before K5 a separate nfail_ kept it)."""
+    th = _thermo(tmp_path)
+    th.to(torch.device(device))
+    rho, intEng, yfrac = _state(th, device)
+    th.forward(rho, intEng, yfrac.clone(), False)
+    th.reset_failures()
+    assert th.take_saturation_adjustment_failures() == 0
+
+    th.forward(rho, intEng, yfrac.clone(), False)
+    out = torch.zeros((), dtype=torch.bool, device=device)
+    th.consume_failures(out)
+    assert bool(out)
+    assert th.take_saturation_adjustment_failures() == 0
+
+    th.forward(rho, intEng, yfrac.clone(), False)
+    assert th.take_saturation_adjustment_failures() == 1
+    assert th.failures().cpu()[0].item() == 0

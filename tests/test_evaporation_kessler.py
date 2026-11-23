@@ -28,7 +28,7 @@ import kintera as kt
 
 torch.set_default_dtype(torch.float64)
 
-R = 8.31446  # kintera constants::Rgas
+R = 8.31446261815324  # kintera constants::Rgas
 K3 = 0.03
 T3, P3, BETA, GAMMA = 90.67, 11690., 12.87, 0.
 

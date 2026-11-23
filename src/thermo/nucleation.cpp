@@ -2,12 +2,12 @@
 #include <yaml-cpp/yaml.h>
 
 // kintera
+#include <kintera/species.hpp>
+
 #include "nucleation.hpp"
 
 namespace kintera {
 
-extern std::vector<std::string> species_names;
-extern std::vector<std::string> species_phases;
 extern std::vector<std::string> func1_names;
 
 void check_nucleation_options(NucleationOptions const& op) {

@@ -7,6 +7,7 @@
 #include <regex>
 #include <set>
 #include <sstream>
+#include <tuple>
 
 // fmt
 #include <fmt/format.h>
@@ -22,17 +23,6 @@
 #include "kinetics_base_reader.hpp"
 
 namespace kintera {
-
-extern std::vector<std::string> species_names;
-extern std::vector<double> species_weights;
-extern std::vector<double> species_cref_R;
-extern std::vector<double> species_uref_R;
-extern std::vector<double> species_sref_R;
-extern bool species_initialized;
-
-extern std::vector<std::array<double, 9>> species_nasa9_low;
-extern std::vector<std::array<double, 9>> species_nasa9_high;
-extern std::vector<double> species_nasa9_Tmid;
 
 static std::string trim(std::string const& s) {
   auto start = s.find_first_not_of(" \t\r\n");
@@ -1112,6 +1102,30 @@ static std::string format_equation(std::vector<std::string> const& reactants,
   return format_side(reactants) + arrow + format_side(products);
 }
 
+//! The Reaction "r + M <=> p + M" of a KB thermal reaction and the [A] unit
+//! strings of its low-pressure (one more reactant, M) and high-pressure
+//! limits, with the reactant stoichiometry summed as before.
+static std::tuple<Reaction, std::string, std::string> kb_third_body_reaction(
+    KBReaction const& rxn) {
+  auto r = rxn.reactants;
+  r.push_back("M");
+  auto p = rxn.products;
+  p.push_back("M");
+  Reaction reaction(format_equation(r, p, true));
+
+  double sum_stoich = 0.0;
+  for (auto const& [name, coeff] : reaction.reactants()) {
+    if (name != "M") sum_stoich += coeff;
+  }
+
+  auto unit_low =
+      fmt::format("molecule^{} * cm^{} * s^-1", 1. - (sum_stoich + 1.),
+                  -3. * (1. - (sum_stoich + 1.)));
+  auto unit_high = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
+                               -3. * (1. - sum_stoich));
+  return {reaction, unit_low, unit_high};
+}
+
 static std::string collapse_whitespace(std::string const& s) {
   std::string result;
   bool last_space = false;
@@ -1167,20 +1181,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
   for (auto const& rxn : master.thermal) {
     if (!rxn.has_M || rxn.has_kinf) continue;
 
-    auto r = rxn.reactants;
-    r.push_back("M");
-    auto p = rxn.products;
-    p.push_back("M");
-    Reaction reaction(format_equation(r, p, true));
-
-    double sum_stoich = 0.0;
-    for (auto const& [name, coeff] : reaction.reactants()) {
-      if (name != "M") sum_stoich += coeff;
-    }
-    sum_stoich += 1.0;
-
-    auto unit = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
-                            -3. * (1. - sum_stoich));
+    auto [reaction, unit, unit_high] = kb_third_body_reaction(rxn);
 
     tb->reactions().push_back(reaction);
     tb->k0_A().push_back(us.convert_from(rxn.A0, unit));
@@ -1194,22 +1195,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
   for (auto const& rxn : master.thermal) {
     if (!rxn.has_M || !rxn.has_kinf) continue;
 
-    auto r = rxn.reactants;
-    r.push_back("M");
-    auto p = rxn.products;
-    p.push_back("M");
-    Reaction reaction(format_equation(r, p, true));
-
-    double sum_stoich = 0.0;
-    for (auto const& [name, coeff] : reaction.reactants()) {
-      if (name != "M") sum_stoich += coeff;
-    }
-
-    auto unit_low =
-        fmt::format("molecule^{} * cm^{} * s^-1", 1. - (sum_stoich + 1.),
-                    -3. * (1. - (sum_stoich + 1.)));
-    auto unit_high = fmt::format("molecule^{} * cm^{} * s^-1", 1. - sum_stoich,
-                                 -3. * (1. - sum_stoich));
+    auto [reaction, unit_low, unit_high] = kb_third_body_reaction(rxn);
 
     reaction.falloff_type("none");
     lf->reactions().push_back(reaction);
@@ -1234,14 +1220,7 @@ KineticsOptions kinetics_options_from_kinetics_base(
   std::sort(kinet->vapor_ids().begin(), kinet->vapor_ids().end());
 
   for (auto const& id : kinet->vapor_ids()) {
-    kinet->cref_R().push_back(species_cref_R[id]);
-    kinet->uref_R().push_back(species_uref_R[id]);
-    kinet->sref_R().push_back(species_sref_R[id]);
-    kinet->nasa9_low().push_back(species_nasa9_low[id]);
-    kinet->nasa9_high().push_back(species_nasa9_high[id]);
-    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    kinet->names().push_back(species_names[id]);
-    kinet->mu().push_back(species_weights[id]);
+    append_species_thermo(kinet, id);
   }
 
   return kinet;
@@ -1369,14 +1348,7 @@ KineticsOptions kinetics_options_from_kinetics_base_pun(
   }
   std::sort(kinet->vapor_ids().begin(), kinet->vapor_ids().end());
   for (auto const& id : kinet->vapor_ids()) {
-    kinet->cref_R().push_back(species_cref_R[id]);
-    kinet->uref_R().push_back(species_uref_R[id]);
-    kinet->sref_R().push_back(species_sref_R[id]);
-    kinet->nasa9_low().push_back(species_nasa9_low[id]);
-    kinet->nasa9_high().push_back(species_nasa9_high[id]);
-    kinet->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    kinet->names().push_back(species_names[id]);
-    kinet->mu().push_back(species_weights[id]);
+    append_species_thermo(kinet, id);
   }
 
   if (verbose) {
@@ -1387,6 +1359,24 @@ KineticsOptions kinetics_options_from_kinetics_base_pun(
   }
 
   return kinet;
+}
+
+//! A side of a catalog or network equation as "2A+B" with the species upper
+//! cased and repeats counted, the key the photolysis catalog is matched by.
+static std::string side_key(std::vector<std::string> const& species) {
+  std::map<std::string, int> counts;
+  std::vector<std::string> order;
+  for (auto const& s : species) {
+    if (counts.count(s) == 0) order.push_back(s);
+    counts[s]++;
+  }
+  std::string result;
+  for (size_t i = 0; i < order.size(); ++i) {
+    if (i > 0) result += "+";
+    if (counts[order[i]] > 1) result += std::to_string(counts[order[i]]);
+    result += to_upper(order[i]);
+  }
+  return result;
 }
 
 PhotoChemOptions photochem_options_from_kinetics_base(
@@ -1499,25 +1489,9 @@ PhotoChemOptions photochem_options_from_kinetics_base(
   if (!photo_catalog_path.empty()) {
     auto catalog = parse_kinetics_base_catalog(photo_catalog_path);
 
-    auto build_side_key = [](std::vector<std::string> const& species) {
-      std::map<std::string, int> counts;
-      std::vector<std::string> order;
-      for (auto const& s : species) {
-        if (counts.count(s) == 0) order.push_back(s);
-        counts[s]++;
-      }
-      std::string result;
-      for (size_t i = 0; i < order.size(); ++i) {
-        if (i > 0) result += "+";
-        if (counts[order[i]] > 1) result += std::to_string(counts[order[i]]);
-        result += to_upper(order[i]);
-      }
-      return result;
-    };
-
     for (auto const& [cat_eq, fname] : catalog) {
       auto [cat_r, cat_p] = parse_equation_string(cat_eq);
-      catalog_map[build_side_key(cat_r) + "=" + build_side_key(cat_p)] = fname;
+      catalog_map[side_key(cat_r) + "=" + side_key(cat_p)] = fname;
     }
 
     for (auto const& [cat_eq, fname] : catalog) {
@@ -1536,7 +1510,7 @@ PhotoChemOptions photochem_options_from_kinetics_base(
                       [](KBCrossSection const& ds) { return ds.type == 0; });
       if (!has_type0) continue;
       auto [cat_r, cat_p] = parse_equation_string(cat_eq);
-      absorption_cache[build_side_key(cat_r)] = &csf;
+      absorption_cache[side_key(cat_r)] = &csf;
     }
 
     if (photo->wavelength().empty()) {
@@ -1597,24 +1571,8 @@ PhotoChemOptions photochem_options_from_kinetics_base(
     }
     photo->branches().push_back(branch_comps);
 
-    auto build_side_key2 = [](std::vector<std::string> const& species) {
-      std::map<std::string, int> counts;
-      std::vector<std::string> order;
-      for (auto const& s : species) {
-        if (counts.count(s) == 0) order.push_back(s);
-        counts[s]++;
-      }
-      std::string result;
-      for (size_t i = 0; i < order.size(); ++i) {
-        if (i > 0) result += "+";
-        if (counts[order[i]] > 1) result += std::to_string(counts[order[i]]);
-        result += to_upper(order[i]);
-      }
-      return result;
-    };
-
     std::string rxn_key =
-        build_side_key2(rxn.reactants) + "=" + build_side_key2(rxn.products);
+        side_key(rxn.reactants) + "=" + side_key(rxn.products);
     int nbranch = std::max((int)branch_strs.size(), 1);
     auto cat_it = catalog_map.find(rxn_key);
     if (cat_it == catalog_map.end()) {
@@ -1665,7 +1623,7 @@ PhotoChemOptions photochem_options_from_kinetics_base(
         TORCH_CHECK(nbranch > 1, "Photolysis reaction '", eq, "' in ", fpath,
                     " has identical reactants and products; supply it as "
                     "type-0 absorption");
-        std::string parent_key = build_side_key2(rxn.reactants);
+        std::string parent_key = side_key(rxn.reactants);
         auto const* abs_ds = find_absorption_dataset(parent_key, ds);
         TORCH_CHECK(abs_ds != nullptr,
                     "Missing absorption cross-section (type 0) for photolysis "
@@ -1692,14 +1650,7 @@ PhotoChemOptions photochem_options_from_kinetics_base(
     photo_chem->vapor_ids().push_back(id);
   }
   for (auto const& id : photo_chem->vapor_ids()) {
-    photo_chem->cref_R().push_back(species_cref_R[id]);
-    photo_chem->uref_R().push_back(species_uref_R[id]);
-    photo_chem->sref_R().push_back(species_sref_R[id]);
-    photo_chem->nasa9_low().push_back(species_nasa9_low[id]);
-    photo_chem->nasa9_high().push_back(species_nasa9_high[id]);
-    photo_chem->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
-    photo_chem->names().push_back(species_names[id]);
-    photo_chem->mu().push_back(species_weights[id]);
+    append_species_thermo(photo_chem, id);
   }
 
   return photo_chem;

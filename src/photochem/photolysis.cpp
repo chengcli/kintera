@@ -6,7 +6,9 @@
 #include <fmt/format.h>
 #include <yaml-cpp/yaml.h>
 
+#include <kintera/kinetics/reaction_species.hpp>
 #include <kintera/math/interpolation.hpp>
+#include <kintera/species.hpp>
 #include <kintera/units/units.hpp>
 #include <kintera/utils/parse_comp_string.hpp>
 
@@ -14,25 +16,10 @@
 
 namespace kintera {
 
-extern std::vector<std::string> species_names;
-
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set,
                         PhotolysisOptions op) {
-  for (auto& react : op->reactions()) {
-    for (auto& [name, _] : react.reactants()) {
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name,
-                  " not found in species list");
-      vapor_set.insert(name);
-    }
-    for (auto& [name, _] : react.products()) {
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name,
-                  " not found in species list");
-      vapor_set.insert(name);
-    }
-  }
+  add_reaction_species(vapor_set, op, false, false);
 }
 
 PhotolysisOptions PhotolysisOptionsImpl::from_yaml(

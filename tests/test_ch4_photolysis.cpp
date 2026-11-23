@@ -8,9 +8,9 @@
 #include <torch/torch.h>
 
 // kintera
-#include <kintera/kinetics/jacobian_kinetics.hpp>
 #include <kintera/kinetics/kinetics.hpp>
 #include <kintera/photochem/actinic_flux.hpp>
+#include <kintera/photochem/jacobian_photolysis.hpp>
 #include <kintera/photochem/photochem.hpp>
 #include <kintera/photochem/photolysis.hpp>
 #include <kintera/utils/parse_comp_string.hpp>

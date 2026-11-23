@@ -22,7 +22,7 @@ import kintera as kt
 torch.set_default_dtype(torch.float64)
 
 DEVICES = ["cpu"] + ["cuda"] * torch.cuda.is_available()
-R = 8.31446  # kintera constants::Rgas
+R = 8.31446261815324  # kintera constants::Rgas
 A_COAG = 1e-3
 T_CLOUD, P_CLOUD = 90., 1e5
 

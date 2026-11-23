@@ -26,7 +26,7 @@ PROBE = r"""
 import json, sys, torch
 torch.set_default_dtype(torch.float64)
 from kintera import ThermoX, ThermoY, ThermoOptions
-R, T, out = 8.31446, torch.tensor(json.loads(sys.argv[1])), {}  # R = kintera Rgas
+R, T, out = 8.31446261815324, torch.tensor(json.loads(sys.argv[1])), {}  # R = kintera Rgas
 for key, card in zip(("on", "off", "default"), sys.argv[2:]):
     op = ThermoOptions.from_yaml(card)
     tx, ty = ThermoX(op), ThermoY(op)

@@ -383,6 +383,17 @@ at::Tensor SpeciesThermoImpl::nasa9_Tmid_tensor(
   return tensor;
 }
 
+void append_species_thermo(SpeciesThermo const& thermo, int id) {
+  thermo->cref_R().push_back(species_cref_R[id]);
+  thermo->uref_R().push_back(species_uref_R[id]);
+  thermo->sref_R().push_back(species_sref_R[id]);
+  thermo->nasa9_low().push_back(species_nasa9_low[id]);
+  thermo->nasa9_high().push_back(species_nasa9_high[id]);
+  thermo->nasa9_Tmid().push_back(species_nasa9_Tmid[id]);
+  thermo->names().push_back(species_names[id]);
+  thermo->mu().push_back(species_weights[id]);
+}
+
 void populate_thermo(SpeciesThermo thermo) {
   int nspecies = thermo->vapor_ids().size() + thermo->cloud_ids().size();
 

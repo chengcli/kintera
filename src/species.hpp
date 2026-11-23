@@ -122,6 +122,10 @@ using SpeciesThermo = std::shared_ptr<SpeciesThermoImpl>;
 
 void populate_thermo(SpeciesThermo thermo);
 
+//! Append species `id` of the registry (cref_R, uref_R, sref_R, the nasa9
+//! tables, name and weight) to `thermo`'s per-species tables.
+void append_species_thermo(SpeciesThermo const& thermo, int id);
+
 void check_dimensions(SpeciesThermo const& thermo);
 
 //! Merge species records; global heat-capacity policy is owned by thermo1 and
@@ -129,12 +133,18 @@ void check_dimensions(SpeciesThermo const& thermo);
 SpeciesThermo merge_thermo(SpeciesThermo const& thermo1,
                            SpeciesThermo const& thermo2);
 
+//! The species registry (defined in species.cpp): the one declaration of
+//! these globals; readers include this header instead of redeclaring them.
 extern std::vector<std::string> species_names;
+extern std::vector<std::string> species_phases;
 extern std::vector<double> species_weights;
 extern std::vector<double> species_cref_R;
 extern std::vector<double> species_uref_R;
 extern std::vector<double> species_sref_R;
 extern bool species_initialized;
+extern std::vector<std::array<double, 9>> species_nasa9_low;
+extern std::vector<std::array<double, 9>> species_nasa9_high;
+extern std::vector<double> species_nasa9_Tmid;
 
 }  // namespace kintera
 

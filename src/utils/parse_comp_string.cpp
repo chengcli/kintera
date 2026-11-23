@@ -5,7 +5,6 @@
 #include <fmt/format.h>
 
 // kintera
-#include "constants.hpp"
 #include "fp_value.hpp"
 #include "get_value.hpp"
 #include "parse_comp_string.hpp"
@@ -25,7 +24,7 @@ Composition parse_comp_string(const std::string& ss,
   size_t left = 0;
   while (stop < ss.size()) {
     size_t colon = ss.find(':', left);
-    if (colon == npos) {
+    if (colon == std::string::npos) {
       break;
     }
     size_t valstart = ss.find_first_not_of(" \t\n", colon + 1);
@@ -44,10 +43,11 @@ Composition parse_comp_string(const std::string& ss,
       // to the right of the next colon for the corresponding value.
       // Otherwise, this is an invalid composition string.
       std::string testname = ss.substr(start, stop - start);
-      if (testname.find_first_of(" \n\t") != npos) {
+      if (testname.find_first_of(" \n\t") != std::string::npos) {
         // Space, tab, and newline are never allowed in names
         throw;
-      } else if (ss.substr(valstart, stop - valstart).find(':') != npos) {
+      } else if (ss.substr(valstart, stop - valstart).find(':') !=
+                 std::string::npos) {
         left = colon + 1;
         stop = 0;  // Force another iteration of this loop
         continue;
@@ -64,7 +64,7 @@ Composition parse_comp_string(const std::string& ss,
   }
   TORCH_CHECK(left == start, fmt::format("Unable to parse key-value pair '{}'",
                                          ss.substr(start, stop)));
-  if (stop != npos && !trim_copy(ss.substr(stop)).empty()) {
+  if (stop != std::string::npos && !trim_copy(ss.substr(stop)).empty()) {
     TORCH_CHECK(
         false,
         fmt::format("Found non-key:value data in composition string '{}'",

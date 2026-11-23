@@ -15,7 +15,7 @@ import kintera as kt
 
 torch.set_default_dtype(torch.float64)
 
-R = 8.31446  # kintera constants::Rgas
+R = 8.31446261815324  # kintera constants::Rgas
 K1 = 1e-4
 PTH = 1e4
 FACTORS = {"CH4": 1e2, "H2S": 1e4}

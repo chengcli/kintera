@@ -5,28 +5,17 @@
 // fmt
 #include <fmt/format.h>
 
+// kintera
+#include <kintera/kinetics/reaction_species.hpp>
+#include <kintera/species.hpp>
+
 #include "kb_falloff.hpp"
 
 namespace kintera {
 
-extern std::vector<std::string> species_names;
-
 void add_to_vapor_cloud(std::set<std::string>& vapor_set,
                         std::set<std::string>& cloud_set, KBFalloffOptions op) {
-  for (auto& react : op->reactions()) {
-    for (auto& [name, _] : react.reactants()) {
-      if (name == "M" || name == "(+M)") continue;
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name, " not found");
-      vapor_set.insert(name);
-    }
-    for (auto& [name, _] : react.products()) {
-      if (name == "M" || name == "(+M)") continue;
-      auto it = std::find(species_names.begin(), species_names.end(), name);
-      TORCH_CHECK(it != species_names.end(), "Species ", name, " not found");
-      vapor_set.insert(name);
-    }
-  }
+  add_reaction_species(vapor_set, op, true, false);
 }
 
 KBFalloffImpl::KBFalloffImpl(KBFalloffOptions const& options_)

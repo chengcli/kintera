@@ -8,7 +8,7 @@ import torch
 import kintera as kt
 
 
-RGAS = 8.31446
+RGAS = 8.31446261815324  # kintera constants::Rgas
 TEMP = 300.0
 PRES = torch.tensor([1.0e5], dtype=torch.float64)
 CONC = torch.tensor([[0.0, 1.0e-3]], dtype=torch.float64)
