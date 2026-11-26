@@ -18,10 +18,10 @@
 using namespace kintera;
 
 // Two threads evaluate LogSVPFunc with different svp columns at the same
-// time, each the way every caller does: init(its options), then call() and
-// grad(). Each thread must get its own curve. A shared state rewritten by
-// init() lets one thread read the other's columns between its init() and its
-// call(), and the values come back silently wrong (same shape).
+// time, each passing its own options to call() and grad(). Each thread must
+// get its own curve. A shared state rewritten per call (the former static
+// _op set by init()) let one thread read the other's columns, silently wrong
+// values of the same shape, or release the same options twice.
 
 namespace {
 
@@ -42,15 +42,14 @@ int run_thread(Curve const& curve, std::atomic<bool> const& go) {
   while (!go.load()) std::this_thread::yield();
   int wrong = 0;
   for (int i = 0; i < kIters; ++i) {
-    LogSVPFunc::init(nucleation);
-    auto v = LogSVPFunc::call(temp);
-    auto d = LogSVPFunc::grad(temp);
-    bool ok = v.size(-1) == 1 && d.size(-1) == 1 &&
-              std::abs(v[0][0].item<double>() - curve.value(t0)) < 1.e-10 &&
-              std::abs(v[1][0].item<double>() - curve.value(t1)) < 1.e-10 &&
-              std::abs(d[0][0].item<double>() - curve.derivative(t0)) <
-                  1.e-10 &&
-              std::abs(d[1][0].item<double>() - curve.derivative(t1)) < 1.e-10;
+    auto v = LogSVPFunc::call(temp, nucleation);
+    auto d = LogSVPFunc::grad(temp, nucleation);
+    bool ok =
+        v.size(-1) == 1 && d.size(-1) == 1 &&
+        std::abs(v[0][0].item<double>() - curve.value(t0)) < 1.e-10 &&
+        std::abs(v[1][0].item<double>() - curve.value(t1)) < 1.e-10 &&
+        std::abs(d[0][0].item<double>() - curve.derivative(t0)) < 1.e-10 &&
+        std::abs(d[1][0].item<double>() - curve.derivative(t1)) < 1.e-10;
     wrong += !ok;
   }
   return wrong;
@@ -63,12 +62,11 @@ TEST(LogSVPThreads, TwoConfigsConcurrently) {
   Curve b{"nh3_ideal", nh3_ideal, nh3_ideal_ddT};
   ASSERT_GT(std::abs(a.value(300.0) - b.value(300.0)), 1.e-3);
 
-  // build both tables first, so the threads race on init() and not the build
+  // build both tables first, so the threads race on the calls, not the build
   for (auto const& c : {a, b}) {
     auto n = NucleationOptionsImpl::create();
     n->logsvp({c.name});
-    LogSVPFunc::init(n);
-    LogSVPFunc::call(torch::tensor({300.0}, torch::kFloat64));
+    LogSVPFunc::call(torch::tensor({300.0}, torch::kFloat64), n);
   }
 
   std::atomic<bool> go{false};

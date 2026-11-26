@@ -49,17 +49,11 @@ void LogSVPFunc::make_svp_spec(NucleationOptions const& op_, ThermoTables& t,
       at::native::fill_func_table(device.type(), names_ddT, 1, device);
 }
 
-SpeciesThermo LogSVPFunc::_op;
-
-void LogSVPFunc::init(NucleationOptions const& op_) {
+ThermoTables const& LogSVPFunc::tables(torch::Tensor const& temp,
+                                       NucleationOptions const& op_) {
   auto op = ThermoOptionsImpl::create();  // no species: the svp columns only
   op->nucleation() = op_ ? op_ : NucleationOptionsImpl::create();
-  _op = op;
-}
-
-ThermoTables const& LogSVPFunc::tables(torch::Tensor const& temp) {
-  if (!_op) init(nullptr);
-  return *tables_for(_op, temp);  // the store keeps it
+  return *tables_for(op, temp);  // the store keeps it
 }
 
 void LogSVPFunc::apply_inline(at::TensorIterator& iter,
@@ -107,22 +101,24 @@ torch::Tensor LogSVPFunc::evaluate(torch::Tensor const& temp, bool expanded,
   return result;
 }
 
-torch::Tensor LogSVPFunc::grad(torch::Tensor const& temp, bool expanded) {
-  auto const& t = tables(temp);
+torch::Tensor LogSVPFunc::grad(torch::Tensor const& temp,
+                               NucleationOptions const& op, bool expanded) {
+  auto const& t = tables(temp, op);
   return evaluate(temp, expanded, t.logsvp_ddT, t.svp_kind, t.svp_params,
                   t.svp_inline, /*deriv=*/true);
 }
 
-torch::Tensor LogSVPFunc::call(torch::Tensor const& temp, bool expanded) {
-  auto const& t = tables(temp);
+torch::Tensor LogSVPFunc::call(torch::Tensor const& temp,
+                               NucleationOptions const& op, bool expanded) {
+  auto const& t = tables(temp, op);
   return evaluate(temp, expanded, t.logsvp, t.svp_kind, t.svp_params,
                   t.svp_inline, /*deriv=*/false);
 }
 
 torch::Tensor LogSVPFunc::forward(torch::autograd::AutogradContext* ctx,
-                                  torch::Tensor const& temp) {
-  // a later init() replaces the table; saved handles keep these alive
-  auto const& t = tables(temp);
+                                  torch::Tensor const& temp,
+                                  NucleationOptions const& op) {
+  auto const& t = tables(temp, op);
   ctx->save_for_backward({temp, t.logsvp_ddT, t.svp_kind, t.svp_params});
   ctx->saved_data["has_inline"] = t.svp_inline;
   return evaluate(temp, true, t.logsvp, t.svp_kind, t.svp_params, t.svp_inline,
@@ -136,7 +132,7 @@ std::vector<torch::Tensor> LogSVPFunc::backward(
   bool has_inline = ctx->saved_data.at("has_inline").toBool();
   auto logsvp_ddT = evaluate(/*temp=*/saved[0], /*expanded=*/true, saved[1],
                              saved[2], saved[3], has_inline, /*deriv=*/true);
-  return {grad_outputs[0] * logsvp_ddT};
+  return {grad_outputs[0] * logsvp_ddT, torch::Tensor()};  // none for op
 }
 
 }  // namespace kintera

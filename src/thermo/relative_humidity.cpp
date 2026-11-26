@@ -14,8 +14,7 @@ torch::Tensor relative_humidity(torch::Tensor temp, torch::Tensor conc,
                                 torch::Tensor stoich,
                                 NucleationOptions const &op, int ngas) {
   // evaluate svp function
-  LogSVPFunc::init(op);
-  auto logsvp = LogSVPFunc::call(temp);
+  auto logsvp = LogSVPFunc::call(temp, op);
 
   // mark reactants
   TORCH_CHECK(ngas >= 0 || !op || !op->has_gas_products,

@@ -91,9 +91,7 @@ torch::Tensor ThermoXImpl::effective_cp(torch::Tensor temp, torch::Tensor pres,
     return (cp * xfrac).sum(-1);
   }
 
-  LogSVPFunc::init(options->nucleation());
-
-  auto logsvp_ddT = LogSVPFunc::grad(temp);
+  auto logsvp_ddT = LogSVPFunc::grad(temp, options->nucleation());
 
   // Row-equilibrate before the solve. The gain rows are scaled by 1/x_vapour,
   // so a species that has largely rained out contributes a row of order 1e14

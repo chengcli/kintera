@@ -60,12 +60,11 @@ void check_condensate_dispatch(torch::Device device) {
   for (const auto &fit : condensate_fits) names.emplace_back(fit.name);
   auto nucleation = NucleationOptionsImpl::create();
   nucleation->logsvp(names);
-  LogSVPFunc::init(nucleation);
 
   auto temperatures = torch::tensor({500.0, 1000.0, 1500.0}, torch::kFloat64);
   auto temp = temperatures.to(device);
-  auto values = LogSVPFunc::call(temp).cpu();
-  auto derivatives = LogSVPFunc::grad(temp).cpu();
+  auto values = LogSVPFunc::call(temp, nucleation).cpu();
+  auto derivatives = LogSVPFunc::grad(temp, nucleation).cpu();
   for (int i = 0; i < temperatures.numel(); ++i) {
     double t = temperatures[i].item<double>();
     for (size_t j = 0; j < names.size(); ++j) {
@@ -134,11 +133,10 @@ TEST(VaporFunctions, kcl_lodders_derivative_matches_finite_difference) {
 TEST(VaporFunctions, kcl_lodders_dispatches_through_log_svp) {
   auto nucleation = NucleationOptionsImpl::create();
   nucleation->logsvp({"kcl_lodders"});
-  LogSVPFunc::init(nucleation);
 
   auto temp = torch::tensor({800.0, 1000.0}, torch::kFloat64);
-  auto logsvp = LogSVPFunc::call(temp).squeeze(-1);
-  auto grad = LogSVPFunc::grad(temp).squeeze(-1);
+  auto logsvp = LogSVPFunc::call(temp, nucleation).squeeze(-1);
+  auto grad = LogSVPFunc::grad(temp, nucleation).squeeze(-1);
 
   for (int i = 0; i < 2; ++i) {
     double t = temp[i].item<double>();
@@ -165,11 +163,10 @@ TEST(VaporFunctions, h2o_bryan_keeps_liquid_branch_below_triple_point) {
 TEST(VaporFunctions, h2o_bryan_dispatches_through_log_svp) {
   auto nucleation = NucleationOptionsImpl::create();
   nucleation->logsvp({"h2o_bryan"});
-  LogSVPFunc::init(nucleation);
 
   auto temp = torch::tensor({250.0, 289.85}, torch::kFloat64);
-  auto logsvp = LogSVPFunc::call(temp).squeeze(-1);
-  auto grad = LogSVPFunc::grad(temp).squeeze(-1);
+  auto logsvp = LogSVPFunc::call(temp, nucleation).squeeze(-1);
+  auto grad = LogSVPFunc::grad(temp, nucleation).squeeze(-1);
 
   EXPECT_NEAR(logsvp[0].item<double>(), h2o_bryan_expected(250.0), 1.e-12);
   EXPECT_NEAR(logsvp[1].item<double>(), h2o_bryan_expected(289.85), 1.e-12);

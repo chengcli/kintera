@@ -83,7 +83,7 @@ def test_inline_formula_set_from_python_raises(tmp_path):
     stoich = ThermoX(op).buffer("stoich")
     op.nucleation().logsvp(["ideal"])  # a python-set inline name has no parameters
     msg = "inline 'ideal'/'antoine' formulas must be defined in YAML"
-    with pytest.raises(RuntimeError, match=msg):  # LogSVPFunc::init
+    with pytest.raises(RuntimeError, match=msg):  # LogSVPFunc::call (relative_humidity)
         relative_humidity(TEMP, UNIT, stoich, op.nucleation())
     with pytest.raises(RuntimeError, match=msg):  # make_svp_spec
         equilibrate_tp(ThermoX(op))

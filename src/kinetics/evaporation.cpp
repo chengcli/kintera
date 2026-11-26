@@ -255,8 +255,7 @@ torch::Tensor EvaporationImpl::forward(
               "Evaporation requires one condensed reactant with coefficient 1 "
               "and no condensed products");
 
-  LogSVPFunc::init(options);
-  auto logsvp = LogSVPFunc::apply(temp);
+  auto logsvp = LogSVPFunc::apply(temp, options);
 
   auto general_idx = general_rxns_.to(stoich.device());
   auto legacy_logsvp = logsvp;
