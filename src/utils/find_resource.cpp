@@ -10,6 +10,10 @@
 #include <sstream>
 #include <unordered_set>
 
+#ifndef WINDOWS
+#include <dlfcn.h>
+#endif
+
 // kintera
 #include <configure.h>
 
@@ -76,6 +80,22 @@ std::vector<std::string> virtualenv_resource_directories() {
   return dirs;
 }
 
+// kintera/data next to the library itself: a wheel installs
+// kintera/lib/libkintera_*.{so,dylib} beside kintera/data
+std::string library_resource_directory() {
+#ifndef WINDOWS
+  Dl_info info;
+  if (dladdr(reinterpret_cast<void*>(&library_resource_directory), &info) &&
+      info.dli_fname) {
+    std::error_code ec;
+    auto lib = std::filesystem::weakly_canonical(info.dli_fname, ec);
+    auto dir = lib.parent_path().parent_path() / "data";
+    if (!ec && std::filesystem::is_directory(dir, ec)) return dir.string();
+  }
+#endif
+  return "";
+}
+
 std::vector<std::string> normalize_resource_directories(
     std::vector<std::string> const& dirs) {
   std::vector<std::string> normalized;
@@ -94,6 +114,7 @@ std::vector<std::string> normalize_resource_directories(
   for (auto const& dir : virtualenv_resource_directories()) {
     add_dir(dir);
   }
+  add_dir(library_resource_directory());
   add_dir(std::string(KINTERA_ROOT_DIR) + "/data");
   return normalized;
 }
