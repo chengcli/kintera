@@ -60,6 +60,7 @@ target_link_libraries(${namel}_${buildl}
     ${C10_LIBRARY}
     ${HARP_LIBRARY}
     ${DISORT_LIBRARY}
+    ${CMAKE_DL_LIBS}
     )
 
 add_library(kintera::kintera ALIAS ${namel}_${buildl})
