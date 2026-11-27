@@ -13,24 +13,23 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
  public:
   static constexpr bool is_traceable = true;
 
-  //! the svp columns of op_ (null: the empty default) for the next calls,
-  //! which read them from a ThermoTables (its svp spec and FuncTables; an
-  //! inline column has a valid name there, overwritten by apply_inline)
-  static void init(NucleationOptions const& op_);
-
   //! \brief Computes the gradient of logarithm of the saturation vapor pressure
   /*!
    * \param temp          Temperature tensor
+   * \param op            The svp columns (null: the empty default)
    * \param expanded      If true, the input temperature is already expanded
    */
-  static torch::Tensor grad(torch::Tensor const& temp, bool expanded = false);
+  static torch::Tensor grad(torch::Tensor const& temp,
+                            NucleationOptions const& op, bool expanded = false);
 
   //! \brief Computes the logarithm of the saturation vapor pressure
   /*!
    * \param temp          Temperature tensor
+   * \param op            The svp columns (null: the empty default)
    * \param expanded      If true, the input temperature is already expanded
    */
-  static torch::Tensor call(torch::Tensor const& temp, bool expanded = false);
+  static torch::Tensor call(torch::Tensor const& temp,
+                            NucleationOptions const& op, bool expanded = false);
 
   //! \brief Computes the logarithm of the saturation vapor pressure
   /*!
@@ -40,14 +39,16 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
    * Example usage:
    *  \code{.cpp}
    *    torch::Tensor temp = ...; // Temperature tensor
-   *    torch::Tensor logsvp = LogSVPFunc::apply(temp);
+   *    torch::Tensor logsvp = LogSVPFunc::apply(temp, op);
    *  \endcode
    *
    * \param ctx           Autograd context for storing state
    * \param temp          Temperature tensor (expanded)
+   * \param op            The svp columns (null: the empty default)
    */
   static torch::Tensor forward(torch::autograd::AutogradContext* ctx,
-                               torch::Tensor const& temp);
+                               torch::Tensor const& temp,
+                               NucleationOptions const& op);
 
   //! \brief Computes the gradient of the logarithm of the saturation vapor
   //! pressure
@@ -59,7 +60,7 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
    *  \code{.cpp}
    *    torch::Tensor temp = ...; // Temperature tensor
    *    temp.requires_grad_(); // Ensure temp requires gradient
-   *    torch::Tensor logsvp = LogSVPFunc::apply(temp);
+   *    torch::Tensor logsvp = LogSVPFunc::apply(temp, op);
    *    logsvp.backward(torch::ones_like(logsvp)); // Backward pass
    *    std::cout << "Gradient: " << temp.grad() << std::endl;
    *  \endcode
@@ -107,9 +108,10 @@ class LogSVPFunc : public torch::autograd::Function<LogSVPFunc> {
                            torch::Tensor const& svp_params, bool has_inline,
                            bool deriv);
 
-  //! the store's table for temp's device and dtype (built once)
-  static ThermoTables const& tables(torch::Tensor const& temp);
-  static SpeciesThermo _op;  // a ThermoOptions holding init()'s op only
+  //! the store's table of op's svp columns for temp's device and dtype (built
+  //! once per options digest; nothing is kept here, so calls are independent)
+  static ThermoTables const& tables(torch::Tensor const& temp,
+                                    NucleationOptions const& op);
 };
 
 }  // namespace kintera
